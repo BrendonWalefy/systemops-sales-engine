@@ -14,12 +14,21 @@ type EventOf<Kind extends V1TurnObservationEvent["kind"]> = Extract<
   { kind: Kind }
 >;
 
+type CapturedObservationRead<T> = Readonly<{ status: "captured"; value: T }>;
+type CapturedTurnContext = Omit<EventOf<"turn_context">, "completedStepIds"> & Readonly<{
+  completedStepIds: CapturedObservationRead<readonly string[]>;
+}>;
+type CapturedTenantSnapshot = Omit<EventOf<"tenant_snapshot">, "policy"> & Readonly<{
+  policy: Extract<EventOf<"tenant_snapshot">["policy"], { status: "captured" }>;
+}>;
+
 export type CapturedV1SharedReads = Readonly<{
   input: EventOf<"turn_input">;
   gateFacts: readonly EventOf<"turn_gate_fact">[];
-  context: EventOf<"turn_context">;
-  tenantSnapshot: EventOf<"tenant_snapshot">;
+  context: CapturedTurnContext;
+  tenantSnapshot: CapturedTenantSnapshot;
   pendingSlotOffers: readonly EventOf<"pending_slot_offer">[];
+  serviceResolutions: readonly EventOf<"service_resolution">[];
   slotSearches: readonly EventOf<"slot_search">[];
 }>;
 
@@ -47,6 +56,7 @@ type TurnAccumulator = {
   context?: EventOf<"turn_context">;
   tenantSnapshot?: EventOf<"tenant_snapshot">;
   pendingSlotOffers: EventOf<"pending_slot_offer">[];
+  serviceResolutions: EventOf<"service_resolution">[];
   slotSearches: EventOf<"slot_search">[];
   responsePlans: EventOf<"v1_response_plan">[];
   terminal?: EventOf<"turn_terminal">;
@@ -99,6 +109,7 @@ export class V1ObservationCollector implements V1TurnObservationSink {
       invalidGate: false,
       gateFacts: [],
       pendingSlotOffers: [],
+      serviceResolutions: [],
       slotSearches: [],
       responsePlans: [],
     };
@@ -110,6 +121,7 @@ export class V1ObservationCollector implements V1TurnObservationSink {
       case "tenant_snapshot": setSingleton(accumulator, "tenantSnapshot", event); break;
       case "turn_terminal": setSingleton(accumulator, "terminal", event); break;
       case "pending_slot_offer": accumulator.pendingSlotOffers.push(event); break;
+      case "service_resolution": accumulator.serviceResolutions.push(event); break;
       case "slot_search": accumulator.slotSearches.push(event); break;
       case "v1_response_plan": accumulator.responsePlans.push(event); break;
       case "turn_gate_fact": {
@@ -134,6 +146,8 @@ export class V1ObservationCollector implements V1TurnObservationSink {
       || !accumulator.input
       || !accumulator.context
       || !accumulator.tenantSnapshot
+      || accumulator.context.completedStepIds.status !== "captured"
+      || accumulator.tenantSnapshot.policy.status !== "captured"
     ) return null;
 
     const captured: CapturedV1Turn = {
@@ -141,9 +155,16 @@ export class V1ObservationCollector implements V1TurnObservationSink {
       sharedReads: {
         input: accumulator.input,
         gateFacts: [...accumulator.gateFacts],
-        context: accumulator.context,
-        tenantSnapshot: accumulator.tenantSnapshot,
+        context: {
+          ...accumulator.context,
+          completedStepIds: accumulator.context.completedStepIds,
+        },
+        tenantSnapshot: {
+          ...accumulator.tenantSnapshot,
+          policy: accumulator.tenantSnapshot.policy,
+        },
         pendingSlotOffers: [...accumulator.pendingSlotOffers],
+        serviceResolutions: [...accumulator.serviceResolutions],
         slotSearches: [...accumulator.slotSearches],
       },
       controlArm: {
@@ -194,18 +215,16 @@ export function buildCapturedV2TurnReads(
 ): CapturedV2TurnReads {
   const reads = turn.sharedReads;
   const pendingOffers = reads.pendingSlotOffers.filter((offer) => offer.pendingStepId !== null);
-  const serviceResolutions = reads.slotSearches.flatMap((search) => {
-    if (search.query.service === null) return [];
-    const catalogService = reads.tenantSnapshot.catalog.find((service) => service.id === search.service.id);
-    if (!catalogService) return [];
-    return [{
-      query: search.query.service,
-      result: {
-        kind: "exact" as const,
-        service: catalogService,
-        evidenceRef: `catalog:${catalogService.id}`,
-      },
-    }];
+  const resolutionGroups = new Map<string, EventOf<"service_resolution">[]>();
+  for (const resolution of reads.serviceResolutions) {
+    const group = resolutionGroups.get(resolution.query) ?? [];
+    group.push(resolution);
+    resolutionGroups.set(resolution.query, group);
+  }
+  const serviceResolutions = [...resolutionGroups.values()].flatMap((group) => {
+    const [first] = group;
+    if (!first || group.some((entry) => !same(entry, first))) return [];
+    return [{ query: first.query, result: first.result }];
   });
 
   return parseCapturedV2TurnReads({
@@ -215,17 +234,17 @@ export function buildCapturedV2TurnReads(
     state: {
       phase: reads.context.phase,
       pendingStepId: reads.context.pendingStepId,
-      completedStepIds: reads.context.completedStepIds,
+      completedStepIds: reads.context.completedStepIds.value,
     },
     leadMessage: reads.input.leadMessage,
     history: reads.context.history,
-    policy: reads.tenantSnapshot.policy,
+    policy: reads.tenantSnapshot.policy.value,
     catalog: { status: "captured", value: reads.tenantSnapshot.catalog },
     serviceResolutions,
-    slotSearches: reads.slotSearches.map((search) => ({
-      input: search.query,
-      result: { service: search.service, slots: search.slots },
-    })),
+    // The V2 query cannot express the V1 duration, preferred time, search window,
+    // or treatment booking windows. Replaying by its shorter key would fabricate
+    // equivalence, so the complete V1 observations remain unavailable to V2.
+    slotSearches: [],
     offeredSlotResolutions: pendingOffers.flatMap((offer) => offer.slots.map((slot, index) => ({
       pendingStepId: offer.pendingStepId!,
       ordinal: index + 1,

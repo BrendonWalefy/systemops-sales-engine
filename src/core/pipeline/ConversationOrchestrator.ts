@@ -142,8 +142,17 @@ import {
 import { NamedDecisionOverrideTracker } from "@/core/observability/NamedDecisionOverride";
 import {
   recordV1TurnObservation,
+  type V1TurnObservationEvent,
   type V1TurnObservationSink,
 } from "@/core/observability/V1TurnObservation";
+import {
+  buildV1HumanControlGateFact,
+  buildV1ServiceResolutionObservation,
+  buildV1SlotSearchObservation,
+  buildV1TenantSnapshotObservation,
+  buildV1TurnContextObservation,
+  recordV1SlotSearchBeforeWrite,
+} from "@/core/observability/V1TurnObservationBuilders";
 import {
   evaluateKeywordPredicate,
   type KeywordPredicateObserver,
@@ -4330,13 +4339,6 @@ export class ConversationOrchestrator {
     // Se há TTL expirado → retoma automaticamente e sinaliza ao Composer para contextualizar.
     // Se pausada sem TTL (pause manual) ou TTL ainda vigente → silêncio.
     let resumedFromHumanTakeover = false;
-    recordV1TurnObservation(params.turnObservationSink, {
-      kind: "turn_gate_fact",
-      turnId,
-      field: "humanControlled",
-      value: conversation.aiPaused,
-      source: "v1_human_control",
-    });
     if (conversation.aiPaused) {
       const now = runtimeNow();
       if (conversation.takeoverExpiresAt && conversation.takeoverExpiresAt < now) {
@@ -4354,6 +4356,10 @@ export class ConversationOrchestrator {
         resumedFromHumanTakeover = true;
         console.log(`[Orchestrator] Pausa manual retomada por pedido explícito de agendamento para ${conversation.id}`);
       } else {
+        recordV1TurnObservation(
+          params.turnObservationSink,
+          buildV1HumanControlGateFact(turnId, true),
+        );
         console.log(`[Orchestrator] AI pausada para ${conversation.id}, ignorando resposta`);
         // Notifica operador que lead respondeu enquanto atendimento estava em pausa manual
         const displayName = lead.name ?? phone;
@@ -4366,6 +4372,10 @@ export class ConversationOrchestrator {
         return { replied: false, reason: "ai_paused" };
       }
     }
+    recordV1TurnObservation(
+      params.turnObservationSink,
+      buildV1HumanControlGateFact(turnId, false),
+    );
 
     // ── 5. Rate limit — máx 20 msgs/hora do lead por conversa ──
     // Protege custo OpenAI contra spam e loops. A mensagem já foi salva no passo 3.
@@ -4432,17 +4442,13 @@ export class ConversationOrchestrator {
       ? allMessages.filter((m) => m.sentAt >= lastResetBoundary)
       : allMessages;
     if (params.turnObservationSink) {
-      recordV1TurnObservation(params.turnObservationSink, {
-        kind: "turn_context",
+      recordV1TurnObservation(params.turnObservationSink, buildV1TurnContextObservation({
         turnId,
         phase: currentConversationState?.state ?? "none",
         pendingStepId: currentConversationState?.id ?? null,
-        completedStepIds: [],
-        history: allMessagesForContext.map((message) => ({
-          author: message.author === "lead" ? "lead" : "agent",
-          body: message.body,
-        })),
-      });
+        history: allMessagesForContext,
+        historyWindowMessages: clinic.aiContextWindowMessages,
+      }));
     }
 
     // Mapa id→título da biblioteca de mídia. O dedup de content step de mídia
@@ -4905,27 +4911,11 @@ export class ConversationOrchestrator {
       { treatmentName: slotPreference.identifiedTreatment },
     );
     if (params.turnObservationSink) {
-      recordV1TurnObservation(params.turnObservationSink, {
-        kind: "tenant_snapshot",
+      recordV1TurnObservation(params.turnObservationSink, buildV1TenantSnapshotObservation({
         turnId,
         configFingerprint: runtimeConfigFingerprint.fingerprint,
-        policy: {
-          priceDisclosureEnabled: true,
-          humanEscalationRequired: false,
-          schedulingMinimumLeadTimeHours: V1_SCHEDULING_MINIMUM_LEAD_TIME_HOURS,
-          schedulingRequiresEvaluationFirst:
-            classifiedActiveTreatment?.requiresEvaluationFirst ?? false,
-        },
-        catalog: clinicTreatments.map((treatment) => {
-          const priceCents = treatment.priceCents ?? treatment.minPriceCents;
-          return {
-            id: treatment.id,
-            name: treatment.name,
-            priceCents,
-            priceDisclosable: treatment.priceQuotableInChat && priceCents !== null,
-          };
-        }),
-      });
+        treatments: clinicTreatments,
+      }));
     }
     const activeTreatmentId = resolveMediaScopeTreatmentId({
       pipelineTreatmentId: pipelineState?.treatmentId,
@@ -5355,38 +5345,32 @@ export class ConversationOrchestrator {
       new DrizzleFollowUpRepository(),
     );
 
-    const fetchAndOfferSlots = this.fetchAndOfferSlots.bind(this);
-    const fetchAndOfferObservedSlots = async (
-      ...args: Parameters<typeof fetchAndOfferSlots>
-    ): ReturnType<typeof fetchAndOfferSlots> => {
-      const result = await fetchAndOfferSlots(...args);
-      const preferredDate = args[5];
-      const preferredPeriod = args[6];
-      const treatmentName = args[8];
-      const observedService = params.turnObservationSink && treatmentName
-        ? clinicTreatments.find((treatment) => treatment.name === treatmentName)
-        : null;
-      if (observedService) {
-        recordV1TurnObservation(params.turnObservationSink, {
-          kind: "slot_search",
-          turnId,
-          query: {
-            service: treatmentName ?? null,
-            date: preferredDate ?? null,
-            period: preferredPeriod ?? null,
-            minimumLeadTimeHours: V1_SCHEDULING_MINIMUM_LEAD_TIME_HOURS,
-            now: turnStartedAt.toISOString(),
-          },
-          service: { id: observedService.id, name: observedService.name },
-          slots: result.slots.map((slot, index) => ({
-            id: slot.startsAt,
-            label: slot.label,
-            evidenceRef: `slot-search:${turnId}:${index + 1}`,
-          })),
-        });
-      }
-      return result;
-    };
+    const fetchAndOfferObservedSlots = (
+      observedConversationId: string,
+      observedClinic: Organization,
+      observedCalendarGateway: CalendarGateway,
+      observedTimezone: ClinicTimezone,
+      observedBusinessHours: ReturnType<typeof parseBusinessHours>,
+      preferredDate?: string,
+      preferredPeriod?: string,
+      preferredTime?: string,
+      treatmentName?: string,
+      slotDurationMinutes?: number,
+      voiceEnabledForOffer?: boolean,
+    ) => this.fetchAndOfferSlots(
+      observedConversationId,
+      observedClinic,
+      observedCalendarGateway,
+      observedTimezone,
+      observedBusinessHours,
+      preferredDate,
+      preferredPeriod,
+      preferredTime,
+      treatmentName,
+      slotDurationMinutes,
+      voiceEnabledForOffer,
+      { turnId, sink: params.turnObservationSink },
+    );
 
     // Helper para compor resposta
     let composedMediaIds: string[] = [];
@@ -6261,6 +6245,23 @@ export class ConversationOrchestrator {
           clinic.defaultAppointmentDurationMinutes,
           classification.shouldAskClarification,
         );
+        if (params.turnObservationSink && finalEffectiveTreatment) {
+          const resolvedSchedulingTreatment = resolution.kind === "matched"
+            ? findTreatmentByIdOrName(clinicTreatments, {
+                treatmentName: resolution.treatmentName,
+              })
+            : null;
+          recordV1TurnObservation(
+            params.turnObservationSink,
+            buildV1ServiceResolutionObservation({
+              turnId,
+              query: finalEffectiveTreatment,
+              resolution: resolvedSchedulingTreatment
+                ? { kind: "exact", treatment: resolvedSchedulingTreatment }
+                : { kind: "unknown" },
+            }),
+          );
+        }
 
         if (resolution.kind === "ask_clarification") {
           replyText = await compose({
@@ -6572,6 +6573,32 @@ export class ConversationOrchestrator {
             activePipelineTreatmentId: pipelineState?.treatmentId ?? null,
             activeSelectedTreatmentId: pipelineState?.selectedTreatmentId ?? null,
           }) ?? undefined;
+        if (params.turnObservationSink) {
+          const identifiedPriceTreatment = findTreatmentByIdOrName(
+            clinicTreatments,
+            { treatmentName: priceIdentifiedTreatment },
+          );
+          const priceResolutionQuery =
+            priceIdentifiedTreatment
+            && identifiedPriceTreatment?.id === matchedPriceTreatment?.id
+              ? priceIdentifiedTreatment
+              : messageText;
+          const ambiguousPriceTreatments = (ambiguousTreatmentOverride ?? [])
+            .map((name) => findTreatmentByIdOrName(clinicTreatments, { treatmentName: name }))
+            .filter((treatment): treatment is Treatment => treatment !== null);
+          recordV1TurnObservation(
+            params.turnObservationSink,
+            buildV1ServiceResolutionObservation({
+              turnId,
+              query: priceResolutionQuery,
+              resolution: ambiguousPriceTreatments.length > 1
+                ? { kind: "ambiguous", treatments: ambiguousPriceTreatments }
+                : matchedPriceTreatment
+                  ? { kind: "exact", treatment: matchedPriceTreatment }
+                  : { kind: "unknown" },
+            }),
+          );
+        }
         if (priceIdentifiedTreatment && !matchedPriceTreatment) {
             maybeLogTreatmentGap(
               clinicId,
@@ -8334,9 +8361,9 @@ export class ConversationOrchestrator {
 
   // Snapa para a próxima hora cheia com antecedência mínima de 2h.
   // Evita que o cursor do SlotEngine gere slots em :51 ou :37.
-  private slotWindowStart(): Date {
+  private slotWindowStart(now = runtimeNow()): Date {
     const minAdvanceMs = V1_SCHEDULING_MINIMUM_LEAD_TIME_HOURS * 60 * 60_000;
-    const earliest = new Date(runtimeNow().getTime() + minAdvanceMs);
+    const earliest = new Date(now.getTime() + minAdvanceMs);
     const hourMs = 60 * 60_000;
     return new Date(Math.ceil(earliest.getTime() / hourMs) * hourMs);
   }
@@ -8361,9 +8388,14 @@ export class ConversationOrchestrator {
     treatmentName?: string,
     slotDurationMinutes?: number,
     _voiceEnabled?: boolean,
+    observation?: Readonly<{
+      turnId: string;
+      sink: V1TurnObservationSink | undefined;
+    }>,
   ): Promise<{ slots: FormattedSlot[]; preferredDayEmpty: boolean; outsideBookingWindow: boolean; outsideBusinessHours: boolean; preferredPeriodUnavailable: boolean }> {
     void _voiceEnabled;
-    const from = this.slotWindowStart();
+    const searchNow = runtimeNow();
+    const from = this.slotWindowStart(searchNow);
     const to = new Date(from.getTime() + clinic.slotLookaheadDays * 24 * 60 * 60_000);
     const duration = slotDurationMinutes ?? clinic.defaultAppointmentDurationMinutes;
 
@@ -8376,6 +8408,33 @@ export class ConversationOrchestrator {
       : null;
     const allowedStartWindows = windowTreatment?.bookingWindows ?? null;
     const hasBookingWindows = (allowedStartWindows?.length ?? 0) > 0;
+    const buildObservedSearch = (
+      slots: readonly Pick<FormattedSlot, "startsAt" | "label">[],
+    ): Extract<V1TurnObservationEvent, { kind: "slot_search" }> | null => {
+      if (!observation?.sink || !windowTreatment) return null;
+      return buildV1SlotSearchObservation({
+        turnId: observation.turnId,
+        searchNow,
+        preferredDate: preferredDate ?? null,
+        preferredPeriod: preferredPeriod ?? null,
+        preferredTime: preferredTime ?? null,
+        minimumLeadTimeHours: V1_SCHEDULING_MINIMUM_LEAD_TIME_HOURS,
+        durationMinutes: duration,
+        windowStart: from,
+        windowEnd: to,
+        allowedStartWindows,
+        service: { id: windowTreatment.id, name: windowTreatment.name },
+        slots,
+      });
+    };
+    const observeEmptySearch = (): void => {
+      try {
+        const event = buildObservedSearch([]);
+        if (event) recordV1TurnObservation(observation?.sink, event);
+      } catch {
+        // Best-effort observation cannot influence a V1 early return.
+      }
+    };
 
     let allSlots = await calendarGateway.listAvailableSlots({
       clinicId: clinic.id,
@@ -8442,6 +8501,7 @@ export class ConversationOrchestrator {
       const targetDay = timezone.resolvePreferredDate(preferredDate, now, businessHours);
       if (targetDay !== null) {
         if (targetDay > to) {
+          observeEmptySearch();
           return { slots: [], preferredDayEmpty: false, outsideBookingWindow: true, outsideBusinessHours: false, preferredPeriodUnavailable: false };
         }
         const targetParts = timezone.toLocalParts(targetDay);
@@ -8456,6 +8516,7 @@ export class ConversationOrchestrator {
           allSlots = slotsOnDay;
           filteredToDay = true;
         } else if (isToday && nowParts.hour >= businessHours.endHour - 1) {
+          observeEmptySearch();
           return { slots: [], preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: true, preferredPeriodUnavailable: false };
         } else {
           // Dia preferido sem disponibilidade — sinaliza e mantém pool completo como alternativas.
@@ -8514,6 +8575,7 @@ export class ConversationOrchestrator {
       if (byPeriod.length > 0) {
         allSlots = byPeriod;
       } else if (preferredPeriod === "evening" && businessHours.endHour <= 18) {
+        observeEmptySearch();
         return { slots: [], preferredDayEmpty: false, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: true };
       }
     }
@@ -8560,9 +8622,44 @@ export class ConversationOrchestrator {
     // cronológica, independente do sort por proximidade de horário feito acima.
     best.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
 
-    if (best.length === 0) return { slots: [], preferredDayEmpty, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
+    if (best.length === 0) {
+      observeEmptySearch();
+      return { slots: [], preferredDayEmpty, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
+    }
 
-    const slots = await this.stateMachine.offerSlots(conversationId, best, timezone, treatmentName, duration, clinic.slotOfferTtlMinutes, false);
+    const shouldObserveSearch = Boolean(observation?.sink && windowTreatment);
+    const slots = shouldObserveSearch
+      ? await recordV1SlotSearchBeforeWrite({
+          sink: observation?.sink,
+          buildEvent: () => {
+            const event = buildObservedSearch(
+              best.map((slot) => ({
+                startsAt: slot.startsAt.toISOString(),
+                label: timezone.formatForHuman(slot.startsAt),
+              })),
+            );
+            if (!event) throw new Error("V1 slot observation unavailable");
+            return event;
+          },
+          write: () => this.stateMachine.offerSlots(
+            conversationId,
+            best,
+            timezone,
+            treatmentName,
+            duration,
+            clinic.slotOfferTtlMinutes,
+            false,
+          ),
+        })
+      : await this.stateMachine.offerSlots(
+          conversationId,
+          best,
+          timezone,
+          treatmentName,
+          duration,
+          clinic.slotOfferTtlMinutes,
+          false,
+        );
     return { slots, preferredDayEmpty, outsideBookingWindow: false, outsideBusinessHours: false, preferredPeriodUnavailable: false };
   }
 

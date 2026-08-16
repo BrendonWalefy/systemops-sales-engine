@@ -1,3 +1,9 @@
+import { isProxy } from "node:util/types";
+
+export type V1ObservationRead<T> =
+  | Readonly<{ status: "captured"; value: T }>
+  | Readonly<{ status: "unavailable"; reason: "not_read_by_v1" }>;
+
 export type V1TurnObservationEvent =
   | Readonly<{
       kind: "turn_input";
@@ -17,19 +23,19 @@ export type V1TurnObservationEvent =
       turnId: string;
       phase: string;
       pendingStepId: string | null;
-      completedStepIds: readonly string[];
+      completedStepIds: V1ObservationRead<readonly string[]>;
       history: readonly Readonly<{ author: "lead" | "agent"; body: string }>[];
     }>
   | Readonly<{
       kind: "tenant_snapshot";
       turnId: string;
       configFingerprint: string;
-      policy: Readonly<{
+      policy: V1ObservationRead<Readonly<{
         priceDisclosureEnabled: boolean;
         humanEscalationRequired: boolean;
         schedulingMinimumLeadTimeHours: number;
         schedulingRequiresEvaluationFirst: boolean;
-      }>;
+      }>>;
       catalog: readonly Readonly<{
         id: string;
         name: string;
@@ -44,14 +50,45 @@ export type V1TurnObservationEvent =
       slots: readonly Readonly<{ id: string; label: string; evidenceRef: string }>[];
     }>
   | Readonly<{
+      kind: "service_resolution";
+      turnId: string;
+      query: string;
+      result:
+        | Readonly<{
+            kind: "exact";
+            service: Readonly<{
+              id: string;
+              name: string;
+              priceCents: number | null;
+              priceDisclosable: boolean;
+            }>;
+            evidenceRef: string;
+          }>
+        | Readonly<{
+            kind: "ambiguous";
+            candidates: readonly Readonly<{ id: string; name: string }>[];
+            evidenceRef: string;
+          }>
+        | Readonly<{ kind: "unknown"; evidenceRef: string }>;
+    }>
+  | Readonly<{
       kind: "slot_search";
       turnId: string;
       query: Readonly<{
         service: string | null;
         date: string | null;
         period: string | null;
+        preferredTime: string | null;
         minimumLeadTimeHours: number;
         now: string;
+        durationMinutes: number;
+        windowStart: string;
+        windowEnd: string;
+        allowedStartWindows: readonly Readonly<{
+          startHour: number;
+          startMinute: number;
+          weekdays: readonly number[] | null;
+        }>[] | null;
       }>;
       service: Readonly<{ id: string; name: string }>;
       slots: readonly Readonly<{ id: string; label: string; evidenceRef: string }>[];
@@ -85,6 +122,7 @@ const EVENT_KEYS = {
   turn_context: ["kind", "turnId", "phase", "pendingStepId", "completedStepIds", "history"],
   tenant_snapshot: ["kind", "turnId", "configFingerprint", "policy", "catalog"],
   pending_slot_offer: ["kind", "turnId", "pendingStepId", "slots"],
+  service_resolution: ["kind", "turnId", "query", "result"],
   slot_search: ["kind", "turnId", "query", "service", "slots"],
   v1_response_plan: ["kind", "turnId", "actionType", "outcomeSummary", "responseDigest", "responseCharacters", "latencyMs", "modelId", "inputTokens", "outputTokens"],
   turn_terminal: ["kind", "turnId", "replied", "reason"],
@@ -101,24 +139,30 @@ function invalid(): never {
   throw new Error("invalid V1 turn observation");
 }
 
-function plainRecord(value: unknown, keys: readonly string[]): Record<string, unknown> {
+function plainRecord(value: unknown, keys?: readonly string[]): Record<string, unknown> {
   if (
     typeof value !== "object"
     || value === null
     || Array.isArray(value)
+    || isProxy(value)
     || Object.getPrototypeOf(value) !== Object.prototype
   ) invalid();
-  const source = value as Record<string, unknown>;
+  const source = value as object;
   const ownKeys = Reflect.ownKeys(source);
   if (
-    ownKeys.length !== keys.length
-    || ownKeys.some((key) => typeof key !== "string" || !keys.includes(key))
+    ownKeys.some((key) => typeof key !== "string")
+    || (keys && (
+      ownKeys.length !== keys.length
+      || ownKeys.some((key) => !keys.includes(key as string))
+    ))
   ) invalid();
+  const snapshot: Record<string, unknown> = {};
   for (const key of ownKeys) {
     const descriptor = Object.getOwnPropertyDescriptor(source, key);
     if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) invalid();
+    snapshot[key as string] = descriptor.value;
   }
-  return source;
+  return snapshot;
 }
 
 function string(value: unknown): string {
@@ -151,14 +195,35 @@ function nullableNumber(value: unknown): number | null {
 }
 
 function array(value: unknown): unknown[] {
-  if (!Array.isArray(value)) invalid();
+  if (typeof value !== "object" || value === null || isProxy(value) || !Array.isArray(value)) invalid();
   const keys = Reflect.ownKeys(value);
-  if (keys.length !== value.length + 1 || !keys.includes("length")) invalid();
-  for (let index = 0; index < value.length; index += 1) {
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (!lengthDescriptor || !("value" in lengthDescriptor)) invalid();
+  const length = lengthDescriptor.value;
+  if (!Number.isSafeInteger(length) || length < 0) invalid();
+  if (keys.length !== length + 1 || !keys.includes("length")) invalid();
+  const snapshot: unknown[] = [];
+  for (let index = 0; index < length; index += 1) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
     if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) invalid();
+    snapshot.push(descriptor.value);
   }
-  return value;
+  return snapshot;
+}
+
+function observationRead<T>(value: unknown, parse: (captured: unknown) => T): V1ObservationRead<T> {
+  const source = plainRecord(value);
+  const status = string(source.status);
+  if (status === "captured") {
+    if (Reflect.ownKeys(source).length !== 2 || !("value" in source)) invalid();
+    return { status, value: parse(source.value) };
+  }
+  if (
+    status !== "unavailable"
+    || source.reason !== "not_read_by_v1"
+    || Reflect.ownKeys(source).length !== 2
+  ) invalid();
+  return { status, reason: "not_read_by_v1" };
 }
 
 function history(value: unknown): readonly Readonly<{ author: "lead" | "agent"; body: string }>[] {
@@ -194,18 +259,11 @@ function deepFreeze(value: unknown, seen = new WeakSet<object>()): void {
 export function snapshotV1TurnObservation(
   event: V1TurnObservationEvent,
 ): V1TurnObservationEvent {
-  if (
-    typeof event !== "object"
-    || event === null
-    || Array.isArray(event)
-    || Object.getPrototypeOf(event) !== Object.prototype
-  ) invalid();
-  const kindDescriptor = Object.getOwnPropertyDescriptor(event, "kind");
-  if (!kindDescriptor || !("value" in kindDescriptor) || !kindDescriptor.enumerable) invalid();
-  const kind = string(kindDescriptor.value) as keyof typeof EVENT_KEYS;
+  const uncheckedSource = plainRecord(event);
+  const kind = string(uncheckedSource.kind) as keyof typeof EVENT_KEYS;
   const keys = EVENT_KEYS[kind];
   if (!keys) invalid();
-  const source = plainRecord(event, keys);
+  const source = plainRecord(uncheckedSource, keys);
   const turnId = nonEmptyString(source.turnId);
   let snapshot: V1TurnObservationEvent;
 
@@ -225,22 +283,27 @@ export function snapshotV1TurnObservation(
         turnId,
         phase: string(source.phase),
         pendingStepId: nullableString(source.pendingStepId),
-        completedStepIds: array(source.completedStepIds).map(string),
+        completedStepIds: observationRead(
+          source.completedStepIds,
+          (value) => array(value).map(string),
+        ),
         history: history(source.history),
       };
       break;
     case "tenant_snapshot": {
-      const policy = plainRecord(source.policy, ["priceDisclosureEnabled", "humanEscalationRequired", "schedulingMinimumLeadTimeHours", "schedulingRequiresEvaluationFirst"]);
       snapshot = {
         kind,
         turnId,
         configFingerprint: nonEmptyString(source.configFingerprint),
-        policy: {
-          priceDisclosureEnabled: boolean(policy.priceDisclosureEnabled),
-          humanEscalationRequired: boolean(policy.humanEscalationRequired),
-          schedulingMinimumLeadTimeHours: number(policy.schedulingMinimumLeadTimeHours),
-          schedulingRequiresEvaluationFirst: boolean(policy.schedulingRequiresEvaluationFirst),
-        },
+        policy: observationRead(source.policy, (value) => {
+          const policy = plainRecord(value, ["priceDisclosureEnabled", "humanEscalationRequired", "schedulingMinimumLeadTimeHours", "schedulingRequiresEvaluationFirst"]);
+          return {
+            priceDisclosureEnabled: boolean(policy.priceDisclosureEnabled),
+            humanEscalationRequired: boolean(policy.humanEscalationRequired),
+            schedulingMinimumLeadTimeHours: number(policy.schedulingMinimumLeadTimeHours),
+            schedulingRequiresEvaluationFirst: boolean(policy.schedulingRequiresEvaluationFirst),
+          };
+        }),
         catalog: array(source.catalog).map((entry) => {
           const item = plainRecord(entry, ["id", "name", "priceCents", "priceDisclosable"]);
           return {
@@ -256,8 +319,58 @@ export function snapshotV1TurnObservation(
     case "pending_slot_offer":
       snapshot = { kind, turnId, pendingStepId: nullableString(source.pendingStepId), slots: slots(source.slots) };
       break;
+    case "service_resolution": {
+      const result = plainRecord(source.result);
+      const resultKind = string(result.kind);
+      if (resultKind === "exact") {
+        const exact = plainRecord(result, ["kind", "service", "evidenceRef"]);
+        const service = plainRecord(exact.service, ["id", "name", "priceCents", "priceDisclosable"]);
+        snapshot = {
+          kind,
+          turnId,
+          query: nonEmptyString(source.query),
+          result: {
+            kind: resultKind,
+            service: {
+              id: nonEmptyString(service.id),
+              name: nonEmptyString(service.name),
+              priceCents: nullableNumber(service.priceCents),
+              priceDisclosable: boolean(service.priceDisclosable),
+            },
+            evidenceRef: nonEmptyString(exact.evidenceRef),
+          },
+        };
+        break;
+      }
+      if (resultKind === "ambiguous") {
+        const ambiguous = plainRecord(result, ["kind", "candidates", "evidenceRef"]);
+        snapshot = {
+          kind,
+          turnId,
+          query: nonEmptyString(source.query),
+          result: {
+            kind: resultKind,
+            candidates: array(ambiguous.candidates).map((candidate) => {
+              const item = plainRecord(candidate, ["id", "name"]);
+              return { id: nonEmptyString(item.id), name: nonEmptyString(item.name) };
+            }),
+            evidenceRef: nonEmptyString(ambiguous.evidenceRef),
+          },
+        };
+        break;
+      }
+      if (resultKind !== "unknown") invalid();
+      const unknown = plainRecord(result, ["kind", "evidenceRef"]);
+      snapshot = {
+        kind,
+        turnId,
+        query: nonEmptyString(source.query),
+        result: { kind: resultKind, evidenceRef: nonEmptyString(unknown.evidenceRef) },
+      };
+      break;
+    }
     case "slot_search": {
-      const query = plainRecord(source.query, ["service", "date", "period", "minimumLeadTimeHours", "now"]);
+      const query = plainRecord(source.query, ["service", "date", "period", "preferredTime", "minimumLeadTimeHours", "now", "durationMinutes", "windowStart", "windowEnd", "allowedStartWindows"]);
       const service = plainRecord(source.service, ["id", "name"]);
       snapshot = {
         kind,
@@ -266,8 +379,22 @@ export function snapshotV1TurnObservation(
           service: nullableString(query.service),
           date: nullableString(query.date),
           period: nullableString(query.period),
+          preferredTime: nullableString(query.preferredTime),
           minimumLeadTimeHours: number(query.minimumLeadTimeHours),
           now: nonEmptyString(query.now),
+          durationMinutes: number(query.durationMinutes),
+          windowStart: nonEmptyString(query.windowStart),
+          windowEnd: nonEmptyString(query.windowEnd),
+          allowedStartWindows: query.allowedStartWindows === null
+            ? null
+            : array(query.allowedStartWindows).map((window) => {
+                const item = plainRecord(window, ["startHour", "startMinute", "weekdays"]);
+                return {
+                  startHour: number(item.startHour),
+                  startMinute: number(item.startMinute),
+                  weekdays: item.weekdays === null ? null : array(item.weekdays).map(number),
+                };
+              }),
         },
         service: { id: nonEmptyString(service.id), name: nonEmptyString(service.name) },
         slots: slots(source.slots),
