@@ -12,8 +12,8 @@ disponibilidade de serviço, pedido de agendamento e confirmações pendentes.
   linguagem para conceitos dentais. Linguagem fica no adapter de infraestrutura.
 - `structured-input.ts`: preserva somente `/reset`, seleção fechada de menu e opção previamente
   oferecida. Não interpreta linguagem natural.
-- `capabilities.ts`: três stubs para provar claim/decide/execute. `execute` não realiza I/O e
-  declara `not_executable_until_cycle_g`.
+- `capabilities.ts`: no fechamento do F eram três stubs de contrato. O Ciclo G os substituiu por
+  factories com ports read/write separados e ActionResults lastreados.
 - `index.ts`: registra ordem e jornadas no contrato genérico `DomainPack`.
 
 ## Corpus e limites da medição
@@ -45,19 +45,19 @@ necessidade e mantém os 35 predicados da V1 intocados.
 
 | Jornada | Representável | Decidível no F | Executável no F |
 |---|---:|---:|---:|
-| preço com serviço | sim | stub estruturado | não — catálogo/política real ficam em G |
-| disponibilidade de serviço | sim | stub estruturado | não — read autorizado fica em G |
-| pedido de agendamento | sim | stub estruturado | não — agenda/BookingService ficam em G |
-| confirmação de slot/agendamento | sim | stub estruturado | não — mutação real fica em G |
-| escalada por safety estruturada | sim | sim | não — entrega operacional fica em G |
+| preço com serviço | sim | sim | sim, contra port injetado; runtime ainda desligado |
+| disponibilidade de serviço | sim | sim | sim, como read de catálogo |
+| pedido de agendamento | sim | sim | oferece slots lastreados, sem write |
+| confirmação de slot/agendamento | sim | sim | sim, contra write port injetado |
+| escalada por safety estruturada | sim | sim | produz escalada; handoff externo não é alegado |
 
-## Gaps deliberados para G
+## Gaps do F resolvidos no G
 
-- definir a porta de authorized reads sem adicionar providers/repositories ao
-  `CapabilityContext = { state, policy, now }`;
-- resolver catálogo, preço e ambiguidade contra dados autorizados do tenant;
-- consultar agenda, oferecer slots lastreados e executar via `BookingService`;
-- executar escalada e registrar side effects/evidence;
-- adicionar outras jornadas somente quando corpus e capability concreta as justificarem.
+- authorized reads pertencem às capabilities via ports pré-escopados injetados;
+- claim ganhou attributes estruturados e facts ganharam subject/evidence/disclosure;
+- catálogo, preço, slots e confirmações possuem decisões e ActionResults reais contra ports;
+- o pipeline decide tudo antes do primeiro efeito.
+
+Adapters concretos, composition root produtivo e novas jornadas continuam deliberadamente fora.
 
 Composer produtivo, V1×V2, shadow e cutover continuam reservados aos Ciclos H/I.

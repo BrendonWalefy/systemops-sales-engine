@@ -86,4 +86,19 @@ describe("Dental Scheduling capability", () => {
     expect(result.type).toBe("appointment_confirmed");
     expect(result.facts[0]?.evidence).toEqual({ source: "write", reference: "confirmation-1" });
   });
+
+  it("recusa action estrangeira sem chamar write port", async () => {
+    const bookSlot = vi.fn(); const confirmAppointment = vi.fn();
+    const capability = createDentalSchedulingCapability(
+      { listSlots: vi.fn(), resolveOfferedSlot: vi.fn(), resolvePendingAppointment: vi.fn() },
+      { bookSlot, confirmAppointment },
+    );
+    const state = { phase: "active", pendingStepId: null, completedStepIds: [] };
+    const result = await capability.execute({
+      kind: "execute", action: { type: "foreign-action", parameters: { appointmentId: "appt-1" } }, nextBestStep: null,
+    }, { state, policy, now: new Date(0) });
+    expect(result).toEqual({ type: "scheduling_failed", facts: [] });
+    expect(bookSlot).not.toHaveBeenCalled();
+    expect(confirmAppointment).not.toHaveBeenCalled();
+  });
 });

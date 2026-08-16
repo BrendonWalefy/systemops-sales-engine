@@ -61,7 +61,9 @@ export function createDentalCatalogCapability(readPort: DentalCatalogReadPort): 
         }], nextBestStep: null };
       }
       if (!context.policy.priceDisclosureEnabled || !resolution.service.priceDisclosable || resolution.service.priceCents === null) {
-        return { kind: "ask", questionId: "price-requires-human" };
+        return context.policy.humanEscalationRequired
+          ? { kind: "escalate", reason: "price_disclosure_requires_human" }
+          : { kind: "ask", questionId: "price-requires-human" };
       }
       return { kind: "answer", facts: [{
         key: "price_cents", value: resolution.service.priceCents,
@@ -70,9 +72,8 @@ export function createDentalCatalogCapability(readPort: DentalCatalogReadPort): 
       }], nextBestStep: null };
     },
     async execute(decision): Promise<ActionResult> {
-      return decision.kind === "answer"
-        ? { type: "catalog_answered", facts: decision.facts }
-        : { type: "clarification_required", facts: [] };
+      if (decision.kind === "answer") return { type: "catalog_answered", facts: decision.facts };
+      return { type: decision.kind === "escalate" ? "escalation_required" : "clarification_required", facts: [] };
     },
   };
 }
@@ -125,6 +126,9 @@ export function createDentalSchedulingCapability(
     async execute(decision): Promise<ActionResult> {
       if (decision.kind === "offer") return { type: "slots_found", facts: decision.options.flatMap(({ facts }) => facts) };
       if (decision.kind !== "execute") return { type: "clarification_required", facts: [] };
+      if (decision.action.type !== "book-slot" && decision.action.type !== "confirm-appointment") {
+        return { type: "scheduling_failed", facts: [] };
+      }
       const parameter = decision.action.type === "book-slot" ? "slotId" : "appointmentId";
       const id = decision.action.parameters[parameter];
       if (typeof id !== "string") return { type: "scheduling_failed", facts: [] };

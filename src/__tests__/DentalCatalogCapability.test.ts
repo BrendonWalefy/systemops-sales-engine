@@ -53,4 +53,15 @@ describe("Dental Catalog capability", () => {
     const decision = await capability.decide(claim, { state, policy: { ...policy, priceDisclosureEnabled: false }, now: new Date(0) });
     expect(decision.kind).toBe("ask");
   });
+
+  it("escala preço bloqueado somente quando policy exige humano", async () => {
+    const capability = createDentalCatalogCapability({ resolveService: async () => ({
+      kind: "exact", service: { id: "svc-1", name: "Clareamento", priceCents: 29_000, priceDisclosable: false }, evidenceRef: "catalog-1",
+    }) });
+    const claim = capability.claim(understanding("price-of-service", "clareamento"), state)!;
+    const blockedPolicy = { ...policy, humanEscalationRequired: true };
+    const decision = await capability.decide(claim, { state, policy: blockedPolicy, now: new Date(0) });
+    expect(decision.kind).toBe("escalate");
+    expect((await capability.execute(decision, { state, policy: blockedPolicy, now: new Date(0) })).type).toBe("escalation_required");
+  });
 });
