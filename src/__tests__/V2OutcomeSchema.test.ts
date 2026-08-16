@@ -28,6 +28,13 @@ const syntheticSchema = defineOutcomeSchema({
 } as const);
 
 describe("Outcome Schema V2", () => {
+  it("rejeita schema não registrado mesmo quando ActionResults está vazio", () => {
+    const forged = {} as unknown as typeof DENTAL_OUTCOME_SCHEMA;
+
+    expect(() => buildV2AuthorizedResponsePlan(forged, []))
+      .toThrow(/outcome schema was not registered/i);
+  });
+
   it("valida e registra a mesma canonicalização diante de accessors mutáveis", () => {
     let reads = 0;
     const definition = Object.defineProperty({

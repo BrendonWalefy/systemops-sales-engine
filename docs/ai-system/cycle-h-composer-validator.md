@@ -1,252 +1,164 @@
 # Ciclo H — Composer, Validator e renderer semântico
 
-Checkpoint inicial: `7fb114f0` (desenho H aprovado).
+Base: `7fb114f0`. Checkpoint reaberto: `32e6dd82`. Hardening revisado: `417e0c10`.
 
-Status: **histórico; H reaberto para hardening** após revisão adversarial independente no checkpoint
-`32e6dd82`. Este documento preserva a evidência do primeiro fechamento; afirmações ainda não
-revalidadas pelo hardening não são evidência de encerramento. A fonte ativa é o
-[`design de H-hardening`](../superpowers/specs/2026-08-16-conversation-intelligence-v2-cycle-h-hardening-design.md).
+Status: **GO definitivo para o gate de segurança semântica do Ciclo H**. Nenhuma parte do Ciclo I
+foi iniciada.
 
-## Escopo entregue
+## Decisão canônica do gate
 
-O H transforma resultados já decididos em texto controlado, inteiramente em memória:
-
-```text
-ActionResult<OutcomeType>
-  -> V2AuthorizedResponsePlan<OutcomeType>
-  -> ResponseComposerPort
-  -> DraftResponse
-  -> Validator determinístico
-     -> repair redutivo -> nova validação, quando necessário
-     -> fallback do mesmo plano -> validação, quando necessário
-  -> ValidatedDraftResponse
-  -> renderer determinístico
-  -> CoreResponse.text
-```
-
-Não foram adicionados composition root produtivo, outbound, provider de modelo, shadow,
-comparação V1×V2, cutover ou qualquer parte dos ciclos I/J.
-
-## Propriedade de segurança
-
-O contrato preservado é:
+A spec registra `CI-V2-H-GATE-2026-08-16`, antes de qualquer resultado final V1×V2 do Ciclo I. H
+é o gate de segurança semântica:
 
 ```text
 semantics(finalText) ⊆ semantics(validatedDraft) ⊆ semantics(authorizedPlan)
 ```
 
-- o plano é a única autoridade;
-- o composer seleciona e ordena referências já autorizadas;
-- o validator prova integridade referencial, disclosure e compatibilidade semântica;
-- repair somente remove;
-- fallback deriva somente do mesmo plano e valida o resultado;
-- o renderer recebe snapshots validados e usa templates fechados.
+`judge ≥ V1` saiu do gate H e continua obrigatório no I. O judge atual é
+`experimental_non_gating`: instabilidade 42,9%, acima do limite aprovado de 25%. A comparação I
+continua pareada/intercalada, com mesmo N, primary analysis dos casos estáveis, sensitivity
+analysis dos instáveis, critério fixado antes do resultado e judge calibrado ou human-review/
+instrumento substituto previamente calibrado.
 
-O `turn-pipeline` recebe apenas composer, style e linguagem validados e chama o pipeline H
-diretamente. Não aceita callback capaz de devolver texto pronto. O pipeline H também não aceita
-callback arbitrário de renderer. Antes de chamar o composer, ele cria um snapshot congelado do
-plano e do style e usa esse mesmo snapshot em validação, repair, fallback e renderização; assim o
-composer não consegue ampliar a autoridade que receberá validação depois.
+A mudança corrige etapa e instrumento; não reduz qualidade. Composer/renderer H fazem zero
+chamadas a provider/model, portanto o custo de inferência do estágio H é zero. Isto não compara o
+custo do estágio isolado com um turno V1 completo.
 
-## ActionResult e identidade do outcome
-
-`ActionResult<OutcomeType>` preserva:
-
-- `type`: outcome concreto, tipado genericamente e pertencente à capability/Domain Pack;
-- `semanticClass`: uma das seis classes genéricas fechadas;
-- `origin.capabilityId`;
-- subject do outcome;
-- evidence do outcome;
-- facts com subject, evidence e disclosure;
-- options estruturadas, exclusivamente para `options_found`.
-
-O parâmetro `OutcomeType` atravessa `Capability`, coordinator, `DomainPack`, turn pipeline e
-`V2AuthorizedResponsePlan`. O core sabe que existe uma identidade string tipada, mas não conhece
-nenhum literal dental. O Dental Pack declara sua própria união `DentalOutcomeType`.
-
-## Plano autorizado como grafo
-
-O builder não achata resultados:
+## Fronteiras finais
 
 ```text
-AuthorizedOutcome<OutcomeType>
-  -> subjectRef
-  -> evidenceRefs
-  -> factRefs
-  -> optionRefs
-
-AuthorizedOption
-  -> subjectRef
-  -> factRefs
-
-AuthorizedFact
-  -> subjectRef
-  -> evidenceRef
-  -> disclosure
+Domain Pack OutcomeSchema
+  -> untrusted executed ActionResults
+  -> canonicalize once + runtime shape/schema/provenance + deep freeze
+  -> canonical plan builder
+  -> branded + graph-validated + frozen AuthorizedResponsePlan
+  -> ResponseComposerPort
+  -> unknown/untrusted draft
+  -> canonicalize once into plain frozen DraftResponse
+  -> validate that exact snapshot
+  -> ValidatedDraftResponse<ConcreteOutcomeType>
+       invalid -> reductive repair -> validate
+       invalid -> same-plan fallback -> validate
+  -> closed deterministic renderer
+  -> readonly + frozen CoreResponse/FinalText
 ```
 
-Subjects e evidence recebem refs determinísticas e são deduplicados pela identidade completa.
-Facts divulgáveis sem subject, `options_found` vazio e options ligadas a outra classe falham
-fechado. Isso mantém outcomes multi-intent separáveis.
+Brands TypeScript são acompanhadas por registros runtime em `WeakSet`/`WeakMap`; casts estruturais
+não promovem objetos.
 
-## DraftResponse
+## Findings originais
 
-O draft não contém prosa livre. Os atos suportados são:
+| Finding | Resultado | Causa e correção |
+| --- | --- | --- |
+| CRITICAL 1 — validator valida um draft e registra outro | **CONFIRMADO → CORRIGIDO** | validação/branding reliam o objeto hostil; agora canonicalizam, congelam, validam e registram o mesmo snapshot |
+| CRITICAL 2 — language contribution acrescenta semântica | **CONFIRMADO → CORRIGIDO** | labels arbitrários eram branded; contribution removida e templates são fechados |
+| CRITICAL 3 — OutcomeType contradiz semanticClass | **CONFIRMADO → CORRIGIDO** | campos independentes; registry do Domain Pack virou fonte única de tipo/runtime e requisitos |
+| IMPORTANT 1 — plan não era trust boundary | **CONFIRMADO → CORRIGIDO** | builder canônico, runtime shape/schema/grafo, brand, freeze e remoção do callback `buildPlan` |
+| IMPORTANT 2 — subject desaparecia no texto | **CONFIRMADO → CORRIGIDO** | subjectRef em todos os acts, public display separado do ID e desambiguação multi-subject |
+| IMPORTANT 3 — OutcomeType widen para string | **CONFIRMADO → CORRIGIDO** | união concreta atravessa plan, composer, validator, validated draft, renderer e pipeline |
+| IMPORTANT 4 — relações incoerentes | **CONFIRMADO → CORRIGIDO** | dangling/duplicate refs e relações outcome/fact/option/subject/evidence falham fechado |
+| IMPORTANT 5 — gate H/I contraditório | **CONFIRMADO → CORRIGIDO** | decisão canônica separa segurança em H e qualidade comparativa em I |
 
-| Speech act | Referências obrigatórias |
-| --- | --- |
-| `inform_fact` | `outcomeRef`, `factRef`, `subjectRef` |
-| `offer_options` | `outcomeRef`, `subjectRef`, `optionRefs` |
-| `confirm_effect` | `outcomeRef`, `subjectRef`, `factRefs` |
-| `communicate_failure` | `outcomeRef` |
-| `inform_required_action` | `outcomeRef` |
-| `ask_clarification` | `outcomeRef` |
+## Findings adicionais do hardening independente
 
-O composer determinístico olha somente `semanticClass`, disclosure e refs. Ele não inspeciona
-mensagem do usuário, tipo concreto de outcome, fact key/value, subject type ou vocabulário do
-domínio para decidir.
+- **OutcomeSchema TOCTOU — CONFIRMADO → CORRIGIDO.** Cada campo é materializado uma vez; o
+  snapshot exato é validado/registrado.
+- **ActionResult provenance TOCTOU — CONFIRMADO → CORRIGIDO.** A pipeline canonicaliza uma vez
+  após `execute()`, valida owner no snapshot congelado e entrega o mesmo conjunto ao builder.
+- **runtime records/casts inválidos — CONFIRMADO → CORRIGIDO.** Origin, subject, evidence, facts,
+  options, disclosure e value kinds recebem validação estrutural antes do brand.
+- **subject em failure/human/clarification — CONFIRMADO → CORRIGIDO.** Esses acts carregam e
+  validam subjectRef; failures cross-subject ficam distintos.
+- **display escapava do slot nominal — CONFIRMADO → CORRIGIDO.** DisplayName continua dado
+  autorizado do plan, mas é JSON-delimitado; controles/separadores Unicode são rejeitados.
+- **texto variável podia virar prosa do renderer — CONFIRMADO → CORRIGIDO.** `display_text` é
+  material plan-authorized e sempre renderizado como literal delimitado.
+- **subjects distintos com display igual — CONFIRMADO → CORRIGIDO.** Em multi-subject, labels
+  públicos não injetivos falham fechado; IDs nunca são expostos.
+- **FinalText mutável — CONFIRMADO → CORRIGIDO.** `CoreResponse` é readonly/frozen.
+- **atos válidos duplicados ampliavam output — CONFIRMADO → CORRIGIDO.** Duplicatas globais são
+  violações e repair preserva uma cópia congelada na primeira posição.
+- **WeakSet permitiria cross-schema — REJEITADO.** O builder sempre reaplica
+  `assertActionResultMatchesOutcomeSchema` em cada resultado; A→B falha com schema mismatch.
 
-## Validator determinístico
+## RED → GREEN
 
-O validator rejeita, com violation codes estruturados:
+- getter do draft trocava failure por success; agora há uma leitura e o failure permanece;
+- `Desconto garantido` entrava por language label; a entrada foi removida e extras são ignorados;
+- failure/escalation/slots/media como completed e completed sem write evidence agora falham em
+  compile-time e runtime;
+- versão/ref/brand/buildPlan forjados e relações incoerentes agora falham fechado;
+- price(A)+slots(B), failure(A)+failure(B) e displays públicos duplicados agora desambiguam ou
+  falham fechado;
+- schema accessor mudava `write_required` para `optional`; agora lê uma vez;
+- origin accessor mudava owner entre pipeline/builder; agora o snapshot tem uma leitura;
+- records com origin/subject/key numéricos e evidence inválida agora retornam invalid shape;
+- 1.000 atos idênticos geravam ~15 mil caracteres; agora repair/dedupe renderiza uma ocorrência;
+- `CoreResponse.text` aceitava mutação; agora `Reflect.set` retorna false.
 
-- draft ou conjunto de refs vazio onde o ato exige refs;
-- outcome, fact, subject ou option inexistente;
-- fact ou option pertencente a outro outcome;
-- troca de subject;
-- fact com `disclosure != allowed`;
-- speech act incompatível com a classe do outcome.
+## Sustentação do entailment
 
-A matriz fechada é:
+`validatedDraft ⊆ authorizedPlan`: plan/draft exigem registro runtime; cada act referencia nós
+existentes e compatíveis; disclosure, ownership, subject e evidence são checados; repair só remove;
+fallback usa o mesmo plan e revalida. UNKNOWN não vira FALSE, options não viram completed, failure
+não vira success, escalation não vira handoff concluído e media disponível não vira media sent.
 
-| Semantic class | Único speech act permitido |
-| --- | --- |
-| `information_authorized` | `inform_fact` |
-| `options_found` | `offer_options` |
-| `effect_completed` | `confirm_effect` |
-| `effect_failed` | `communicate_failure` |
-| `human_action_required` | `inform_required_action` |
-| `clarification_required` | `ask_clarification` |
+`finalText ⊆ validatedDraft`: renderer recupera somente o plan associado ao draft, usa templates
+fechados, não recebe callbacks/language/provider, resolve apenas refs validadas, delimita material
+lexical autorizado, desambigua subjects e devolve snapshot final congelado.
 
-O validator cria snapshots profundos suficientes e congelados do draft e do plano. Somente o
-snapshot registrado em `WeakMap` recebe a marca `ValidatedDraftResponse`; o renderer recupera o
-plano correspondente por esse registro. Mutações posteriores nos objetos de origem não alteram
-o texto.
+## Independência de domínio/provider
 
-## Repair
-
-Repair é deliberadamente redutivo: percorre o draft original, valida cada ato isoladamente,
-remove atos inválidos e duplicatas exatas e preserva a ordem dos sobreviventes. Não corrige refs,
-não troca subjects e não sintetiza atos.
-
-```text
-semantics(repairedDraft)
-  ⊆ semantics(originalDraft) ∩ semantics(authorizedPlan)
-```
-
-Todo repair passa novamente pelo validator antes do renderer.
-
-## Fallback
-
-Fallback reconstrói um draft conservador apenas a partir do mesmo plano, usa a mesma matriz
-fechada, seleciona no máximo um ato por outcome e valida internamente o resultado. Pode omitir
-material, mas não cria outcome/fact/option/subject, não muda classe e não eleva disclosure. Sem
-material seguro retorna `null`; o pipeline retorna `no_safe_response` sem texto.
-
-```text
-semantics(fallback) ⊆ semantics(authorizedPlan)
-```
-
-## Renderer determinístico (estado do checkpoint `32e6dd82`, superseded)
-
-No checkpoint revisado, o renderer aceitava:
-
-- `ValidatedDraftResponse` registrado pelo validator;
-- `ValidatedResponseLanguageContribution` imutável e registrada pelo factory;
-- style com enums fechados.
-
-Cada speech act escolhe um template fixo. Valores vêm somente dos facts referenciados e
-divulgáveis. A contribuição de linguagem aceita apenas locale, labels nominais curtos e formatos
-fechados; não aceita callbacks, prompts, regras operacionais ou facts de instância. Uma falha de
-cobertura da linguagem fecha o pipeline com `reason: render_failed`.
-
-O renderer não escolhe outcome, fact, slot, preço, subject, sucesso ou falha. `CoreResponse.parts`
-permanece vazio neste recorte; nenhum efeito de mídia ou outbound existe.
-
-## Casos críticos e multi-intent
-
-Os testes provam:
-
-- options/slots não podem usar `confirm_effect`;
-- `effect_failed` não pode produzir sucesso, inclusive falhas de criação/confirmação;
-- `human_action_required` permite apenas informar necessidade, nunca handoff concluído;
-- informação de mídia não equivale a `media_sent`;
-- ausência/UNKNOWN não cria fact booleano falso nem negação;
-- preço, slot, desconto, garantia ou atributo clínico não autorizado não podem ser
-  referenciados;
-- uma option ligada a outro outcome e troca de subject são rejeitadas;
-- `price(subject-A) + slots(subject-A)` preserva outcomes/refs separados;
-- `price(subject-A) + slots(subject-B)` não admite cross-link.
-
-## Independência de domínio e provider
-
-`src/conversation-core/composer/**` não importa Domain Pack, OpenAI, provider, banco, calendário,
-tenant config ou I/O. Comportamento específico dental introduzido no core H: **ZERO**.
-
-Quanto à separação solicitada, o resultado continua sendo **A**: o Dental Pack fornece apenas
-schema/contribuição declarativa de linguagem consumida pela abstração genérica. Ele não conhece
-OpenAI, modelo ou provider concreto. O core H também não conhece provider concreto.
-
-## Evidência RED → GREEN
-
-- grafo autorizado: testes falharam sobre o plano achatado; ficaram verdes com outcome/refs;
-- validator/composer: imports inexistentes produziram RED; matriz e refs fecharam GREEN;
-- repair/fallback/pipeline: módulos ausentes e draft inválido chegando ao renderer produziram
-  RED; validação e redução fecharam GREEN;
-- renderer/language: módulos ausentes produziram RED; templates controlados fecharam GREEN;
-- bypass do turno e regressões: API antiga e drafts vazios produziram RED; gate H real fechou
-  GREEN;
-- hardening: callback arbitrário, mutação pós-validação e linguagem forjada produziram RED;
-  snapshots, registro runtime e renderer interno fecharam GREEN;
-- mutação pré-validação: um composer adversarial anexou um fact de desconto ao plano e o
-  renderer chegou a emitir `Desconto: 50.`; snapshot congelado antes de `compose()` fechou GREEN
-  e forçou fallback do plano original;
-- outcome concreto: o teste de tipo mostrou widening para `string`; o genérico `OutcomeType`
-  fechou GREEN sem vocabulário de domínio no core.
+Confirmada a opção **A**: o Dental Pack fornece Outcome Schema, capabilities e dados para
+abstrações genéricas; não conhece OpenAI/model/provider. O core não contém literal dental.
+`src/conversation-core/composer/**` não importa/chama provider, modelo, DB, calendário, config,
+Domain Pack, rede ou I/O.
 
 ## Verificação
 
-- Suíte focada H/G/arquitetura: 18 arquivos, 76 testes, todos verdes.
-- Regressões de agenda exigidas: 4 arquivos, 86 testes, todos verdes.
-- `npm run verify`:
-  - Drizzle meta: OK;
-  - lint: 0 erros e 1 warning legado em `src/core/intelligence/ResponseComposer.ts`;
-  - typecheck: verde;
-  - Vitest completo: 331 arquivos, 2.849 passes e 11 skips (2.860 total).
-- Diff de `src/core/**` contra `7fb114f0`: zero.
+- focada H/G/arquitetura: **27 arquivos, 136 testes verdes**;
+- agenda: **4 arquivos, 86 testes verdes**;
+- `npm run verify`: Drizzle meta OK; lint 0 erros/1 warning legado V1; typecheck verde;
+  **332 arquivos, 2.884 passes, 11 skips (2.895 total)**;
+- `git diff 7fb114f0 -- src/core`: **vazio**;
+- auditoria provider/model/domain/config/I-O no composer: **zero**;
+- comportamento dental novo no core genérico: **zero**;
+- revisão independente final: **GO**, 7 arquivos/68 testes + 8 arquivos/27 testes verdes,
+  typecheck verde, sem CRITICAL/IMPORTANT remanescente;
+- push, PR, merge, cutover e Ciclo I: **não executados**.
 
-## Surpresas e desvios
+## Gates
 
-- O desenho intermediário permitia injetar um callback `render`; removido porque texto poderia
-  ganhar semântica depois do validator.
-- O primeiro fechamento do turn pipeline ainda aceitava `respond(plan)`; removido pelo mesmo
-  motivo e substituído por dependências H estruturadas.
-- Draft, plano e linguagem validados inicialmente mantinham aliases mutáveis; substituídos por
-  snapshots congelados registrados em runtime.
-- O composer inicialmente recebia o plano original mutável; o pipeline agora congela uma cópia
-  antes de `compose()` e nunca volta ao objeto de entrada durante aquele fluxo.
-- O outcome concreto era preservado em valor, mas alargado para `string` no contrato de
-  capability; `OutcomeType` agora permanece tipado genericamente.
-- O plano previa um callback de renderer em pseudocódigo. O contrato final é propositalmente mais
-  restrito e chama o renderer determinístico dentro do pipeline.
+1. CRITICAL reproduzidos/corrigidos: **PASS**.
+2. IMPORTANT de autoridade: **PASS**.
+3. Entailment adversarial: **PASS**.
+4. TOCTOU/alias/proxy/accessor/mutação: **PASS**.
+5. OutcomeType→semanticClass/subject/evidence: **PASS compile/runtime**.
+6. Segunda autoridade lexical: **removida — PASS**.
+7. Zero modelo/provider no H; custo de inferência H zero: **PASS**.
+8. Suítes/verify/V1 diff: **PASS**.
 
-## Gaps reservados para I
+## Minors/gaps restantes
 
-- composition root/adapters de produção e seleção de configuração por tenant;
-- outbound e garantias de delivery;
-- shadow/V1×V2, observação e comparação de qualidade;
-- eventual renderer probabilístico, que exigiria validator pós-render antes de outbound;
-- política operacional para `no_safe_response` no runtime real;
-- novas capabilities e cutover.
+1. Não há caps estruturais para plan/acts únicos/chars. Plano com 1.000 facts autorizados gerou
+   16.889 caracteres. É dívida de availability, não bypass de entailment; fechar antes de I/outbound.
+2. `ComposerStyle` permanece no port/pipeline, mas o composer determinístico ignora e o renderer
+   não recebe. É abstração dormente, não autoridade.
+3. `CoreResponse.parts` fica vazio no H. Outbound, composition root, shadow V1×V2, avaliação
+   qualitativa e política de `no_safe_response` pertencem ao I.
+4. Renderer probabilístico futuro exige validação pós-render antes do outbound.
 
-Nenhum desses itens foi iniciado no H.
+Nenhum gap restante amplia autoridade no renderer H atual.
+
+## Commits do hardening
+
+- `f624f25a` gate H/I; `5ed6b881` snapshots/language; `f677c461` graph/branded plan;
+- `41082e54` type widening; `1c095c01` subjects; `52571c63` FinalText frozen;
+- `417e0c10` schema/action-result canonical e ataques finais.
+
+Após o parecer independente, o minor de schema forjado com resultado vazio foi fechado com RED →
+GREEN por `assertOutcomeSchema(schema)` na entrada canônica; ele não permanece como dívida.
+
+## Decisão
+
+**GO definitivo para encerrar o Ciclo H. PARE aqui; não iniciar o Ciclo I.**

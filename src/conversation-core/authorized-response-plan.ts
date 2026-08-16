@@ -10,6 +10,7 @@ import type {
 } from "@/conversation-core/decision";
 import {
   assertActionResultMatchesOutcomeSchema,
+  assertOutcomeSchema,
 } from "@/conversation-core/decision";
 
 export const V2_AUTHORIZED_RESPONSE_PLAN_VERSION = "authorized-response-plan.v2" as const;
@@ -155,6 +156,7 @@ export function canonicalizeActionResults<Schema extends OutcomeSchema>(
   schema: Schema,
   actionResults: readonly ActionResult<Schema>[],
 ): CanonicalActionResults<Schema> {
+  assertOutcomeSchema(schema);
   let snapshot: ActionResult<Schema>[];
   try {
     snapshot = structuredClone(actionResults) as ActionResult<Schema>[];
