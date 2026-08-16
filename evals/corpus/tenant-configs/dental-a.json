@@ -35,7 +35,8 @@
     {
       "name": "Avaliação Clínica Inicial",
       "priceCents": null,
-      "description": "Consulta clínica completa para planejamento do tratamento."
+      "description": "Consulta clínica completa para planejamento do tratamento.",
+      "freeEvaluation": true
     },
     {
       "name": "Clareamento caseiro",
