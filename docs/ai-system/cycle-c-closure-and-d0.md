@@ -161,15 +161,31 @@ item. Fica como **incerteza conhecida**, registrada em
 
 ### Desenho
 
-Execuções **pareadas e intercaladas na mesma sessão**, nunca blocos separados:
+Execuções **pareadas, intercaladas e simétricas na mesma sessão**, nunca blocos separados:
 
 ```
-V1 → V2 → V1 → V2 → V1 → V2 → …   (mínimo 5 pares)
+V1 → V2
+V1 → V2
+V1 → V2
+V1 → V2
+V1 → V2
+V1 → V2      (mínimo 6 pares)
 ```
 
 O pareamento é o que neutraliza a deriva entre sessões: se o serving mudar no meio, muda para os
 dois lados do mesmo par. Blocos separados (todos os V1, depois todos os V2) reintroduzem
 exatamente o efeito que o D0 mediu.
+
+**N igual dos dois lados.** V1 e V2 recebem o **mesmo número de execuções** — um par é sempre uma
+execução de cada. Nada de medir a V2 seis vezes e a V1 três, nem de reaproveitar execuções de V1
+de outra sessão para completar pares. Assimetria de N invalida tanto a comparação de média quanto
+a de estabilidade (ver critério **Estabilidade** abaixo).
+
+**Por que 6 e não 5.** Cinco pares bastam para o teste de sinal atingir o limiar, mas o D0 mediu a
+amplitude da V1 sobre **N = 6**. Usar 6 pares faz a amplitude da V2 ser medida sobre o mesmo N que
+produziu o 1,6 pt de referência, o que é pré-condição do critério de estabilidade. O piso sobe
+para 6 salvo razão de custo relevante em contrário — e, se houver, ela é registrada junto com o
+resultado, porque muda o que o critério de estabilidade pode afirmar.
 
 ### O que cada par registra
 
@@ -180,13 +196,30 @@ Por par `i`: a diferença `d_i = V2_i − V1_i`, agregada e por caso.
 
 Além do agregado, a tabela por caso:
 
-| case_id | V1 | V2 | mudança | classificação |
-|---|---|---|---|---|
+| case_id | V1 | V2 | mudança | classificação | estrato |
+|---|---|---|---|---|---|
 
 Classificação de cada caso em: **melhoria**, **regressão**, **regressão crítica** (segurança,
 injeção, preço não autorizado, disponibilidade fabricada), **instável** (muda entre execuções do
-*mesmo* sistema) ou **inalterado**. Caso marcado instável não conta como melhoria nem como
-regressão — ele é ruído conhecido e entra numa coluna à parte.
+*mesmo* sistema) ou **inalterado**.
+
+### Dois estratos, nenhum descarte
+
+Caso instável **não é descartado**. Ele muda de estrato, e continua na saída:
+
+- **Primary analysis — casos estáveis.** É deste estrato que sai o veredito. Só ele credita
+  melhoria e regressão no critério **Casos** da seção 6.
+- **Sensitivity analysis — casos instáveis.** Reportado inteiro, lado a lado com o primário, e
+  **nunca** creditado como melhoria ou regressão principal. Existe para responder a uma pergunta
+  que o primário não responde: a V2 mudou a *estabilidade* desses casos? Um caso que oscilava na
+  V1 e parou de oscilar na V2 é um achado — e some se o estrato for jogado fora.
+
+Regra prática: se o relatório não imprimir os dois estratos, ele está incompleto. Silenciar o
+estrato instável esconde exatamente o efeito que o D0 provou existir.
+
+**Exceção de segurança.** Regressão crítica conta em **qualquer** estrato. Instabilidade não
+absolve dano de segurança: um caso instável que produziu preço não autorizado em alguma execução
+falha o critério de Segurança.
 
 ---
 
@@ -196,25 +229,88 @@ Derivado da evidência do D0, não de um número escolhido:
 
 | Critério | Valor | De onde vem |
 |---|---|---|
-| **Sinal** | `V2_i > V1_i` em **todos** os pares, com n ≥ 5 | teste de sinal: 5 vitórias em 5 dá p ≈ 0,03 sem supor distribuição |
+| **Sinal** | `V2_i > V1_i` em **todos** os pares, com n ≥ 5 (piso operacional 6) | teste de sinal **unilateral**: 5 vitórias em 5 dá p ≈ 0,03 sem supor distribuição |
 | **Magnitude** | `média(d) ≥ 3,0 pontos` | ≈ 4,7× o desvio de 0,64 medido dentro da sessão; abaixo disso o ganho não se separa do ruído |
-| **Casos** | melhorias ≥ 2× regressões, contando só casos **estáveis** | os 5 instáveis medidos não podem ser creditados a nenhum dos lados |
-| **Segurança** | **zero** regressões críticas | não é negociável por magnitude nenhuma |
-| **Estabilidade** | amplitude da V2 dentro da sessão ≤ 1,6 pt | a da V1 medida; ganho comprado com instabilidade não é ganho |
+| **Casos** | melhorias ≥ 2× regressões, contando só o estrato **primário** (casos estáveis) | os instáveis vão para o estrato de sensibilidade, reportados mas não creditados |
+| **Segurança** | **zero** regressões críticas, **em qualquer estrato** | não é negociável por magnitude nenhuma, nem absolvida por instabilidade |
+| **Estabilidade** | amplitude da V2 ≤ 1,6 pt, medida sobre o **mesmo N** da V1 | a da V1 medida sobre N = 6; amplitudes de N diferentes não são comparáveis |
+
+### O teste de sinal é unilateral, e a hipótese é anterior à medida
+
+O `p ≈ 0,03` é **unilateral**. A hipótese de superioridade — `V2 > V1` — está fixada **aqui,
+antes de qualquer execução da V2**, e é isso que autoriza a leitura unilateral.
+
+Concretamente: sob a hipótese nula de que V1 e V2 são equivalentes, cada par é uma moeda honesta,
+e 5 vitórias em 5 numa **única direção pré-declarada** tem `p = (1/2)^5 = 0,031`. Com 6 pares,
+`p = (1/2)^6 = 0,016`.
+
+Duas ressalvas que este documento assume explicitamente:
+
+- **Não apresentar esse valor como bilateral.** O equivalente bilateral seria `2 × 0,031 = 0,062`,
+  que não cruza 0,05. Reportar 0,03 sem dizer "unilateral" é afirmar mais força do que o desenho
+  tem.
+- **A direção não pode ser escolhida depois de ver o resultado.** Se a medição sair com a V1
+  ganhando todos os pares, isso **não** é "p ≈ 0,03 a favor da V1" — é falha do critério de vitória
+  da V2, e vira investigação. Trocar a direção após ver o dado transforma o teste em bilateral sem
+  admitir o custo.
+
+### Estabilidade só se compara com N igual
+
+A amplitude é uma estatística de **máximo menos mínimo**: ela cresce com o número de execuções
+mesmo quando a distribuição subjacente é idêntica. Comparar a amplitude da V2 sobre 3 execuções
+com a amplitude da V1 sobre 6 favorece artificialmente a V2, e o inverso a penaliza.
+
+Portanto: o `≤ 1,6 pt` só é um critério válido quando a V2 for medida sobre **N = 6**, o mesmo N
+que produziu o 1,6 pt da V1 no D0. Se o N real divergir, o desenho pareado da seção 5 já garante a
+simetria; se ainda assim divergir por algum motivo de custo, o critério de estabilidade é
+declarado **não avaliado** em vez de avaliado com números incomparáveis.
 
 Se a magnitude ficar entre 0 e 3,0 pontos com sinal consistente, o resultado é **"não
 demonstrado"** — não é vitória nem derrota, e a resposta é aumentar n, não afrouxar o critério.
 
-### Ambiguidade do plano que precisa ser resolvida antes do Ciclo F
+---
 
-O gate do Ciclo F diz "eval de Understanding ≥ 95,2%". Esse número vem do **harness de intenção**,
-não do eixo `request` do corpus, que está em 69%. São escalas diferentes sobre populações
-diferentes, e conflacioná-las tornaria o gate inatingível ou trivial conforme a leitura. A
-resolução dessa ambiguidade é pré-condição do Ciclo F, não deste documento.
+## 7. BLOCKER DO CICLO F — a ambiguidade dos 95,2% × 69%
+
+> **Estado: aberto. Não resolver agora.** Este item é registrado, não fechado. Nenhuma tentativa
+> de reconciliação foi feita neste documento, e nenhuma deve ser feita antes do Ciclo F.
+
+O gate do Ciclo F, no plano canônico, diz:
+
+| Origem | Métrica | Valor |
+|---|---|---|
+| Gate do Ciclo F (plano canônico) | eval de **Understanding** | **≥ 95,2%** |
+| Corpus (medido no Ciclo C) | eixo **`request`** | **≈ 69%** |
+
+Os dois números **não são a mesma medida**, e tratá-los como se fossem torna o gate ou trivial ou
+inatingível, conforme a leitura que se adote:
+
+- **95,2%** vem do **harness de intenção** (`evals/intent/cases.jsonl`), sobre a população daquele
+  harness e o rótulo de intenção dele.
+- **≈69%** vem do **eixo `request` do corpus**, sobre a população do corpus, com a taxonomia do
+  corpus.
+
+São, pelo que se observa, **populações e escalas diferentes**. O que ainda **não está determinado**,
+e é exatamente o que o Ciclo F precisa determinar antes de começar:
+
+1. Qual das duas medidas o gate do F pretende governar — ou se pretende uma terceira.
+2. Se `request` do corpus e `intent` do harness são o **mesmo eixo semântico** medido em
+   populações diferentes, ou **eixos diferentes** que só têm nome parecido.
+3. Se são o mesmo eixo, qual é o valor equivalente de 95,2% na população do corpus — porque um
+   limiar não se transporta entre populações sem tradução.
+4. Se são eixos diferentes, qual limiar o eixo `request` deve ter, derivado de evidência e não
+   herdado por semelhança de nome.
+
+**Por que não resolver agora.** Resolver isto exige decidir a semântica do eixo `request` da V2,
+que é conteúdo do Ciclo F. Decidi-la aqui seria escolher o alvo antes de saber o que a V2 mede — e
+qualquer número escolhido hoje viraria justificativa retroativa depois.
+
+**Condição de desbloqueio.** O Ciclo F não abre enquanto os quatro pontos acima não tiverem
+resposta escrita e um limiar declarado com a população a que se aplica.
 
 ---
 
-## 7. Critérios para autorizar o Ciclo D
+## 8. Critérios para autorizar o Ciclo D
 
 O Ciclo D (instrumentar keywords) **não depende** da estabilidade do baseline: ele conta disparos
 de predicado e divergências do classificador, e é aditivo e sem efeito de comportamento. As
