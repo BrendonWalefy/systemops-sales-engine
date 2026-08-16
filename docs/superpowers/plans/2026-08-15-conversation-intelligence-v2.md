@@ -849,15 +849,18 @@ superfície do buraco que já existe hoje, e a spec obriga a fechá-lo aqui.
 
 **Gate:** eval de Decision ≥ V1 nos golden, divergências justificadas caso a caso.
 
-## CICLO H — Composer V2
+## CICLO H — Composer/validator/renderer determinísticos
 
-**Objetivo:** prompt minimalista, núcleo estático como prefixo cacheável, gênero neutro por
-padrão. Cada regra que sobreviver aponta para um caso do corpus.
+**Objetivo:** provar segurança semântica da composição com léxico genérico fechado, plano e draft
+como fronteiras branded/imutáveis e zero chamada a provider/model no estágio H.
 
 **Pré-condição dura:** demo curada já convertida em golden no Ciclo C. Sem isso, descartar o
 prompt v4 perde o alvo de tom.
 
-**Gate:** judge par a par ≥ V1; custo por turno ≤ V1.
+**Gate:** decisão canônica `CI-V2-H-GATE-2026-08-16`: todos os CRITICAL e IMPORTANT de autoridade
+fechados e `semantics(finalText) ⊆ semantics(validatedDraft) ⊆ semantics(authorizedPlan)` provado
+por testes adversariais. Composer/renderer H fazem zero chamadas a provider/model, portanto o
+custo de inferência desse estágio é zero. `judge ≥ V1` não é gate de H.
 
 ## CICLO I — Shadow e comparação
 
@@ -867,7 +870,10 @@ prompt v4 perde o alvo de tom.
 registrando efeitos pretendidos. `execute()` é o ponto de troca — é por isso que ele é separado
 de `decide()` no contrato do Ciclo E.
 
-**Gate:** critérios da seção 14 da spec atingidos.
+**Gate:** critérios da seção 14 da spec atingidos, incluindo comparação qualitativa V1×V2
+pareada/intercalada com mesmo N e instrumento previamente calibrado conforme a seção 7.1. O judge
+atual permanece `experimental_non_gating`; se não for calibrado, usar human-review ou instrumento
+substituto previamente calibrado.
 
 ## CICLO J — Cutover e limpeza
 
@@ -895,13 +901,13 @@ DECISION             ciclo G · determinístico, sem modelo
       ↓
 ACTIONRESULT         ciclo G · plano aceita lista, preço amarrado a serviço
       ↓
-COMPOSER V2          ciclo H · judge ≥ V1, custo ≤ V1
+COMPOSER V2          ciclo H · entailment provado, zero chamadas a modelo no estágio
       ↓
 EVALS                ciclo C+ · rodando em CI a cada PR
       ↓
 SHADOW               ciclo I · sem efeito colateral, provado em replay
       ↓
-V1 × V2              ciclo I · critérios da seção 14 da spec
+V1 × V2              ciclo I · qualidade ≥ V1, protocolo da seção 7.1 e critérios da seção 14
       ↓
 CUTOVER              ciclo J · por tenant, menor volume primeiro
       ↓

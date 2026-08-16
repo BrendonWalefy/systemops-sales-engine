@@ -1,8 +1,13 @@
 # Conversation Intelligence V2 — Cycle H Design
 
 Date: 2026-08-16
-Status: approved by the Cycle H continuation instructions
+Status: superseded for final H closure by the approved hardening design
 Starting checkpoint: `7fb114f0`
+
+> Historical design note: the independent adversarial review after checkpoint `32e6dd82` found
+> trust-boundary gaps in the plan, draft canonicalization, outcome typing and language input. For
+> the active closure criteria and superseding runtime design, see
+> [`2026-08-16-conversation-intelligence-v2-cycle-h-hardening-design.md`](./2026-08-16-conversation-intelligence-v2-cycle-h-hardening-design.md).
 
 ## Goal and scope
 
@@ -81,7 +86,7 @@ an options act for outcome B, even when both subjects have similar labels.
 
 ## Composer and semantic draft
 
-`ResponseComposerPort` receives only:
+At the initial checkpoint, `ResponseComposerPort` was designed to receive only:
 
 - the authorized plan;
 - a structured style configuration containing closed enums;
@@ -151,13 +156,16 @@ compose -> validate
 
 Every attempt receives the same immutable plan. No step performs I/O.
 
-## Renderer and language contribution
+## Renderer and language contribution (superseded for final H closure)
 
-The renderer accepts only a branded validated draft, its plan and structured presentation data.
+The renderer described below records the initial H design and is not the final trust boundary.
+The hardening design removes `ResponseLanguageContribution` and arbitrary structured presentation
+data from the renderer. Historically, the initial design stated that the renderer accepted only a
+branded validated draft, its plan and structured presentation data.
 It uses fixed templates selected by speech-act kind. It can control punctuation, safe connectors,
 greeting, tone and concision, but it cannot select or mutate semantic refs.
 
-The language contribution is declarative data: locale, neutral labels for fact keys, outcome types
+Historically, the language contribution was declarative data: locale, neutral labels for fact keys, outcome types
 and subject types, plus closed value-format enums. It contains no callbacks, prompts, operational
 rules, instance facts or provider configuration. Dental terminology, when needed, stays in the
 Dental Pack and is injected into the generic renderer; the core never imports it.

@@ -343,6 +343,44 @@ autorizada. O composer escolhe **como dizer**, nunca **o que propor**. Consequê
 objeção cadastrada ganha uma capability responsável por respondê-la antes de qualquer pivô para
 agendamento, e isso é testável sem chamar o modelo.
 
+### 7.1 Gate semântico do Ciclo H e avaliação qualitativa do Ciclo I
+
+Decisão canônica `CI-V2-H-GATE-2026-08-16`, registrada antes de qualquer resultado final da
+comparação V1×V2 do Ciclo I:
+
+- o Ciclo H é o gate de **segurança semântica da composição**;
+- H só fecha quando testes adversariais demonstrarem
+  `semantics(finalText) ⊆ semantics(validatedDraft) ⊆ semantics(authorizedPlan)`;
+- H deve fechar os CRITICAL da revisão adversarial e os IMPORTANT que afetem fronteiras de
+  autoridade: plano validado/branded, integridade referencial, origem canônica da autoridade,
+  subject preservado, tipos de outcome não alargados e relações inválidas rejeitadas;
+- plano, draft e seus snapshots devem resistir a TOCTOU, getters, accessors, proxies, aliases e
+  mutações posteriores à validação;
+- a relação `OutcomeType → semanticClass`, incluindo requisitos de subject e evidence, deriva de
+  uma única fonte genérica fornecida pelo Domain Pack e é validada em compile-time e runtime;
+- contribuição de linguagem não é uma segunda fonte de autoridade. O renderer H usa léxico
+  genérico fechado e somente dados lexicais explicitamente autorizados no plano;
+- composer e renderer H fazem zero chamadas a provider/model. O estágio de
+  composição/renderização implementado no Ciclo H realiza zero chamadas a provider/model;
+  portanto seu custo de inferência é zero. Esta afirmação é restrita ao estágio H e não compara
+  ambiguamente seu custo com o custo do turno V1 completo;
+- suítes focadas, regressões relevantes e `npm run verify` precisam estar verdes.
+
+`judge ≥ V1` não é gate de H. A exigência qualitativa não foi removida: ela pertence ao Ciclo I,
+que executará comparação V1×V2 pareada e intercalada, com o mesmo N para ambos, primary analysis
+nos casos estáveis, sensitivity analysis nos casos instáveis e critério de vitória fixado antes
+do resultado. O judge aprovado atualmente tem status `experimental_non_gating`: sua instabilidade
+medida foi 42,9%, acima do limite previamente aprovado de 25%, logo ele não pode decidir GO/NO-GO
+enquanto não estiver calibrado. A medição e o status estão persistidos em
+[`evals/corpus/baseline-v1.json`](../../../evals/corpus/baseline-v1.json), sob o protocolo aprovado
+em [`2026-08-13-prose-judge-design.md`](./2026-08-13-prose-judge-design.md). No Ciclo I, o judge
+será usado somente se calibrado; caso contrário, a decisão qualitativa usará human-review ou
+instrumento substituto previamente calibrado.
+
+Esta alteração corrige a etapa responsável pela medição e a validade do instrumento; não reduz o
+nível de qualidade exigido. Seu registro anterior a qualquer resultado final V1×V2 do Ciclo I
+impede que seja interpretada como ajuste retrospectivo de critério.
+
 ## 8. ActionResult até outbound
 
 ```mermaid
@@ -607,8 +645,8 @@ Um de cada vez, cada um com baseline, alteração e evidência. Gate obrigatóri
 | E | Core V2 + `fixture-pack` + testes arquiteturais | pipeline verde sem nenhum substantivo de negócio no core |
 | F | Domain pack dental | gate vetorial por população do plano detalhado do F; zero erro crítico e paridade das 3 features estruturais de D |
 | G | Capabilities do dental, coordinator e política estruturada | Decision ≥ V1 nos golden; divergências justificadas caso a caso |
-| H | Composer V2 e prompt minimalista | judge ≥ V1; custo por turno ≤ V1 |
-| I | Shadow e comparação | critérios da seção 14 |
+| H | Composer/validator/renderer determinísticos | gate de segurança semântica da seção 7.1; zero chamadas a provider/model no estágio H |
+| I | Shadow e comparação qualitativa V1×V2 | critérios da seção 14 e protocolo pareado/intercalado da seção 7.1 |
 | J | Cutover por tenant e limpeza | 7 dias sem regressão crítica antes de apagar qualquer linha |
 
 Ciclo A já está parcialmente feito: o reparo de estilo do Ciclo 1 da auditoria foi preservado em
@@ -630,13 +668,14 @@ O grupo de segurança é bloqueante: regressão ali cancela o cutover independen
 | Conversa | fallback determinístico | 45% dos turnos | **nenhum por violação de estilo** — a cláusula vinculante. O alvo de < 10% é indicativo e será recalibrado no ciclo C, quando se souber quanto do fallback é correto por ser fato de fato não autorizado |
 | | acerto de Understanding | harness: 73,0% em 21 incidentes e 92,5% em 58 regras; corpus V1: 44/64 comparáveis | aceitação por eixo no recorte F + diagnóstico legado sem regressão + paridade das 3 features estruturais de D |
 | | Decision correta no corpus golden | a medir no ciclo C | ≥ V1, sem regressão em agendamento |
-| | prosa — judge par a par | a medir no ciclo C | ≥ V1 |
+| | prosa — comparação qualitativa pareada | judge atual `experimental_non_gating` | ≥ V1 no Ciclo I, por judge calibrado ou revisão/instrumento previamente calibrado |
 | Arquitetura | maior escopo de decisão | 4.571 linhas | nenhuma função > 200 linhas |
 | | regex sobre linguagem aberta na decisão | 296 literais, 30 predicados | 0 |
 | | substantivos de domínio no core | `isClinicSegment` em 2 camadas | 0, provado pelo `fixture-pack` |
 | | custo de um pack novo | — | 0 linhas alteradas no core |
+| | chamadas a provider/model no composer/renderer H | — | 0 |
 | Operação | trace: modelo, promptVersion, tokens, latência | 0 dos 4 campos | 4 de 4 em 100% dos turnos |
-| | custo por turno | a instrumentar no ciclo B | ≤ V1 |
+| | custo por turno completo | a instrumentar no ciclo B | ≤ V1, medido no Ciclo I sem usar como proxy o custo isolado do estágio H |
 | | latência p95 | a instrumentar no ciclo B | ≤ V1 |
 
 Critério que resume os outros: um bug conversacional novo, encontrado depois do cutover, deve ter

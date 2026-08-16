@@ -8,6 +8,12 @@
 
 **Tech Stack:** TypeScript 5.8, Vitest 3.2, existing Conversation Core V2 and Domain Pack contracts.
 
+> Historical execution plan: Tasks 1–6 describe the initial implementation through checkpoint
+> `32e6dd82`. The independent review reopened H. Final closure is governed by
+> [`2026-08-16-conversation-intelligence-v2-cycle-h-hardening.md`](./2026-08-16-conversation-intelligence-v2-cycle-h-hardening.md)
+> and canonical decision `CI-V2-H-GATE-2026-08-16`. Where this historical plan mentions language
+> contribution, structural plan trust or the old H gate, the hardening plan supersedes it.
+
 ## Global Constraints
 
 - Preserve `semantics(finalText) ⊆ semantics(validatedDraft) ⊆ semantics(authorizedPlan)`.

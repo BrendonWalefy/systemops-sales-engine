@@ -2,6 +2,11 @@
 
 Checkpoint inicial: `7fb114f0` (desenho H aprovado).
 
+Status: **histórico; H reaberto para hardening** após revisão adversarial independente no checkpoint
+`32e6dd82`. Este documento preserva a evidência do primeiro fechamento; afirmações ainda não
+revalidadas pelo hardening não são evidência de encerramento. A fonte ativa é o
+[`design de H-hardening`](../superpowers/specs/2026-08-16-conversation-intelligence-v2-cycle-h-hardening-design.md).
+
 ## Escopo entregue
 
 O H transforma resultados já decididos em texto controlado, inteiramente em memória:
@@ -152,9 +157,9 @@ material seguro retorna `null`; o pipeline retorna `no_safe_response` sem texto.
 semantics(fallback) ⊆ semantics(authorizedPlan)
 ```
 
-## Renderer determinístico
+## Renderer determinístico (estado do checkpoint `32e6dd82`, superseded)
 
-O renderer aceita somente:
+No checkpoint revisado, o renderer aceitava:
 
 - `ValidatedDraftResponse` registrado pelo validator;
 - `ValidatedResponseLanguageContribution` imutável e registrada pelo factory;
