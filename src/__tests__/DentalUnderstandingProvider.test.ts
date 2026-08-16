@@ -48,5 +48,9 @@ describe("provider dental de Understanding", () => {
       model: "gpt-test",
       response_format: expect.objectContaining({ type: "json_schema", json_schema: expect.objectContaining({ strict: true }) }),
     }));
+    const request = create.mock.calls[0]![0];
+    expect(request.response_format.json_schema.schema.properties.entities.additionalProperties).toBe(false);
+    expect(request.response_format.json_schema.schema.properties.signals.additionalProperties).toBe(false);
+    expect(request.response_format.json_schema.schema.properties.safety.additionalProperties).toBe(false);
   });
 });
