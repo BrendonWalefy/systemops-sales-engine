@@ -185,9 +185,18 @@ function renderTurnEvidence(entry: CorpusCase): string[] {
   // Side effect é a diferença entre a resposta *afirmar* que algo aconteceu e
   // algo ter acontecido. Sem ele na folha, "te enviei um vídeo" e "agendei
   // quarta às 15h" são só texto, e o revisor não tem como julgar lastro.
-  for (const effect of entry.observed.sideEffects ?? []) {
+  const effects = entry.observed.sideEffects ?? [];
+  for (const effect of effects) {
     lines.push(
       `- Registrado neste turno — ${effect.kind}: ${effect.detail} (fonte: ${effect.source})`,
+    );
+  }
+  if (effects.length === 0) {
+    // Ausência declarada, não silêncio: sem esta linha o revisor não distingue
+    // "o turno não registrou agendamento" de "a folha não mostra side effect",
+    // e uma confirmação como "Agendado!" fica sem como ser julgada.
+    lines.push(
+      "- Nenhuma ação registrada neste turno (sem agendamento, consulta de agenda, envio de mídia ou handoff observado).",
     );
   }
 
