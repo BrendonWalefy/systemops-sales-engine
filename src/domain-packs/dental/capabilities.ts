@@ -1,4 +1,4 @@
-import type { Capability, CapabilityClaim, ConversationState } from "@/conversation-core/capability/contract";
+import type { Capability, CapabilityClaim } from "@/conversation-core/capability/contract";
 import type { ActionResult, Decision } from "@/conversation-core/decision";
 import type { Understanding } from "@/conversation-core/understanding/schema";
 import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
@@ -45,7 +45,7 @@ export const dentalSchedulingCapability: Capability<DentalRequest, DentalPolicy>
 
 export const dentalEscalationCapability: Capability<DentalRequest, DentalPolicy> = {
   id: "dental-escalation",
-  claim(understanding: Understanding<DentalRequest>, _state: ConversationState) {
+  claim(understanding: Understanding<DentalRequest>) {
     return understanding.safety.emergency || understanding.safety.requestsHuman
       ? { ...claim("dental-escalation", 1), conflictsWith: ["dental-catalog", "dental-scheduling"] }
       : null;

@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { DENTAL_REQUESTS, type DentalRequest } from "@/domain-packs/dental/vocabulary";
-import { DIALOGUE_MOVES } from "@/application/corpus/corpus-case";
 import { UNDERSTANDING_VERSION, type Understanding } from "@/conversation-core/understanding/schema";
+
+const CORE_DIALOGUE_MOVES = ["new_topic", "answers_pending", "acknowledges", "repeats", "closes"] as const;
 
 const scalar = z.union([z.string(), z.number(), z.array(z.string()), z.null()]);
 const schema = z.object({
   version: z.literal(UNDERSTANDING_VERSION),
   request: z.enum(DENTAL_REQUESTS),
-  dialogueMove: z.enum(DIALOGUE_MOVES),
+  dialogueMove: z.enum(CORE_DIALOGUE_MOVES),
   entities: z.record(scalar),
   signals: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])),
   safety: z.record(z.boolean()),
