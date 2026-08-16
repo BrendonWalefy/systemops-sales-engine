@@ -29,6 +29,7 @@
     "corpus:import": "tsx scripts/import-corpus-labels.ts",
     "corpus:audit-pii": "dotenv -e .env.local -- tsx scripts/audit-corpus-pii.ts",
     "eval:corpus": "dotenv -e .env.local -- tsx scripts/eval-corpus.ts",
+    "report:predicates": "tsx scripts/report-predicate-overrides.ts",
     "replay:export": "dotenv -e .env.local -- tsx scripts/export-sanitized-replay-corpus.ts",
     "replay:review": "tsx scripts/render-replay-review.ts",
     "replay:keys": "tsx scripts/generate-replay-approval-keypair.ts",

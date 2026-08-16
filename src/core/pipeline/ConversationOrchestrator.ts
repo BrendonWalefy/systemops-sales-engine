@@ -140,6 +140,10 @@ import {
   RUNTIME_CONFIG_FINGERPRINT_SCHEMA,
 } from "@/application/config/runtime-config-fingerprint";
 import { NamedDecisionOverrideTracker } from "@/core/observability/NamedDecisionOverride";
+import {
+  evaluateKeywordPredicate,
+  type KeywordPredicateObserver,
+} from "@/core/observability/KeywordPredicateEvaluation";
 import { runtimeNow } from "@/core/time/RuntimeClock";
 import {
   matchesHumanReviewPipelineContext,
@@ -1663,31 +1667,114 @@ export function coerceBusinessIntent(params: {
   treatments: Treatment[];
   isClinicSegment: boolean;
   commercialPolicy?: string | null;
+  /**
+   * Observador do Ciclo D. Recebe uma avaliação por predicado **efetivamente
+   * consultado** — a lista respeita o curto-circuito, porque o que interessa
+   * medir é o que a produção executa, não o que ela executaria sem `return`.
+   * Ausente por padrão: a coerção devolve o mesmo intent com ou sem ele.
+   */
+  onPredicateEvaluated?: KeywordPredicateObserver;
 }): IntentType {
-  const { message, intent, treatments, isClinicSegment, commercialPolicy } = params;
+  const {
+    message,
+    intent,
+    treatments,
+    isClinicSegment,
+    commercialPolicy,
+    onPredicateEvaluated,
+  } = params;
   if (intent !== "greeting" && intent !== "acknowledgment" && intent !== "unclear") return intent;
 
   const normalized = normalizeFreeText(message);
   if (!normalized) return intent;
 
-  // P0.1: Guard Anti-Saudação — Se a pergunta contém conteúdo de negócio,
-  // NUNCA responder com saudação genérica. O sistema decide (determinístico).
-  if (isClinicSegment && detectPatientArrivalText(message)) return "patient_arrived";
-  // P0.5: Menção ao nome antigo da clínica ou pergunta sobre mudança de
-  // endereço precisa ir para general_question (composer). Sem este guard, o
-  // intent permanecia "greeting" e shouldShowInitialMenu/shouldSendConciergeStarter
-  // capturavam a mensagem ANTES que o contexto de nome antigo (calculado mais
-  // adiante no pipeline) tivesse qualquer chance de ser usado — a menção a
-  // "Dental Luxe" era completamente ignorada (bug real: 5+ conversas
-  // idênticas pós-deploy P0.5, ex: Julie, Thiago, Jeny, Jose Mota).
-  if (isClinicNameOrAddressChangeQuestion(normalized, commercialPolicy).isMatch) return "general_question";
-  // P0.2: Prioridade — Garantia antes de Manutenção (ambos redirectam para needs_human, mas contexto diferente)
-  if (isWarrantyQuestion(normalized)) return "needs_human";
-  if (isMaintenanceInquiryText(normalized)) return "needs_human";
-  if (isBusinessHoursQuestion(message)) return "general_question";
-  if (isPriceRequestText(normalized)) return "price_inquiry";
-  if (isSchedulingRequestText(normalized)) return "book_appointment";  // ← P0.1: Novo
-  if (resolveDirectTreatmentMention(message, treatments)) return "general_question";
+  // Ordem preservada exatamente como estava: o primeiro predicado que dispara
+  // vence, e cada comentário de origem continua junto do seu predicado. A forma
+  // de tabela existe só para que a instrumentação seja uma linha, e não nove
+  // pares de `if` duplicados.
+  const steps: Array<{
+    name: string;
+    // `false` quando um guard externo impede a consulta — o predicado nem roda,
+    // e registrá-lo como "não disparou" mentiria sobre o que foi executado.
+    consulted: boolean;
+    fires: () => boolean;
+    intent: IntentType;
+  }> = [
+    {
+      // P0.1: Guard Anti-Saudação — Se a pergunta contém conteúdo de negócio,
+      // NUNCA responder com saudação genérica. O sistema decide (determinístico).
+      name: "detectPatientArrivalText",
+      consulted: isClinicSegment,
+      fires: () => detectPatientArrivalText(message),
+      intent: "patient_arrived",
+    },
+    {
+      // P0.5: Menção ao nome antigo da clínica ou pergunta sobre mudança de
+      // endereço precisa ir para general_question (composer). Sem este guard, o
+      // intent permanecia "greeting" e shouldShowInitialMenu/shouldSendConciergeStarter
+      // capturavam a mensagem ANTES que o contexto de nome antigo (calculado mais
+      // adiante no pipeline) tivesse qualquer chance de ser usado — a menção a
+      // "Dental Luxe" era completamente ignorada (bug real: 5+ conversas
+      // idênticas pós-deploy P0.5, ex: Julie, Thiago, Jeny, Jose Mota).
+      name: "isClinicNameOrAddressChangeQuestion",
+      consulted: true,
+      fires: () => isClinicNameOrAddressChangeQuestion(normalized, commercialPolicy).isMatch,
+      intent: "general_question",
+    },
+    {
+      // P0.2: Prioridade — Garantia antes de Manutenção (ambos redirectam para
+      // needs_human, mas contexto diferente)
+      name: "isWarrantyQuestion",
+      consulted: true,
+      fires: () => isWarrantyQuestion(normalized),
+      intent: "needs_human",
+    },
+    {
+      name: "isMaintenanceInquiryText",
+      consulted: true,
+      fires: () => isMaintenanceInquiryText(normalized),
+      intent: "needs_human",
+    },
+    {
+      name: "isBusinessHoursQuestion",
+      consulted: true,
+      fires: () => isBusinessHoursQuestion(message),
+      intent: "general_question",
+    },
+    {
+      name: "isPriceRequestText",
+      consulted: true,
+      fires: () => isPriceRequestText(normalized),
+      intent: "price_inquiry",
+    },
+    {
+      name: "isSchedulingRequestText",
+      consulted: true,
+      fires: () => isSchedulingRequestText(normalized),  // ← P0.1: Novo
+      intent: "book_appointment",
+    },
+    {
+      name: "resolveDirectTreatmentMention",
+      consulted: true,
+      fires: () => resolveDirectTreatmentMention(message, treatments) !== null,
+      intent: "general_question",
+    },
+  ];
+
+  for (const step of steps) {
+    if (!step.consulted) continue;
+    const fired = step.fires();
+    onPredicateEvaluated?.(
+      evaluateKeywordPredicate({
+        predicateName: step.name,
+        fired,
+        classifiedIntent: intent,
+        predicateIntent: step.intent,
+      }),
+    );
+    if (fired) return step.intent;
+  }
+
   return intent;
 }
 
