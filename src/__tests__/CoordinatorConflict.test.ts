@@ -11,7 +11,13 @@ describe("conflitos entre capabilities", () => {
       conflictsWith: string,
     ): Capability<"work", Record<string, never>> => ({
       id,
-      claim: () => ({ capabilityId: id, confidence: 1, reason: "fixture", attributes: {}, conflictsWith: [conflictsWith] }),
+      claim: () => ({
+        capabilityId: id,
+        confidence: 1,
+        reason: "fixture",
+        payload: {},
+        conflictsWith: [conflictsWith],
+      }),
       decide: async () => ({ kind: "close" }),
       execute: async () => {
         executions += 1;
@@ -33,7 +39,11 @@ describe("conflitos entre capabilities", () => {
         version: UNDERSTANDING_VERSION,
         request: "work",
         dialogueMove: "new_topic",
-        entities: {}, signals: {}, safety: {}, confidence: 1, ambiguity: null,
+        entities: {},
+        signals: {},
+        safety: {},
+        confidence: 1,
+        ambiguity: null,
       }),
       capabilities: [capability("alpha", "beta"), capability("beta", "alpha")],
       buildPlan: () => ({}),

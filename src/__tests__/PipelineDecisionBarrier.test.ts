@@ -8,7 +8,12 @@ describe("barreira entre decisão e efeitos", () => {
     let writes = 0;
     const capability = (id: string, fails: boolean): Capability<"work"> => ({
       id,
-      claim: () => ({ capabilityId: id, confidence: 1, reason: "test", attributes: {} }),
+      claim: () => ({
+        capabilityId: id,
+        confidence: 1,
+        reason: "test",
+        payload: {},
+      }),
       decide: async () => {
         if (fails) throw new Error("authorized read failed");
         return { kind: "close" };
@@ -19,14 +24,33 @@ describe("barreira entre decisão e efeitos", () => {
       },
     });
 
-    await expect(runTurnPipeline({
-      gateInput: { automationEnabled: true, duplicate: false, humanControlled: false, optedOut: false },
-      state: { phase: "ready", pendingStepId: null, completedStepIds: [] },
-      policy: {}, now: new Date(0),
-      understand: async () => ({ version: UNDERSTANDING_VERSION, request: "work", dialogueMove: "new_topic", entities: {}, signals: {}, safety: {}, confidence: 1, ambiguity: null }),
-      capabilities: [capability("first", false), capability("second", true)],
-      buildPlan: () => ({}), compose: async () => ({ text: "", parts: [] }), validate: () => true,
-    })).rejects.toThrow("authorized read failed");
+    await expect(
+      runTurnPipeline({
+        gateInput: {
+          automationEnabled: true,
+          duplicate: false,
+          humanControlled: false,
+          optedOut: false,
+        },
+        state: { phase: "ready", pendingStepId: null, completedStepIds: [] },
+        policy: {},
+        now: new Date(0),
+        understand: async () => ({
+          version: UNDERSTANDING_VERSION,
+          request: "work",
+          dialogueMove: "new_topic",
+          entities: {},
+          signals: {},
+          safety: {},
+          confidence: 1,
+          ambiguity: null,
+        }),
+        capabilities: [capability("first", false), capability("second", true)],
+        buildPlan: () => ({}),
+        compose: async () => ({ text: "", parts: [] }),
+        validate: () => true,
+      }),
+    ).rejects.toThrow("authorized read failed");
     expect(writes).toBe(0);
   });
 });

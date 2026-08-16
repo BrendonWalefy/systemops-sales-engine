@@ -25,10 +25,11 @@ change V1.
 
 ### Claim data
 
-1. **Generic structured attributes on `CapabilityClaim` — selected.** Primitive attributes carry
-   request/entity/state references from pure claim to decide. The coordinator remains mechanical.
-2. Generic per-capability claim types. Rejected for now: heterogeneous capability arrays require
-   existential typing machinery with no additional runtime safety for this slice.
+1. **Generic typed payload on `CapabilityClaim<TPayload>` — selected.** Each Domain Pack owns a
+   discriminated payload union carrying request/entity/state references from pure claim to
+   decide. The coordinator remains generic and propagates the type without inspecting it.
+2. Untyped primitive attribute maps. Rejected: arbitrary keys lose domain type safety at the
+   `claim()` → `decide()` boundary.
 3. Add Understanding to `CapabilityContext`. Rejected: it broadens every decision boundary and
    makes it easier for capabilities to reinterpret upstream output.
 
@@ -40,7 +41,7 @@ scoped to their offered slot or appointment. Unscoped or internal facts never en
 
 ## Components and data flow
 
-1. Understanding enters a pure `claim()` and becomes a claim with structured attributes.
+1. Understanding enters a pure `claim()` and becomes a claim with a pack-owned typed payload.
 2. Coordinator resolves declared dependencies/conflicts before decisions.
 3. Every selected capability completes `decide()` using only policy, clock and its own read port.
 4. Only after all decisions succeed does the pipeline call `execute()` in pack order.

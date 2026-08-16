@@ -14,7 +14,11 @@ export type CoreResponse = { text: string; parts: readonly unknown[] };
 export type TurnPipelineResult =
   | { status: "suppressed"; reason: string }
   | { status: "needs_clarification" }
-  | { status: "escalated"; reason: "capability_conflict"; capabilityIds: readonly string[] }
+  | {
+      status: "escalated";
+      reason: "capability_conflict";
+      capabilityIds: readonly string[];
+    }
   | { status: "rejected"; actionResults: readonly ActionResult[] }
   | {
       status: "delivered";
@@ -26,6 +30,7 @@ export type TurnPipelineResult =
 export async function runTurnPipeline<
   Request extends string,
   Policy extends object,
+  ClaimPayload extends object,
   Plan,
 >(input: {
   gateInput: TurnGateInput;
@@ -33,13 +38,14 @@ export async function runTurnPipeline<
   policy: StructuredPolicy<Policy>;
   now: Date;
   understand(): Promise<Understanding<Request>>;
-  capabilities: readonly Capability<Request, Policy>[];
+  capabilities: readonly Capability<Request, Policy, ClaimPayload>[];
   buildPlan(actionResults: readonly ActionResult[]): Plan;
   compose(plan: Plan): Promise<CoreResponse>;
   validate(input: { plan: Plan; response: CoreResponse }): boolean;
 }): Promise<TurnPipelineResult> {
   const gate = evaluateTurnGate(input.gateInput);
-  if (gate.outcome === "suppress") return { status: "suppressed", reason: gate.reason };
+  if (gate.outcome === "suppress")
+    return { status: "suppressed", reason: gate.reason };
 
   const understanding = await input.understand();
   const coordination = coordinateCapabilities({
@@ -80,7 +86,8 @@ export async function runTurnPipeline<
 
   const plan = input.buildPlan(actionResults);
   const response = await input.compose(plan);
-  if (!input.validate({ plan, response })) return { status: "rejected", actionResults };
+  if (!input.validate({ plan, response }))
+    return { status: "rejected", actionResults };
 
   return {
     status: "delivered",

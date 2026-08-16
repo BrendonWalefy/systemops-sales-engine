@@ -8,23 +8,32 @@ import type { Understanding } from "@/conversation-core/understanding/schema";
 export type ClaimedCapability<
   Request extends string,
   Policy extends object,
+  ClaimPayload extends object,
 > = {
-  capability: Capability<Request, Policy>;
-  claim: CapabilityClaim;
+  capability: Capability<Request, Policy, ClaimPayload>;
+  claim: CapabilityClaim<ClaimPayload>;
 };
 
-export type CoordinationResult<Request extends string, Policy extends object> =
-  | { outcome: "selected"; claimed: ClaimedCapability<Request, Policy>[] }
+export type CoordinationResult<
+  Request extends string,
+  Policy extends object,
+  ClaimPayload extends object,
+> =
+  | {
+      outcome: "selected";
+      claimed: ClaimedCapability<Request, Policy, ClaimPayload>[];
+    }
   | { outcome: "conflict"; capabilityIds: string[] };
 
 export function coordinateCapabilities<
   Request extends string,
   Policy extends object,
+  ClaimPayload extends object,
 >(input: {
-  capabilities: readonly Capability<Request, Policy>[];
+  capabilities: readonly Capability<Request, Policy, ClaimPayload>[];
   understanding: Understanding<Request>;
   state: ConversationState;
-}): CoordinationResult<Request, Policy> {
+}): CoordinationResult<Request, Policy, ClaimPayload> {
   const seen = new Set<string>();
 
   const claimed = input.capabilities.flatMap((capability) => {

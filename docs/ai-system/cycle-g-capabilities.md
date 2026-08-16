@@ -7,7 +7,8 @@ Checkpoint inicial: `96ff0742` (fechamento do F).
 O G mantém o fluxo `Understanding → Claim → Coordinator → decide → execute → ActionResult` e
 fecha quatro lacunas necessárias para operação determinística:
 
-1. `CapabilityClaim.attributes` transporta somente valores estruturados do Understanding/state.
+1. `CapabilityClaim<TPayload>` preserva um payload tipado do Domain Pack entre `claim()` e
+   `decide()`; o core conhece apenas o parâmetro genérico.
 2. Cada `Fact` registra subject, evidence e disclosure; o plano V2 preserva essas relações e
    recusa fatos divulgáveis sem subject.
 3. O pipeline conclui todas as decisões/authorized reads antes do primeiro `execute`.
@@ -16,15 +17,29 @@ fecha quatro lacunas necessárias para operação determinística:
 
 ## Ports e fases
 
-| Capability | `claim()` | `decide()` — reads | `execute()` — writes |
-|---|---|---|---|
-| Catalog | request, serviço e state estruturados | `resolveService` | nenhum; materializa resultado autorizado |
-| Scheduling | request, preferência e pending step | `listSlots`, `resolveOfferedSlot`, `resolvePendingAppointment` | `bookSlot`, `confirmAppointment` |
-| Escalation | sinais estruturados de safety | nenhum | nenhum write externo neste recorte |
+| Capability | `claim()`                             | `decide()` — reads                                             | `execute()` — writes                     |
+| ---------- | ------------------------------------- | -------------------------------------------------------------- | ---------------------------------------- |
+| Catalog    | request, serviço e state estruturados | `resolveService`                                               | nenhum; materializa resultado autorizado |
+| Scheduling | request, preferência e pending step   | `listSlots`, `resolveOfferedSlot`, `resolvePendingAppointment` | `bookSlot`, `confirmAppointment`         |
+| Escalation | sinais estruturados de safety         | nenhum                                                         | nenhum write externo neste recorte       |
 
 Os ports são interfaces do pack, não adapters concretos. A composição futura cria uma instância
 por tenant/lead e pode adaptá-los a catálogo, CalendarGateway e BookingService sem mudar core ou
 capability. V2 não foi ligada ao runtime produtivo neste ciclo.
+
+## Claims tipados e independência de provider
+
+O Dental Pack define uma união discriminada `DentalClaimPayload`: Catalog, Scheduling e
+Escalation têm campos explícitos para request, serviço, data, período, seleção pendente e sinais
+de safety. Não há `Record<string, any>`, mapa de payload sem schema, semântica serializada em
+prosa nem closure mutável. Confidence/reason permanecem metadados de provenance do claim; facts
+produzidos por reads/writes preservam evidence própria.
+
+Quanto à extração, o resultado é **A**: o Dental Pack fornece vocabulary, schema, prompt e
+validação de Understanding consumidos por uma abstração genérica. Ele não importa OpenAI, SDK de
+modelo ou provider. O adapter OpenAI existente fica em `src/infrastructure/adapters/ai/` e aponta
+para o contrato/contribuição do pack, nunca na direção inversa. Um teste arquitetural protege
+essa independência.
 
 ## Policy
 
