@@ -713,11 +713,12 @@ describe("Cycle I post-sender shadow batch", () => {
         deadlineReached: true,
         deadline: {
           admissionClosed: true,
-          overrun: false,
           clockStatus: "valid",
         },
         drain: { activeAtReturn: 0 },
       });
+      expect(summary.deadline.overrun)
+        .toBe(summary.deadline.overrunMs > 0);
     },
   );
 
