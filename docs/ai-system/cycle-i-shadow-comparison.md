@@ -8,7 +8,9 @@ Base da Task 7: `b54e165098af02e06a6613d275f705df056b657f`
 
 Matriz e boundaries finais: `8e2c7b9506325ba0831c2962ec75033e666dd978`
 
-Hardening da revisão Task 7: `5e3f2c64`
+Hardening da revisão Task 7 — rodada 1: `5e3f2c64`
+
+Hardening da revisão Task 7 — rodada 2: `68cfff52`, `57dc0577`, `3cb0810c`
 
 ## Estado terminal
 
@@ -87,6 +89,13 @@ lista vazia. Um plano intermediário nunca é promovido a final V1, e um V2 dife
 divergência fabricada. `model.calls` só é materializado quando o callback do provider foi de fato
 invocado; duplicate e shared-read unavailable antes desse callback registram `model: null`.
 
+O wire contract vigente é `conversation-v2-live-comparison.v2`, com uniões discriminadas exatas
+por `comparisonStatus` e status de cada braço. V2 nunca aceita `unavailable`; estados
+unsupported/error/simulation não podem carregar outcomes, classes ou FinalText incompatíveis.
+Antes do Zod, a boundary cria uma cópia plain-data única a partir de descriptors e rejeita
+proxy, accessor, symbol ou protótipo não-plain sem executar getters. A `.v1` era protótipo
+pré-ativação: houve zero observação/persistência/ativação, e o parser a rejeita explicitamente.
+
 ## Deadline canônico
 
 `deadlineAt` é deadline de admissão, não promessa de retorno até T:
@@ -158,10 +167,11 @@ da jornada indicada; não significa PASS implícito.
 | escalation | N/A: é outcome de recovery | N/A: handoff concluído está fora do contrato | N/A: não há write de handoff | N/A: pertence a multi-intent | supported: `human_action_required`, nunca handoff concluído |
 | multi-intent | N/A: happy paths single-subject estão separados | N/A: capture boundary coberta em price | N/A: teste não contém write | supported no H: subject A/B preservados e cross-link rejeitado | N/A: não há policy de recovery multi-intent |
 
-Media, Objection, Discount e FollowUp permanecem `unsupported/deferred`. A evidência não vem de
-uma constante local: o pack real expõe apenas price/availability/scheduling e o runner real
-retorna `unsupported_request` para cada request fora do vocabulário fechado. Nenhuma capability
-foi criada para preencher a matriz.
+Media, Objection, Discount e FollowUp permanecem `deferred/not representable`. Eles não são
+valores de `DENTAL_REQUESTS` nem jornadas registradas pelo Dental Pack. Não há request produtivo
+tipado que permita enviá-los ao runner; por isso o relatório não fabrica cast nem alega um
+sentinel `unsupported_request` que o runtime real não pode receber. Nenhuma capability foi criada
+para preencher a matriz.
 
 Esta matriz é evidência determinística de contracts e segurança. Ela não substitui as 204
 observações do protocolo, revisão humana nem replay full-turn.
@@ -221,7 +231,15 @@ no escopo, será necessária boundary externa imutável/assinada de build ou CI.
 - Os Minor de contagem de modelo, scan arquitetural direto e whitespace também foram confirmados
   e corrigidos: contagem nasce no callback real, o scan percorre o grafo local transitivo e
   `git diff --check b54e1650..HEAD` é gate explícito.
-- A re-review independente da Task 7 ainda é posterior a este checkpoint. Até artifact
+- A segunda revisão independente ainda encontrou 3 Important e 3 Minor. Todos foram confirmados:
+  o schema admitia combinações impossíveis entre status/campos; a taxonomia deferred usava cast
+  para request inexistente; e o wire `.v1` seria alterado sem versão nova. Os Minor mostraram que
+  a entrada precisava ser canonicalizada antes do Zod, a matriz ligava evidência a strings e o
+  scan de imports podia ser fortalecido contra indirection. O RED focal reproduziu 15 falhas.
+  O GREEN usa uniões discriminadas exatas, snapshot plain-data sem traps, wire `.v2`, taxonomia
+  derivada de vocabulary/registry e callbacks executáveis por célula. O scan transitivo também
+  bloqueia packages e símbolos explícitos de AI/Neon/Drizzle/calendar.
+- A nova re-review independente da Task 7 ainda é posterior a este checkpoint. Até artifact
   content-bound e assinado existir, `adversarial_review` permanece corretamente `not_measurable`
   no gate report.
 
@@ -267,26 +285,29 @@ assinatura ou PASS do gate report.
 ## Verificação da Task 7
 
 A matriz/boundaries foi desenvolvida em RED → GREEN: o comando focal iniciou com os três arquivos
-ausentes (exit 1) e terminou com 3 arquivos/21 testes verdes. No hardening da revisão, os RED
+ausentes (exit 1) e terminou com 3 arquivos/21 testes verdes. No primeiro hardening, os RED
 reproduziram availability real como `unsupported`, V1 vazio marcado `observed` e model call
 contado antes do callback; os GREEN fecharam esses três caminhos e elevaram a suíte Task 7 para
-3 arquivos/24 testes.
+3 arquivos/24 testes. Na segunda rodada, o RED do comparison record teve 15 falhas/7 passes;
+o GREEN ampliado fechou todos os estados e traps em 35 testes.
 
-- suíte focal exata do plano: 24 arquivos/241 testes verdes;
-- regressões Task 5/shadow: 10 arquivos/171 testes verdes;
+- suíte focal exata do plano: 24 arquivos/270 testes verdes;
+- regressões Task 5/shadow: 10 arquivos/196 testes verdes;
 - regressões Task 4/V1: 6 arquivos/74 testes verdes;
 - agenda: 4 arquivos/86 testes verdes;
 - auditoria PII executada diretamente, sem dotenv: 41 arquivos, zero finding bloqueante;
 - `db:check`, typecheck e `git diff --check`: verdes;
 - `npm run verify`, executado com worktree clean depois do commit documental: Drizzle meta OK,
   lint com zero erro e um warning legado em V1, typecheck verde, 358 arquivos/3.144 testes
-  verdes e 11 skips no checkpoint inicial; após o hardening, 358 arquivos/3.150 testes verdes e
-  11 skips;
+  verdes e 11 skips no checkpoint inicial; após o primeiro hardening, 358 arquivos/3.150 testes
+  verdes e 11 skips. A contagem final da segunda rodada está registrada no commit documental de
+  verificação posterior;
 - `git diff 99a852aa -- src/core src/conversation-core`: somente o split genérico de pipeline e
   a seam observacional V1 previamente revisados; a Task 7 não alterou esses diretórios.
 
-A primeira revisão independente da Task 7 encontrou os gaps acima. A re-review do hardening
-ocorre depois deste checkpoint. Os resultados locais não alteram retroativamente o gate report
+A primeira e a segunda revisões independentes da Task 7 encontraram os gaps acima. A nova
+re-review da rodada 2 ocorre depois deste checkpoint. Os resultados locais não alteram
+retroativamente o gate report
 unsigned nem fabricam observações V1×V2.
 
 NO-GO INTERNAL V2
