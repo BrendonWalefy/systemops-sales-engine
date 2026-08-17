@@ -10,11 +10,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (unauthorized) return unauthorized;
 
   const now = new Date();
-  const decisionTraces = await new DrizzleDecisionTraceStore().deleteExpired(now);
-  const conversationV2Comparisons = await new DrizzleConversationV2ComparisonSink({
-    allowedModelIds: [],
-  }).deleteExpired(now);
+  const [decisionTraceResult, comparisonResult] = await Promise.allSettled([
+    new DrizzleDecisionTraceStore().deleteExpired(now),
+    new DrizzleConversationV2ComparisonSink({
+      allowedModelIds: [],
+    }).deleteExpired(now),
+  ]);
+  if (decisionTraceResult.status === "rejected") throw decisionTraceResult.reason;
+  if (comparisonResult.status === "rejected") throw comparisonResult.reason;
   return NextResponse.json({
-    deleted: { decisionTraces, conversationV2Comparisons },
+    deleted: {
+      decisionTraces: decisionTraceResult.value,
+      conversationV2Comparisons: comparisonResult.value,
+    },
   });
 }

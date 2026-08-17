@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   isRegisteredInternalV2ActivationApproval,
@@ -15,12 +15,22 @@ import {
   CONVERSATION_ENGINES,
   resolveConversationEngine,
 } from "@/application/conversation-v2/engine-selection";
-import { HmacCycleIAuthorityVerifier } from "@/infrastructure/conversation-v2/hmac-cycle-i-authority-verifier";
+import {
+  CYCLE_I_ACTIVATION_APPROVAL_AUTHORITY_DOMAIN,
+  CYCLE_I_GATE_REPORT_AUTHORITY_DOMAIN,
+} from "@/application/conversation-v2/configured-cycle-i-authority";
 
 const ref = (tail: string): HmacRef => `hmac:${"a".repeat(63)}${tail}`;
 const authorityKey = "cycle-i-authority-key-with-at-least-32-characters";
 const attackerKey = "attacker-controlled-key-with-at-least-32-characters";
-const verifier = new HmacCycleIAuthorityVerifier(authorityKey);
+const gateAuthority = generateKeyPairSync("ed25519");
+const approvalAuthorityKeyPair = generateKeyPairSync("ed25519");
+const attackerGateAuthority = generateKeyPairSync("ed25519");
+const attackerApprovalAuthority = generateKeyPairSync("ed25519");
+process.env.CONVERSATION_V2_GATE_REPORT_AUTHORITY_PUBLIC_KEY = gateAuthority.publicKey
+  .export({ type: "spki", format: "pem" }).toString();
+process.env.CONVERSATION_V2_ACTIVATION_APPROVAL_AUTHORITY_PUBLIC_KEY = approvalAuthorityKeyPair.publicKey
+  .export({ type: "spki", format: "pem" }).toString();
 const digests = {
   reportDigest: ref("1"), populationDigest: ref("2"),
   datasetDigest: ref("3"), configDigest: ref("4"),
@@ -34,7 +44,11 @@ function hmac(payload: string, key = authorityKey): HmacRef {
   return `hmac:${createHmac("sha256", key).update(payload).digest("hex")}`;
 }
 
-function passingReport(key = authorityKey): CycleIGateReport {
+function authoritySignature(domain: string, payload: string, privateKey: KeyObject): `ed25519:${string}` {
+  return `ed25519:${sign(null, Buffer.from(`${domain}\0${payload}`), privateKey).toString("hex")}`;
+}
+
+function passingReport(privateKey = gateAuthority.privateKey, digestKey = authorityKey): CycleIGateReport {
   const report = buildCycleIGateReport({ ...digests, measurements: {
     h_entailment: { ...evidence(1), passed: true },
     shadow_no_effects: { ...evidence(1), sideEffects: 0, contamination: 0 },
@@ -50,13 +64,24 @@ function passingReport(key = authorityKey): CycleIGateReport {
     verification: { ...evidence(1), passed: true },
     adversarial_review: { ...evidence(1), passed: true },
   } });
-  return Object.freeze({
+  const withDigest = Object.freeze({
     ...report,
-    reportDigest: hmac(serializeCycleIGateReportAuthorityPayload(report), key),
+    reportDigest: hmac(serializeCycleIGateReportAuthorityPayload(report), digestKey),
+  }) as CycleIGateReport;
+  return Object.freeze({
+    ...withDigest,
+    authoritySignature: authoritySignature(
+      CYCLE_I_GATE_REPORT_AUTHORITY_DOMAIN,
+      serializeCycleIGateReportAuthorityPayload(withDigest),
+      privateKey,
+    ),
   });
 }
 
-function approvalAuthority(report: CycleIGateReport, key = authorityKey) {
+function approvalAuthority(
+  report: CycleIGateReport,
+  privateKey = approvalAuthorityKeyPair.privateKey,
+) {
   const expected = {
     commit: "e86201adb3b7eb6665629f5e73cbb5964acdc745",
     reportDigest: report.reportDigest,
@@ -74,17 +99,40 @@ function approvalAuthority(report: CycleIGateReport, key = authorityKey) {
   const payload = JSON.stringify(Object.fromEntries(
     Object.entries(unsigned).sort(([left], [right]) => left.localeCompare(right)),
   ));
-  return { expected, approvalRecord: { ...unsigned, signature: hmac(payload, key) } } as const;
+  return {
+    expected,
+    approvalRecord: {
+      ...unsigned,
+      signature: authoritySignature(
+        CYCLE_I_ACTIVATION_APPROVAL_AUTHORITY_DOMAIN,
+        payload,
+        privateKey,
+      ),
+    },
+  } as const;
 }
 
 function parsePassingReport() {
-  return parseCycleIGateReport(JSON.parse(JSON.stringify(passingReport())), verifier);
+  return parseCycleIGateReport(JSON.parse(JSON.stringify(passingReport())));
 }
 
 describe("Cycle I internal activation approval", () => {
+  it("does not accept a caller-supplied permissive structural verifier", () => {
+    const selfDeclared = passingReport(attackerGateAuthority.privateKey, attackerKey);
+    const permissive = {
+      verifyGateReport: () => true,
+      verifyApprovalRecord: () => true,
+    };
+
+    expect(() => (parseCycleIGateReport as unknown as (...args: unknown[]) => unknown)(
+      JSON.parse(JSON.stringify(selfDeclared)),
+      permissive,
+    )).toThrow(/authority|trusted|signature|config/i);
+  });
+
   it("rejects an all-pass report self-declared under an untrusted authority", () => {
-    const selfDeclared = passingReport(attackerKey);
-    expect(() => parseCycleIGateReport(JSON.parse(JSON.stringify(selfDeclared)), verifier))
+    const selfDeclared = passingReport(attackerGateAuthority.privateKey, attackerKey);
+    expect(() => parseCycleIGateReport(JSON.parse(JSON.stringify(selfDeclared))))
       .toThrow(/authority|digest|authentic/i);
   });
 
@@ -92,13 +140,13 @@ describe("Cycle I internal activation approval", () => {
     const built = passingReport();
     const authority = approvalAuthority(built);
     expect(() => parseInternalV2ActivationApproval(
-      built, authority.expected, authority.approvalRecord, verifier,
+      built, authority.expected, authority.approvalRecord,
     )).toThrow(/registered/i);
 
-    const parsed = parseCycleIGateReport(JSON.parse(JSON.stringify(built)), verifier);
+    const parsed = parseCycleIGateReport(JSON.parse(JSON.stringify(built)));
     const parsedAuthority = approvalAuthority(parsed);
     const approval = parseInternalV2ActivationApproval(
-      parsed, parsedAuthority.expected, parsedAuthority.approvalRecord, verifier,
+      parsed, parsedAuthority.expected, parsedAuthority.approvalRecord,
     );
     expect(isRegisteredInternalV2ActivationApproval(approval)).toBe(true);
     expect(Object.isFrozen(approval)).toBe(true);
@@ -113,7 +161,7 @@ describe("Cycle I internal activation approval", () => {
     const parsed = parsePassingReport();
     const authority = approvalAuthority(parsed);
     const approval = parseInternalV2ActivationApproval(
-      parsed, authority.expected, authority.approvalRecord, verifier,
+      parsed, authority.expected, authority.approvalRecord,
     );
 
     for (const automationMode of ["disabled", "observe", "live"] as const) {
@@ -151,7 +199,7 @@ describe("Cycle I internal activation approval", () => {
       const authority = approvalAuthority(parsed);
       const wrongExpected = { ...authority.expected, [field]: field === "commit" ? "deadbee" : ref("9") };
       expect(() => parseInternalV2ActivationApproval(
-        parsed, wrongExpected as never, authority.approvalRecord, verifier,
+        parsed, wrongExpected as never, authority.approvalRecord,
       )).toThrow(/mismatch/i);
     },
   );
@@ -164,13 +212,13 @@ describe("Cycle I internal activation approval", () => {
       const parsed = parsePassingReport();
       const authority = approvalAuthority(parsed);
       expect(() => parseInternalV2ActivationApproval(
-        parsed, authority.expected, alter(authority.approvalRecord), verifier,
+        parsed, authority.expected, alter(authority.approvalRecord),
       )).toThrow();
     }
     const parsed = parsePassingReport();
-    const attacker = approvalAuthority(parsed, attackerKey);
+    const attacker = approvalAuthority(parsed, attackerApprovalAuthority.privateKey);
     expect(() => parseInternalV2ActivationApproval(
-      parsed, attacker.expected, attacker.approvalRecord, verifier,
+      parsed, attacker.expected, attacker.approvalRecord,
     )).toThrow(/signature|authentic/i);
   });
 
@@ -178,7 +226,7 @@ describe("Cycle I internal activation approval", () => {
     const parsed = parsePassingReport();
     const authority = approvalAuthority(parsed);
     const approval = parseInternalV2ActivationApproval(
-      parsed, authority.expected, authority.approvalRecord, verifier,
+      parsed, authority.expected, authority.approvalRecord,
     );
     expect(isRegisteredInternalV2ActivationApproval({ ...approval } as never)).toBe(false);
     expect(isRegisteredInternalV2ActivationApproval({} as never)).toBe(false);
@@ -193,7 +241,7 @@ describe("Cycle I internal activation approval", () => {
       get(target, key, receiver) { reads += 1; return Reflect.get(target, key, receiver); },
     });
     expect(() => parseInternalV2ActivationApproval(
-      parsed, proxied, authority.approvalRecord, verifier,
+      parsed, proxied, authority.approvalRecord,
     )).toThrow(/approval|expected|invalid/i);
     expect(reads).toBe(0);
     const accessor = { ...authority.expected } as Record<string, unknown>;
@@ -202,18 +250,29 @@ describe("Cycle I internal activation approval", () => {
       get() { reads += 1; return authority.expected.commit; },
     });
     expect(() => parseInternalV2ActivationApproval(
-      parsed, accessor as never, authority.approvalRecord, verifier,
+      parsed, accessor as never, authority.approvalRecord,
     )).toThrow(/approval|expected|invalid/i);
     expect(reads).toBe(0);
   });
 
   it("rejects a registered report whose blocking evidence is not all pass", () => {
     const report = buildCycleIGateReport(digests);
-    const signed = { ...report, reportDigest: hmac(serializeCycleIGateReportAuthorityPayload(report)) };
-    const parsed = parseCycleIGateReport(JSON.parse(JSON.stringify(signed)), verifier);
+    const withDigest = {
+      ...report,
+      reportDigest: hmac(serializeCycleIGateReportAuthorityPayload(report)),
+    } as CycleIGateReport;
+    const signed = {
+      ...withDigest,
+      authoritySignature: authoritySignature(
+        CYCLE_I_GATE_REPORT_AUTHORITY_DOMAIN,
+        serializeCycleIGateReportAuthorityPayload(withDigest),
+        gateAuthority.privateKey,
+      ),
+    };
+    const parsed = parseCycleIGateReport(JSON.parse(JSON.stringify(signed)));
     const authority = approvalAuthority(parsed);
     expect(() => parseInternalV2ActivationApproval(
-      parsed, authority.expected, authority.approvalRecord, verifier,
+      parsed, authority.expected, authority.approvalRecord,
     )).toThrow(/gate|NO_GO|pass/i);
   });
 });

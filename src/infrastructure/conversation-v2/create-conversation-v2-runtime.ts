@@ -1,8 +1,5 @@
 import OpenAI from "openai";
 import type { ConversationEnginePolicyReader } from "@/application/ports/conversation-engine-policy-reader";
-import type {
-  ConversationEngineSelectionTraceSink,
-} from "@/application/ports/conversation-engine-selection-trace";
 import type { ConversationV2ComparisonSink } from "@/application/ports/conversation-v2-comparison-sink";
 import {
   createShadowTurnCaptureRegistry,
@@ -16,10 +13,6 @@ import {
 import { V2ShadowRunner } from "@/application/conversation-v2/v2-shadow-runner";
 import type { CapturedV2TurnReads } from "@/application/conversation-v2/captured-turn-reads";
 import type { V1TurnObservationSink } from "@/core/observability/V1TurnObservation";
-import {
-  recordDecisionTrace,
-  type DecisionTraceSink,
-} from "@/core/observability/DecisionTrace";
 import { DentalUnderstandingProvider } from "@/infrastructure/adapters/ai/DentalUnderstandingProvider";
 import { OpenAIDentalUnderstandingModel } from "@/infrastructure/adapters/ai/OpenAIDentalUnderstandingModel";
 import { DrizzleConversationEnginePolicyReader } from "@/infrastructure/repositories/drizzle-conversation-engine-policy-reader";
@@ -131,7 +124,6 @@ export function createConversationV2Runtime(input: {
   collector?: V1ObservationCollector;
   policyReader?: ConversationEnginePolicyReader;
   comparisonSink?: ConversationV2ComparisonSink;
-  decisionTraceSink?: DecisionTraceSink;
 } = {}) {
   const env = input.env ?? process.env;
   const hmacKey = env.CONVERSATION_V2_COMPARISON_HMAC_KEY?.trim() ?? "";
@@ -149,23 +141,6 @@ export function createConversationV2Runtime(input: {
 
   return Object.freeze({
     policyReader,
-    selectionTrace: Object.freeze({
-      async record(trace: Parameters<ConversationEngineSelectionTraceSink["record"]>[0]) {
-        await recordDecisionTrace(input.decisionTraceSink, {
-          turnId: trace.turnRef,
-          stage: "conversation.engine_selected",
-          occurredAt: trace.occurredAt,
-          clinicId: trace.clinicId,
-          metadata: {
-            automationMode: trace.automationMode,
-            configuredEngine: trace.configuredEngine,
-            effectiveRoute: trace.effectiveRoute,
-            shadow: trace.shadow,
-            selectorReason: trace.reason,
-          },
-        });
-      },
-    }),
     sink: comparisonSink,
     evaluator: createEvaluator({ env, hmacKey, modelId }),
     approval: null,

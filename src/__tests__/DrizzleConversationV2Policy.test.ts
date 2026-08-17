@@ -163,6 +163,60 @@ describe("Cycle I Drizzle engine policy and sanitized comparison persistence", (
     expect(reads).toBe(0);
   });
 
+  it("keeps sink allowlist and clock in runtime-private fields despite cast mutation", async () => {
+    const values = vi.fn().mockResolvedValue(undefined);
+    dbMock.insert.mockReturnValue({ values });
+    const sink = new DrizzleConversationV2ComparisonSink({
+      allowedModelIds: ["trusted-model"],
+      now: () => new Date("2026-08-16T12:00:00.000Z"),
+    });
+    const cast = sink as unknown as {
+      allowedModelIds?: Set<string>;
+      now?: () => Date;
+    };
+    cast.allowedModelIds = new Set(["attacker-model"]);
+    cast.now = () => new Date("2030-01-01T00:00:00.000Z");
+    const record = liveRecord();
+    const attackerRecord = {
+      ...record,
+      v1: {
+        ...record.v1,
+        model: {
+          modelId: "attacker-model", calls: 1, inputTokens: null,
+          outputTokens: null, latencyMs: 1, estimatedCostMinor: null,
+        },
+      },
+    };
+
+    await expect(sink.append({ clinicId: "clinic-a", record: attackerRecord as never }))
+      .rejects.toThrow(/allowlist|model/i);
+    expect(values).not.toHaveBeenCalled();
+
+    await sink.append({ clinicId: "clinic-a", record: liveRecord() as never });
+    expect(values).toHaveBeenCalledWith(expect.objectContaining({
+      expiresAt: new Date("2026-09-15T12:00:00.000Z"),
+    }));
+  });
+
+  it("rejects proxy/accessor append envelopes before executing traps", async () => {
+    const sink = new DrizzleConversationV2ComparisonSink({ allowedModelIds: [] });
+    let reads = 0;
+    const proxied = new Proxy({ clinicId: "clinic-a", record: liveRecord() }, {
+      get(target, key, receiver) {
+        reads += 1;
+        return Reflect.get(target, key, receiver);
+      },
+      getOwnPropertyDescriptor(target, key) {
+        reads += 1;
+        return Reflect.getOwnPropertyDescriptor(target, key);
+      },
+    });
+
+    await expect(sink.append(proxied as never)).rejects.toThrow(/input|envelope|invalid/i);
+    expect(reads).toBe(0);
+    expect(dbMock.insert).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid/PII-bearing records before touching persistence", async () => {
     const sink = new DrizzleConversationV2ComparisonSink({ allowedModelIds: [] });
     await expect(sink.append({
@@ -205,6 +259,17 @@ describe("Cycle I Drizzle engine policy and sanitized comparison persistence", (
     await expect(response.json()).resolves.toEqual({
       deleted: { decisionTraces: 1, conversationV2Comparisons: 1 },
     });
+  });
+
+  it("still attempts comparison cleanup when decision-trace cleanup fails", async () => {
+    dbMock.select
+      .mockImplementationOnce(() => { throw new Error("decision trace cleanup unavailable"); })
+      .mockReturnValueOnce(selectRows([]));
+
+    await expect(cleanupExpiredTraces(
+      new NextRequest("https://example.test/api/cron/decision-trace-cleanup"),
+    )).rejects.toThrow(/decision trace cleanup unavailable/i);
+    expect(dbMock.select).toHaveBeenCalledTimes(2);
   });
 
   it("deletes comparison rows in clinic reset and reports the count", async () => {

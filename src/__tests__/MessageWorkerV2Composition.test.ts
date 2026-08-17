@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import { createConversationV2Runtime } from "@/infrastructure/conversation-v2/create-conversation-v2-runtime";
 import { V1ObservationCollector } from "@/application/conversation-v2/v1-observation-collector";
 import type { V1TurnObservationEvent } from "@/core/observability/V1TurnObservation";
-import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 
 function readyEvents(turnId: string): V1TurnObservationEvent[] {
   return [
@@ -122,44 +121,8 @@ describe("Cycle I message worker composition", () => {
     expect(processCall).toBeGreaterThanOrEqual(0);
     expect(senderBarrierCall).toBeGreaterThan(processCall);
     expect(shadowBatchCall).toBeGreaterThan(senderBarrierCall);
-  });
-
-  it("emits only the sanitized HMAC selector trace through the runtime adapter", async () => {
-    const decisionTraceSink = new InMemoryDecisionTraceSink();
-    const runtime = createConversationV2Runtime({
-      env: {
-        CONVERSATION_V2_COMPARISON_HMAC_KEY: "x".repeat(32),
-        VERCEL_GIT_COMMIT_SHA: "e86201adb3b7eb6665629f5e73cbb5964acdc745",
-      },
-      collector: new V1ObservationCollector(),
-      decisionTraceSink,
-    });
-    const turnRef = `hmac:${"a".repeat(64)}` as const;
-
-    await runtime.selectionTrace.record({
-      turnRef,
-      clinicId: "clinic-a",
-      occurredAt: "2026-08-16T12:00:00.000Z",
-      automationMode: "live",
-      configuredEngine: "v1_with_v2_shadow",
-      effectiveRoute: "v1",
-      shadow: true,
-      reason: "configured_shadow",
-    });
-
-    expect(decisionTraceSink.getEvents(turnRef)).toEqual([expect.objectContaining({
-      turnId: turnRef,
-      clinicId: "clinic-a",
-      stage: "conversation.engine_selected",
-      metadata: {
-        automationMode: "live",
-        configuredEngine: "v1_with_v2_shadow",
-        effectiveRoute: "v1",
-        shadow: true,
-        selectorReason: "configured_shadow",
-      },
-    })]);
-    expect(JSON.stringify(decisionTraceSink.getEvents(turnRef))).not.toContain("leadMessage");
+    expect(source.indexOf('log.info("conversation_v2.engine_selected"'))
+      .toBeGreaterThan(shadowBatchCall);
   });
 
   it("does not cache policy in runtime assembly", async () => {

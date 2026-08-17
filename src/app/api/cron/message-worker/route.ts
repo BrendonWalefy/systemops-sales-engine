@@ -57,7 +57,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const jobQueue = new DrizzleJobQueue();
   const audioTranscriber = new ZApiAudioTranscriber(new WhisperGateway());
   const decisionTraceSink = createRuntimeDecisionTraceSink();
-  const conversationV2Runtime = createConversationV2Runtime({ decisionTraceSink });
+  const conversationV2Runtime = createConversationV2Runtime();
   const handler = new ProcessMessageJobHandler({
     inboundEventStore,
     automationPolicy: new DrizzleClinicAutomationPolicyReader(),
@@ -116,11 +116,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         occurredAt: () => new Date().toISOString(),
         afterAttempt: async (senderBarrier, turns) => {
           try {
-            return await runConversationV2ShadowBatch({
+            const summary = await runConversationV2ShadowBatch({
               senderBarrier,
               turns,
               policyReader: conversationV2Runtime.policyReader,
-              selectionTrace: conversationV2Runtime.selectionTrace,
               evaluator: conversationV2Runtime.evaluator,
               sink: conversationV2Runtime.sink,
               approval: conversationV2Runtime.approval,
@@ -129,6 +128,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
               now: conversationV2Runtime.now,
               recordConfig: conversationV2Runtime.recordConfig,
             });
+            for (const selection of summary.selections) {
+              log.info("conversation_v2.engine_selected", selection);
+            }
+            return summary;
           } catch (error) {
             log.error("conversation_v2.shadow.failed", error);
             return null;

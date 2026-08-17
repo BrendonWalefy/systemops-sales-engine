@@ -5,7 +5,10 @@ import {
   type CycleIGateReport,
 } from "@/application/conversation-v2/gate-report";
 import type { HmacRef } from "@/application/conversation-v2/comparison-record";
-import type { CycleIAuthorityVerifier } from "@/application/ports/cycle-i-authority-verifier";
+import {
+  verifyConfiguredCycleIApprovalAuthority,
+  type Ed25519SignatureRef,
+} from "@/application/conversation-v2/configured-cycle-i-authority";
 
 export const INTERNAL_V2_ACTIVATION_APPROVAL_VERSION =
   "conversation-v2-internal-activation-approval.v1" as const;
@@ -31,6 +34,7 @@ export type InternalV2ActivationExpected = Readonly<{
 }>;
 
 const hmac = z.string().regex(/^hmac:[a-f0-9]{64}$/);
+const ed25519Signature = z.string().regex(/^ed25519:[a-f0-9]{128}$/);
 const commit = z.string().regex(/^[a-f0-9]{7,64}$/);
 const isoDateTime = z.string().datetime({ offset: true });
 const approvalRecordSchema = z.object({
@@ -43,7 +47,7 @@ const approvalRecordSchema = z.object({
   populationDigest: hmac,
   datasetDigest: hmac,
   configDigest: hmac,
-  signature: hmac,
+  signature: ed25519Signature,
 }).strict();
 
 const approvals = new WeakSet<object>();
@@ -85,7 +89,6 @@ export function parseInternalV2ActivationApproval(
   report: CycleIGateReport,
   expected: InternalV2ActivationExpected,
   approvalRecord: unknown,
-  verifier: CycleIAuthorityVerifier,
 ): InternalV2ActivationApproval {
   if (!isRegisteredCycleIGateReport(report)) {
     throw new Error("Cycle I gate report is not registered by the canonical parser");
@@ -111,7 +114,10 @@ export function parseInternalV2ActivationApproval(
   const approvalPayload = JSON.stringify(Object.fromEntries(
     Object.entries(unsignedApproval).sort(([left], [right]) => left.localeCompare(right)),
   ));
-  if (!verifier.verifyApprovalRecord(approvalPayload, signature as HmacRef)) {
+  if (!verifyConfiguredCycleIApprovalAuthority(
+    approvalPayload,
+    signature as Ed25519SignatureRef,
+  )) {
     throw new Error("internal V2 approval record signature is invalid");
   }
   const exact = {

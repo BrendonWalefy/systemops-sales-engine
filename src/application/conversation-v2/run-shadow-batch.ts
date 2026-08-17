@@ -1,6 +1,5 @@
 import { isProxy } from "node:util/types";
 import type { ConversationEnginePolicyReader } from "@/application/ports/conversation-engine-policy-reader";
-import type { ConversationEngineSelectionTraceSink } from "@/application/ports/conversation-engine-selection-trace";
 import type { ConversationV2ComparisonSink } from "@/application/ports/conversation-v2-comparison-sink";
 import type { ClinicAutomationMode } from "@/application/automation/clinic-automation-policy";
 import type { InternalV2ActivationApproval } from "@/application/conversation-v2/activation-approval";
@@ -16,6 +15,7 @@ import {
   type ModelCallSummary,
 } from "@/application/conversation-v2/comparison-record";
 import {
+  canonicalizeConversationEnginePolicy,
   resolveConversationEngine,
   type ConversationEngine,
   type EffectiveConversationEngine,
@@ -52,6 +52,16 @@ export type ShadowEvaluator = Readonly<{
   evaluate(reads: CapturedV2TurnReads, signal: AbortSignal): Promise<ShadowEvaluation>;
 }>;
 
+export type ShadowEngineSelection = Readonly<{
+  turnRef: HmacRef;
+  clinicRef: HmacRef;
+  automationMode: ClinicAutomationMode;
+  configuredEngine: ConversationEngine | null;
+  effectiveRoute: "v1";
+  shadow: boolean;
+  reason: EffectiveConversationEngine["reason"] | "policy_unavailable";
+}>;
+
 export type ShadowBatchSummary = Readonly<{
   received: number;
   selected: number;
@@ -64,6 +74,7 @@ export type ShadowBatchSummary = Readonly<{
   sinkErrors: number;
   maxTurnsReached: boolean;
   deadlineReached: boolean;
+  selections: readonly ShadowEngineSelection[];
 }>;
 
 const barriers = new WeakSet<object>();
@@ -392,7 +403,6 @@ export async function runConversationV2ShadowBatch(input: {
   senderBarrier: SenderDrainAttempted;
   turns: readonly ShadowBatchTurn[];
   policyReader: ConversationEnginePolicyReader;
-  selectionTrace: ConversationEngineSelectionTraceSink;
   evaluator: ShadowEvaluator;
   sink: ConversationV2ComparisonSink;
   approval: InternalV2ActivationApproval | null;
@@ -406,6 +416,9 @@ export async function runConversationV2ShadowBatch(input: {
     allowedModelIds: readonly string[];
   }>;
 }): Promise<ShadowBatchSummary> {
+  const canonicalRecordConfig = canonicalizeComparisonRecordConfig(input.recordConfig);
+  if (!Number.isSafeInteger(input.maxTurns) || input.maxTurns < 0) throw new Error("invalid maxTurns");
+  if (!Number.isFinite(input.deadlineMs) || input.deadlineMs < 0) throw new Error("invalid deadlineMs");
   const turns = barrierBatches.get(input.senderBarrier);
   const barrierRegistered = barriers.has(input.senderBarrier);
   barriers.delete(input.senderBarrier);
@@ -416,9 +429,6 @@ export async function runConversationV2ShadowBatch(input: {
     || !barrierRegistered
   ) throw new Error("sender barrier is not registered for this batch snapshot");
   consumeBatchTurns(turns);
-  const canonicalRecordConfig = canonicalizeComparisonRecordConfig(input.recordConfig);
-  if (!Number.isSafeInteger(input.maxTurns) || input.maxTurns < 0) throw new Error("invalid maxTurns");
-  if (!Number.isFinite(input.deadlineMs) || input.deadlineMs < 0) throw new Error("invalid deadlineMs");
   const recordConfig = Object.freeze({
     hmacKey: canonicalRecordConfig.hmacKey,
     commit: canonicalRecordConfig.commit,
@@ -441,8 +451,9 @@ export async function runConversationV2ShadowBatch(input: {
     maxTurnsReached: false,
     deadlineReached: false,
   };
+  const selections: ShadowEngineSelection[] = [];
 
-  const recordSelection = async (
+  const recordSelection = (
     turn: ShadowBatchTurn,
     selection: Readonly<{
       configuredEngine: ConversationEngine | null;
@@ -450,18 +461,13 @@ export async function runConversationV2ShadowBatch(input: {
       shadow: boolean;
       reason: EffectiveConversationEngine["reason"] | "policy_unavailable";
     }>,
-  ): Promise<void> => {
-    try {
-      await input.selectionTrace.record(Object.freeze({
-        turnRef: keyedRef(turn.turn.turnId, recordConfig.hmacKey),
-        clinicId: turn.clinicId,
-        occurredAt: turn.turn.sharedReads.input.now,
-        automationMode: turn.automationMode,
-        ...selection,
-      }));
-    } catch {
-      // Selection observability is best-effort and cannot affect V1 or shadow.
-    }
+  ): void => {
+    selections.push(Object.freeze({
+      turnRef: keyedRef(turn.turn.turnId, recordConfig.hmacKey),
+      clinicRef: keyedRef(turn.clinicId, recordConfig.hmacKey),
+      automationMode: turn.automationMode,
+      ...selection,
+    }));
   };
 
   for (let index = 0; index < turns.length; index += 1) {
@@ -478,7 +484,7 @@ export async function runConversationV2ShadowBatch(input: {
     }
 
     if (turn.automationMode !== "live") {
-      await recordSelection(turn, {
+      recordSelection(turn, {
         configuredEngine: null,
         effectiveRoute: "v1",
         shadow: false,
@@ -490,17 +496,17 @@ export async function runConversationV2ShadowBatch(input: {
 
     let selected = false;
     try {
-      const policy = await settleStartedDependency(
+      const rawPolicy = await settleStartedDependency(
         () => input.policyReader.getConversationEnginePolicy(turn.clinicId),
         deadlineAt - input.now(),
       );
-      if (policy.clinicId !== turn.clinicId) throw new Error("conversation engine policy tenant mismatch");
+      const policy = canonicalizeConversationEnginePolicy(rawPolicy, turn.clinicId);
       const effective = resolveConversationEngine({
         automationMode: turn.automationMode,
         policy,
         approval: input.approval,
       });
-      await recordSelection(turn, {
+      recordSelection(turn, {
         configuredEngine: policy.engine,
         effectiveRoute: effective.route,
         shadow: effective.shadow,
@@ -514,7 +520,7 @@ export async function runConversationV2ShadowBatch(input: {
         break;
       }
       summary.policyErrors += 1;
-      await recordSelection(turn, {
+      recordSelection(turn, {
         configuredEngine: null,
         effectiveRoute: "v1",
         shadow: false,
@@ -582,5 +588,5 @@ export async function runConversationV2ShadowBatch(input: {
     }
   }
 
-  return Object.freeze(summary);
+  return Object.freeze({ ...summary, selections: Object.freeze(selections) });
 }

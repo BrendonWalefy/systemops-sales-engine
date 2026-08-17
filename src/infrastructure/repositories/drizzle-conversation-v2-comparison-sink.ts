@@ -16,8 +16,8 @@ const RETENTION_MS = 30 * 24 * 60 * 60_000;
 
 export class DrizzleConversationV2ComparisonSink
 implements ConversationV2ComparisonSink {
-  private readonly allowedModelIds: ReadonlySet<string>;
-  private readonly now: () => Date;
+  readonly #allowedModelIds: ReadonlySet<string>;
+  readonly #now: () => Date;
 
   constructor(input: {
     allowedModelIds: readonly string[];
@@ -38,19 +38,30 @@ implements ConversationV2ComparisonSink {
     if (source.now !== undefined && typeof source.now !== "function") {
       throw new Error("invalid comparison sink clock");
     }
-    this.allowedModelIds = new Set(allowedModelIds);
-    this.now = (source.now as (() => Date) | undefined) ?? (() => new Date());
+    this.#allowedModelIds = new Set(allowedModelIds);
+    this.#now = (source.now as (() => Date) | undefined) ?? (() => new Date());
   }
 
   async append(input: Readonly<{
     clinicId: string;
     record: LiveComparisonRecord;
   }>): Promise<void> {
-    const record = parseLiveComparisonRecord(input.record, this.allowedModelIds);
-    const now = this.now();
+    const source = snapshotExactPlainRecord(
+      input,
+      ["clinicId", "record"],
+      "invalid comparison sink append envelope",
+    );
+    if (typeof source.clinicId !== "string" || source.clinicId.length === 0) {
+      throw new Error("invalid comparison sink clinic");
+    }
+    const record = parseLiveComparisonRecord(source.record, this.#allowedModelIds);
+    const now = this.#now();
+    if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
+      throw new Error("invalid comparison sink clock result");
+    }
     await db.insert(conversationV2Comparisons).values({
       turnRef: record.turnRef,
-      clinicId: input.clinicId,
+      clinicId: source.clinicId,
       record,
       occurredAt: new Date(record.occurredAt),
       expiresAt: new Date(now.getTime() + RETENTION_MS),

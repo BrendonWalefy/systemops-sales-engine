@@ -98,7 +98,6 @@ function deps(overrides: Record<string, unknown> = {}) {
       })),
     },
     sink: { append: vi.fn().mockResolvedValue(undefined) },
-    selectionTrace: { record: vi.fn().mockResolvedValue(undefined) },
     approval: null,
     maxTurns: 10,
     deadlineMs: 1_000,
@@ -470,7 +469,8 @@ describe("Cycle I post-sender shadow batch", () => {
       });
       const input = deps();
 
-      await expect(runRegisteredBatch({ turns: [turn], ...input })).resolves.toMatchObject({
+      const summary = await runRegisteredBatch({ turns: [turn], ...input });
+      expect(summary).toMatchObject({
         received: 1,
         selected: 0,
         attempted: 0,
@@ -480,15 +480,16 @@ describe("Cycle I post-sender shadow batch", () => {
       expect(input.policyReader.getConversationEnginePolicy).not.toHaveBeenCalled();
       expect(input.evaluator.evaluate).not.toHaveBeenCalled();
       expect(input.sink.append).not.toHaveBeenCalled();
-      expect(input.selectionTrace.record).toHaveBeenCalledWith(expect.objectContaining({
-        clinicId: "clinic-a",
+      expect(summary.selections).toEqual([expect.objectContaining({
+        clinicRef: expect.stringMatching(/^hmac:[a-f0-9]{64}$/),
         automationMode,
         configuredEngine: null,
         effectiveRoute: "v1",
         shadow: false,
         reason: "automation_not_live",
-      }));
-      expect(JSON.stringify(input.selectionTrace.record.mock.calls)).not.toContain(`turn-${automationMode}`);
+      })]);
+      expect(JSON.stringify(summary.selections)).not.toContain(`turn-${automationMode}`);
+      expect(JSON.stringify(summary.selections)).not.toContain("clinic-a");
     },
   );
 
@@ -504,17 +505,38 @@ describe("Cycle I post-sender shadow batch", () => {
       },
     });
 
-    await expect(runRegisteredBatch({ turns: [turn], ...input })).resolves.toMatchObject({ skipped: 1 });
-    expect(input.selectionTrace.record).toHaveBeenCalledWith(expect.objectContaining({
-      clinicId: "clinic-a",
+    const summary = await runRegisteredBatch({ turns: [turn], ...input });
+    expect(summary).toMatchObject({ skipped: 1 });
+    expect(summary.selections).toEqual([expect.objectContaining({
+      clinicRef: expect.stringMatching(/^hmac:[a-f0-9]{64}$/),
       automationMode: "live",
       configuredEngine: "v1",
       effectiveRoute: "v1",
       shadow: false,
       reason: "configured_v1",
       turnRef: expect.stringMatching(/^hmac:[a-f0-9]{64}$/),
-    }));
-    expect(JSON.stringify(input.selectionTrace.record.mock.calls)).not.toContain("turn-selector-trace");
+    })]);
+    expect(JSON.stringify(summary.selections)).not.toContain("turn-selector-trace");
+  });
+
+  it("returns frozen sanitized selection metadata without an async trace dependency", async () => {
+    const turn = capturedTurn({ turnId: "turn-summary-selection", clinicId: "clinic-a", ready: true });
+    const input = deps();
+    const summary = await runRegisteredBatch({ turns: [turn], ...input });
+
+    expect(summary.selections).toEqual([expect.objectContaining({
+      turnRef: expect.stringMatching(/^hmac:[a-f0-9]{64}$/),
+      clinicRef: expect.stringMatching(/^hmac:[a-f0-9]{64}$/),
+      automationMode: "live",
+      configuredEngine: "v1_with_v2_shadow",
+      effectiveRoute: "v1",
+      shadow: true,
+      reason: "configured_shadow",
+    })]);
+    expect(Object.isFrozen(summary.selections)).toBe(true);
+    expect(Object.isFrozen(summary.selections[0])).toBe(true);
+    expect(JSON.stringify(summary.selections)).not.toContain("turn-summary-selection");
+    expect(JSON.stringify(summary.selections)).not.toContain("clinic-a");
   });
 
   it("honors empty batch, maxTurns and deadline before starting extra model work", async () => {
@@ -562,7 +584,8 @@ describe("Cycle I post-sender shadow batch", () => {
       },
     });
 
-    await expect(runRegisteredBatch({ turns: [turn], ...input })).resolves.toMatchObject({
+    const summary = await runRegisteredBatch({ turns: [turn], ...input });
+    expect(summary).toMatchObject({
       received: 1,
       attempted: 1,
       evaluationErrors: 1,
@@ -618,6 +641,96 @@ describe("Cycle I post-sender shadow batch", () => {
     expect(input.policyReader.getConversationEnginePolicy).not.toHaveBeenCalled();
     expect(input.evaluator.evaluate).not.toHaveBeenCalled();
     expect(input.sink.append).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["proxy", (onRead: () => void) => new Proxy({
+      clinicId: "clinic-a", engine: "lead-pii", isTest: true,
+    }, {
+      get(target, key, receiver) {
+        // Promise resolution is required by ECMAScript to inspect `then` on a
+        // fulfilled object. The policy boundary must not inspect domain data.
+        if (key !== "then") onRead();
+        return Reflect.get(target, key, receiver);
+      },
+      getOwnPropertyDescriptor(target, key) {
+        onRead();
+        return Reflect.getOwnPropertyDescriptor(target, key);
+      },
+    })],
+    ["accessor", (onRead: () => void) => {
+      const policy = { clinicId: "clinic-a", isTest: true } as Record<string, unknown>;
+      Object.defineProperty(policy, "engine", {
+        enumerable: true,
+        get() { onRead(); return "v1_with_v2_shadow"; },
+      });
+      return policy;
+    }],
+  ] as const)("rejects a %s policy result before getters, selector and comparison I/O", async (_kind, makePolicy) => {
+    let reads = 0;
+    const turn = capturedTurn({ turnId: `turn-malformed-policy-${_kind}`, clinicId: "clinic-a", ready: true });
+    const input = deps({
+      policyReader: {
+        getConversationEnginePolicy: vi.fn(async () => makePolicy(() => { reads += 1; }) as never),
+      },
+    });
+
+    const summary = await runRegisteredBatch({ turns: [turn], ...input });
+    expect(summary).toMatchObject({
+      policyErrors: 1,
+      attempted: 0,
+      persisted: 0,
+    });
+    expect(reads).toBe(0);
+    expect(input.evaluator.evaluate).not.toHaveBeenCalled();
+    expect(input.sink.append).not.toHaveBeenCalled();
+    expect(summary.selections).toEqual([expect.objectContaining({
+      turnRef: expect.stringMatching(/^hmac:[a-f0-9]{64}$/),
+      configuredEngine: null,
+      reason: "policy_unavailable",
+    })]);
+    expect(JSON.stringify(summary.selections)).not.toContain("lead-pii");
+  });
+
+  it.each([
+    { clinicId: "clinic-a", engine: "v1_with_v2_shadow", isTest: true, note: "lead-pii" },
+    Object.assign({ clinicId: "clinic-a", engine: "v1_with_v2_shadow", isTest: true }, {
+      [Symbol("lead-pii")]: true,
+    }),
+    { clinicId: "clinic-a", engine: "lead-pii", isTest: true },
+    { clinicId: "clinic-a", engine: "v1_with_v2_shadow", isTest: "yes" },
+    { clinicId: "clinic-b", engine: "v1_with_v2_shadow", isTest: true },
+  ])("fails closed for an invalid exact policy record: %o", async (policy) => {
+    const turn = capturedTurn({ turnId: "turn-invalid-policy", clinicId: "clinic-a", ready: true });
+    const input = deps({
+      policyReader: { getConversationEnginePolicy: vi.fn(async () => policy as never) },
+    });
+
+    const summary = await runRegisteredBatch({ turns: [turn], ...input });
+    expect(summary).toMatchObject({
+      policyErrors: 1,
+      attempted: 0,
+      persisted: 0,
+    });
+    expect(input.evaluator.evaluate).not.toHaveBeenCalled();
+    expect(input.sink.append).not.toHaveBeenCalled();
+    expect(summary.selections).toEqual([expect.objectContaining({
+      configuredEngine: null,
+      reason: "policy_unavailable",
+    })]);
+  });
+
+  it("validates config before consuming the registered turn", async () => {
+    const turn = capturedTurn({ turnId: "turn-config-retry", clinicId: "clinic-a", ready: true });
+    const invalid = deps({
+      recordConfig: { ...deps().recordConfig, commit: "missing_commit" },
+    });
+    await expect(runRegisteredBatch({ turns: [turn], ...invalid }))
+      .rejects.toThrow(/commit|config/i);
+
+    const valid = deps();
+    await expect(runRegisteredBatch({ turns: [turn], ...valid }))
+      .resolves.toMatchObject({ received: 1, attempted: 1, persisted: 1 });
   });
 
   it("contains policy, evaluator and sink failures per turn and continues the batch", async () => {
