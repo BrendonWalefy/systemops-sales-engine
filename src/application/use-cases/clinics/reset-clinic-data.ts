@@ -11,6 +11,7 @@ export type DbResetCounts = {
   conversations: number;
   aiUsageCosts: number;
   whatsappMessageCosts: number;
+  conversationV2Comparisons: number;
   leads: number;
 };
 

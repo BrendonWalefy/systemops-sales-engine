@@ -13,6 +13,7 @@ import {
   calendarBlocks,
   aiUsageCosts,
   whatsappMessageCosts,
+  conversationV2Comparisons,
 } from "@/infrastructure/db/schema";
 import type { ClinicResetPort, DbResetCounts } from "@/application/use-cases/clinics/reset-clinic-data";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
@@ -60,6 +61,7 @@ export class DrizzleClinicResetRepository implements ClinicResetPort {
       conversations: 0,
       aiUsageCosts: 0,
       whatsappMessageCosts: 0,
+      conversationV2Comparisons: 0,
       leads: 0,
     };
 
@@ -129,6 +131,12 @@ export class DrizzleClinicResetRepository implements ClinicResetPort {
       .where(eq(whatsappMessageCosts.clinicId, clinicId))
       .returning({ id: whatsappMessageCosts.id });
     counts.whatsappMessageCosts = waDeleted.length;
+
+    const comparisonDeleted = await db
+      .delete(conversationV2Comparisons)
+      .where(eq(conversationV2Comparisons.clinicId, clinicId))
+      .returning({ turnRef: conversationV2Comparisons.turnRef });
+    counts.conversationV2Comparisons = comparisonDeleted.length;
 
     if (leadIds.length > 0) {
       const leadsDeleted = await db
