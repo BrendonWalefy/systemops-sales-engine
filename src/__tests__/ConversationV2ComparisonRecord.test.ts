@@ -80,6 +80,14 @@ const intendedEffect = {
   payload: { slotRefHash: "c".repeat(64) },
 } as const;
 
+const slotOfferIntendedEffect = {
+  kind: "would_have_executed",
+  capabilityId: "dental-scheduling",
+  payloadHash: "d".repeat(64),
+  action: "persist_slot_offer",
+  payload: { offerRefHash: "e".repeat(64) },
+} as const;
+
 describe("Cycle I comparison records", () => {
   it("only accepts strict HMAC-only live summaries and freezes them", () => {
     const parsed = parseLiveComparisonRecord(live(), new Set(["gpt-5.4-mini"]));
@@ -438,6 +446,33 @@ describe("Cycle I comparison records", () => {
       expect(() => parseLiveComparisonRecord(live(invalid), new Set(["gpt-5.4-mini"])))
         .toThrow(/effect|simulation|execute|capability|invalid/i);
     }
+  });
+
+  it("records a slot offer as an aligned write simulation rather than an evaluated outcome", () => {
+    const simulation = {
+      ...emptyEngine,
+      status: "simulation_not_executed",
+      capabilityIds: ["dental-scheduling"],
+      decisionKinds: ["offer"],
+      executeDecisions: [{
+        capabilityId: "dental-scheduling",
+        decisionKind: "offer",
+        action: "persist_slot_offer",
+      }],
+    };
+
+    const parsed = parseLiveComparisonRecord(live({
+      v2: simulation,
+      intendedEffects: [slotOfferIntendedEffect],
+    }), new Set(["gpt-5.4-mini"]));
+
+    expect(parsed.v2).toMatchObject({
+      status: "simulation_not_executed",
+      decisionKinds: ["offer"],
+      outcomes: [],
+    });
+    expect(parsed.intendedEffects).toEqual([slotOfferIntendedEffect]);
+    expect(JSON.stringify(parsed)).not.toMatch(/slot-|service-|evidence/i);
   });
 
   it("requires simulation to carry and match the exact execute action identity", () => {

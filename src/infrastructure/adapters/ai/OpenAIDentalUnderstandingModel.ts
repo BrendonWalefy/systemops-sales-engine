@@ -2,7 +2,7 @@ import { APIUserAbortError } from "openai";
 import { DENTAL_REQUESTS } from "@/domain-packs/dental/vocabulary";
 import type { DentalUnderstandingModel, DentalUnderstandingModelRequest } from "@/infrastructure/adapters/ai/DentalUnderstandingProvider";
 
-type OpenAIClientBoundary = {
+export type OpenAIClientBoundary = {
   chat: {
     completions: {
       create(

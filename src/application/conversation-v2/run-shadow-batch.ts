@@ -26,12 +26,12 @@ import {
   type CapturedV2TurnReadsPromotion,
 } from "@/application/conversation-v2/v1-observation-collector";
 import type { V2ShadowResult } from "@/application/conversation-v2/v2-shadow-runner";
+import type { DentalEffectDecisionIdentity } from "@/application/conversation-v2/dental-intended-effects";
 import type { CapturedV2TurnReads } from "@/application/conversation-v2/captured-turn-reads";
 import { canonicalizeActionResults } from "@/conversation-core/authorized-response-plan";
 import {
   dentalOutcomeStructuralSummary,
   DENTAL_OUTCOME_SCHEMA,
-  type DentalExecuteDecisionIdentity,
   type DentalRequest,
 } from "@/domain-packs/dental";
 
@@ -257,8 +257,8 @@ function comparisonCapabilityId(value: string): ComparisonCapabilityId {
 }
 
 function nonEmptyExecuteDecisions(
-  decisions: readonly DentalExecuteDecisionIdentity[],
-): readonly [DentalExecuteDecisionIdentity, ...DentalExecuteDecisionIdentity[]] {
+  decisions: readonly DentalEffectDecisionIdentity[],
+): readonly [DentalEffectDecisionIdentity, ...DentalEffectDecisionIdentity[]] {
   const [first, ...remaining] = decisions;
   if (!first) throw new Error("simulation requires an execute decision identity");
   return Object.freeze([first, ...remaining]);
@@ -294,7 +294,7 @@ function v2Summary(
       ...base,
       status: "simulation_not_executed",
       capabilityIds: executeDecisions.map(({ capabilityId }) => comparisonCapabilityId(capabilityId)),
-      decisionKinds: executeDecisions.map(() => "execute" as const),
+      decisionKinds: executeDecisions.map(({ decisionKind }) => decisionKind),
       executeDecisions,
       errorCode: null,
     };

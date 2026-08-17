@@ -19,7 +19,6 @@ import { DeterministicResponseComposer } from "@/conversation-core/composer/dete
 import type { ActionResult } from "@/conversation-core/decision";
 import type { TurnGateInput } from "@/conversation-core/gate";
 import { completeTurnPipeline, prepareTurnPipeline } from "@/conversation-core/turn-pipeline";
-import type { Understanding } from "@/conversation-core/understanding/schema";
 import { takeRecentConversationHistory } from "@/core/intelligence/ConversationHistoryWindow";
 import {
   recordDecisionTrace,
@@ -31,12 +30,11 @@ import {
   createDentalPack,
   DENTAL_OUTCOME_SCHEMA,
   type DentalPolicy,
-  type DentalRequest,
 } from "@/domain-packs/dental";
 import {
-  parseLiveDentalUnderstandingModelId,
-  type LiveDentalUnderstandingModelId,
-} from "@/infrastructure/adapters/ai/DentalUnderstandingProvider";
+  assertRegisteredLiveDentalUnderstanding,
+  type LiveDentalUnderstanding,
+} from "@/infrastructure/adapters/ai/live-dental-understanding";
 
 export type V2SafeFailureReason =
   | "duplicate"
@@ -67,15 +65,7 @@ type DynamicDentalDependencies =
 
 export type V2LiveConversationHandlerDependencies = Readonly<{
   lifecycle: Pick<LiveTurnLifecycle, "begin" | "loadSnapshot" | "complete" | "fail">;
-  understanding: Readonly<{
-    modelId: LiveDentalUnderstandingModelId;
-    understand(input: {
-      leadMessage: string;
-      history: readonly { author: "lead" | "agent"; body: string }[];
-      state: ConversationState | null;
-      catalog: readonly { id: string; displayName: string; aliases: readonly string[] }[];
-    }): Promise<Understanding<DentalRequest>>;
-  }>;
+  understanding: LiveDentalUnderstanding;
   dental: Omit<DentalLiveAdapterDependencies, DynamicDentalDependencies>;
   resolveTurnConfiguration(input: Readonly<{
     context: LiveTurnContext;
@@ -183,9 +173,8 @@ export class V2LiveConversationHandler implements ConversationHandler {
     try {
       turnNow = new Date((this.deps.now?.() ?? new Date()).getTime());
       phase = "understanding";
-      const modelId = parseLiveDentalUnderstandingModelId(
-        this.deps.understanding.modelId,
-      );
+      assertRegisteredLiveDentalUnderstanding(this.deps.understanding);
+      const modelId = this.deps.understanding.modelId;
       phase = "decision";
       const snapshot = await this.deps.lifecycle.loadSnapshot(context);
       const configuration = await this.deps.resolveTurnConfiguration({

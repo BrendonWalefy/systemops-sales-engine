@@ -669,7 +669,6 @@ export function createDentalLiveAdapters(
           evidenceRef: `booking:${turnId}:stale_offer`,
         };
       }
-      effectLifecycle?.attempted();
       const { startsAt, endsAt } = offered;
       let inPeriod = await appointments.findByPeriod(clinic.id, startsAt, endsAt);
       const existing = activeAppointmentForLead(
@@ -694,6 +693,7 @@ export function createDentalLiveAdapters(
         };
       }
 
+      effectLifecycle?.attempted();
       const result = await booking.book({
         clinic,
         lead,
@@ -726,6 +726,7 @@ export function createDentalLiveAdapters(
           evidenceRef: `booking:${turnId}:${result.reason}`,
         };
       }
+      effectLifecycle?.completed();
       if (
         result.appointment.clinicId !== clinic.id ||
         result.appointment.leadId !== leadId
@@ -736,7 +737,6 @@ export function createDentalLiveAdapters(
           evidenceRef: `booking:${turnId}:invalid_binding`,
         };
       }
-      effectLifecycle?.completed();
       await invalidateConsumedStateBestEffort(offered.state.id);
       return successfulOutcome(result.appointment, offered.slot.label);
     },
@@ -763,6 +763,7 @@ export function createDentalLiveAdapters(
           evidenceRef: `appointment-confirmation:${turnId}:${result.reason}`,
         };
       }
+      effectLifecycle?.completed();
       if (
         result.appointment.clinicId !== clinic.id ||
         result.appointment.leadId !== leadId ||
@@ -774,7 +775,6 @@ export function createDentalLiveAdapters(
           evidenceRef: `appointment-confirmation:${turnId}:invalid_binding`,
         };
       }
-      effectLifecycle?.completed();
       await invalidateConsumedStateBestEffort(pending.stateId);
       return successfulOutcome(result.appointment, pending.label);
     },

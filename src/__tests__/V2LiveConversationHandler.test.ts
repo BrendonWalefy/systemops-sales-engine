@@ -7,6 +7,7 @@ import type { Organization } from "@/domain/entities/clinic";
 import type { Conversation, Message } from "@/domain/entities/conversation";
 import type { Lead } from "@/domain/entities/lead";
 import type { Treatment } from "@/domain/entities/treatment";
+import { createLiveDentalUnderstanding } from "@/infrastructure/adapters/ai/live-dental-understanding";
 
 const now = new Date("2026-08-17T12:00:00.000Z");
 const turnId = "turn-v2-live-1";
@@ -90,9 +91,11 @@ function makeHarness(options: {
   bookingTurn?: boolean;
   schedulingOfferTurn?: boolean;
   cleanupFailure?: boolean;
+  invalidBookingBinding?: boolean;
   outboxFailure?: boolean;
   clockFailure?: boolean;
   modelId?: "gpt-4o-mini";
+  canonicalProviderSpoof?: boolean;
   nonPreparedStatus?: "suppressed" | "needs_clarification" | "escalated";
 } = {}) {
   const releaseLease = vi.fn().mockResolvedValue(undefined);
@@ -189,7 +192,7 @@ function makeHarness(options: {
   });
   const appointment = {
     id: "appointment-1",
-    clinicId: clinic.id,
+    clinicId: options.invalidBookingBinding ? "wrong-clinic" : clinic.id,
     leadId: lead.id,
     startsAt: new Date("2026-08-18T18:00:00.000Z"),
     endsAt: new Date("2026-08-18T19:00:00.000Z"),
@@ -208,9 +211,24 @@ function makeHarness(options: {
         jobWasNew: true,
       });
   const trace = new InMemoryDecisionTraceSink();
+  const registeredUnderstanding = createLiveDentalUnderstanding({
+    chat: {
+      completions: {
+        create: vi.fn(async () => ({
+          choices: [{ message: { content: JSON.stringify(await understand()) } }],
+        })),
+      },
+    },
+  });
+  const understandingBoundary = options.canonicalProviderSpoof || options.modelId
+    ? ({
+        modelId: options.modelId ?? "gpt-4o-mini",
+        understand,
+      } as never)
+    : registeredUnderstanding;
   const handler = new V2LiveConversationHandler({
     lifecycle,
-    understanding: { modelId: options.modelId ?? "gpt-4o-mini", understand },
+    understanding: understandingBoundary,
     dental: {
       treatments: {
         listByClinic: options.decisionFailure
@@ -373,7 +391,6 @@ describe("V2LiveConversationHandler", () => {
 
   it.each([
     ["suppressed", "suppressed", "human_controlled"],
-    ["needs_clarification", "needs_clarification", "no_safe_response"],
     ["escalated", "escalated", "no_safe_response"],
   ] as const)(
     "terminates %s without mislabeling it as a technical decision failure",
@@ -398,6 +415,24 @@ describe("V2LiveConversationHandler", () => {
       ]));
     },
   );
+
+  it("rejects a provider-invalid would-be clarification before decision execution", async () => {
+    const harness = makeHarness({ nonPreparedStatus: "needs_clarification" });
+
+    await expect(harness.handler.handle(handleInput())).resolves.toEqual({
+      replied: false,
+      reason: "understanding_failed",
+    });
+    expect(harness.createOutboundMessageAndEnqueue).not.toHaveBeenCalled();
+    expect(harness.lifecycle.fail).toHaveBeenCalledTimes(1);
+    expect(harness.trace.getEvents(turnId).at(-1)).toMatchObject({
+      stage: "turn.failed",
+      metadata: expect.objectContaining({
+        phase: "understanding",
+        reason: "understanding_failed",
+      }),
+    });
+  });
 
   it("never retries or inverts a completed action when the durable outbox fails", async () => {
     const harness = makeHarness({ bookingTurn: true, outboxFailure: true });
@@ -437,6 +472,27 @@ describe("V2LiveConversationHandler", () => {
     ]));
   });
 
+  it("keeps authoritative effect truth when post-booking binding validation fails", async () => {
+    const harness = makeHarness({
+      bookingTurn: true,
+      invalidBookingBinding: true,
+      outboxFailure: true,
+    });
+
+    await expect(harness.handler.handle(handleInput("Pode marcar a primeira opção?")))
+      .rejects.toThrow("outbox unavailable");
+
+    expect(harness.booking.book).toHaveBeenCalledOnce();
+    expect(harness.trace.getEvents(turnId).at(-1)).toMatchObject({
+      stage: "turn.failed",
+      metadata: expect.objectContaining({
+        phase: "outbox",
+        effectAttempted: true,
+        effectCompleted: true,
+      }),
+    });
+  });
+
   it("tracks persisted slot offers as an attempted and completed action without retry", async () => {
     const harness = makeHarness({ schedulingOfferTurn: true, outboxFailure: true });
 
@@ -466,6 +522,18 @@ describe("V2LiveConversationHandler", () => {
     expect(harness.understand).not.toHaveBeenCalled();
     expect(harness.createOutboundMessageAndEnqueue).not.toHaveBeenCalled();
     expect(JSON.stringify(harness.trace.getEvents(turnId))).not.toContain(secretModel);
+    expect(harness.releaseLease).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an unregistered provider even when it declares the canonical model", async () => {
+    const harness = makeHarness({ canonicalProviderSpoof: true });
+
+    await expect(harness.handler.handle(handleInput())).resolves.toEqual({
+      replied: false,
+      reason: "understanding_failed",
+    });
+    expect(harness.understand).not.toHaveBeenCalled();
+    expect(harness.createOutboundMessageAndEnqueue).not.toHaveBeenCalled();
     expect(harness.releaseLease).toHaveBeenCalledOnce();
   });
 

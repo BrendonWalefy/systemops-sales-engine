@@ -1,6 +1,11 @@
 import { createDentalCapturedReadAdapters, CapturedReadUnavailableError } from "@/application/conversation-v2/dental-captured-read-adapters";
 import type { CapturedV2TurnReads } from "@/application/conversation-v2/captured-turn-reads";
-import { recordDentalIntendedEffect, type IntendedEffect } from "@/application/conversation-v2/dental-intended-effects";
+import {
+  dentalEffectDecisionIdentity,
+  recordDentalIntendedEffect,
+  type DentalEffectDecisionIdentity,
+  type IntendedEffect,
+} from "@/application/conversation-v2/dental-intended-effects";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
 import type { ComposerStyle, CoreResponse } from "@/conversation-core/composer/contract";
 import type { ActionResult } from "@/conversation-core/decision";
@@ -8,23 +13,18 @@ import { completeTurnPipeline, prepareTurnPipeline, type PreparedDecision } from
 import type { Understanding } from "@/conversation-core/understanding/schema";
 import {
   createDentalPack,
-  dentalDecisionProvenanceIdentity,
   DENTAL_OUTCOME_SCHEMA,
-  type DentalExecuteDecisionIdentity,
   type DentalRequest,
-  type DentalSchedulingWritePort,
 } from "@/domain-packs/dental";
 
 export type V2ShadowResult =
   | Readonly<{ status: "evaluated"; decisions: readonly PreparedDecision[]; actionResults: readonly ActionResult<typeof DENTAL_OUTCOME_SCHEMA>[]; response: CoreResponse }>
-  | Readonly<{ status: "simulation_not_executed"; executeDecisions: readonly DentalExecuteDecisionIdentity[]; intendedEffects: readonly IntendedEffect[] }>
+  | Readonly<{ status: "simulation_not_executed"; executeDecisions: readonly DentalEffectDecisionIdentity[]; intendedEffects: readonly IntendedEffect[] }>
   | Readonly<{ status: "unsupported"; reason: "unknown_effect" | "shared_read_unavailable" | "unsupported_request" }>
   | Readonly<{ status: "error"; errorName: string }>;
 
 const shadowWritePort = {
-  async persistSlotOffer(offer: Parameters<DentalSchedulingWritePort["persistSlotOffer"]>[0]) {
-    return offer;
-  },
+  async persistSlotOffer(): Promise<never> { throw new Error("shadow execution cannot write"); },
   async bookSlot(): Promise<never> { throw new Error("shadow execution cannot write"); },
   async confirmAppointment(): Promise<never> { throw new Error("shadow execution cannot write"); },
 };
@@ -54,15 +54,21 @@ export class V2ShadowRunner {
       });
       if (preparation.status !== "prepared") return { status: "unsupported", reason: "unsupported_request" };
       const intendedEffects: IntendedEffect[] = [];
-      const executeDecisions: DentalExecuteDecisionIdentity[] = [];
+      const executeDecisions: DentalEffectDecisionIdentity[] = [];
       for (const prepared of preparation.prepared.decisions) {
-        if (prepared.decision.kind !== "execute") continue;
-        const identity = dentalDecisionProvenanceIdentity(prepared);
-        if (!identity || identity.decisionKind !== "execute") {
-          return { status: "unsupported", reason: "unknown_effect" };
+        const intended = recordDentalIntendedEffect({
+          capabilityId: prepared.capabilityId,
+          decision: prepared.decision,
+          hmacKey: this.deps.hmacKey,
+        });
+        if (!intended) {
+          if (prepared.decision.kind === "execute") {
+            return { status: "unsupported", reason: "unknown_effect" };
+          }
+          continue;
         }
-        const intended = recordDentalIntendedEffect({ capabilityId: prepared.capabilityId, decision: prepared.decision, hmacKey: this.deps.hmacKey });
-        if (!intended) return { status: "unsupported", reason: "unknown_effect" };
+        const identity = dentalEffectDecisionIdentity(prepared);
+        if (!identity) return { status: "unsupported", reason: "unknown_effect" };
         executeDecisions.push(identity);
         intendedEffects.push(intended);
       }

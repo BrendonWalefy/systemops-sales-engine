@@ -2,12 +2,14 @@ import { createHmac } from "node:crypto";
 import { isProxy } from "node:util/types";
 import { z } from "zod";
 import type { Decision } from "@/conversation-core/decision";
-import type { IntendedEffect } from "@/application/conversation-v2/dental-intended-effects";
 import {
-  isDentalExecuteDecisionIdentity,
+  isDentalEffectDecisionIdentity,
+  type DentalEffectDecisionIdentity,
+  type IntendedEffect,
+} from "@/application/conversation-v2/dental-intended-effects";
+import {
   isDentalOutcomeStructuralSummary,
   type DentalCapabilityId,
-  type DentalExecuteDecisionIdentity,
   type DentalOutcomeStructuralSummary,
 } from "@/domain-packs/dental/outcome-provenance";
 import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
@@ -24,7 +26,7 @@ type UnavailableV1EngineSummary = Readonly<{ status: "unavailable"; understandin
 type UnsupportedV2EngineSummary = Readonly<{ status: "unsupported"; understandingRequest: DentalRequest | null; capabilityIds: readonly never[]; decisionKinds: readonly never[]; outcomes: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: "shared_read_unavailable" | "unknown_effect" | "unsupported_request"; model: ModelCallSummary | null }>;
 type ErrorV2EngineSummary = Readonly<{ status: "error"; understandingRequest: DentalRequest | null; capabilityIds: readonly never[]; decisionKinds: readonly never[]; outcomes: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: "provider_error"; model: ModelCallSummary | null }>;
 type NoSafeResponseV2EngineSummary = Readonly<{ status: "no_safe_response"; understandingRequest: DentalRequest | null; capabilityIds: readonly ComparisonCapabilityId[]; decisionKinds: readonly Decision["kind"][]; outcomes: readonly OutcomeStructuralSummary[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: "draft" | "repair" | "fallback" | null; errorCode: null; model: ModelCallSummary | null }>;
-type SimulationV2EngineSummary = Readonly<{ status: "simulation_not_executed"; understandingRequest: DentalRequest | null; capabilityIds: readonly ComparisonCapabilityId[]; decisionKinds: readonly "execute"[]; executeDecisions: readonly [DentalExecuteDecisionIdentity, ...DentalExecuteDecisionIdentity[]]; outcomes: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: null; model: ModelCallSummary | null }>;
+type SimulationV2EngineSummary = Readonly<{ status: "simulation_not_executed"; understandingRequest: DentalRequest | null; capabilityIds: readonly ComparisonCapabilityId[]; decisionKinds: readonly ("execute" | "offer")[]; executeDecisions: readonly [DentalEffectDecisionIdentity, ...DentalEffectDecisionIdentity[]]; outcomes: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: null; model: ModelCallSummary | null }>;
 export type V1EngineStructuralSummary = ObservedEngineSummary | UnavailableV1EngineSummary;
 export type V2EngineStructuralSummary = ObservedEngineSummary | UnsupportedV2EngineSummary | ErrorV2EngineSummary | NoSafeResponseV2EngineSummary | SimulationV2EngineSummary;
 export type EngineStructuralSummary = V1EngineStructuralSummary | V2EngineStructuralSummary;
@@ -115,10 +117,10 @@ const noSafeResponseV2EngineSchema = z.object({
 }).strict();
 const simulationV2EngineSchema = z.object({
   status: z.literal("simulation_not_executed"), understandingRequest: requestSchema,
-  capabilityIds: capabilityIdArray.min(1), decisionKinds: z.array(z.literal("execute")).min(1),
-  executeDecisions: z.array(z.custom<DentalExecuteDecisionIdentity>(
-    isDentalExecuteDecisionIdentity,
-    "invalid dental execute decision provenance",
+  capabilityIds: capabilityIdArray.min(1), decisionKinds: z.array(z.enum(["execute", "offer"])).min(1),
+  executeDecisions: z.array(z.custom<DentalEffectDecisionIdentity>(
+    isDentalEffectDecisionIdentity,
+    "invalid dental effect decision provenance",
   )).min(1),
   outcomes: emptyArray,
   finalTextCharacters: z.null(), finalTextDigest: z.null(), fallbackSource: z.null(),
@@ -134,6 +136,7 @@ const v2EngineSchema = z.discriminatedUnion("status", [
 const intendedEffectSchema = z.discriminatedUnion("action", [
   z.object({ kind: z.literal("would_have_executed"), capabilityId: z.literal("dental-scheduling"), payloadHash: hmacHex, action: z.literal("book_slot"), payload: z.object({ slotRefHash: hmacHex }).strict() }).strict(),
   z.object({ kind: z.literal("would_have_executed"), capabilityId: z.literal("dental-scheduling"), payloadHash: hmacHex, action: z.literal("confirm_appointment"), payload: z.object({ appointmentRefHash: hmacHex }).strict() }).strict(),
+  z.object({ kind: z.literal("would_have_executed"), capabilityId: z.literal("dental-scheduling"), payloadHash: hmacHex, action: z.literal("persist_slot_offer"), payload: z.object({ offerRefHash: hmacHex }).strict() }).strict(),
 ]);
 const divergenceCode = z.enum(["request_mismatch", "subject_mismatch", "outcome_mismatch", "critical_regression"]);
 const liveCommon = {
@@ -199,7 +202,7 @@ const liveSchema = z.discriminatedUnion("comparisonStatus", [
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["intendedEffects"],
-        message: "simulation intended effects must align one-to-one with unique execute decisions",
+        message: "simulation intended effects must align one-to-one with unique effect decisions",
       });
     }
     return;
@@ -333,8 +336,8 @@ function requireNonEmptyEffects(
 }
 
 function requireNonEmptyExecuteDecisions(
-  decisions: readonly DentalExecuteDecisionIdentity[],
-): readonly [DentalExecuteDecisionIdentity, ...DentalExecuteDecisionIdentity[]] {
+  decisions: readonly DentalEffectDecisionIdentity[],
+): readonly [DentalEffectDecisionIdentity, ...DentalEffectDecisionIdentity[]] {
   const [first, ...remaining] = decisions;
   if (!first) throw new Error("simulation requires an execute decision identity");
   return Object.freeze([first, ...remaining]);

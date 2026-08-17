@@ -304,6 +304,10 @@ function setup(options: {
   const reservations = {
     findActiveByPeriod: vi.fn().mockResolvedValue(options.reservationsInPeriod ?? []),
   };
+  const effectLifecycle = {
+    attempted: vi.fn(),
+    completed: vi.fn(),
+  };
 
   const adapters = createDentalLiveAdapters({
     treatments,
@@ -319,6 +323,7 @@ function setup(options: {
     conversationId: "conversation-lab",
     turnId: "turn-1",
     now,
+    effectLifecycle,
   });
 
   return {
@@ -326,6 +331,7 @@ function setup(options: {
     appointments,
     booking,
     calendar,
+    effectLifecycle,
     reservations,
     getCurrentState: () => currentState,
     setCurrentState: (next: ConversationStateRow | null) => { currentState = next; },
@@ -588,6 +594,47 @@ describe("Dental live adapters — BookingService write boundary", () => {
     );
   });
 
+  it("does not mark an effect attempt for a locally detected slot_taken preflight", async () => {
+    const occupied = appointment({ id: "occupied", leadId: "other-lead" });
+    const fixture = setup();
+    const offered = await offerOneSlot(fixture);
+    fixture.appointments.findByPeriod.mockResolvedValue([occupied]);
+    fixture.effectLifecycle.attempted.mockClear();
+    fixture.effectLifecycle.completed.mockClear();
+
+    await expect(fixture.adapters.schedulingWrite.bookSlot(offered.slots[0]!.id)).resolves.toMatchObject({
+      success: false,
+      reason: "slot_taken",
+    });
+    expect(fixture.booking.book).not.toHaveBeenCalled();
+    expect(fixture.effectLifecycle.attempted).not.toHaveBeenCalled();
+    expect(fixture.effectLifecycle.completed).not.toHaveBeenCalled();
+  });
+
+  it("keeps BookingService success as completed before a later binding validation fails", async () => {
+    const fixture = setup();
+    const offered = await offerOneSlot(fixture);
+    fixture.effectLifecycle.attempted.mockClear();
+    fixture.effectLifecycle.completed.mockClear();
+    fixture.booking.book.mockResolvedValue({
+      success: true,
+      appointment: appointment({ clinicId: "wrong-clinic" }),
+    });
+
+    await expect(fixture.adapters.schedulingWrite.bookSlot(offered.slots[0]!.id)).resolves.toMatchObject({
+      success: false,
+      reason: "invalid_booking_binding",
+    });
+    expect(fixture.effectLifecycle.attempted).toHaveBeenCalledOnce();
+    expect(fixture.effectLifecycle.completed).toHaveBeenCalledOnce();
+    expect(fixture.effectLifecycle.attempted.mock.invocationCallOrder[0]).toBeLessThan(
+      fixture.booking.book.mock.invocationCallOrder[0]!,
+    );
+    expect(fixture.effectLifecycle.completed.mock.invocationCallOrder[0]).toBeGreaterThan(
+      fixture.booking.book.mock.invocationCallOrder[0]!,
+    );
+  });
+
   it("keeps an authoritative booking success when best-effort state cleanup throws", async () => {
     const fixture = setup();
     const offered = await offerOneSlot(fixture);
@@ -795,6 +842,31 @@ describe("Dental live adapters — appointment confirmation", () => {
       appointmentId: pending.id,
     });
     expect(fixture.booking.confirmAppointment).toHaveBeenCalledOnce();
+  });
+
+  it("keeps confirmation success as completed before a later binding validation fails", async () => {
+    const pending = appointment({ id: "pending-appointment" });
+    const fixture = setup({ appointmentById: pending });
+    fixture.setCurrentState({
+      id: "confirmation-state",
+      conversationId: conversation.id,
+      state: "awaiting_appointment_confirmation",
+      payload: { appointmentId: pending.id, appointmentLabel: "Ter 18/08 às 15h" },
+      supersedesStateId: null,
+      createdAt: now,
+      expiresAt: new Date(now.getTime() + 60_000),
+    });
+    fixture.booking.confirmAppointment.mockResolvedValue({
+      success: true,
+      appointment: appointment({ id: pending.id, clinicId: "wrong-clinic" }),
+    });
+
+    await expect(fixture.adapters.schedulingWrite.confirmAppointment(pending.id)).resolves.toMatchObject({
+      success: false,
+      reason: "invalid_confirmation_binding",
+    });
+    expect(fixture.effectLifecycle.attempted).toHaveBeenCalledOnce();
+    expect(fixture.effectLifecycle.completed).toHaveBeenCalledOnce();
   });
 
   it("uses only the tenant-and-lead-scoped appointment read", async () => {

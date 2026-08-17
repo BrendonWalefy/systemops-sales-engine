@@ -66,6 +66,55 @@ describe("V2 shadow runner", () => {
       .toEqual(result.actionResults.map(({ origin }) => origin.capabilityId));
   });
 
+  it("intercepts a slot offer as a zero-write canonical persistence intent", async () => {
+    const runner = new V2ShadowRunner({
+      understand: async () => ({
+        ...understanding("book-appointment"),
+        dialogueMove: "new_topic",
+        entities: {},
+      }),
+      hmacKey: "test-key",
+      style,
+    });
+    const result = await runner.run(reads({
+      slotSearches: [{
+        input: {
+          service: null,
+          date: null,
+          period: null,
+          minimumLeadTimeHours: 2,
+          now: "2026-08-16T12:00:00.000Z",
+        },
+        result: {
+          service: { id: "service-secret", name: "Limpeza" },
+          slots: [{
+            id: "slot-secret",
+            label: "17/08 15:00",
+            evidenceRef: "calendar-secret",
+          }],
+        },
+      }],
+    }));
+
+    expect(result.status).toBe("simulation_not_executed");
+    if (result.status !== "simulation_not_executed") throw new Error("expected simulation");
+    expect(result.executeDecisions).toEqual([{
+      capabilityId: "dental-scheduling",
+      decisionKind: "offer",
+      action: "persist_slot_offer",
+    }]);
+    expect(result.intendedEffects).toEqual([
+      expect.objectContaining({
+        kind: "would_have_executed",
+        capabilityId: "dental-scheduling",
+        action: "persist_slot_offer",
+      }),
+    ]);
+    expect(JSON.stringify(result)).not.toMatch(/service-secret|slot-secret|calendar-secret/);
+    expect("actionResults" in result).toBe(false);
+    expect("response" in result).toBe(false);
+  });
+
   it("marca action desconhecida como unsupported", () => {
     expect(recordDentalIntendedEffect({ capabilityId: "dental-scheduling", decision: { kind: "execute", action: { type: "unknown", parameters: {} }, nextBestStep: null }, hmacKey: "key" })).toBeNull();
   });
