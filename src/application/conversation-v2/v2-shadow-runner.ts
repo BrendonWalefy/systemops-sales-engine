@@ -9,7 +9,7 @@ import type { Understanding } from "@/conversation-core/understanding/schema";
 import { createDentalPack, DENTAL_OUTCOME_SCHEMA, type DentalRequest } from "@/domain-packs/dental";
 
 export type V2ShadowResult =
-  | Readonly<{ status: "evaluated"; actionResults: readonly ActionResult<typeof DENTAL_OUTCOME_SCHEMA>[]; response: CoreResponse }>
+  | Readonly<{ status: "evaluated"; decisions: readonly PreparedDecision[]; actionResults: readonly ActionResult<typeof DENTAL_OUTCOME_SCHEMA>[]; response: CoreResponse }>
   | Readonly<{ status: "simulation_not_executed"; decisions: readonly PreparedDecision[]; intendedEffects: readonly IntendedEffect[] }>
   | Readonly<{ status: "unsupported"; reason: "unknown_effect" | "shared_read_unavailable" | "unsupported_request" }>
   | Readonly<{ status: "error"; errorName: string }>;
@@ -59,7 +59,12 @@ export class V2ShadowRunner {
         response: { style: this.deps.style, composer: new DeterministicResponseComposer() },
       });
       if (completed.status !== "delivered") return { status: "unsupported", reason: "unsupported_request" };
-      return { status: "evaluated", actionResults: completed.actionResults, response: completed.response };
+      return {
+        status: "evaluated",
+        decisions: preparation.prepared.decisions,
+        actionResults: completed.actionResults,
+        response: completed.response,
+      };
     } catch (error) {
       if (options.signal?.aborted && error === options.signal.reason) throw error;
       if (error instanceof CapturedReadUnavailableError) return { status: "unsupported", reason: "shared_read_unavailable" };

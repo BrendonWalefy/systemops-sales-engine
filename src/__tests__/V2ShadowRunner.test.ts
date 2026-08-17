@@ -46,6 +46,10 @@ describe("V2 shadow runner", () => {
     const runner = new V2ShadowRunner({ understand: async () => ({ ...understanding("book-appointment"), dialogueMove: "new_topic", entities: {} }), hmacKey: "test-key", style });
     const result = await runner.run(reads({ slotSearches: [{ input: { service: null, date: null, period: null, minimumLeadTimeHours: 2, now: "2026-08-16T12:00:00.000Z" }, result: { service: { id: "svc", name: "Limpeza" }, slots: [] } }] }));
     expect(result.status).toBe("evaluated");
+    if (result.status !== "evaluated") throw new Error("expected evaluated result");
+    expect(result.decisions).toHaveLength(result.actionResults.length);
+    expect(result.decisions.map(({ capabilityId }) => capabilityId))
+      .toEqual(result.actionResults.map(({ origin }) => origin.capabilityId));
   });
 
   it("marca action desconhecida como unsupported", () => {

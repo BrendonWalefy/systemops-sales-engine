@@ -362,6 +362,10 @@ describe("Cycle I post-sender shadow batch", () => {
         evaluate: vi.fn(async () => ({
           result: {
             status: "evaluated" as const,
+            decisions: [{
+              capabilityId: "dental-escalation",
+              decision: { kind: "escalate" as const, reason: "human_required" },
+            }],
             actionResults: [{
               type: "escalation_required" as const,
               semanticClass: "human_action_required" as const,
@@ -388,7 +392,17 @@ describe("Cycle I post-sender shadow batch", () => {
       model: null,
       errorCode: "final_response_unavailable",
     });
-    expect(record.v2).toMatchObject({ status: "observed", outcomeTypes: ["escalation_required"] });
+    expect(record.v2).toMatchObject({
+      status: "observed",
+      capabilityIds: ["dental-escalation"],
+      decisionKinds: ["escalate"],
+      outcomes: [{
+        capabilityId: "dental-escalation",
+        decisionKind: "escalate",
+        type: "escalation_required",
+        semanticClass: "human_action_required",
+      }],
+    });
     expect(record).toMatchObject({
       comparisonStatus: "not_measurable",
       comparisonReason: "v1_final_response_unavailable",
@@ -697,6 +711,7 @@ describe("Cycle I post-sender shadow batch", () => {
   );
 
   it("aborts and awaits the evaluator at the deadline without work surviving the summary", async () => {
+    vi.useFakeTimers({ now: 0 });
     const turn = capturedTurn({ turnId: "turn-a", clinicId: "clinic-a", ready: true });
     let settled = false;
     const receivedSignals: AbortSignal[] = [];
@@ -719,40 +734,47 @@ describe("Cycle I post-sender shadow batch", () => {
       },
     });
 
-    const summary = await runRegisteredBatch({ turns: [turn], ...input });
-    expect(summary).toMatchObject({
-      received: 1,
-      attempted: 1,
-      evaluationErrors: 1,
-      persisted: 0,
-      deadlineReached: true,
-    });
-    expect(receivedSignals).toHaveLength(1);
-    expect(receivedSignals[0]!.aborted).toBe(true);
-    expect(settled).toBe(true);
-    expect(summary).toMatchObject({
-      deadline: {
-        admissionClosed: true,
-        clockStatus: "valid",
-      },
-      drain: {
-        admitted: 2,
-        settled: 2,
-        completed: 1,
-        failed: 1,
-        abortRequested: 1,
-        cooperativelyAborted: 1,
-        activeAtReturn: 0,
-      },
-    });
-    expect(summary.deadline.overrunMs).toBeGreaterThanOrEqual(0);
-    expect(Object.isFrozen(summary.deadline)).toBe(true);
-    expect(Object.isFrozen(summary.drain)).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    expect(settled).toBe(true);
+    try {
+      const running = runRegisteredBatch({ turns: [turn], ...input });
+      await vi.advanceTimersByTimeAsync(10);
+      const summary = await running;
+      expect(summary).toMatchObject({
+        received: 1,
+        attempted: 1,
+        evaluationErrors: 1,
+        persisted: 0,
+        deadlineReached: true,
+      });
+      expect(receivedSignals).toHaveLength(1);
+      expect(receivedSignals[0]!.aborted).toBe(true);
+      expect(settled).toBe(true);
+      expect(summary).toMatchObject({
+        deadline: {
+          admissionClosed: true,
+          clockStatus: "valid",
+        },
+        drain: {
+          admitted: 2,
+          settled: 2,
+          completed: 1,
+          failed: 1,
+          abortRequested: 1,
+          cooperativelyAborted: 1,
+          activeAtReturn: 0,
+        },
+      });
+      expect(summary.deadline.overrunMs).toBeGreaterThanOrEqual(0);
+      expect(Object.isFrozen(summary.deadline)).toBe(true);
+      expect(Object.isFrozen(summary.drain)).toBe(true);
+      await vi.advanceTimersByTimeAsync(120);
+      expect(settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("drains a provider that ignores abort without claiming cooperative cancellation", async () => {
+    vi.useFakeTimers({ now: 0 });
     const turn = capturedTurn({ turnId: "turn-provider-ignored-abort", clinicId: "clinic-a", ready: true });
     let providerSettled = false;
     const input = deps({
@@ -772,32 +794,39 @@ describe("Cycle I post-sender shadow batch", () => {
       },
     });
 
-    const summary = await runRegisteredBatch({ turns: [turn], ...input });
+    try {
+      const running = runRegisteredBatch({ turns: [turn], ...input });
+      await vi.advanceTimersByTimeAsync(25);
+      const summary = await running;
 
-    expect(providerSettled).toBe(true);
-    expect(summary).toMatchObject({
-      attempted: 1,
-      evaluationErrors: 1,
-      persisted: 0,
-      deadlineReached: true,
-      deadline: {
-        admissionClosed: true,
-        overrun: true,
-      },
-      drain: {
-        admitted: 2,
-        settled: 2,
-        completed: 1,
-        failed: 1,
-        abortRequested: 1,
-        cooperativelyAborted: 0,
-        activeAtReturn: 0,
-      },
-    });
-    expect(summary.deadline.overrunMs).toBeGreaterThan(0);
+      expect(providerSettled).toBe(true);
+      expect(summary).toMatchObject({
+        attempted: 1,
+        evaluationErrors: 1,
+        persisted: 0,
+        deadlineReached: true,
+        deadline: {
+          admissionClosed: true,
+          overrun: true,
+        },
+        drain: {
+          admitted: 2,
+          settled: 2,
+          completed: 1,
+          failed: 1,
+          abortRequested: 1,
+          cooperativelyAborted: 0,
+          activeAtReturn: 0,
+        },
+      });
+      expect(summary.deadline.overrunMs).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("preserves the productive OpenAI cancellation acknowledgement through runner and batch", async () => {
+    vi.useFakeTimers({ now: 0 });
     const turn = capturedTurn({ turnId: "turn-productive-abort-ack", clinicId: "clinic-a", ready: true });
     let providerAcknowledgedAbort = false;
     const create = vi.fn((_request: unknown, options?: Readonly<{ signal?: AbortSignal }>) => (
@@ -838,24 +867,30 @@ describe("Cycle I post-sender shadow batch", () => {
       },
     });
 
-    const summary = await runRegisteredBatch({ turns: [turn], ...input });
+    try {
+      const running = runRegisteredBatch({ turns: [turn], ...input });
+      await vi.advanceTimersByTimeAsync(5);
+      const summary = await running;
 
-    expect(providerAcknowledgedAbort).toBe(true);
-    expect(summary).toMatchObject({
-      attempted: 1,
-      evaluationErrors: 1,
-      persisted: 0,
-      deadlineReached: true,
-      drain: {
-        admitted: 2,
-        settled: 2,
-        completed: 1,
-        failed: 1,
-        abortRequested: 1,
-        cooperativelyAborted: 1,
-        activeAtReturn: 0,
-      },
-    });
+      expect(providerAcknowledgedAbort).toBe(true);
+      expect(summary).toMatchObject({
+        attempted: 1,
+        evaluationErrors: 1,
+        persisted: 0,
+        deadlineReached: true,
+        drain: {
+          admitted: 2,
+          settled: 2,
+          completed: 1,
+          failed: 1,
+          abortRequested: 1,
+          cooperativelyAborted: 1,
+          activeAtReturn: 0,
+        },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it.each(["policy", "sink"] as const)(

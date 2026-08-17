@@ -1,8 +1,23 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createConversationV2Runtime } from "@/infrastructure/conversation-v2/create-conversation-v2-runtime";
 import { V1ObservationCollector } from "@/application/conversation-v2/v1-observation-collector";
 import type { V1TurnObservationEvent } from "@/core/observability/V1TurnObservation";
+import {
+  runAfterSenderDrainAttempt,
+  runConversationV2ShadowBatch,
+} from "@/application/conversation-v2/run-shadow-batch";
+
+const openAiCreate = vi.hoisted(() => vi.fn());
+vi.mock("openai", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openai")>();
+  return {
+    ...actual,
+    default: class OpenAITestClient {
+      readonly chat = { completions: { create: openAiCreate } };
+    },
+  };
+});
 
 function readyEvents(turnId: string): V1TurnObservationEvent[] {
   return [
@@ -18,6 +33,8 @@ function readyEvents(turnId: string): V1TurnObservationEvent[] {
 }
 
 describe("Cycle I message worker composition", () => {
+  beforeEach(() => openAiCreate.mockReset());
+
   it("binds tenant in the turn-local sink and promotes before exposing the batch", () => {
     const runtime = createConversationV2Runtime({
       env: {
@@ -146,6 +163,80 @@ describe("Cycle I message worker composition", () => {
     expect(result.model).toBeNull();
     expect(result.understandingRequest).toBeNull();
     expect(result.result).toMatchObject({ status: "unsupported" });
+    expect(openAiCreate).not.toHaveBeenCalled();
+  });
+
+  it("preserves one real provider call when the post-provider runner result is unsupported", async () => {
+    openAiCreate.mockResolvedValue({ choices: [{ message: { content: JSON.stringify({
+      version: "understanding.v1",
+      request: "price-of-service",
+      dialogueMove: "new_topic",
+      entities: { service: "limpeza", date: null, period: null, time: null, serviceCandidates: null, quantity: null, ordinal: null },
+      signals: { purchaseIntent: null, priceSensitivity: null, sentiment: null, objection: null },
+      safety: { optOut: false, requestsHuman: false, emergency: false },
+      confidence: 1,
+      ambiguity: null,
+    }) } }] });
+    const policyReader = {
+      getConversationEnginePolicy: vi.fn(async (clinicId: string) => ({
+        clinicId,
+        engine: "v1_with_v2_shadow" as const,
+        isTest: true,
+      })),
+    };
+    const comparisonSink = { append: vi.fn().mockResolvedValue(undefined) };
+    const runtime = createConversationV2Runtime({
+      env: {
+        OPENAI_API_KEY: "test-only",
+        OPENAI_V2_UNDERSTANDING_MODEL: "gpt-test",
+        CONVERSATION_V2_COMPARISON_HMAC_KEY: "x".repeat(32),
+        VERCEL_GIT_COMMIT_SHA: "e86201adb3b7eb6665629f5e73cbb5964acdc745",
+      },
+      policyReader,
+      comparisonSink,
+      collector: new V1ObservationCollector(),
+    });
+    const observation = runtime.createTurnObservationSink({
+      turnId: "turn-post-provider-unsupported",
+      clinicId: "clinic-a",
+      automationMode: "live",
+    });
+    for (const event of readyEvents("turn-post-provider-unsupported")) observation.record(event);
+    const turns = runtime.drainCapturedTurns();
+
+    await runAfterSenderDrainAttempt({
+      turns,
+      drainSender: async () => undefined,
+      onSenderFailure: () => undefined,
+      occurredAt: () => "2026-08-16T12:00:00.000Z",
+      afterAttempt: (senderBarrier, captured) => runConversationV2ShadowBatch({
+        senderBarrier,
+        turns: captured,
+        policyReader: runtime.policyReader,
+        evaluator: runtime.evaluator,
+        sink: runtime.sink,
+        approval: runtime.approval,
+        runtimeIdentity: runtime.runtimeIdentity,
+        maxTurns: runtime.maxTurns,
+        deadlineMs: runtime.deadlineMs,
+        now: runtime.now,
+        recordConfig: runtime.recordConfig,
+      }),
+    });
+
+    expect(openAiCreate).toHaveBeenCalledOnce();
+    expect(comparisonSink.append).toHaveBeenCalledOnce();
+    expect(comparisonSink.append.mock.calls[0]![0].record.v2).toMatchObject({
+      status: "unsupported",
+      errorCode: "shared_read_unavailable",
+      model: {
+        modelId: "gpt-test",
+        calls: 1,
+        inputTokens: null,
+        outputTokens: null,
+        estimatedCostMinor: null,
+      },
+    });
   });
 
   it("keeps route composition thin, post-sender, and independent from legacy shadowModeEnabled", () => {

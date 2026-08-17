@@ -67,7 +67,7 @@ function transitiveLocalFiles(entries: readonly string[]): readonly string[] {
   return [...visited];
 }
 
-const forbiddenRuntimePackages = /^(?:openai|@anthropic-ai\/sdk|@google\/generative-ai|@ai-sdk\/|@neondatabase\/serverless|drizzle-orm|postgres)(?:\/|$)/;
+const forbiddenRuntimePackages = /^(?:(?:openai|@anthropic-ai\/sdk|@google\/generative-ai|ai|@neondatabase\/serverless|drizzle-orm|postgres)(?:\/|$)|@ai-sdk(?:\/|$))/;
 const forbiddenCapabilitySymbols = /\b(?:OpenAI|Anthropic|GoogleGenerativeAI|neon|drizzle|BookingService|DATABASE_URL|calendarId)\b/;
 
 function forbiddenRuntimeReferences(files: readonly string[]): string[] {
@@ -82,6 +82,13 @@ function forbiddenRuntimeReferences(files: readonly string[]): string[] {
 }
 
 describe("Cycle I final runtime boundaries", () => {
+  it("recognizes exact and scoped AI SDK package roots as forbidden runtime dependencies", () => {
+    const requiredForbiddenPackages = ["ai", "ai/react", "@ai-sdk", "@ai-sdk/openai"];
+
+    expect(requiredForbiddenPackages.filter((specifier) => !forbiddenRuntimePackages.test(specifier)))
+      .toEqual([]);
+  });
+
   it("mantém o core V2 sem V1, Domain Pack, provider, DB, calendário, config ou comparação", () => {
     const roots = sourceFiles("src/conversation-core");
     const forbiddenPath = /(?:^|\/)(?:src\/core|src\/domain-packs|src\/infrastructure|src\/application\/conversation-v2|src\/application\/config)(?:\/|$)|calendar|comparison/i;

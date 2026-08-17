@@ -17,6 +17,7 @@ import {
   type HmacRef,
   type LiveComparisonRecord,
   type ModelCallSummary,
+  type ComparisonCapabilityId,
   type V1EngineStructuralSummary,
   type V2EngineStructuralSummary,
 } from "@/application/conversation-v2/comparison-record";
@@ -245,13 +246,21 @@ const emptyEngineSummary = Object.freeze({
   understandingRequest: null,
   capabilityIds: Object.freeze([]),
   decisionKinds: Object.freeze([]),
-  outcomeTypes: Object.freeze([]),
-  semanticClasses: Object.freeze([]),
+  outcomes: Object.freeze([]),
   finalTextCharacters: null,
   finalTextDigest: null,
   fallbackSource: null,
   model: null,
 });
+
+function comparisonCapabilityId(value: string): ComparisonCapabilityId {
+  if (
+    value === "dental-catalog"
+    || value === "dental-scheduling"
+    || value === "dental-escalation"
+  ) return value;
+  throw new Error("unknown comparison capability identity");
+}
 
 function v1Summary(): V1EngineStructuralSummary {
   return {
@@ -275,23 +284,35 @@ function v2Summary(
     return { ...base, status: "error", errorCode: "provider_error" };
   }
   if (result.status === "unsupported") {
-    return { ...base, status: "unsupported", errorCode: result.reason, model: null };
+    return { ...base, status: "unsupported", errorCode: result.reason };
   }
   if (result.status === "simulation_not_executed") {
+    const executeDecisions = result.decisions.filter(
+      ({ decision }) => decision.kind === "execute",
+    );
     return {
       ...base,
       status: "simulation_not_executed",
-      capabilityIds: result.decisions.map(({ capabilityId }) => capabilityId),
-      decisionKinds: result.decisions.map(({ decision }) => decision.kind),
+      capabilityIds: executeDecisions.map(({ capabilityId }) => comparisonCapabilityId(capabilityId)),
+      decisionKinds: executeDecisions.map(() => "execute" as const),
       errorCode: null,
     };
   }
   return {
     ...base,
     status: "observed",
-    capabilityIds: result.actionResults.map(({ origin }) => origin.capabilityId),
-    outcomeTypes: result.actionResults.map(({ type }) => type),
-    semanticClasses: result.actionResults.map(({ semanticClass }) => semanticClass),
+    capabilityIds: result.decisions.map(({ capabilityId }) => comparisonCapabilityId(capabilityId)),
+    decisionKinds: result.decisions.map(({ decision }) => decision.kind),
+    outcomes: result.actionResults.map(({ origin, type, semanticClass }, index) => {
+      const decision = result.decisions[index];
+      if (!decision) throw new Error("action result is missing its prepared decision identity");
+      return {
+        capabilityId: comparisonCapabilityId(origin.capabilityId),
+        decisionKind: decision.decision.kind,
+        type,
+        semanticClass,
+      };
+    }),
     finalTextCharacters: result.response.text.length,
     finalTextDigest: keyedRef(result.response.text, hmacKey),
     errorCode: null,

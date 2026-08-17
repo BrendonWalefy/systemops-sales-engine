@@ -16,8 +16,8 @@ function live(overrides: Record<string, unknown> = {}) {
     turnRef: ref("1"), conversationRef: null, inputRef: ref("2"),
     occurredAt: "2026-08-16T12:00:00.000Z", commit: "0faea93a",
     configDigest: ref("3"), datasetDigest: null,
-    v1: { status: "observed", understandingRequest: "price-of-service", capabilityIds: ["dental-catalog"], decisionKinds: ["answer"], outcomeTypes: ["catalog_answered"], semanticClasses: ["information_authorized"], finalTextCharacters: 12, finalTextDigest: ref("4"), fallbackSource: null, errorCode: null, model: { modelId: "gpt-5.4-mini", calls: 1, inputTokens: 4, outputTokens: 2, latencyMs: 11, estimatedCostMinor: 1 } },
-    v2: { status: "simulation_not_executed", understandingRequest: "book-appointment", capabilityIds: ["dental-scheduling"], decisionKinds: ["execute"], outcomeTypes: [], semanticClasses: [], finalTextCharacters: null, finalTextDigest: null, fallbackSource: null, errorCode: null, model: null },
+    v1: { status: "observed", understandingRequest: "price-of-service", capabilityIds: ["dental-catalog"], decisionKinds: ["answer"], outcomes: [{ capabilityId: "dental-catalog", decisionKind: "answer", type: "catalog_answered", semanticClass: "information_authorized" }], finalTextCharacters: 12, finalTextDigest: ref("4"), fallbackSource: null, errorCode: null, model: { modelId: "gpt-5.4-mini", calls: 1, inputTokens: 4, outputTokens: 2, latencyMs: 11, estimatedCostMinor: 1 } },
+    v2: { status: "unsupported", understandingRequest: null, capabilityIds: [], decisionKinds: [], outcomes: [], finalTextCharacters: null, finalTextDigest: null, fallbackSource: null, errorCode: "unsupported_request", model: null },
     comparisonStatus: "comparable", comparisonReason: null,
     intendedEffects: [], divergenceCodes: [], ...overrides,
   };
@@ -27,8 +27,7 @@ const emptyEngine = {
   understandingRequest: null,
   capabilityIds: [],
   decisionKinds: [],
-  outcomeTypes: [],
-  semanticClasses: [],
+  outcomes: [],
   finalTextCharacters: null,
   finalTextDigest: null,
   fallbackSource: null,
@@ -41,10 +40,18 @@ const observedV2 = {
   status: "observed",
   understandingRequest: "price-of-service",
   capabilityIds: ["dental-catalog"],
-  outcomeTypes: ["catalog_answered"],
-  semanticClasses: ["information_authorized"],
+  decisionKinds: ["answer"],
+  outcomes: [{ capabilityId: "dental-catalog", decisionKind: "answer", type: "catalog_answered", semanticClass: "information_authorized" }],
   finalTextCharacters: 12,
   finalTextDigest: ref("8"),
+} as const;
+
+const intendedEffect = {
+  kind: "would_have_executed",
+  capabilityId: "dental-scheduling",
+  payloadHash: "b".repeat(64),
+  action: "book_slot",
+  payload: { slotRefHash: "c".repeat(64) },
 } as const;
 
 describe("Cycle I comparison records", () => {
@@ -53,7 +60,7 @@ describe("Cycle I comparison records", () => {
     expect(parsed.turnRef).toMatch(/^hmac:[a-f0-9]{64}$/);
     expect(Object.isFrozen(parsed)).toBe(true);
     expect(Object.isFrozen(parsed.v1.capabilityIds)).toBe(true);
-    expect(() => parseLiveComparisonRecord(live({ leadMessage: "oi" }), new Set(["gpt-5.4-mini"]))).toThrow(/leadMessage|unrecognized/i);
+    expect(() => parseLiveComparisonRecord(live({ leadMessage: "oi" }), new Set(["gpt-5.4-mini"]))).toThrow(/leadMessage|unrecognized|exact root keys/i);
     expect(() => parseLiveComparisonRecord(live({ turnRef: "turn-123" }), new Set(["gpt-5.4-mini"]))).toThrow(/hmac/i);
     expect(() => parseLiveComparisonRecord(live(), new Set(["other-model"]))).toThrow(/model/i);
   });
@@ -96,8 +103,7 @@ describe("Cycle I comparison records", () => {
       understandingRequest: null,
       capabilityIds: [],
       decisionKinds: [],
-      outcomeTypes: [],
-      semanticClasses: [],
+      outcomes: [],
       finalTextCharacters: null,
       finalTextDigest: null,
       fallbackSource: null,
@@ -125,7 +131,13 @@ describe("Cycle I comparison records", () => {
     ["observed", observedV2],
     ["unsupported", { ...emptyEngine, status: "unsupported", errorCode: "unsupported_request" }],
     ["error", { ...emptyEngine, status: "error", errorCode: "provider_error" }],
-    ["no_safe_response", { ...emptyEngine, status: "no_safe_response" }],
+    ["no_safe_response", {
+      ...emptyEngine,
+      status: "no_safe_response",
+      capabilityIds: ["dental-catalog"],
+      decisionKinds: ["answer"],
+      outcomes: [{ capabilityId: "dental-catalog", decisionKind: "answer", type: "catalog_answered", semanticClass: "information_authorized" }],
+    }],
     ["simulation_not_executed", {
       ...emptyEngine,
       status: "simulation_not_executed",
@@ -133,11 +145,13 @@ describe("Cycle I comparison records", () => {
       decisionKinds: ["execute"],
     }],
   ])("accepts only the exact valid V2 %s shape in both comparison modes", (_status, v2) => {
-    expect(parseLiveComparisonRecord(live({ v2 }), new Set(["gpt-5.4-mini"])).v2.status)
+    const intendedEffects = v2.status === "simulation_not_executed" ? [intendedEffect] : [];
+    expect(parseLiveComparisonRecord(live({ v2, intendedEffects }), new Set(["gpt-5.4-mini"])).v2.status)
       .toBe(v2.status);
     expect(parseLiveComparisonRecord(live({
       v1: { ...emptyEngine, status: "unavailable", errorCode: "final_response_unavailable" },
       v2,
+      intendedEffects,
       comparisonStatus: "not_measurable",
       comparisonReason: "v1_final_response_unavailable",
     }), new Set(["gpt-5.4-mini"])).v2.status).toBe(v2.status);
@@ -147,8 +161,7 @@ describe("Cycle I comparison records", () => {
     ["understanding", { understandingRequest: "price-of-service" }],
     ["capability", { capabilityIds: ["dental-catalog"] }],
     ["decision", { decisionKinds: ["answer"] }],
-    ["outcome", { outcomeTypes: ["catalog_answered"] }],
-    ["semantic class", { semanticClasses: ["information_authorized"] }],
+    ["outcome", { outcomes: [{ capabilityId: "dental-catalog", decisionKind: "answer", type: "catalog_answered", semanticClass: "information_authorized" }] }],
     ["final material", { finalTextCharacters: 1, finalTextDigest: ref("9") }],
     ["fallback", { fallbackSource: "fallback" }],
     ["model", { model: { modelId: "gpt-5.4-mini", calls: 1, inputTokens: null, outputTokens: null, latencyMs: 1, estimatedCostMinor: null } }],
@@ -168,23 +181,19 @@ describe("Cycle I comparison records", () => {
   it.each([
     ["unsupported with outcomes", {
       ...emptyEngine, status: "unsupported", errorCode: "unsupported_request",
-      outcomeTypes: ["catalog_answered"],
-    }],
-    ["unsupported with semantic class", {
-      ...emptyEngine, status: "unsupported", errorCode: "unsupported_request",
-      semanticClasses: ["information_authorized"],
+      outcomes: [{ capabilityId: "dental-catalog", decisionKind: "answer", type: "catalog_answered", semanticClass: "information_authorized" }],
     }],
     ["unsupported with final text", {
       ...emptyEngine, status: "unsupported", errorCode: "unsupported_request",
       finalTextCharacters: 1, finalTextDigest: ref("8"),
     }],
-    ["unsupported with model attribution", {
+    ["unsupported with invalid zero-call model attribution", {
       ...emptyEngine, status: "unsupported", errorCode: "unsupported_request",
-      model: { modelId: "gpt-5.4-mini", calls: 1, inputTokens: null, outputTokens: null, latencyMs: 1, estimatedCostMinor: null },
+      model: { modelId: "gpt-5.4-mini", calls: 0, inputTokens: null, outputTokens: null, latencyMs: 1, estimatedCostMinor: null },
     }],
     ["error with outcomes", {
       ...emptyEngine, status: "error", errorCode: "provider_error",
-      outcomeTypes: ["catalog_answered"],
+      outcomes: [{ capabilityId: "dental-catalog", decisionKind: "answer", type: "catalog_answered", semanticClass: "information_authorized" }],
     }],
     ["error with final text", {
       ...emptyEngine, status: "error", errorCode: "provider_error",
@@ -193,7 +202,7 @@ describe("Cycle I comparison records", () => {
     ["simulation with outcomes", {
       ...emptyEngine, status: "simulation_not_executed",
       capabilityIds: ["dental-scheduling"], decisionKinds: ["execute"],
-      outcomeTypes: ["appointment_created"],
+      outcomes: [{ capabilityId: "dental-scheduling", decisionKind: "execute", type: "appointment_created", semanticClass: "effect_completed" }],
     }],
     ["simulation with final text", {
       ...emptyEngine, status: "simulation_not_executed",
@@ -230,6 +239,162 @@ describe("Cycle I comparison records", () => {
       comparisonStatus: "not_measurable",
       comparisonReason: "v1_final_response_unavailable",
     }), new Set(["gpt-5.4-mini"]))).toThrow(/unavailable|V2|status/i);
+  });
+
+  it("accepts a structured outcome identity and rejects parallel outcome arrays", () => {
+    const structured = {
+      ...emptyEngine,
+      status: "observed",
+      understandingRequest: "price-of-service",
+      capabilityIds: ["dental-catalog"],
+      decisionKinds: ["answer"],
+      outcomes: [{
+        capabilityId: "dental-catalog",
+        decisionKind: "answer",
+        type: "catalog_answered",
+        semanticClass: "information_authorized",
+      }],
+      finalTextCharacters: 12,
+      finalTextDigest: ref("8"),
+    };
+    expect(parseLiveComparisonRecord(live({ v2: structured }), new Set(["gpt-5.4-mini"]))
+      .v2).toMatchObject({ status: "observed", outcomes: structured.outcomes });
+    const parallelArrays = {
+      ...observedV2,
+      outcomeTypes: ["catalog_answered"],
+      semanticClasses: ["information_authorized"],
+    } as Record<string, unknown>;
+    delete parallelArrays.outcomes;
+    expect(() => parseLiveComparisonRecord(live({ v2: parallelArrays }), new Set(["gpt-5.4-mini"])))
+      .toThrow(/outcome|unrecognized|invalid/i);
+  });
+
+  it("requires every observed and no-safe outcome to align with one decision and owner", () => {
+    const validNoSafe = {
+      ...emptyEngine,
+      status: "no_safe_response",
+      capabilityIds: ["dental-catalog"],
+      decisionKinds: ["answer"],
+      outcomes: [{
+        capabilityId: "dental-catalog",
+        decisionKind: "answer",
+        type: "catalog_answered",
+        semanticClass: "information_authorized",
+      }],
+    };
+    expect(parseLiveComparisonRecord(live({ v2: validNoSafe }), new Set(["gpt-5.4-mini"]))
+      .v2.status).toBe("no_safe_response");
+
+    for (const v2 of [
+      { ...observedV2, decisionKinds: [] },
+      { ...observedV2, decisionKinds: ["answer", "ask"] },
+      {
+        ...observedV2,
+        outcomes: [{ ...observedV2.outcomes[0], decisionKind: "ask" }],
+      },
+      { ...observedV2, capabilityIds: ["dental-escalation"] },
+      {
+        ...observedV2,
+        outcomes: [{
+          capabilityId: "dental-catalog",
+          decisionKind: "answer",
+          type: "catalog_answered",
+          semanticClass: "effect_completed",
+        }],
+      },
+      {
+        ...observedV2,
+        capabilityIds: ["dental-catalog", "dental-catalog"],
+        decisionKinds: ["answer", "answer"],
+        outcomes: [observedV2.outcomes[0], observedV2.outcomes[0]],
+      },
+      { ...validNoSafe, decisionKinds: [] },
+      { ...validNoSafe, capabilityIds: ["dental-escalation"] },
+    ]) {
+      expect(() => parseLiveComparisonRecord(live({ v2 }), new Set(["gpt-5.4-mini"])))
+        .toThrow(/outcome|decision|capability|semantic|duplicate|invalid/i);
+    }
+  });
+
+  it("closes intended effects to an aligned nonempty execute-only simulation", () => {
+    const simulation = {
+      ...emptyEngine,
+      status: "simulation_not_executed",
+      capabilityIds: ["dental-scheduling"],
+      decisionKinds: ["execute"],
+    };
+    expect(parseLiveComparisonRecord(live({
+      v2: simulation,
+      intendedEffects: [intendedEffect],
+    }), new Set(["gpt-5.4-mini"]))).toMatchObject({
+      v2: { status: "simulation_not_executed" },
+      intendedEffects: [intendedEffect],
+    });
+
+    for (const invalid of [
+      { v2: simulation, intendedEffects: [] },
+      { v2: { ...simulation, decisionKinds: ["answer"] }, intendedEffects: [intendedEffect] },
+      { v2: { ...simulation, capabilityIds: ["dental-catalog"] }, intendedEffects: [intendedEffect] },
+      ...[
+        observedV2,
+        { ...emptyEngine, status: "unsupported", errorCode: "unsupported_request" },
+        { ...emptyEngine, status: "error", errorCode: "provider_error" },
+        {
+          ...emptyEngine,
+          status: "no_safe_response",
+          capabilityIds: ["dental-catalog"],
+          decisionKinds: ["answer"],
+          outcomes: observedV2.outcomes,
+        },
+      ].map((v2) => ({ v2, intendedEffects: [intendedEffect] })),
+    ]) {
+      expect(() => parseLiveComparisonRecord(live(invalid), new Set(["gpt-5.4-mini"])))
+        .toThrow(/effect|simulation|execute|capability|invalid/i);
+    }
+  });
+
+  it("requires positive final text and positive calls when model telemetry exists", () => {
+    expect(() => parseLiveComparisonRecord(live({
+      v1: { ...(live().v1 as Record<string, unknown>), finalTextCharacters: 0 },
+    }), new Set(["gpt-5.4-mini"]))).toThrow(/greater|positive|characters|invalid/i);
+    expect(() => parseLiveComparisonRecord(live({
+      v1: {
+        ...(live().v1 as Record<string, unknown>),
+        model: { modelId: "gpt-5.4-mini", calls: 0, inputTokens: null, outputTokens: null, latencyMs: 0, estimatedCostMinor: null },
+      },
+    }), new Set(["gpt-5.4-mini"]))).toThrow(/greater|positive|calls|invalid/i);
+
+    const postProviderUnsupported = {
+      ...emptyEngine,
+      status: "unsupported",
+      errorCode: "unsupported_request",
+      understandingRequest: "price-of-service",
+      model: { modelId: "gpt-5.4-mini", calls: 1, inputTokens: null, outputTokens: null, latencyMs: 0, estimatedCostMinor: null },
+    };
+    expect(parseLiveComparisonRecord(live({ v2: postProviderUnsupported }), new Set(["gpt-5.4-mini"]))
+      .v2).toEqual(postProviderUnsupported);
+  });
+
+  it("prechecks exact root keys and enforces snapshot budgets before deep copy", () => {
+    const extraWithNestedAccessor = {};
+    Object.defineProperty(extraWithNestedAccessor, "nested", {
+      enumerable: true,
+      get() { throw new Error("nested accessor must not be inspected"); },
+    });
+    expect(() => parseLiveComparisonRecord(live({ extra: extraWithNestedAccessor }), new Set(["gpt-5.4-mini"])))
+      .toThrow(/exact.*keys|unexpected.*key/i);
+
+    expect(() => parseLiveComparisonRecord(live({
+      v2: {
+        ...(live().v2 as Record<string, unknown>),
+        capabilityIds: Array.from({ length: 10_001 }, () => "dental-scheduling"),
+      },
+    }), new Set(["gpt-5.4-mini"]))).toThrow(/budget|array|limit/i);
+
+    let deep: unknown = "leaf";
+    for (let index = 0; index < 40; index += 1) deep = { child: deep };
+    expect(() => parseLiveComparisonRecord(live({ conversationRef: deep }), new Set(["gpt-5.4-mini"])))
+      .toThrow(/budget|depth|limit/i);
   });
 
   it("rejects proxy, accessor and symbol input before executing property traps", () => {
@@ -273,7 +438,7 @@ describe("Cycle I comparison records", () => {
     expect(reads).toBe(0);
 
     const nestedAccessor = { ...observedV2 };
-    Object.defineProperty(nestedAccessor, "outcomeTypes", {
+    Object.defineProperty(nestedAccessor, "outcomes", {
       enumerable: true,
       get() {
         reads += 1;

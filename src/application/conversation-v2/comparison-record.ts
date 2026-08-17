@@ -3,29 +3,51 @@ import { isProxy } from "node:util/types";
 import { z } from "zod";
 import type { Decision, OutcomeSemanticClass } from "@/conversation-core/decision";
 import type { IntendedEffect } from "@/application/conversation-v2/dental-intended-effects";
+import {
+  DENTAL_OUTCOME_SCHEMA,
+  type DentalOutcomeType,
+} from "@/domain-packs/dental/capabilities";
+import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
 
 export const LIVE_COMPARISON_VERSION = "conversation-v2-live-comparison.v2" as const;
 export const APPROVED_EVAL_VERSION = "conversation-v2-approved-eval.v1" as const;
 
 export type HmacRef = `hmac:${string}`;
 export type ModelCallSummary = Readonly<{ modelId: string; calls: number; inputTokens: number | null; outputTokens: number | null; latencyMs: number; estimatedCostMinor: number | null }>;
-type ObservedEngineSummary = Readonly<{ status: "observed"; understandingRequest: string | null; capabilityIds: readonly string[]; decisionKinds: readonly Decision["kind"][]; outcomeTypes: readonly string[]; semanticClasses: readonly OutcomeSemanticClass[]; finalTextCharacters: number; finalTextDigest: HmacRef; fallbackSource: "draft" | "repair" | "fallback" | null; errorCode: null; model: ModelCallSummary | null }>;
-type UnavailableV1EngineSummary = Readonly<{ status: "unavailable"; understandingRequest: null; capabilityIds: readonly never[]; decisionKinds: readonly never[]; outcomeTypes: readonly never[]; semanticClasses: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: "final_response_unavailable"; model: null }>;
-type UnsupportedV2EngineSummary = Readonly<{ status: "unsupported"; understandingRequest: string | null; capabilityIds: readonly never[]; decisionKinds: readonly never[]; outcomeTypes: readonly never[]; semanticClasses: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: "shared_read_unavailable" | "unknown_effect" | "unsupported_request"; model: null }>;
-type ErrorV2EngineSummary = Readonly<{ status: "error"; understandingRequest: string | null; capabilityIds: readonly never[]; decisionKinds: readonly never[]; outcomeTypes: readonly never[]; semanticClasses: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: "provider_error"; model: ModelCallSummary | null }>;
-type NoSafeResponseV2EngineSummary = Readonly<{ status: "no_safe_response"; understandingRequest: string | null; capabilityIds: readonly string[]; decisionKinds: readonly Decision["kind"][]; outcomeTypes: readonly string[]; semanticClasses: readonly OutcomeSemanticClass[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: "draft" | "repair" | "fallback" | null; errorCode: null; model: ModelCallSummary | null }>;
-type SimulationV2EngineSummary = Readonly<{ status: "simulation_not_executed"; understandingRequest: string | null; capabilityIds: readonly string[]; decisionKinds: readonly Decision["kind"][]; outcomeTypes: readonly never[]; semanticClasses: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: null; model: ModelCallSummary | null }>;
+export type ComparisonCapabilityId = "dental-catalog" | "dental-scheduling" | "dental-escalation";
+export type OutcomeStructuralSummary = Readonly<{
+  capabilityId: ComparisonCapabilityId;
+  decisionKind: Decision["kind"];
+  type: DentalOutcomeType;
+  semanticClass: OutcomeSemanticClass;
+}>;
+type ObservedEngineSummary = Readonly<{ status: "observed"; understandingRequest: DentalRequest | null; capabilityIds: readonly ComparisonCapabilityId[]; decisionKinds: readonly Decision["kind"][]; outcomes: readonly OutcomeStructuralSummary[]; finalTextCharacters: number; finalTextDigest: HmacRef; fallbackSource: "draft" | "repair" | "fallback" | null; errorCode: null; model: ModelCallSummary | null }>;
+type UnavailableV1EngineSummary = Readonly<{ status: "unavailable"; understandingRequest: null; capabilityIds: readonly never[]; decisionKinds: readonly never[]; outcomes: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: "final_response_unavailable"; model: null }>;
+type UnsupportedV2EngineSummary = Readonly<{ status: "unsupported"; understandingRequest: DentalRequest | null; capabilityIds: readonly never[]; decisionKinds: readonly never[]; outcomes: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: "shared_read_unavailable" | "unknown_effect" | "unsupported_request"; model: ModelCallSummary | null }>;
+type ErrorV2EngineSummary = Readonly<{ status: "error"; understandingRequest: DentalRequest | null; capabilityIds: readonly never[]; decisionKinds: readonly never[]; outcomes: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: "provider_error"; model: ModelCallSummary | null }>;
+type NoSafeResponseV2EngineSummary = Readonly<{ status: "no_safe_response"; understandingRequest: DentalRequest | null; capabilityIds: readonly ComparisonCapabilityId[]; decisionKinds: readonly Decision["kind"][]; outcomes: readonly OutcomeStructuralSummary[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: "draft" | "repair" | "fallback" | null; errorCode: null; model: ModelCallSummary | null }>;
+type SimulationV2EngineSummary = Readonly<{ status: "simulation_not_executed"; understandingRequest: DentalRequest | null; capabilityIds: readonly ComparisonCapabilityId[]; decisionKinds: readonly "execute"[]; outcomes: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: null; model: ModelCallSummary | null }>;
 export type V1EngineStructuralSummary = ObservedEngineSummary | UnavailableV1EngineSummary;
 export type V2EngineStructuralSummary = ObservedEngineSummary | UnsupportedV2EngineSummary | ErrorV2EngineSummary | NoSafeResponseV2EngineSummary | SimulationV2EngineSummary;
 export type EngineStructuralSummary = V1EngineStructuralSummary | V2EngineStructuralSummary;
-type LiveComparisonCommon = Readonly<{ version: typeof LIVE_COMPARISON_VERSION; turnRef: HmacRef; conversationRef: HmacRef | null; inputRef: HmacRef; occurredAt: string; commit: string; configDigest: HmacRef; datasetDigest: HmacRef | null; v2: V2EngineStructuralSummary; intendedEffects: readonly IntendedEffect[] }>;
+type LiveComparisonCommon = Readonly<{ version: typeof LIVE_COMPARISON_VERSION; turnRef: HmacRef; conversationRef: HmacRef | null; inputRef: HmacRef; occurredAt: string; commit: string; configDigest: HmacRef; datasetDigest: HmacRef | null }>;
+type LiveV2Relation =
+  | Readonly<{ v2: SimulationV2EngineSummary; intendedEffects: readonly [IntendedEffect, ...IntendedEffect[]] }>
+  | Readonly<{ v2: Exclude<V2EngineStructuralSummary, SimulationV2EngineSummary>; intendedEffects: readonly never[] }>;
 export type LiveComparisonRecord =
-  | (LiveComparisonCommon & Readonly<{ comparisonStatus: "comparable"; comparisonReason: null; v1: ObservedEngineSummary; divergenceCodes: readonly ("request_mismatch" | "subject_mismatch" | "outcome_mismatch" | "critical_regression")[] }>)
-  | (LiveComparisonCommon & Readonly<{ comparisonStatus: "not_measurable"; comparisonReason: "v1_final_response_unavailable"; v1: UnavailableV1EngineSummary; divergenceCodes: readonly never[] }>);
+  & LiveComparisonCommon
+  & LiveV2Relation
+  & (
+    | Readonly<{ comparisonStatus: "comparable"; comparisonReason: null; v1: ObservedEngineSummary; divergenceCodes: readonly ("request_mismatch" | "subject_mismatch" | "outcome_mismatch" | "critical_regression")[] }>
+    | Readonly<{ comparisonStatus: "not_measurable"; comparisonReason: "v1_final_response_unavailable"; v1: UnavailableV1EngineSummary; divergenceCodes: readonly never[] }>
+  );
 export type ApprovedEvalRecord = Readonly<{ version: typeof APPROVED_EVAL_VERSION; run: 1 | 2 | 3 | 4 | 5 | 6; caseId: string; arm: "v1" | "v2"; snapshotDigest: HmacRef; outputText: string; source: Readonly<{ kind: "committed_corpus"; corpusDigest: HmacRef } | { kind: "signed_replay"; datasetDigest: HmacRef; approvalDigest: HmacRef }> }>;
 export type ApprovedEvalPair = Readonly<{ run: 1 | 2 | 3 | 4 | 5 | 6; caseId: string; pairDigest: HmacRef; snapshotDigest: HmacRef; v1: ApprovedEvalRecord & Readonly<{ arm: "v1" }>; v2: ApprovedEvalRecord & Readonly<{ arm: "v2" }> }>;
 
-const hmacRef = z.string().regex(/^hmac:[a-f0-9]{64}$/, "invalid HmacRef");
+const hmacRef = z.custom<HmacRef>(
+  (value) => typeof value === "string" && /^hmac:[a-f0-9]{64}$/.test(value),
+  "invalid HmacRef",
+);
 const hmacHex = z.string().regex(/^[a-f0-9]{64}$/);
 const isoDateTime = z.string().datetime({ offset: true }).refine((value) => !Number.isNaN(Date.parse(value)), "invalid ISO datetime");
 const commit = z.string().regex(/^[a-f0-9]{7,64}$/);
@@ -37,53 +59,78 @@ const decisionKinds = ["answer", "ask", "offer", "execute", "escalate", "close",
 const outcomeTypes = ["catalog_answered", "slots_found", "appointment_created", "appointment_confirmed", "appointment_create_failed", "appointment_confirmation_failed", "scheduling_failed", "escalation_required", "clarification_required"] as const;
 const semanticClasses = ["information_authorized", "options_found", "effect_completed", "effect_failed", "human_action_required", "clarification_required"] as const;
 
-const modelSchema = z.object({ modelId: z.string().min(1).max(128), calls: nonNegativeInteger, inputTokens: nullableNonNegativeInteger, outputTokens: nullableNonNegativeInteger, latencyMs: nonNegativeInteger, estimatedCostMinor: nullableNonNegativeInteger }).strict();
+const modelSchema = z.object({ modelId: z.string().min(1).max(128), calls: z.number().int().min(1), inputTokens: nullableNonNegativeInteger, outputTokens: nullableNonNegativeInteger, latencyMs: nonNegativeInteger, estimatedCostMinor: nullableNonNegativeInteger }).strict();
 const emptyArray = z.array(z.never()).length(0);
 const requestSchema = z.enum(requests).nullable();
 const capabilityIdArray = z.array(z.enum(capabilityIds));
 const decisionKindArray = z.array(z.enum(decisionKinds));
-const outcomeTypeArray = z.array(z.enum(outcomeTypes));
-const semanticClassArray = z.array(z.enum(semanticClasses));
+const outcomeSummarySchema = z.object({
+  capabilityId: z.enum(capabilityIds),
+  decisionKind: z.enum(decisionKinds),
+  type: z.enum(outcomeTypes),
+  semanticClass: z.enum(semanticClasses),
+}).strict().superRefine((outcome, context) => {
+  if (DENTAL_OUTCOME_SCHEMA[outcome.type].semanticClass !== outcome.semanticClass) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["semanticClass"],
+      message: "outcome semantic class does not match the canonical outcome schema",
+    });
+  }
+});
+const outcomeSummaryArray = z.array(outcomeSummarySchema).min(1).superRefine((outcomes, context) => {
+  const seen = new Set<string>();
+  for (const [index, outcome] of outcomes.entries()) {
+    if (seen.has(outcome.capabilityId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [index, "capabilityId"],
+        message: "duplicate outcome capability identity",
+      });
+    }
+    seen.add(outcome.capabilityId);
+  }
+});
 const fallbackSourceSchema = z.enum(["draft", "repair", "fallback"]);
 const observedEngineSchema = z.object({
   status: z.literal("observed"), understandingRequest: requestSchema,
   capabilityIds: capabilityIdArray, decisionKinds: decisionKindArray,
-  outcomeTypes: outcomeTypeArray, semanticClasses: semanticClassArray,
-  finalTextCharacters: nonNegativeInteger, finalTextDigest: hmacRef,
+  outcomes: outcomeSummaryArray,
+  finalTextCharacters: z.number().int().min(1), finalTextDigest: hmacRef,
   fallbackSource: fallbackSourceSchema.nullable(), errorCode: z.null(),
   model: modelSchema.nullable(),
 }).strict();
 const unavailableV1EngineSchema = z.object({
   status: z.literal("unavailable"), understandingRequest: z.null(),
-  capabilityIds: emptyArray, decisionKinds: emptyArray, outcomeTypes: emptyArray,
-  semanticClasses: emptyArray, finalTextCharacters: z.null(), finalTextDigest: z.null(),
+  capabilityIds: emptyArray, decisionKinds: emptyArray, outcomes: emptyArray,
+  finalTextCharacters: z.null(), finalTextDigest: z.null(),
   fallbackSource: z.null(), errorCode: z.literal("final_response_unavailable"), model: z.null(),
 }).strict();
 const unsupportedV2EngineSchema = z.object({
   status: z.literal("unsupported"), understandingRequest: requestSchema,
-  capabilityIds: emptyArray, decisionKinds: emptyArray, outcomeTypes: emptyArray,
-  semanticClasses: emptyArray, finalTextCharacters: z.null(), finalTextDigest: z.null(),
+  capabilityIds: emptyArray, decisionKinds: emptyArray, outcomes: emptyArray,
+  finalTextCharacters: z.null(), finalTextDigest: z.null(),
   fallbackSource: z.null(),
   errorCode: z.enum(["shared_read_unavailable", "unknown_effect", "unsupported_request"]),
-  model: z.null(),
+  model: modelSchema.nullable(),
 }).strict();
 const errorV2EngineSchema = z.object({
   status: z.literal("error"), understandingRequest: requestSchema,
-  capabilityIds: emptyArray, decisionKinds: emptyArray, outcomeTypes: emptyArray,
-  semanticClasses: emptyArray, finalTextCharacters: z.null(), finalTextDigest: z.null(),
+  capabilityIds: emptyArray, decisionKinds: emptyArray, outcomes: emptyArray,
+  finalTextCharacters: z.null(), finalTextDigest: z.null(),
   fallbackSource: z.null(), errorCode: z.literal("provider_error"), model: modelSchema.nullable(),
 }).strict();
 const noSafeResponseV2EngineSchema = z.object({
   status: z.literal("no_safe_response"), understandingRequest: requestSchema,
   capabilityIds: capabilityIdArray, decisionKinds: decisionKindArray,
-  outcomeTypes: outcomeTypeArray, semanticClasses: semanticClassArray,
+  outcomes: outcomeSummaryArray,
   finalTextCharacters: z.null(), finalTextDigest: z.null(),
   fallbackSource: fallbackSourceSchema.nullable(), errorCode: z.null(), model: modelSchema.nullable(),
 }).strict();
 const simulationV2EngineSchema = z.object({
   status: z.literal("simulation_not_executed"), understandingRequest: requestSchema,
-  capabilityIds: capabilityIdArray.min(1), decisionKinds: decisionKindArray.min(1),
-  outcomeTypes: emptyArray, semanticClasses: emptyArray,
+  capabilityIds: capabilityIdArray.min(1), decisionKinds: z.array(z.literal("execute")).min(1),
+  outcomes: emptyArray,
   finalTextCharacters: z.null(), finalTextDigest: z.null(), fallbackSource: z.null(),
   errorCode: z.null(), model: modelSchema.nullable(),
 }).strict();
@@ -95,8 +142,8 @@ const v2EngineSchema = z.discriminatedUnion("status", [
   simulationV2EngineSchema,
 ]);
 const intendedEffectSchema = z.discriminatedUnion("action", [
-  z.object({ kind: z.literal("would_have_executed"), capabilityId: z.enum(capabilityIds), payloadHash: hmacHex, action: z.literal("book_slot"), payload: z.object({ slotRefHash: hmacHex }).strict() }).strict(),
-  z.object({ kind: z.literal("would_have_executed"), capabilityId: z.enum(capabilityIds), payloadHash: hmacHex, action: z.literal("confirm_appointment"), payload: z.object({ appointmentRefHash: hmacHex }).strict() }).strict(),
+  z.object({ kind: z.literal("would_have_executed"), capabilityId: z.literal("dental-scheduling"), payloadHash: hmacHex, action: z.literal("book_slot"), payload: z.object({ slotRefHash: hmacHex }).strict() }).strict(),
+  z.object({ kind: z.literal("would_have_executed"), capabilityId: z.literal("dental-scheduling"), payloadHash: hmacHex, action: z.literal("confirm_appointment"), payload: z.object({ appointmentRefHash: hmacHex }).strict() }).strict(),
 ]);
 const divergenceCode = z.enum(["request_mismatch", "subject_mismatch", "outcome_mismatch", "critical_regression"]);
 const liveCommon = {
@@ -119,7 +166,53 @@ const notMeasurableLiveSchema = z.object({
 const liveSchema = z.discriminatedUnion("comparisonStatus", [
   comparableLiveSchema,
   notMeasurableLiveSchema,
-]);
+]).superRefine((record, context) => {
+  for (const [arm, engine] of [["v1", record.v1], ["v2", record.v2]] as const) {
+    if (engine.status !== "observed" && engine.status !== "no_safe_response") continue;
+    const outcomeCapabilities = engine.outcomes.map(({ capabilityId }) => capabilityId);
+    if (
+      engine.capabilityIds.length !== outcomeCapabilities.length
+      || engine.decisionKinds.length !== outcomeCapabilities.length
+      || engine.capabilityIds.some(
+        (capabilityId, index) => capabilityId !== outcomeCapabilities[index],
+      )
+      || engine.decisionKinds.some(
+        (decisionKind, index) => decisionKind !== engine.outcomes[index]?.decisionKind,
+      )
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [arm, "outcomes"],
+        message: "capability and decision identities must align one-to-one with structured outcomes",
+      });
+    }
+  }
+  if (record.v2.status === "simulation_not_executed") {
+    if (
+      record.intendedEffects.length === 0
+      || record.intendedEffects.length !== record.v2.capabilityIds.length
+      || record.v2.decisionKinds.length !== record.v2.capabilityIds.length
+      || record.intendedEffects.some(
+        (effect, index) => effect.capabilityId !== record.v2.capabilityIds[index],
+      )
+      || new Set(record.v2.capabilityIds).size !== record.v2.capabilityIds.length
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["intendedEffects"],
+        message: "simulation intended effects must align one-to-one with unique execute decisions",
+      });
+    }
+    return;
+  }
+  if (record.intendedEffects.length > 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["intendedEffects"],
+      message: "intended effects are only valid for simulation_not_executed",
+    });
+  }
+});
 const evalSchema = z.object({ version: z.literal(APPROVED_EVAL_VERSION), run: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]), caseId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4}$/), arm: z.enum(["v1", "v2"]), snapshotDigest: hmacRef, outputText: z.string().min(1).max(20_000), source: z.discriminatedUnion("kind", [z.object({ kind: z.literal("committed_corpus"), corpusDigest: hmacRef }).strict(), z.object({ kind: z.literal("signed_replay"), datasetDigest: hmacRef, approvalDigest: hmacRef }).strict()]) }).strict();
 
 function freeze<T>(value: T): T {
@@ -128,7 +221,33 @@ function freeze<T>(value: T): T {
   return Object.freeze(value);
 }
 
-function snapshotPlainData(input: unknown, ancestors = new WeakSet<object>()): unknown {
+const LIVE_RECORD_KEYS = Object.freeze([
+  "version", "turnRef", "conversationRef", "inputRef", "occurredAt", "commit",
+  "configDigest", "datasetDigest", "v1", "v2", "comparisonStatus", "comparisonReason",
+  "intendedEffects", "divergenceCodes",
+]);
+const MAX_SNAPSHOT_DEPTH = 16;
+const MAX_SNAPSHOT_NODES = 2_048;
+const MAX_SNAPSHOT_ARRAY_LENGTH = 1_000;
+const MAX_SNAPSHOT_OBJECT_KEYS = 64;
+
+type SnapshotBudget = { nodes: number };
+
+function assertExactLiveRecordKeys(input: unknown): void {
+  if (typeof input !== "object" || input === null || isProxy(input)) return;
+  const keys = Reflect.ownKeys(input);
+  if (
+    keys.length !== LIVE_RECORD_KEYS.length
+    || keys.some((key) => typeof key !== "string" || !LIVE_RECORD_KEYS.includes(key))
+  ) throw new Error("comparison record must contain exact root keys");
+}
+
+function snapshotPlainData(
+  input: unknown,
+  budget: SnapshotBudget,
+  depth = 0,
+  ancestors = new WeakSet<object>(),
+): unknown {
   if (
     input === null
     || typeof input === "string"
@@ -138,6 +257,9 @@ function snapshotPlainData(input: unknown, ancestors = new WeakSet<object>()): u
   if (typeof input !== "object" || isProxy(input)) {
     throw new Error("comparison record must contain plain data without proxies");
   }
+  if (depth > MAX_SNAPSHOT_DEPTH) throw new Error("comparison record snapshot depth budget exceeded");
+  budget.nodes += 1;
+  if (budget.nodes > MAX_SNAPSHOT_NODES) throw new Error("comparison record snapshot node budget exceeded");
   if (ancestors.has(input)) throw new Error("comparison record plain data cannot be cyclic");
   ancestors.add(input);
   try {
@@ -156,13 +278,16 @@ function snapshotPlainData(input: unknown, ancestors = new WeakSet<object>()): u
         throw new Error("comparison record array length must be a data property");
       }
       const length = lengthDescriptor.value;
+      if (!Number.isSafeInteger(length) || length < 0 || length > MAX_SNAPSHOT_ARRAY_LENGTH) {
+        throw new Error("comparison record array budget exceeded");
+      }
       const output: unknown[] = [];
       for (let index = 0; index < length; index += 1) {
         const descriptor = descriptors[String(index)];
         if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
           throw new Error("comparison record arrays must be dense plain data");
         }
-        output.push(snapshotPlainData(descriptor.value, ancestors));
+        output.push(snapshotPlainData(descriptor.value, budget, depth + 1, ancestors));
       }
       const expectedKeys = new Set(["length", ...Array.from({ length }, (_, index) => String(index))]);
       if (ownKeys.some((key) => !expectedKeys.has(key as string))) {
@@ -174,6 +299,9 @@ function snapshotPlainData(input: unknown, ancestors = new WeakSet<object>()): u
     if (Object.getPrototypeOf(input) !== Object.prototype) {
       throw new Error("comparison record objects must use the plain Object prototype");
     }
+    if (ownKeys.length > MAX_SNAPSHOT_OBJECT_KEYS) {
+      throw new Error("comparison record object key budget exceeded");
+    }
     const output: Record<string, unknown> = {};
     for (const key of ownKeys as string[]) {
       const descriptor = descriptors[key];
@@ -181,7 +309,7 @@ function snapshotPlainData(input: unknown, ancestors = new WeakSet<object>()): u
         throw new Error("comparison record objects cannot contain accessors or hidden properties");
       }
       Object.defineProperty(output, key, {
-        value: snapshotPlainData(descriptor.value, ancestors),
+        value: snapshotPlainData(descriptor.value, budget, depth + 1, ancestors),
         enumerable: true,
         configurable: true,
         writable: true,
@@ -197,10 +325,38 @@ export function keyedRef(value: string, hmacKey: string): HmacRef {
   return `hmac:${createHmac("sha256", hmacKey).update(value).digest("hex")}`;
 }
 
+function requireNonEmptyEffects(
+  effects: readonly IntendedEffect[],
+): readonly [IntendedEffect, ...IntendedEffect[]] {
+  const [first, ...remaining] = effects;
+  if (!first) throw new Error("simulation requires an intended effect");
+  return Object.freeze([first, ...remaining]);
+}
+
 export function parseLiveComparisonRecord(input: unknown, allowedModelIds: ReadonlySet<string>): LiveComparisonRecord {
-  const parsed = liveSchema.parse(snapshotPlainData(input));
+  assertExactLiveRecordKeys(input);
+  const parsed = liveSchema.parse(snapshotPlainData(input, { nodes: 0 }));
   for (const engine of [parsed.v1, parsed.v2]) if (engine.model && !allowedModelIds.has(engine.model.modelId)) throw new Error(`model is absent from the frozen run allowlist: ${engine.model.modelId}`);
-  return freeze(parsed) as LiveComparisonRecord;
+  const v2Relation: LiveV2Relation = parsed.v2.status === "simulation_not_executed"
+    ? { v2: parsed.v2, intendedEffects: requireNonEmptyEffects(parsed.intendedEffects) }
+    : { v2: parsed.v2, intendedEffects: Object.freeze([]) };
+  if (parsed.comparisonStatus === "comparable") {
+    return freeze({
+      ...parsed,
+      ...v2Relation,
+      v1: parsed.v1,
+      comparisonStatus: "comparable",
+      comparisonReason: null,
+    });
+  }
+  return freeze({
+    ...parsed,
+    ...v2Relation,
+    v1: parsed.v1,
+    comparisonStatus: "not_measurable",
+    comparisonReason: "v1_final_response_unavailable",
+    divergenceCodes: Object.freeze([]),
+  });
 }
 
 export function parseApprovedEvalRecord(input: unknown): ApprovedEvalRecord {
