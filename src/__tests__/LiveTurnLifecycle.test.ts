@@ -10,6 +10,7 @@ import type { Organization } from "@/domain/entities/clinic";
 import type { Lead } from "@/domain/entities/lead";
 import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
 import type { LeadRepository } from "@/domain/repositories/lead-repository";
+import type { FollowUpRepository } from "@/domain/repositories/follow-up-repository";
 import { DrizzleLiveConversationContextReader } from "@/infrastructure/repositories/drizzle-live-conversation-context-reader";
 
 const NOW = new Date("2026-08-17T15:00:00.000Z");
@@ -70,6 +71,7 @@ const organization: Organization = {
 
 class MemoryLeadRepository implements LeadRepository {
   readonly leads = new Map<string, Lead>();
+  saveCalls = 0;
 
   async findById(id: string): Promise<Lead | null> {
     return this.leads.get(id) ?? null;
@@ -96,6 +98,7 @@ class MemoryLeadRepository implements LeadRepository {
   }
 
   async save(lead: Lead): Promise<void> {
+    this.saveCalls += 1;
     const existing = await this.findByPhone(lead.clinicId, lead.phone ?? "");
     this.leads.set(existing?.id ?? lead.id, existing ? { ...lead, id: existing.id } : lead);
   }
@@ -105,12 +108,15 @@ class MemoryConversationRepository implements ConversationRepository {
   readonly conversations = new Map<string, Conversation>();
   readonly messages = new Map<string, Message[]>();
   readonly messagesByExternalId = new Map<string, Message>();
+  saveCalls = 0;
+  appendCalls = 0;
 
   async findByLeadId(leadId: string): Promise<Conversation | null> {
     return [...this.conversations.values()].find((item) => item.leadId === leadId) ?? null;
   }
 
   async saveConversation(conversation: Conversation): Promise<void> {
+    this.saveCalls += 1;
     const existing = await this.findByLeadId(conversation.leadId);
     this.conversations.set(
       existing?.id ?? conversation.id,
@@ -122,6 +128,7 @@ class MemoryConversationRepository implements ConversationRepository {
   async setTakeover(): Promise<void> {}
 
   async appendMessage(message: Message): Promise<void> {
+    this.appendCalls += 1;
     if (message.externalId && this.messagesByExternalId.has(message.externalId)) return;
     if (message.externalId) this.messagesByExternalId.set(message.externalId, message);
     const history = this.messages.get(message.conversationId) ?? [];
@@ -184,21 +191,53 @@ class MemoryLeaseStore implements ConversationTurnLeaseStore {
   }
 }
 
-const usageCostTracker: UsageCostTracker = {
-  async trackAiUsage() {},
-  async trackTtsUsage() {},
-  async trackWhatsAppCost() {},
-};
-
 function makeHarness() {
   const leads = new MemoryLeadRepository();
   const conversations = new MemoryConversationRepository(leads);
   const leaseStore = new MemoryLeaseStore();
+  let whatsappCostCalls = 0;
+  let followUpListCalls = 0;
+  let followUpCancelCalls = 0;
+  const usageCostTracker: UsageCostTracker = {
+    async trackAiUsage() {},
+    async trackTtsUsage() {},
+    async trackWhatsAppCost() {
+      whatsappCostCalls += 1;
+    },
+  };
+  const followUpRepository: FollowUpRepository = {
+    async save() {},
+    async listDue() { return []; },
+    async listPendingByLead() {
+      followUpListCalls += 1;
+      return [{
+        id: "follow-up-1",
+        clinicId: organization.id,
+        leadId: "lead-1",
+        dueAt: NOW,
+        status: "pending",
+        reason: "video_sent:Clareamento",
+        suggestedMessage: null,
+        completedAt: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+      }];
+    },
+    async findPendingByReason() { return null; },
+    async cancelPendingByReason() {
+      followUpCancelCalls += 1;
+      return 1;
+    },
+    async cancelPendingByLead() { return 0; },
+    async claimForSending() { return true; },
+    async recoverStaleSending() { return 0; },
+  };
   let sequence = 0;
   const registerIncomingMessage = new RegisterIncomingMessage({
     leadRepository: leads,
     conversationRepository: conversations,
     usageCostTracker,
+    followUpRepository,
     idGenerator: () => `generated-${++sequence}`,
     now: () => NOW,
   });
@@ -233,7 +272,20 @@ function makeHarness() {
     },
     now: () => NOW,
   });
-  return { lifecycle, leads, conversations, leaseStore };
+  return {
+    lifecycle,
+    leads,
+    conversations,
+    leaseStore,
+    effects: () => ({
+      leadSaves: leads.saveCalls,
+      conversationSaves: conversations.saveCalls,
+      messageAppends: conversations.appendCalls,
+      followUpLists: followUpListCalls,
+      followUpCancels: followUpCancelCalls,
+      whatsappCosts: whatsappCostCalls,
+    }),
+  };
 }
 
 function turn(messageId: string, messageText = `mensagem ${messageId}`) {
@@ -297,7 +349,11 @@ describe("LiveTurnLifecycle", () => {
   });
 
   it("suppresses concurrent duplicate external ids before either engine can run", async () => {
-    const { lifecycle, leaseStore } = makeHarness();
+    const single = makeHarness();
+    const singleResult = await single.lifecycle.begin(turn("single-id"));
+    const winnerEffects = single.effects();
+    await ready(singleResult).releaseLease();
+    const { lifecycle, leaseStore, effects } = makeHarness();
 
     const results = await Promise.all([
       lifecycle.begin(turn("same-id")),
@@ -309,6 +365,7 @@ describe("LiveTurnLifecycle", () => {
       { outcome: "duplicate", reason: "external_id" },
     ]);
     expect(leaseStore.held.size).toBe(1);
+    expect(effects()).toEqual(winnerEffects);
     await ready(results.find(({ outcome }) => outcome === "ready")!).releaseLease();
   });
 
@@ -331,6 +388,28 @@ describe("LiveTurnLifecycle", () => {
 
     expect(second).toEqual({ outcome: "busy", reason: "conversation_lease" });
     await ready(first).releaseLease();
+  });
+
+  it("runs persisted media/profile effects before a busy lease result", async () => {
+    const { lifecycle, conversations } = makeHarness();
+    const held = await lifecycle.begin(turn("provider-1"));
+    const effects: string[] = [];
+
+    const busy = await lifecycle.begin({
+      ...turn("provider-audio"),
+      mediaUrl: "https://cdn.example/audio.ogg",
+      mediaType: "audio",
+    }, {
+      afterRegister: ({ lead, inboundMessage }) => {
+        if (!lead.profilePicUrl) effects.push("profile_lookup");
+        if (inboundMessage.mediaType === "audio") effects.push("audio_rehost");
+      },
+    });
+
+    expect(busy).toEqual({ outcome: "busy", reason: "conversation_lease" });
+    expect(effects).toEqual(["profile_lookup", "audio_rehost"]);
+    expect(await conversations.findMessageByExternalId("provider-audio")).not.toBeNull();
+    await ready(held).releaseLease();
   });
 
   it("runs V1 tenant configuration before inbound persistence and lease acquisition", async () => {

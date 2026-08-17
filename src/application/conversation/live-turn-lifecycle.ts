@@ -16,7 +16,7 @@ import type { Lead } from "@/domain/entities/lead";
 import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
 import type { EditorialConfig } from "@/application/config/editorial-config";
 
-export type LiveTurnContext = Readonly<{
+export type LiveTurnRegistration = Readonly<{
   turnId: string;
   clinicId: string;
   leadId: string;
@@ -28,6 +28,9 @@ export type LiveTurnContext = Readonly<{
   inboundMessage: Message;
   outboundAddress: string;
   editorial: EditorialConfig | null;
+}>;
+
+export type LiveTurnContext = LiveTurnRegistration & Readonly<{
   releaseLease(): Promise<void>;
 }>;
 
@@ -51,6 +54,8 @@ export type BeginLiveTurnOptions = Readonly<{
     clinic: Organization;
     editorial: EditorialConfig | null;
   }>) => Promise<void>;
+  /** Runs after the canonical inbound row is visible and before lease acquisition. */
+  afterRegister?: (context: LiveTurnRegistration) => void | Promise<void>;
 }>;
 
 export class LiveTurnSetupError extends Error {
@@ -77,12 +82,48 @@ type LiveTurnLifecycleDependencies = Readonly<{
   now: () => Date;
 }>;
 
+// One worker invocation shares an orchestrator across its parallel job batch.
+// Serialize the same provider id until its canonical messages row is visible.
+// Across workers, durable ingress already collapses `(provider, providerMessageId)`
+// to one inbound event/job and the job queue claims that row once. The messages
+// unique index remains a final integrity check, not the side-effect gate.
+const externalMessageTurnTails = new Map<string, Promise<void>>();
+
+async function withExternalMessageTurnLock<T>(
+  externalMessageId: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const previous = externalMessageTurnTails.get(externalMessageId);
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  externalMessageTurnTails.set(externalMessageId, current);
+  if (previous) await previous;
+  try {
+    return await run();
+  } finally {
+    release();
+    if (externalMessageTurnTails.get(externalMessageId) === current) {
+      externalMessageTurnTails.delete(externalMessageId);
+    }
+  }
+}
+
 export class LiveTurnLifecycle {
   constructor(private readonly deps: LiveTurnLifecycleDependencies) {}
 
   async begin(
     input: ConversationHandleInput,
     options: BeginLiveTurnOptions = {},
+  ): Promise<BeginLiveTurnResult> {
+    return withExternalMessageTurnLock(input.messageId, () =>
+      this.beginExclusive(input, options));
+  }
+
+  private async beginExclusive(
+    input: ConversationHandleInput,
+    options: BeginLiveTurnOptions,
   ): Promise<BeginLiveTurnResult> {
     const existing = await this.deps.conversationRepository
       .findMessageByExternalId(input.messageId);
@@ -138,20 +179,11 @@ export class LiveTurnLifecycle {
       return { outcome: "duplicate", reason: "external_id" };
     }
 
-    const claimed = await this.deps.turnCoordinator.acquire(registered.conversation.id);
-    if (!claimed) return { outcome: "busy", reason: "conversation_lease" };
-
-    let releasePromise: Promise<void> | null = null;
-    const releaseLease = async () => {
-      releasePromise ??= this.deps.turnCoordinator.release(registered.conversation.id);
-      await releasePromise;
-    };
     const outboundAddress = resolveWhatsAppChannelAddress({
       phone: registered.lead.phone,
       whatsappLid: registered.lead.whatsappLid,
     }) ?? channelAddress;
-
-    const context: LiveTurnContext = Object.freeze({
+    const registration: LiveTurnRegistration = Object.freeze({
       turnId: input.turnId ?? input.messageId,
       clinicId: input.clinicId,
       leadId: registered.lead.id,
@@ -163,6 +195,19 @@ export class LiveTurnLifecycle {
       inboundMessage: persistedInbound,
       outboundAddress,
       editorial,
+    });
+    await options.afterRegister?.(registration);
+
+    const claimed = await this.deps.turnCoordinator.acquire(registered.conversation.id);
+    if (!claimed) return { outcome: "busy", reason: "conversation_lease" };
+
+    let releasePromise: Promise<void> | null = null;
+    const releaseLease = async () => {
+      releasePromise ??= this.deps.turnCoordinator.release(registered.conversation.id);
+      await releasePromise;
+    };
+    const context: LiveTurnContext = Object.freeze({
+      ...registration,
       releaseLease,
     });
     return { outcome: "ready", context };

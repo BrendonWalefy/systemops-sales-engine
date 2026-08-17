@@ -3342,6 +3342,7 @@ export class ConversationOrchestrator {
       organizationRow: ReturnType<DrizzleLiveConversationContextReader["getOrganizationRow"]>;
       activeModules: ActiveModules;
       runtimeConfigFingerprint: ReturnType<typeof fingerprintRuntimeConfig>;
+      channelConfig: ClinicChannelConfig;
     }>;
     const prepareTenantConfiguration = async (
       clinic: Organization,
@@ -3355,6 +3356,7 @@ export class ConversationOrchestrator {
         editorial,
         modules: activeModules,
       });
+      const channelConfig = resolveChannelConfig(organizationRow);
       await recordDecisionTrace(this.decisionTraceSink, {
         turnId,
         stage: "tenant.config_loaded",
@@ -3374,7 +3376,12 @@ export class ConversationOrchestrator {
           configFieldCount: runtimeConfigFingerprint.fieldCount,
         },
       });
-      return Object.freeze({ organizationRow, activeModules, runtimeConfigFingerprint });
+      return Object.freeze({
+        organizationRow,
+        activeModules,
+        runtimeConfigFingerprint,
+        channelConfig,
+      });
     };
 
     let liveContext: LiveTurnContext | null = null;
@@ -3402,6 +3409,22 @@ export class ConversationOrchestrator {
         }, {
           beforeRegister: async ({ clinic, editorial }) => {
             preparedLiveTenant = await prepareTenantConfiguration(clinic, editorial);
+          },
+          afterRegister: ({ lead, inboundMessage }) => {
+            if (!preparedLiveTenant) {
+              throw new Error("live tenant configuration missing after registration");
+            }
+            if (!lead.profilePicUrl && lead.phone && preparedLiveTenant.channelConfig.zapi) {
+              void this.persistLeadPhoto(
+                lead.id,
+                lead.phone,
+                preparedLiveTenant.channelConfig.zapi,
+              );
+            }
+            if (params.mediaType === "audio" && params.mediaUrl) {
+              this.rehostInboundMedia(inboundMessage.id, params.mediaUrl, "audio")
+                .catch(() => { /* já logado dentro da função */ });
+            }
           },
         });
       } catch (error) {
@@ -3468,10 +3491,13 @@ export class ConversationOrchestrator {
       editorial = resolved[0];
       preparedTenant = await prepareTenantConfiguration(clinic, editorial, resolved[1]);
     }
-    const { organizationRow, activeModules, runtimeConfigFingerprint } = preparedTenant;
+    const {
+      activeModules,
+      runtimeConfigFingerprint,
+      channelConfig,
+    } = preparedTenant;
     const timezone = new ClinicTimezone(clinic.timezone);
     const businessHours = parseBusinessHours(clinic.businessHours);
-    const channelConfig = resolveChannelConfig(organizationRow);
 
     // Derivados de módulos — usados em todo o método no lugar dos campos legados
     const elevenLabsMod = activeModules.find((m) => m.key === "voice_elevenlabs");
@@ -3557,7 +3583,7 @@ export class ConversationOrchestrator {
     // ── 3.1. Enriquecimento de foto (fire-and-forget) ──
     // Z-API não envia senderPhoto no webhook — buscamos sob demanda via /profile-picture
     // e re-hospedamos no Vercel Blob para evitar expiração de 48h das URLs do WhatsApp.
-    if (!lead.profilePicUrl && lead.phone && channelConfig.zapi) {
+    if (isReplay && !lead.profilePicUrl && lead.phone && channelConfig.zapi) {
       void this.persistLeadPhoto(lead.id, lead.phone, channelConfig.zapi);
     }
 
@@ -3565,7 +3591,7 @@ export class ConversationOrchestrator {
     // Áudio segue o fluxo normal de transcrição/resposta da IA — só persistimos o
     // arquivo original no Blob em paralelo, para o player do Inbox não quebrar
     // quando a URL da Z-API expirar.
-    if (params.mediaType === "audio" && params.mediaUrl) {
+    if (isReplay && params.mediaType === "audio" && params.mediaUrl) {
       this.rehostInboundMedia(incomingMessage.id, params.mediaUrl, "audio")
         .catch(() => { /* já logado dentro da função */ });
     }
