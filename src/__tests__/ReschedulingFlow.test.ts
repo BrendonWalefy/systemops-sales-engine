@@ -160,6 +160,8 @@ function makeApptRepo(overlap: Appointment[] = []) {
   const repo: AppointmentRepository = {
     async save(a) { saved.push(a); },
     async findById() { return null; },
+    async findByIdForClinicAndLead() { return null; },
+    async confirmScheduledForClinicAndLead() { return null; },
     async findByLeadId() { return null; },
     async findActiveByLeadId() { return null; },
     async findAllActiveByLeadId() { return overlap; },

@@ -43,6 +43,34 @@ export class InMemoryDemoStore
     return this.leads.get(id) ?? this.appointments.get(id) ?? null;
   }
 
+  async findByIdForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+  ): Promise<Appointment | null> {
+    const appointment = this.appointments.get(appointmentId);
+    return appointment?.clinicId === clinicId && appointment.leadId === leadId
+      ? appointment
+      : null;
+  }
+
+  async confirmScheduledForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+    updatedAt: Date,
+  ): Promise<Appointment | null> {
+    const appointment = await this.findByIdForClinicAndLead(
+      clinicId,
+      leadId,
+      appointmentId,
+    );
+    if (!appointment || appointment.status !== "scheduled") return null;
+    const confirmed = { ...appointment, status: "confirmed" as const, updatedAt };
+    this.appointments.set(appointmentId, confirmed);
+    return confirmed;
+  }
+
   async findByPhone(clinicId: string, phone: string): Promise<Lead | null> {
     return (
       Array.from(this.leads.values()).find(

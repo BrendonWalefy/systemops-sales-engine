@@ -22,6 +22,42 @@ export type SlotReservation = {
 };
 
 export class SlotReservationService {
+  async findActiveByPeriod(
+    clinicId: string,
+    from: Date,
+    to: Date,
+    now: Date = new Date(),
+  ): Promise<SlotReservation[]> {
+    const rows = await db
+      .select()
+      .from(slotReservations)
+      .where(
+        and(
+          eq(slotReservations.clinicId, clinicId),
+          lt(slotReservations.startsAt, to),
+          gt(slotReservations.endsAt, from),
+          or(
+            eq(slotReservations.status, "confirmed"),
+            and(
+              eq(slotReservations.status, "pending"),
+              gt(slotReservations.expiresAt, now),
+            ),
+          ),
+        ),
+      )
+      .orderBy(slotReservations.startsAt);
+    return rows.map((row) => ({
+      id: row.id,
+      clinicId: row.clinicId,
+      leadId: row.leadId,
+      startsAt: row.startsAt,
+      endsAt: row.endsAt,
+      status: row.status as SlotReservation["status"],
+      calendarEventId: row.calendarEventId,
+      expiresAt: row.expiresAt,
+    }));
+  }
+
   // Tenta reservar um slot. Retorna null se já está reservado/confirmado por outro lead.
   // A constraint UNIQUE (clinic_id, starts_at) com status pending/confirmed previne concorrência.
   async reserve(

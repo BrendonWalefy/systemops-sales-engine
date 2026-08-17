@@ -4,6 +4,8 @@ import type { Organization } from "@/domain/entities/clinic";
 import type { Lead } from "@/domain/entities/lead";
 import type { Treatment } from "@/domain/entities/treatment";
 import type { Appointment, CalendarSlot } from "@/domain/entities/calendar-slot";
+import type { Conversation } from "@/domain/entities/conversation";
+import type { SlotReservation } from "@/core/scheduling/SlotReservationService";
 import type {
   ConversationStateRow,
   FormattedSlot,
@@ -72,6 +74,24 @@ const lead: Lead = {
   updatedAt: now,
 };
 
+const conversation: Conversation = {
+  id: "conversation-lab",
+  clinicId: clinic.id,
+  leadId: lead.id,
+  channel: "whatsapp",
+  category: "sales",
+  externalThreadId: null,
+  summary: null,
+  aiPaused: false,
+  takeoverExpiresAt: null,
+  needsAttention: false,
+  attentionReason: null,
+  consecutiveUnclearCount: 0,
+  lastMessageAt: now,
+  createdAt: now,
+  updatedAt: now,
+};
+
 function treatment(
   overrides: Partial<Treatment> = {},
 ): Treatment {
@@ -135,6 +155,8 @@ function setup(options: {
   calendarSlots?: CalendarSlot[];
   appointmentsInPeriod?: Appointment[];
   appointmentById?: Appointment | null;
+  reservationsInPeriod?: SlotReservation[];
+  conversationOverride?: Conversation;
 } = {}) {
   const availableTreatments = options.treatments ?? [treatment()];
   const activeLead = options.leadOverride ?? lead;
@@ -192,18 +214,44 @@ function setup(options: {
         expiresAt: null,
       };
     }),
+    invalidateIfCurrent: vi.fn(async (_conversationId: string, expectedStateId: string) => {
+      if (currentState?.id !== expectedStateId) return false;
+      currentState = {
+        id: "idle-state",
+        conversationId: "conversation-lab",
+        state: "idle",
+        payload: null,
+        supersedesStateId: expectedStateId,
+        createdAt: now,
+        expiresAt: null,
+      };
+      return true;
+    }),
   };
 
   const appointments = {
     findByPeriod: vi.fn().mockResolvedValue(options.appointmentsInPeriod ?? []),
     findById: vi.fn().mockResolvedValue(options.appointmentById ?? null),
+    findByIdForClinicAndLead: vi.fn().mockImplementation(async (
+      clinicId: string,
+      leadId: string,
+      appointmentId: string,
+    ) => {
+      const candidate = options.appointmentById ?? null;
+      return candidate?.id === appointmentId &&
+        candidate.clinicId === clinicId && candidate.leadId === leadId
+        ? candidate
+        : null;
+    }),
   };
   const booking = {
     book: vi.fn().mockResolvedValue({ success: true, appointment: appointment() }),
-    confirmAppointment: vi.fn().mockImplementation(async ({ appointment: input }) => ({
-      success: true,
-      appointment: { ...input, status: "confirmed" },
-    })),
+    confirmAppointment: vi.fn().mockImplementation(async ({ appointmentId }) => {
+      const input = options.appointmentById ?? null;
+      return input?.id === appointmentId
+        ? { success: true, appointment: { ...input, status: "confirmed" } }
+        : { success: false, reason: "appointment_not_found" };
+    }),
   };
   const calendarSlots = options.calendarSlots ?? [{
     id: "calendar-slot-1",
@@ -219,18 +267,24 @@ function setup(options: {
   const treatments = {
     listByClinic: vi.fn().mockResolvedValue(availableTreatments),
   };
+  const reservations = {
+    findActiveByPeriod: vi.fn().mockResolvedValue(options.reservationsInPeriod ?? []),
+  };
 
   const adapters = createDentalLiveAdapters({
     treatments,
     calendar,
     state,
     appointments,
+    reservations,
     booking,
     clinic,
     lead: activeLead,
     leadId: activeLead.id,
+    conversation: options.conversationOverride ?? conversation,
     conversationId: "conversation-lab",
     turnId: "turn-1",
+    now,
   });
 
   return {
@@ -238,6 +292,7 @@ function setup(options: {
     appointments,
     booking,
     calendar,
+    reservations,
     getCurrentState: () => currentState,
     setCurrentState: (next: ConversationStateRow | null) => { currentState = next; },
     state,
@@ -293,13 +348,28 @@ describe("Dental live adapters — tenant-scoped catalog", () => {
       calendar: fixture.calendar,
       state: fixture.state,
       appointments: fixture.appointments,
+      reservations: fixture.reservations,
       booking: fixture.booking,
       clinic,
       lead: { ...lead, clinicId: "other-clinic" },
       leadId: lead.id,
+      conversation,
       conversationId: "conversation-lab",
       turnId: "turn-1",
+      now,
     })).toThrow(/tenant.*lead binding/i);
+  });
+
+  it("rejects an authoritative conversation that is not bound to the exact tenant and lead", () => {
+    expect(() => setup({
+      conversationOverride: { ...conversation, clinicId: "other-clinic" },
+    })).toThrow(/conversation binding/i);
+    expect(() => setup({
+      conversationOverride: { ...conversation, leadId: "other-lead" },
+    })).toThrow(/conversation binding/i);
+    expect(() => setup({
+      conversationOverride: { ...conversation, id: "other-conversation" },
+    })).toThrow(/conversation binding/i);
   });
 });
 
@@ -378,12 +448,50 @@ describe("Dental live adapters — persisted offers", () => {
     })).rejects.toThrow(/service resolution required/i);
     expect(unresolved.calendar.listAvailableSlots).not.toHaveBeenCalled();
   });
+
+  it("fails closed for an explicit unknown service instead of falling back to lead interest or a sole treatment", async () => {
+    const fixture = setup({
+      leadOverride: { ...lead, treatmentInterest: "clareamento" },
+    });
+    await expect(fixture.adapters.schedulingRead.listSlots({
+      service: "implante",
+      date: null,
+      period: null,
+      minimumLeadTimeHours: 2,
+      now,
+    })).rejects.toThrow(/service resolution required/i);
+    expect(fixture.calendar.listAvailableSlots).not.toHaveBeenCalled();
+  });
+
+  it("excludes slots overlapping an active tenant reservation", async () => {
+    const fixture = setup({
+      reservationsInPeriod: [{
+        id: "reservation-1",
+        clinicId: clinic.id,
+        leadId: "other-lead",
+        startsAt,
+        endsAt,
+        status: "pending",
+        calendarEventId: null,
+        expiresAt: new Date(now.getTime() + 10 * 60_000),
+      }],
+    });
+    await expect(offerOneSlot(fixture)).resolves.toMatchObject({ slots: [] });
+    expect(fixture.reservations.findActiveByPeriod).toHaveBeenCalledWith(
+      clinic.id,
+      expect.any(Date),
+      expect.any(Date),
+      now,
+    );
+    expect(fixture.state.offerSlots).not.toHaveBeenCalled();
+  });
 });
 
 describe("Dental live adapters — BookingService write boundary", () => {
   it("books only through BookingService after revalidating persisted state, slot, and service", async () => {
     const fixture = setup();
     const offered = await offerOneSlot(fixture);
+    const offeredStateId = fixture.getCurrentState()!.id;
 
     const result = await fixture.adapters.schedulingWrite.bookSlot(offered.slots[0]!.id);
 
@@ -400,13 +508,17 @@ describe("Dental live adapters — BookingService write boundary", () => {
       valueCents: 90_000,
       origin: "ai_conversation",
     });
-    expect(fixture.state.invalidate).toHaveBeenCalledWith("conversation-lab");
+    expect(fixture.state.invalidateIfCurrent).toHaveBeenCalledWith(
+      "conversation-lab",
+      offeredStateId,
+    );
   });
 
   it("returns the existing exact same-lead active appointment on retry without booking again", async () => {
     const existing = appointment({ id: "existing-appointment" });
     const fixture = setup();
     const offered = await offerOneSlot(fixture);
+    const offeredStateId = fixture.getCurrentState()!.id;
     fixture.appointments.findByPeriod.mockResolvedValue([existing]);
 
     await expect(fixture.adapters.schedulingWrite.bookSlot(offered.slots[0]!.id)).resolves.toMatchObject({
@@ -414,7 +526,10 @@ describe("Dental live adapters — BookingService write boundary", () => {
       appointmentId: existing.id,
     });
     expect(fixture.booking.book).not.toHaveBeenCalled();
-    expect(fixture.state.invalidate).toHaveBeenCalledOnce();
+    expect(fixture.state.invalidateIfCurrent).toHaveBeenCalledWith(
+      "conversation-lab",
+      offeredStateId,
+    );
   });
 
   it("does not write when the offer was replaced", async () => {
@@ -450,6 +565,55 @@ describe("Dental live adapters — BookingService write boundary", () => {
     expect(fixture.booking.book).not.toHaveBeenCalled();
   });
 
+  it("rejects persisted slots with invalid chronology or a duration different from the treatment", async () => {
+    const fixture = setup();
+    const offered = await offerOneSlot(fixture);
+    const current = fixture.getCurrentState()!;
+    const payload = current.payload as { slots: FormattedSlot[] };
+    fixture.setCurrentState({
+      ...current,
+      payload: {
+        ...current.payload,
+        slots: [{
+          ...payload.slots[0]!,
+          endsAt: new Date(startsAt.getTime() + 30 * 60_000).toISOString(),
+        }],
+      },
+    });
+
+    await expect(fixture.adapters.schedulingRead.resolveOfferedSlot({
+      pendingStepId: current.id,
+      ordinal: 1,
+      date: null,
+      time: null,
+    })).resolves.toBeNull();
+    await expect(fixture.adapters.schedulingWrite.bookSlot(offered.slots[0]!.id)).resolves.toMatchObject({
+      success: false,
+      reason: "stale_offer",
+    });
+    expect(fixture.booking.book).not.toHaveBeenCalled();
+  });
+
+  it("does not accept trailing time text and resolves relative dates against the current turn", async () => {
+    const fixture = setup();
+    await offerOneSlot(fixture);
+    const current = fixture.getCurrentState()!;
+    fixture.setCurrentState({ ...current, createdAt: new Date("2026-08-01T12:00:00.000Z") });
+
+    await expect(fixture.adapters.schedulingRead.resolveOfferedSlot({
+      pendingStepId: current.id,
+      ordinal: null,
+      date: null,
+      time: "15h lixo",
+    })).resolves.toBeNull();
+    await expect(fixture.adapters.schedulingRead.resolveOfferedSlot({
+      pendingStepId: current.id,
+      ordinal: null,
+      date: "amanhã",
+      time: "15h",
+    })).resolves.toMatchObject({ label: "Ter 18/08 às 15h" });
+  });
+
   it("reconciles a slot_taken race only when the new appointment is exact and belongs to the same lead", async () => {
     const fixture = setup();
     const offered = await offerOneSlot(fixture);
@@ -466,6 +630,34 @@ describe("Dental live adapters — BookingService write boundary", () => {
     });
     expect(fixture.booking.book).toHaveBeenCalledOnce();
     expect(fixture.appointments.findByPeriod).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not invalidate a newer state after booking consumes an older offer", async () => {
+    const fixture = setup();
+    const offered = await offerOneSlot(fixture);
+    const consumedStateId = fixture.getCurrentState()!.id;
+    const newerState: ConversationStateRow = {
+      id: "newer-state",
+      conversationId: conversation.id,
+      state: "menu_offered",
+      payload: null,
+      supersedesStateId: null,
+      createdAt: new Date(now.getTime() + 1_000),
+      expiresAt: null,
+    };
+    fixture.booking.book.mockImplementation(async () => {
+      fixture.setCurrentState(newerState);
+      return { success: true, appointment: appointment() };
+    });
+
+    await expect(fixture.adapters.schedulingWrite.bookSlot(offered.slots[0]!.id)).resolves.toMatchObject({
+      success: true,
+    });
+    expect(fixture.state.invalidateIfCurrent).toHaveBeenCalledWith(
+      conversation.id,
+      consumedStateId,
+    );
+    expect(fixture.getCurrentState()).toEqual(newerState);
   });
 });
 
@@ -491,8 +683,40 @@ describe("Dental live adapters — appointment confirmation", () => {
       success: true,
       appointmentId: pending.id,
     });
-    expect(fixture.booking.confirmAppointment).toHaveBeenCalledWith({ clinic, lead, appointment: pending });
-    expect(fixture.state.invalidate).toHaveBeenCalledWith("conversation-lab");
+    expect(fixture.booking.confirmAppointment).toHaveBeenCalledWith({
+      clinic,
+      lead,
+      appointmentId: pending.id,
+    });
+    expect(fixture.state.invalidateIfCurrent).toHaveBeenCalledWith(
+      "conversation-lab",
+      "confirmation-state",
+    );
+  });
+
+  it("uses only the tenant-and-lead-scoped appointment read", async () => {
+    const pending = appointment({ id: "pending-appointment" });
+    const fixture = setup({ appointmentById: pending });
+    fixture.appointments.findById.mockRejectedValue(new Error("global appointment read forbidden"));
+    fixture.setCurrentState({
+      id: "confirmation-state",
+      conversationId: "conversation-lab",
+      state: "awaiting_appointment_confirmation",
+      payload: { appointmentId: pending.id, appointmentLabel: "Ter 18/08 às 15h" },
+      supersedesStateId: null,
+      createdAt: now,
+      expiresAt: new Date(now.getTime() + 60_000),
+    });
+
+    await expect(fixture.adapters.schedulingRead.resolvePendingAppointment("confirmation-state")).resolves.toMatchObject({
+      id: pending.id,
+    });
+    expect(fixture.appointments.findById).not.toHaveBeenCalled();
+    expect(fixture.appointments.findByIdForClinicAndLead).toHaveBeenCalledWith(
+      clinic.id,
+      lead.id,
+      pending.id,
+    );
   });
 
   it("fails closed for a cross-tenant pending appointment", async () => {

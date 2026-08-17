@@ -6,12 +6,14 @@ import type {
   SlotsOfferedPayload,
 } from "@/core/conversation/ConversationStateMachine";
 import type { BookingService } from "@/core/scheduling/BookingService";
+import type { SlotReservationService } from "@/core/scheduling/SlotReservationService";
 import {
   ClinicTimezone,
   parseBusinessHours,
 } from "@/core/scheduling/ClinicTimezone";
 import type { Appointment } from "@/domain/entities/calendar-slot";
 import type { Organization } from "@/domain/entities/clinic";
+import type { Conversation } from "@/domain/entities/conversation";
 import type { Lead } from "@/domain/entities/lead";
 import type { Treatment } from "@/domain/entities/treatment";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
@@ -28,20 +30,29 @@ import type {
 
 type LiveState = Pick<
   ConversationStateMachine,
-  "getCurrentState" | "getPendingSlotOffer" | "offerSlots" | "invalidate"
+  | "getCurrentState"
+  | "getPendingSlotOffer"
+  | "offerSlots"
+  | "invalidateIfCurrent"
 >;
 
 export type DentalLiveAdapterDependencies = {
   treatments: Pick<TreatmentRepository, "listByClinic">;
   calendar: Pick<CalendarGateway, "listAvailableSlots">;
   state: LiveState;
-  appointments: Pick<AppointmentRepository, "findByPeriod" | "findById">;
+  appointments: Pick<
+    AppointmentRepository,
+    "findByPeriod" | "findByIdForClinicAndLead"
+  >;
+  reservations: Pick<SlotReservationService, "findActiveByPeriod">;
   booking: Pick<BookingService, "book" | "confirmAppointment">;
   clinic: Organization;
   lead: Lead;
   leadId: string;
+  conversation: Conversation;
   conversationId: string;
   turnId: string;
+  now: Date;
 };
 
 class DentalLiveAdapterError extends Error {
@@ -194,12 +205,31 @@ function timesMatch(
   slot: FormattedSlot,
   requestedTime: string,
 ): boolean {
-  const match = normalize(requestedTime).match(/^(\d{1,2})(?::|h)?(\d{2})?/);
+  const match = /^(\d{1,2})(?:(?:h(\d{2}))|(?::(\d{2}))|h)?$/.exec(
+    normalize(requestedTime),
+  );
   if (!match) return false;
   const expectedHour = Number(match[1]);
-  const expectedMinute = Number(match[2] ?? 0);
+  const expectedMinute = Number(match[2] ?? match[3] ?? 0);
+  if (expectedHour > 23 || expectedMinute > 59) return false;
   const actual = timezone.toLocalParts(new Date(slot.startsAt));
   return actual.hour === expectedHour && actual.minute === expectedMinute;
+}
+
+function validOfferedSlot(
+  slot: FormattedSlot,
+  treatment: Treatment,
+): { startsAt: Date; endsAt: Date } | null {
+  if (!Number.isInteger(slot.index) || slot.index < 1) return null;
+  const startsAt = new Date(slot.startsAt);
+  const endsAt = new Date(slot.endsAt);
+  if (
+    !Number.isFinite(startsAt.getTime()) ||
+    !Number.isFinite(endsAt.getTime()) ||
+    endsAt.getTime() <= startsAt.getTime() ||
+    endsAt.getTime() - startsAt.getTime() !== treatment.durationMinutes * 60_000
+  ) return null;
+  return { startsAt, endsAt };
 }
 
 function toDentalSlot(
@@ -248,15 +278,25 @@ export function createDentalLiveAdapters(
     booking,
     calendar,
     clinic,
+    conversation,
     conversationId,
     lead,
     leadId,
+    now: turnNow,
+    reservations,
     state,
     treatments,
     turnId,
   } = deps;
   if (lead.clinicId !== clinic.id || lead.id !== leadId) {
     throw new DentalLiveAdapterError("tenant and lead binding mismatch");
+  }
+  if (
+    conversation.id !== conversationId ||
+    conversation.clinicId !== clinic.id ||
+    conversation.leadId !== leadId
+  ) {
+    throw new DentalLiveAdapterError("conversation binding mismatch");
   }
   if (!conversationId || !turnId) {
     throw new DentalLiveAdapterError("conversation and turn binding required");
@@ -275,9 +315,10 @@ export function createDentalLiveAdapters(
     query: string | null,
   ): Promise<Treatment> {
     const tenantTreatments = await listTenantTreatments();
+    const hasExplicitQuery = Boolean(query && normalize(query));
     const direct = resolveTreatment(tenantTreatments, query);
     if (direct.kind === "exact") return direct.treatment;
-    if (direct.kind === "ambiguous") {
+    if (hasExplicitQuery || direct.kind === "ambiguous") {
       throw new DentalLiveAdapterError("service resolution required");
     }
 
@@ -296,6 +337,8 @@ export function createDentalLiveAdapters(
     state: ConversationStateRow;
     slot: FormattedSlot;
     treatment: Treatment;
+    startsAt: Date;
+    endsAt: Date;
   } | null> {
     const parsed = parseSlotId(id);
     if (!parsed) return null;
@@ -324,7 +367,10 @@ export function createDentalLiveAdapters(
       payload.durationMinutes != null &&
       payload.durationMinutes !== treatment.durationMinutes
     ) return null;
-    return { state: current, slot: offered, treatment };
+    const parsedSlot = validOfferedSlot(offered, treatment);
+    return parsedSlot
+      ? { state: current, slot: offered, treatment, ...parsedSlot }
+      : null;
   }
 
   async function pendingAppointment(
@@ -347,7 +393,11 @@ export function createDentalLiveAdapters(
       typeof payload.appointmentLabel !== "string" ||
       (expectedAppointmentId && payload.appointmentId !== expectedAppointmentId)
     ) return null;
-    const appointment = await appointments.findById(payload.appointmentId);
+    const appointment = await appointments.findByIdForClinicAndLead(
+      clinic.id,
+      leadId,
+      payload.appointmentId,
+    );
     if (
       !appointment ||
       appointment.clinicId !== clinic.id ||
@@ -394,6 +444,12 @@ export function createDentalLiveAdapters(
         ? timezone.toLocalParts(requestedDay)
         : null;
       const activeAppointments = await appointments.findByPeriod(clinic.id, from, to);
+      const activeReservations = await reservations.findActiveByPeriod(
+        clinic.id,
+        from,
+        to,
+        input.now,
+      );
       const bufferMs = clinic.postAppointmentBufferMinutes * 60_000;
       const slots = (await calendar.listAvailableSlots({
         clinicId: clinic.id,
@@ -404,6 +460,13 @@ export function createDentalLiveAdapters(
       }))
         .filter((slot) => slot.clinicId === clinic.id)
         .filter((slot) => slot.startsAt >= from && slot.endsAt <= to)
+        .filter((slot) =>
+          Number.isFinite(slot.startsAt.getTime()) &&
+          Number.isFinite(slot.endsAt.getTime()) &&
+          slot.endsAt.getTime() > slot.startsAt.getTime() &&
+          slot.endsAt.getTime() - slot.startsAt.getTime() ===
+            treatment.durationMinutes * 60_000,
+        )
         .filter((slot) => {
           if (!requestedParts) return true;
           const actual = timezone.toLocalParts(slot.startsAt);
@@ -417,6 +480,13 @@ export function createDentalLiveAdapters(
           isActiveAppointment(appointment) &&
           appointment.startsAt.getTime() < slot.endsAt.getTime() &&
           appointment.endsAt.getTime() + bufferMs > slot.startsAt.getTime(),
+        ))
+        .filter((slot) => !activeReservations.some((reservation) =>
+          reservation.clinicId === clinic.id &&
+          (reservation.status === "confirmed" ||
+            (reservation.status === "pending" && reservation.expiresAt > input.now)) &&
+          reservation.startsAt.getTime() < slot.endsAt.getTime() &&
+          reservation.endsAt.getTime() > slot.startsAt.getTime(),
         ))
         .sort((left, right) => left.startsAt.getTime() - right.startsAt.getTime())
         .slice(0, clinic.maxSlotsToOffer);
@@ -444,6 +514,16 @@ export function createDentalLiveAdapters(
         payload.treatmentName !== treatment.name ||
         payload.durationMinutes !== treatment.durationMinutes
       ) {
+        throw new DentalLiveAdapterError("persisted slot offer unavailable");
+      }
+      const persistedIndices = new Set<number>();
+      if (payload.slots.some((slot) => {
+        if (!validOfferedSlot(slot, treatment) || persistedIndices.has(slot.index)) {
+          return true;
+        }
+        persistedIndices.add(slot.index);
+        return false;
+      })) {
         throw new DentalLiveAdapterError("persisted slot offer unavailable");
       }
       return {
@@ -474,10 +554,11 @@ export function createDentalLiveAdapters(
           payload.durationMinutes !== treatment.durationMinutes)
       ) return null;
       const matches = payload.slots.filter((slot) => {
+        if (!validOfferedSlot(slot, treatment)) return false;
         if (input.ordinal !== null && slot.index !== input.ordinal) return false;
         if (
           input.date &&
-          !datesMatch(timezone, slot, input.date, current.createdAt, businessHours)
+          !datesMatch(timezone, slot, input.date, turnNow, businessHours)
         ) return false;
         if (input.time && !timesMatch(timezone, slot, input.time)) return false;
         return true;
@@ -520,15 +601,7 @@ export function createDentalLiveAdapters(
           evidenceRef: `booking:${turnId}:stale_offer`,
         };
       }
-      const startsAt = new Date(offered.slot.startsAt);
-      const endsAt = new Date(offered.slot.endsAt);
-      if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime())) {
-        return {
-          success: false,
-          reason: "invalid_slot",
-          evidenceRef: `booking:${turnId}:invalid_slot`,
-        };
-      }
+      const { startsAt, endsAt } = offered;
       let inPeriod = await appointments.findByPeriod(clinic.id, startsAt, endsAt);
       const existing = activeAppointmentForLead(
         inPeriod,
@@ -538,7 +611,7 @@ export function createDentalLiveAdapters(
         endsAt,
       );
       if (existing) {
-        await state.invalidate(conversationId);
+        await state.invalidateIfCurrent(conversationId, offered.state.id);
         return successfulOutcome(existing, offered.slot.label);
       }
       if (inPeriod.some((appointment) =>
@@ -572,7 +645,7 @@ export function createDentalLiveAdapters(
             endsAt,
           );
           if (reconciled) {
-            await state.invalidate(conversationId);
+            await state.invalidateIfCurrent(conversationId, offered.state.id);
             return successfulOutcome(reconciled, offered.slot.label);
           }
         }
@@ -592,7 +665,7 @@ export function createDentalLiveAdapters(
           evidenceRef: `booking:${turnId}:invalid_binding`,
         };
       }
-      await state.invalidate(conversationId);
+      await state.invalidateIfCurrent(conversationId, offered.state.id);
       return successfulOutcome(result.appointment, offered.slot.label);
     },
 
@@ -608,7 +681,7 @@ export function createDentalLiveAdapters(
       const result = await booking.confirmAppointment({
         clinic,
         lead,
-        appointment: pending.appointment,
+        appointmentId: pending.appointment.id,
       });
       if (!result.success) {
         return {
@@ -628,7 +701,7 @@ export function createDentalLiveAdapters(
           evidenceRef: `appointment-confirmation:${turnId}:invalid_binding`,
         };
       }
-      await state.invalidate(conversationId);
+      await state.invalidateIfCurrent(conversationId, pending.stateId);
       return successfulOutcome(result.appointment, pending.label);
     },
   };
