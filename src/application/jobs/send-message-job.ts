@@ -33,6 +33,7 @@ import {
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
+import type { Message } from "@/domain/entities/conversation";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { areEquivalentWhatsAppPhones } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { createLogger } from "@/infrastructure/logging/logger";
@@ -44,7 +45,12 @@ import { db } from "@/infrastructure/db/client";
 import { organizations, messages, followUps, leads, conversations } from "@/infrastructure/db/schema";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
-import type { InternalLabDeliveryGuard } from "@/application/conversation-v2/internal-lab-delivery-guard";
+import {
+  consumeInternalLabDeliveryAuthorization,
+  type InternalLabDeliveryAuthorization,
+  type InternalLabDeliveryGuard,
+} from "@/application/conversation-v2/internal-lab-delivery-guard";
+import type { ChannelConfigSnapshot } from "@/application/ports/channel-config-snapshot";
 
 export type SendMessageJobDependencies = {
   outboundMessageStore: OutboundMessageStore;
@@ -60,6 +66,7 @@ export type SendMessageJobDependencies = {
     payload: OutboundPayload;
     clinicId: string;
     conversationId: string;
+    internalLabDeliveryAuthorization?: InternalLabDeliveryAuthorization;
   }) => Promise<string | null>;
   internalLabDeliveryGuard?: InternalLabDeliveryGuard;
 };
@@ -181,18 +188,16 @@ export class SendMessageJobHandler {
       clinicId: outbound.clinicId,
       payload: outbound.payload,
     };
-
+    let internalLabDeliveryAuthorization: InternalLabDeliveryAuthorization | undefined;
     if (
       isConversationOutboundPayload(outbound.payload)
       && outbound.payload.agentMessagePersistence === "sender"
     ) {
-      const authorized = outbound.payload.internalLabBinding
-        ? await this.deps.internalLabDeliveryGuard?.authorize({
-            clinicId: outbound.clinicId,
-            binding: outbound.payload.internalLabBinding,
-          }) ?? false
-        : false;
-      if (!authorized) {
+      internalLabDeliveryAuthorization = await this.deps.internalLabDeliveryGuard?.authorize({
+        clinicId: outbound.clinicId,
+        binding: outbound.payload.internalLabBinding,
+      }) ?? undefined;
+      if (!internalLabDeliveryAuthorization) {
         await this.deps.outboundMessageStore.markOutboundCancelled(
           outbound.id,
           "internal_lab_binding_drift",
@@ -205,10 +210,7 @@ export class SendMessageJobHandler {
       }
     }
 
-    if (
-      isConversationOutboundPayload(outbound.payload)
-      && outbound.payload.agentMessagePersistence === "sender"
-    ) {
+    if (isConversationOutboundPayload(outbound.payload)) {
       const placeholder = {
         id: outbound.payload.agentMessageId,
         conversationId: outbound.conversationId,
@@ -221,23 +223,28 @@ export class SendMessageJobHandler {
         intent: outbound.payload.intent,
         deliveryFormat: null,
       } as const;
-      const inserted = await this.conversationRepository.appendMessage(placeholder);
-      if (!inserted) {
-        const existing = await this.conversationRepository.findMessageById(
-          placeholder.id,
-        );
-        const exactPlaceholder = existing !== null &&
-          existing.id === placeholder.id &&
-          existing.conversationId === placeholder.conversationId &&
-          existing.author === placeholder.author &&
-          existing.body === placeholder.body &&
-          (existing.intent ?? null) === (placeholder.intent ?? null) &&
-          (existing.deliveryFormat ?? null) === placeholder.deliveryFormat &&
-          (existing.externalId ?? null) === placeholder.externalId &&
-          (existing.mediaUrl ?? null) === placeholder.mediaUrl &&
-          (existing.mediaType ?? null) === placeholder.mediaType;
-        if (!exactPlaceholder) {
-          throw new Error("sender-owned agent message is missing or mismatched");
+      if (outbound.payload.agentMessagePersistence === "sender") {
+        const inserted = await this.conversationRepository.appendMessage(placeholder);
+        if (!inserted) {
+          const existing = await this.conversationRepository.findMessageById(placeholder.id);
+          if (!isExactConversationAgentMessage(existing, placeholder)) {
+            throw new Error("sender-owned agent message is missing or mismatched");
+          }
+        }
+      } else {
+        const existing = await this.conversationRepository.findMessageById(placeholder.id);
+        const existedBeforeOutbox = existing !== null &&
+          existing.sentAt.getTime() <= outbound.createdAt.getTime();
+        if (!existedBeforeOutbox || !isExactConversationAgentMessage(existing, placeholder)) {
+          await this.deps.outboundMessageStore.markOutboundCancelled(
+            outbound.id,
+            "conversation_agent_message_missing",
+          );
+          outboundLog.warn("job.ignored", {
+            reason: "conversation_agent_message_missing",
+            durationMs: Date.now() - startedAt,
+          });
+          return "ignored";
         }
       }
     }
@@ -422,6 +429,7 @@ export class SendMessageJobHandler {
         payload: outbound.payload,
         clinicId: outbound.clinicId,
         conversationId: outbound.conversationId,
+        internalLabDeliveryAuthorization,
       });
     } catch (error) {
       if (turnId) {
@@ -623,6 +631,33 @@ function isCompleteAutomationContext(
   return Boolean(context?.clinic && context.lead && context.conversation && context.agentMessage);
 }
 
+function isExactConversationAgentMessage(
+  existing: Message | null | undefined,
+  expected: Readonly<Pick<
+    Message,
+    | "id"
+    | "conversationId"
+    | "author"
+    | "body"
+    | "intent"
+    | "deliveryFormat"
+    | "externalId"
+    | "mediaUrl"
+    | "mediaType"
+  >>,
+): existing is Message {
+  return existing != null &&
+    existing.id === expected.id &&
+    existing.conversationId === expected.conversationId &&
+    existing.author === expected.author &&
+    existing.body === expected.body &&
+    (existing.intent ?? null) === (expected.intent ?? null) &&
+    (existing.deliveryFormat ?? null) === (expected.deliveryFormat ?? null) &&
+    (existing.externalId ?? null) === (expected.externalId ?? null) &&
+    (existing.mediaUrl ?? null) === (expected.mediaUrl ?? null) &&
+    (existing.mediaType ?? null) === (expected.mediaType ?? null);
+}
+
 function automationDestinationMatchesLead(
   to: string,
   lead: OutboundSafetyContext["lead"],
@@ -650,12 +685,14 @@ async function deliverOutboundPayload(input: {
   payload: OutboundPayload;
   clinicId: string;
   conversationId: string;
+  internalLabDeliveryAuthorization?: InternalLabDeliveryAuthorization;
 }, boundary: OutboundDeliveryBoundary): Promise<string | null> {
   if (isConversationOutboundPayload(input.payload)) {
     return deliverConversationOutbound({
       payload: input.payload,
       clinicId: input.clinicId,
       conversationId: input.conversationId,
+      internalLabDeliveryAuthorization: input.internalLabDeliveryAuthorization,
     }, boundary);
   }
   if (isAutomationOutboundPayload(input.payload)) {
@@ -729,7 +766,14 @@ async function deliverConversationOutbound(input: {
   payload: ConversationOutboundPayload;
   clinicId: string;
   conversationId: string;
+  internalLabDeliveryAuthorization?: InternalLabDeliveryAuthorization;
 }, boundary: OutboundDeliveryBoundary): Promise<string | null> {
+  const authorizedChannelConfig = input.payload.agentMessagePersistence === "sender"
+    ? consumeInternalLabDeliveryAuthorization(input.internalLabDeliveryAuthorization)
+    : null;
+  if (input.payload.agentMessagePersistence === "sender" && !authorizedChannelConfig) {
+    throw new Error("invalid or consumed Internal Lab delivery authorization");
+  }
   const [clinic] = await db
     .select()
     .from(organizations)
@@ -743,7 +787,7 @@ async function deliverConversationOutbound(input: {
     return deliverShadowOutbound(input, boundary);
   }
 
-  const config = resolveChannelConfig(clinic);
+  const config: ChannelConfigSnapshot = authorizedChannelConfig ?? resolveChannelConfig(clinic);
   const conversationRepository = new DrizzleConversationRepository();
   const appointmentRepository = new DrizzleAppointmentRepository();
   const followUpRepository = new DrizzleFollowUpRepository();

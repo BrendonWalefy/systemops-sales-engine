@@ -235,6 +235,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
                 aliases: Object.freeze([...treatment.aliases]),
               })),
             });
+            understandingResolved = true;
             if (result.safety.optOut === true) {
               const decision = resolveStopContactDecision({
                 classifiedIntent: "stop_contact",
@@ -281,7 +282,6 @@ export class V2LiveConversationHandler implements ConversationHandler {
                 phase = "understanding";
               }
             }
-            understandingResolved = true;
             await trace("v2.understanding", {
               status: "completed",
               durationMs: Math.max(0, Math.round(performance.now() - understandingStartedAt)),
@@ -290,18 +290,22 @@ export class V2LiveConversationHandler implements ConversationHandler {
             });
             return result;
           } catch (error) {
-            await trace("v2.understanding", {
-              status: "failed",
-              durationMs: Math.max(0, Math.round(performance.now() - understandingStartedAt)),
-              modelId,
-              request: null,
-            });
+            if (!understandingResolved) {
+              await trace("v2.understanding", {
+                status: "failed",
+                durationMs: Math.max(0, Math.round(performance.now() - understandingStartedAt)),
+                modelId,
+                request: null,
+              });
+            }
             throw error;
           }
         },
         capabilities: pack.capabilities,
       }).catch((error) => {
-        phase = understandingResolved ? "decision" : "understanding";
+        if (phase === "understanding") {
+          phase = understandingResolved ? "decision" : "understanding";
+        }
         throw error;
       });
 

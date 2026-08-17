@@ -694,6 +694,26 @@ describe("Dental live adapters — BookingService write boundary", () => {
     expect(fixture.booking.book).not.toHaveBeenCalled();
   });
 
+  it("does not consume or book an old offer when evaluation becomes required", async () => {
+    const fixture = setup();
+    const offered = await offerOneSlot(fixture);
+    const current = fixture.getCurrentState()!;
+    fixture.treatments.listByClinic.mockResolvedValue([
+      treatment({ requiresEvaluationFirst: true }),
+    ]);
+
+    await expect(fixture.adapters.schedulingRead.resolveOfferedSlot({
+      pendingStepId: current.id,
+      ordinal: 1,
+      date: null,
+      time: null,
+    })).resolves.toBeNull();
+    await expect(fixture.adapters.schedulingWrite.bookSlot(offered.slots[0]!.id))
+      .resolves.toMatchObject({ success: false, reason: "stale_offer" });
+    expect(fixture.booking.book).not.toHaveBeenCalled();
+    expect(fixture.state.invalidateIfCurrent).not.toHaveBeenCalled();
+  });
+
   it("rejects persisted slots with invalid chronology or a duration different from the treatment", async () => {
     const fixture = setup();
     const offered = await offerOneSlot(fixture);

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { sanitizeRuntimeConfig } from "@/application/config/runtime-config-fingerprint";
 import { stableSerialize } from "@/application/replay/fingerprint-replay-config";
+import type { ChannelConfigSnapshot } from "@/application/ports/channel-config-snapshot";
 
 export const INTERNAL_LAB_RUNTIME_ARTIFACT_SCHEMA =
   "conversation-v2.internal-lab-runtime-artifact.v1" as const;
@@ -21,6 +22,10 @@ export type InternalLabRuntimeBindings = Readonly<{
 
 export type InternalLabRuntimeBindingsReader = Readonly<{
   resolve(clinicId: string): Promise<InternalLabRuntimeBindings>;
+  resolveDeliverySnapshot?(clinicId: string): Promise<Readonly<{
+    bindings: InternalLabRuntimeBindings;
+    channelConfig: ChannelConfigSnapshot;
+  }>>;
 }>;
 
 const channelKeys = Object.freeze([

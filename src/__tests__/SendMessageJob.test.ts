@@ -3,6 +3,7 @@ import { drainMessageSendQueue } from "@/application/jobs/drain-message-send-que
 import { SendMessageJobHandler, SHADOW_DELIVERY_SUPPRESSED } from "@/application/jobs/send-message-job";
 import type { OutboundMessage } from "@/application/ports/outbound-message-store";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
+import { isConversationOutboundPayload } from "@/application/jobs/conversation-outbound-payload";
 
 const outbound: OutboundMessage = {
   id: "outbound-1",
@@ -55,6 +56,24 @@ function makeStore() {
     markOutboundDelivered: vi.fn().mockResolvedValue(undefined),
     markOutboundCancelled: vi.fn().mockResolvedValue(undefined),
     countSentSince: vi.fn().mockResolvedValue(0),
+  };
+}
+
+function legacyConversationRepository() {
+  return {
+    appendMessage: vi.fn(),
+    findMessageById: vi.fn().mockResolvedValue({
+      id: "agent-message-1",
+      conversationId: "conversation-1",
+      author: "agent",
+      body: "Olá",
+      mediaUrl: null,
+      mediaType: null,
+      sentAt: new Date("2026-06-23T11:59:00.000Z"),
+      externalId: null,
+      intent: null,
+      deliveryFormat: null,
+    }),
   };
 }
 
@@ -120,6 +139,102 @@ function makeAutomationDispatchLifecycle() {
 }
 
 describe("SendMessageJobHandler", () => {
+  it.each([
+    { ...(outbound.payload as Record<string, unknown>), agentMessagePersistence: "sender" },
+    { ...(outbound.payload as Record<string, unknown>), internalLabBinding },
+    { ...(outbound.payload as Record<string, unknown>), unexpected: true },
+    {
+      ...(outbound.payload as Record<string, unknown>),
+      agentMessagePersistence: "sender",
+      internalLabBinding: { ...internalLabBinding, unexpected: true },
+    },
+  ])("rejects half-paired or unknown conversation payload fields", (payload) => {
+    expect(isConversationOutboundPayload(payload)).toBe(false);
+  });
+
+  it("fails closed when a legacy reply has no exact pre-existing agent message", async () => {
+    const store = makeStore();
+    const delivery = vi.fn();
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: {
+        appendMessage: vi.fn(),
+        findMessageById: vi.fn().mockResolvedValue(null),
+      },
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
+      .resolves.toBe("ignored");
+    expect(store.markOutboundCancelled).toHaveBeenCalledWith(
+      outbound.id,
+      "conversation_agent_message_missing",
+    );
+    expect(delivery).not.toHaveBeenCalled();
+  });
+
+  it("does not let an existing sender-created V2 placeholder downgrade to legacy on retry", async () => {
+    const store = makeStore();
+    const delivery = vi.fn();
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: {
+        appendMessage: vi.fn(),
+        findMessageById: vi.fn().mockResolvedValue({
+          id: "agent-message-1",
+          conversationId: "conversation-1",
+          author: "agent",
+          body: "Olá",
+          mediaUrl: null,
+          mediaType: null,
+          sentAt: new Date("2026-08-17T12:00:00.000Z"),
+          externalId: null,
+          intent: null,
+          deliveryFormat: null,
+        }),
+      },
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
+      .resolves.toBe("ignored");
+    expect(delivery).not.toHaveBeenCalled();
+  });
+
+  it("passes the exact delivery authorization returned immediately before V2 delivery", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue({
+      ...outbound,
+      payload: {
+        ...(outbound.payload as Record<string, unknown>),
+        agentMessagePersistence: "sender",
+        internalLabBinding,
+      },
+    });
+    const authorization = Object.freeze({ schemaVersion: "test.authorization" });
+    const delivery = vi.fn().mockResolvedValue("provider-1");
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: {
+        appendMessage: vi.fn().mockResolvedValue(true),
+        findMessageById: vi.fn(),
+      },
+      internalLabDeliveryGuard: {
+        authorize: vi.fn().mockResolvedValue(authorization),
+      } as never,
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
+      .resolves.toBe("sent");
+    expect(delivery).toHaveBeenCalledWith(expect.objectContaining({
+      internalLabDeliveryAuthorization: authorization,
+    }));
+  });
+
   it("suppresses a V2 reply when channel bindings drift after outbox enqueue", async () => {
     const store = makeStore();
     store.findOutboundMessage.mockResolvedValue({
@@ -138,7 +253,7 @@ describe("SendMessageJobHandler", () => {
     });
     const delivery = vi.fn();
     const authorize = vi.fn().mockResolvedValue(false);
-    const appendMessage = vi.fn();
+    const appendMessage = vi.fn().mockResolvedValue(true);
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       conversationRepository: { appendMessage, findMessageById: vi.fn() },
@@ -311,6 +426,7 @@ describe("SendMessageJobHandler", () => {
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       delivery,
+      conversationRepository: legacyConversationRepository(),
       decisionTraceSink,
       conversationStateReader: {
         getCurrentState: vi.fn().mockResolvedValue(null),
@@ -342,6 +458,7 @@ describe("SendMessageJobHandler", () => {
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       delivery: vi.fn().mockRejectedValue(new Error("provider unavailable")),
+      conversationRepository: legacyConversationRepository(),
       decisionTraceSink,
     });
 

@@ -382,7 +382,11 @@ export function createDentalLiveAdapters(
     const treatment = tenantTreatments.find(
       (candidate) => candidate.id === parsed.treatmentId,
     );
-    if (!treatment || normalize(treatment.name) !== normalize(payload.treatmentName)) {
+    if (
+      !treatment ||
+      treatment.requiresEvaluationFirst ||
+      normalize(treatment.name) !== normalize(payload.treatmentName)
+    ) {
       return null;
     }
     if (
@@ -560,6 +564,7 @@ export function createDentalLiveAdapters(
       );
       if (
         !treatment ||
+        treatment.requiresEvaluationFirst ||
         normalize(treatment.name) !== normalize(payload.treatmentName) ||
         (payload.durationMinutes != null &&
           payload.durationMinutes !== treatment.durationMinutes)

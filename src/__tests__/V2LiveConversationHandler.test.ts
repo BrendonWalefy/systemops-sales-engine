@@ -364,6 +364,24 @@ describe("V2LiveConversationHandler", () => {
       { turnId },
     );
   });
+
+  it("keeps a durable opt-out outbox failure classified as outbox_failed", async () => {
+    const harness = makeHarness({ safetyOptOut: true, outboxFailure: true });
+
+    await expect(harness.handler.handle(handleInput("Pare de me enviar mensagens")))
+      .rejects.toThrow("outbox unavailable");
+    expect(harness.persistStopContact).toHaveBeenCalledOnce();
+    expect(harness.lifecycle.fail).toHaveBeenCalledOnce();
+    expect(harness.trace.getEvents(turnId).at(-1)).toMatchObject({
+      stage: "turn.failed",
+      metadata: {
+        phase: "outbox",
+        reason: "outbox_failed",
+        effectAttempted: true,
+        effectCompleted: true,
+      },
+    });
+  });
   it("runs the real prepared pipeline and enqueues one authorized current-version reply", async () => {
     const harness = makeHarness();
 
