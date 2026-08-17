@@ -380,6 +380,7 @@ describe("Cycle I post-sender shadow batch", () => {
 
     await expect(runRegisteredBatch({ turns: [turn], ...input })).resolves.toMatchObject({ persisted: 1 });
     const record = input.sink.append.mock.calls[0]![0].record;
+    expect(record.version).toBe("conversation-v2-live-comparison.v2");
     expect(record.v1).toMatchObject({
       status: "unavailable",
       finalTextCharacters: null,

@@ -11,12 +11,14 @@ import {
   canonicalizeComparisonRecordConfig,
 } from "@/application/conversation-v2/comparison-record-config";
 import {
+  LIVE_COMPARISON_VERSION,
   keyedRef,
   parseLiveComparisonRecord,
-  type EngineStructuralSummary,
   type HmacRef,
   type LiveComparisonRecord,
   type ModelCallSummary,
+  type V1EngineStructuralSummary,
+  type V2EngineStructuralSummary,
 } from "@/application/conversation-v2/comparison-record";
 import {
   canonicalizeConversationEnginePolicy,
@@ -251,7 +253,7 @@ const emptyEngineSummary = Object.freeze({
   model: null,
 });
 
-function v1Summary(): EngineStructuralSummary {
+function v1Summary(): V1EngineStructuralSummary {
   return {
     ...emptyEngineSummary,
     status: "unavailable",
@@ -262,7 +264,7 @@ function v1Summary(): EngineStructuralSummary {
 function v2Summary(
   evaluation: ShadowEvaluation,
   hmacKey: string,
-): EngineStructuralSummary {
+): V2EngineStructuralSummary {
   const base = {
     ...emptyEngineSummary,
     understandingRequest: evaluation.understandingRequest,
@@ -273,7 +275,7 @@ function v2Summary(
     return { ...base, status: "error", errorCode: "provider_error" };
   }
   if (result.status === "unsupported") {
-    return { ...base, status: "unsupported", errorCode: result.reason };
+    return { ...base, status: "unsupported", errorCode: result.reason, model: null };
   }
   if (result.status === "simulation_not_executed") {
     return {
@@ -327,7 +329,7 @@ function buildRecord(input: {
     ? input.evaluation.result.intendedEffects
     : [];
   return parseLiveComparisonRecord({
-    version: "conversation-v2-live-comparison.v1",
+    version: LIVE_COMPARISON_VERSION,
     turnRef: keyedRef(input.turn.turn.turnId, input.hmacKey),
     conversationRef: null,
     inputRef: keyedRef(input.turn.turn.sharedReads.input.leadMessage, input.hmacKey),
