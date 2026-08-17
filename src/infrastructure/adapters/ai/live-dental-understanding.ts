@@ -11,6 +11,7 @@ import {
 } from "@/infrastructure/adapters/ai/OpenAIDentalUnderstandingModel";
 
 const LIVE_MODEL_ID = "gpt-4o-mini" satisfies LiveDentalUnderstandingModelId;
+const registeredLiveUnderstanding = new WeakSet<LiveDentalUnderstanding>();
 
 export class LiveDentalUnderstanding {
   readonly modelId = LIVE_MODEL_ID;
@@ -25,6 +26,7 @@ export class LiveDentalUnderstanding {
         new OpenAIDentalUnderstandingModel(client, LIVE_MODEL_ID),
       ),
     );
+    registeredLiveUnderstanding.add(boundary);
     Object.freeze(boundary);
     return boundary;
   }
@@ -48,7 +50,7 @@ export function createLiveDentalUnderstanding(
 export function assertRegisteredLiveDentalUnderstanding(
   value: LiveDentalUnderstanding,
 ): void {
-  if (!(value instanceof LiveDentalUnderstanding)) {
+  if (!registeredLiveUnderstanding.has(value)) {
     throw new Error("unregistered live dental understanding provider");
   }
 }
