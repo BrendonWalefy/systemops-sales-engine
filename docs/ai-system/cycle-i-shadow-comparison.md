@@ -12,7 +12,7 @@ Hardening da revisão Task 7 — rodada 1: `5e3f2c64`
 
 Hardening da revisão Task 7 — rodada 2: `68cfff52`, `57dc0577`, `3cb0810c`
 
-Hardening da revisão Task 7 — rodada 3: `6c62468c`, `1115aab5`, `e0293372`
+Hardening da revisão Task 7 — rodada 3: `6c62468c`, `1115aab5`, `e0293372`, `95b72b1f`
 
 ## Estado terminal
 
@@ -315,7 +315,10 @@ OpenAI executado uma vez com `model: null` persistido; o denylist também falhou
 roots `ai`/`@ai-sdk`. A primeira regressão ampla ainda reproduziu a corrida do teste de scheduler:
 o relógio falso podia avançar antes da admissão e a suíte esperar indefinidamente. O GREEN
 sincroniza o avanço somente depois da evidência de início da operação, sem relaxar deadline,
-abort ou drain.
+abort ou drain. Um verify posterior sob carga revelou a expectativa residual `overrun:false` no
+precheck do sink: nenhum sink havia iniciado, mas o monotonic safety clock registrou overrun real.
+O teste agora preserva a prova de zero start em/depois de T e exige que `overrun` corresponda a
+`overrunMs > 0`, em vez de ocultar atraso real.
 
 - suíte focal exata do plano: 24 arquivos/270 testes verdes;
 - regressões Task 5/shadow: 10 arquivos/196 testes verdes;
@@ -333,6 +336,9 @@ abort ou drain.
 - primeiro `npm run verify` clean após o commit documental da terceira rodada: Drizzle meta OK,
   lint sem erro e com o único warning legado V1, typecheck verde, 358 arquivos/3.184 testes
   verdes e 11 skips;
+- `npm run verify` pós-fix da expectativa de overrun: mesmos 358 arquivos/3.184 testes verdes e
+  11 skips; o verify intermediário que reproduziu a flake falhou 1/3.184 e não foi apresentado
+  como gate verde;
 - `git diff 99a852aa -- src/core src/conversation-core`: somente o split genérico de pipeline e
   a seam observacional V1 previamente revisados; a Task 7 não alterou esses diretórios.
 
