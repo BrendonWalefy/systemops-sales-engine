@@ -140,6 +140,7 @@ function closedAuthorizationBindings(env: RuntimeEnvironment): InternalLabAuthor
       expectedTenantDigest: closed.expectedTenantDigest,
       expectedChannelDigest: closed.expectedChannelDigest,
       expectedConfigDigest: closed.expectedConfigDigest,
+      expectedClinicId: closed.expectedClinicId,
       now: new Date(),
     });
     return Object.freeze({ ...closed, approval, runtimeIdentity });

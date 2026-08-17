@@ -51,6 +51,13 @@ import {
   type InternalLabDeliveryGuard,
 } from "@/application/conversation-v2/internal-lab-delivery-guard";
 import type { ChannelConfigSnapshot } from "@/application/ports/channel-config-snapshot";
+import {
+  isInternalLabSyntheticAddress,
+  isInternalLabSyntheticAddressCandidate,
+  isInternalLabSyntheticDeliveryAuthorized,
+  type InternalLabSyntheticRunAuthorization,
+} from "@/application/labs/internal-lab-synthetic-delivery";
+import { isReplayOutboundCaptureBoundary } from "@/application/replay/replay-outbound-capture";
 
 export type SendMessageJobDependencies = {
   outboundMessageStore: OutboundMessageStore;
@@ -69,6 +76,7 @@ export type SendMessageJobDependencies = {
     internalLabDeliveryAuthorization?: InternalLabDeliveryAuthorization;
   }) => Promise<string | null>;
   internalLabDeliveryGuard?: InternalLabDeliveryGuard;
+  internalLabSyntheticRunAuthorization?: InternalLabSyntheticRunAuthorization;
 };
 
 export type OutboundDeliveryBoundary = {
@@ -128,15 +136,26 @@ export class SendMessageJobHandler {
     ConversationRepository,
     "appendMessage" | "findMessageById"
   >;
+  private readonly syntheticCaptureDelivery: NonNullable<
+    SendMessageJobDependencies["delivery"]
+  > | null;
 
   constructor(private readonly deps: SendMessageJobDependencies) {
     const outboundBoundary = {
       ...DEFAULT_OUTBOUND_BOUNDARY,
       ...deps.outboundBoundary,
     };
+    const replayCaptureBoundary = isReplayOutboundCaptureBoundary(deps.outboundBoundary);
+    const generalOutboundBoundary = replayCaptureBoundary
+      && deps.internalLabSyntheticRunAuthorization !== undefined
+      ? DEFAULT_OUTBOUND_BOUNDARY
+      : outboundBoundary;
     this.delivery =
       deps.delivery ??
-      ((input) => deliverOutboundPayload(input, outboundBoundary));
+      ((input) => deliverOutboundPayload(input, generalOutboundBoundary));
+    this.syntheticCaptureDelivery = replayCaptureBoundary
+      ? (input) => deliverOutboundPayload(input, outboundBoundary)
+      : null;
     this.safetyContextReader = deps.safetyContextReader ?? new DrizzleOutboundSafetyContextReader();
     this.automationDispatchLifecycle = deps.automationDispatchLifecycle ?? drizzleAutomationDispatchLifecycle;
     this.now = deps.now ?? (() => new Date());
@@ -171,6 +190,44 @@ export class SendMessageJobHandler {
       conversationId: outbound.conversationId,
     });
     const turnId = jobTurnId ?? getTurnId(outbound.payload);
+    const outboundDestination = getOutboundDestination(outbound.payload);
+    const syntheticCandidate = outboundDestination !== null
+      && isInternalLabSyntheticAddressCandidate(outboundDestination);
+    let useSyntheticCapture = false;
+    if (syntheticCandidate) {
+      useSyntheticCapture = isInternalLabSyntheticAddress(outboundDestination)
+        && this.syntheticCaptureDelivery !== null
+        && isInternalLabSyntheticDeliveryAuthorized({
+          authorization: this.deps.internalLabSyntheticRunAuthorization,
+          clinicId: outbound.clinicId,
+          address: outboundDestination,
+          now: this.now(),
+        });
+      if (
+        useSyntheticCapture
+        && isConversationOutboundPayload(outbound.payload)
+        && outbound.payload.agentMessagePersistence === "sender"
+      ) {
+        const preflightAuthorization = await this.deps.internalLabDeliveryGuard?.authorize({
+          clinicId: outbound.clinicId,
+          binding: outbound.payload.internalLabBinding,
+        }) ?? undefined;
+        useSyntheticCapture = preflightAuthorization !== undefined;
+      } else {
+        useSyntheticCapture = false;
+      }
+      if (!useSyntheticCapture) {
+        await this.deps.outboundMessageStore.markOutboundPending(
+          outbound.id,
+          "internal_lab_capture_required",
+        );
+        outboundLog.warn("job.deferred", {
+          reason: "internal_lab_capture_required",
+          durationMs: Date.now() - startedAt,
+        });
+        return "deferred";
+      }
+    }
     if (await this.deps.outboundMessageStore.hasEarlierActiveMessage(outbound)) {
       outboundLog.info("job.deferred", { reason: "earlier_message_active", durationMs: Date.now() - startedAt });
       return "deferred";
@@ -432,7 +489,9 @@ export class SendMessageJobHandler {
     }
     let providerMessageId: string | null;
     try {
-      providerMessageId = await this.delivery({
+      providerMessageId = await (useSyntheticCapture
+        ? this.syntheticCaptureDelivery!
+        : this.delivery)({
         payload: outbound.payload,
         clinicId: outbound.clinicId,
         conversationId: outbound.conversationId,
@@ -728,6 +787,12 @@ function getTurnId(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return null;
   const value = (payload as Record<string, unknown>).turnId;
   return typeof value === "string" && value ? value : null;
+}
+
+function getOutboundDestination(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = (payload as Record<string, unknown>).to;
+  return typeof value === "string" ? value : null;
 }
 
 async function deliverOutboundPayload(input: {

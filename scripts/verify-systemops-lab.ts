@@ -262,6 +262,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
           expectedTenantDigest: bindings.tenantDigest,
           expectedChannelDigest: bindings.channelDigest,
           expectedConfigDigest: bindings.configDigest,
+          expectedClinicId: clinicId,
           now: new Date(),
         });
         return {

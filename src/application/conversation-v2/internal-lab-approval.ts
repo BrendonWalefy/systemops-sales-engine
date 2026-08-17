@@ -163,6 +163,14 @@ const approvalDeploymentBindings = new WeakMap<object, Readonly<{
   runtimeIdentity: CycleIRuntimeBuildIdentity;
   deploymentIdentity: ConfiguredInternalLabDeploymentIdentity;
 }>>();
+const approvalClinicBindings = new WeakMap<object, string>();
+
+function assertExpectedClinicId(value: string | undefined): void {
+  if (value === undefined) return;
+  if (value.length === 0 || value !== value.trim() || value.length > 128) {
+    throw new Error("Internal Lab expected clinic binding is invalid");
+  }
+}
 
 function snapshotPlainRecord(
   input: unknown,
@@ -306,6 +314,7 @@ export function parseAndRegisterInternalLabApproval(input: {
   expectedTenantDigest: string;
   expectedChannelDigest: string;
   expectedConfigDigest: string;
+  expectedClinicId?: string;
   now: Date;
 }): RegisteredInternalLabApproval {
   if (!isRegisteredConfiguredInternalLabAuthority(input.authority)) {
@@ -320,6 +329,7 @@ export function parseAndRegisterInternalLabApproval(input: {
   if (typeof input.serializedApproval !== "string") {
     throw new Error("Internal Lab approval must be serialized JSON");
   }
+  assertExpectedClinicId(input.expectedClinicId);
   assertConfiguredInternalLabAuthorityBindings(input.authority, {
     tenantDigest: input.expectedTenantDigest,
     channelDigest: input.expectedChannelDigest,
@@ -376,6 +386,7 @@ export function parseAndRegisterInternalLabApproval(input: {
     runtimeIdentity: input.runtimeIdentity,
     buildAttestation: input.buildAttestation,
   }));
+  if (input.expectedClinicId) approvalClinicBindings.set(approval, input.expectedClinicId);
   return approval;
 }
 
@@ -387,6 +398,7 @@ export function parseAndRegisterDeployedInternalLabApproval(input: {
   expectedTenantDigest: string;
   expectedChannelDigest: string;
   expectedConfigDigest: string;
+  expectedClinicId?: string;
   now: Date;
 }): RegisteredInternalLabApproval {
   if (!isRegisteredConfiguredInternalLabAuthority(input.authority)) {
@@ -401,6 +413,7 @@ export function parseAndRegisterDeployedInternalLabApproval(input: {
   if (typeof input.serializedApproval !== "string") {
     throw new Error("Internal Lab approval must be serialized JSON");
   }
+  assertExpectedClinicId(input.expectedClinicId);
   assertConfiguredInternalLabAuthorityBindings(input.authority, {
     tenantDigest: input.expectedTenantDigest,
     channelDigest: input.expectedChannelDigest,
@@ -450,6 +463,7 @@ export function parseAndRegisterDeployedInternalLabApproval(input: {
     runtimeIdentity: input.runtimeIdentity,
     deploymentIdentity: input.deploymentIdentity,
   }));
+  if (input.expectedClinicId) approvalClinicBindings.set(approval, input.expectedClinicId);
   return approval;
 }
 
@@ -491,4 +505,24 @@ export function isRegisteredInternalLabApproval(
   ) return false;
   return registered.claims.expiresAt === null
     || new Date(registered.claims.expiresAt).getTime() > expected.now.getTime();
+}
+
+export function isRegisteredInternalLabApprovalInstance(
+  approval: unknown,
+  now: Date,
+  expectedClinicId?: string,
+): approval is RegisteredInternalLabApproval {
+  if (
+    typeof approval !== "object"
+    || approval === null
+    || !approvals.has(approval)
+    || !Number.isFinite(now.getTime())
+  ) return false;
+  if (
+    expectedClinicId !== undefined
+    && approvalClinicBindings.get(approval) !== expectedClinicId
+  ) return false;
+  const registered = approval as RegisteredInternalLabApproval;
+  return registered.claims.expiresAt === null
+    || new Date(registered.claims.expiresAt).getTime() > now.getTime();
 }

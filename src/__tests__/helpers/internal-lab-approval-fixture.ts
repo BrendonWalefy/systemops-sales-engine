@@ -18,6 +18,7 @@ import {
 import { createGitCycleIBuildAttestation } from "@/infrastructure/conversation-v2/git-cycle-i-build-attestation";
 
 const hmac = (tail: string) => `hmac:${"a".repeat(63)}${tail}`;
+const sha256 = (tail: string) => `sha256:${"b".repeat(63)}${tail}`;
 const internalAuthority = generateKeyPairSync("ed25519");
 const gateAuthority = generateKeyPairSync("ed25519");
 const activationAuthority = generateKeyPairSync("ed25519");
@@ -30,9 +31,9 @@ const smokeCriteria = [
 
 export const INTERNAL_LAB_TEST_BINDINGS = Object.freeze({
   expectedClinicId: "systemops-lab",
-  tenantDigest: hmac("f"),
-  channelDigest: hmac("0"),
-  configDigest: hmac("a"),
+  tenantDigest: sha256("f"),
+  channelDigest: sha256("0"),
+  configDigest: sha256("a"),
   now: new Date("2026-08-17T15:05:00.000Z"),
 });
 
@@ -112,6 +113,7 @@ export function createRegisteredInternalLabSmokeApproval(): RegisteredTestApprov
     expectedTenantDigest: claims.tenantDigest,
     expectedChannelDigest: claims.channelDigest,
     expectedConfigDigest: claims.configDigest,
+    expectedClinicId: INTERNAL_LAB_TEST_BINDINGS.expectedClinicId,
     now: INTERNAL_LAB_TEST_BINDINGS.now,
   });
   registeredInternalLabSmokeApproval = Object.freeze({ approval, runtimeIdentity });
@@ -160,6 +162,7 @@ export function createRegisteredInternalLabDeploymentSmokeApproval(): Registered
     expectedTenantDigest: claims.tenantDigest,
     expectedChannelDigest: claims.channelDigest,
     expectedConfigDigest: claims.configDigest,
+    expectedClinicId: INTERNAL_LAB_TEST_BINDINGS.expectedClinicId,
     now: INTERNAL_LAB_TEST_BINDINGS.now,
   });
   registeredInternalLabDeploymentSmokeApproval = Object.freeze({ approval, runtimeIdentity });

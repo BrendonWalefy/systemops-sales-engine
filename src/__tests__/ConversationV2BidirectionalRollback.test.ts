@@ -253,6 +253,14 @@ class MemoryOutbox implements OutboundMessageStore {
     return { message: this.rows.find(({ id }) => id === result.outboundMessageId)!, isNew: result.messageWasNew };
   }
   async findOutboundMessage(id: string) { return this.rows.find((row) => row.id === id) ?? null; }
+  async findConversationReplyByTurnId(input: { clinicId: string; turnId: string }) {
+    return this.rows.find((row) => {
+      const payload = row.payload as Record<string, unknown>;
+      return row.clinicId === input.clinicId
+        && row.category === "reply"
+        && payload.turnId === input.turnId;
+    }) ?? null;
+  }
   async hasEarlierActiveMessage() { return false; }
   async markOutboundProcessing(id: string) {
     const row = this.rows.find((candidate) => candidate.id === id);
