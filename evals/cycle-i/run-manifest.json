@@ -1,7 +1,7 @@
 {
   "version": "conversation-v2-cycle-i-run-manifest.v2",
-  "implementationCommit": "5817680239df387d0e043c556106e427f903451b",
-  "implementationTreeDigest": "hmac:ef05868191001b12d95588240a6e6e47ef9849012d32d9419698f3de5ce2e808",
+  "implementationCommit": "576aa372b927a7573f813181465f76180c29b16a",
+  "implementationTreeDigest": "hmac:987904fc9992c91fedf989175569c9afd1bd0fcf3e503d268eda8b6cfb81b1bb",
   "corpusRoot": "evals/corpus",
   "manifestPath": "evals/understanding/cycle-f-dental.json",
   "d0Path": "evals/corpus/measurement-stability-d0.json",
@@ -17,8 +17,8 @@
   "decisionManifest": null,
   "proseManifest": null,
   "fullTurnEvidence": null,
-  "configDigest": "hmac:abcce9fce455fb6ed870ee09c7e6ed20fa3e863d7fdd8d061af6fc158072a8df",
-  "manifestDigest": "hmac:8e2552e78373a13a2079daaaa673938a918bbad3c26fc46491691f2741679328",
+  "configDigest": "hmac:be54349e4b71884c47bb26cdbfc681042868f896f100de4d5c7111e9325d6ac1",
+  "manifestDigest": "hmac:460999c38efab3b32b566c38ed4a2559a1e099b1c68d24e0ce1f27abe0278b42",
   "judge": "experimental_non_gating",
   "evidence": { "h_entailment": null, "shadow_no_effects": null, "cycle_f_axes": null, "rollback": null, "observability": null, "verification": null, "adversarial_review": null },
   "authoritySignature": null
