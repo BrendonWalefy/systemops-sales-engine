@@ -233,9 +233,16 @@ export class SendMessageJobHandler {
         }
       } else {
         const existing = await this.conversationRepository.findMessageById(placeholder.id);
-        const existedBeforeOutbox = existing !== null &&
+        const existedBeforeOutbox = existing != null &&
           existing.sentAt.getTime() <= outbound.createdAt.getTime();
-        if (!existedBeforeOutbox || !isExactConversationAgentMessage(existing, placeholder)) {
+        if (
+          !existedBeforeOutbox ||
+          !isExactLegacyConversationAgentMessage(
+            existing,
+            outbound.payload,
+            outbound.conversationId,
+          )
+        ) {
           await this.deps.outboundMessageStore.markOutboundCancelled(
             outbound.id,
             "conversation_agent_message_missing",
@@ -656,6 +663,48 @@ function isExactConversationAgentMessage(
     (existing.externalId ?? null) === (expected.externalId ?? null) &&
     (existing.mediaUrl ?? null) === (expected.mediaUrl ?? null) &&
     (existing.mediaType ?? null) === (expected.mediaType ?? null);
+}
+
+function isExactLegacyConversationAgentMessage(
+  existing: Message | null | undefined,
+  payload: ConversationOutboundPayload,
+  conversationId: string,
+): existing is Message {
+  if (
+    existing == null ||
+    existing.id !== payload.agentMessageId ||
+    existing.conversationId !== conversationId ||
+    existing.author !== "agent" ||
+    (existing.externalId ?? null) !== null ||
+    (existing.intent ?? null) !== (payload.intent ?? null)
+  ) return false;
+
+  const exactRepresentation = (
+    body: string,
+    mediaUrl: string | null,
+    mediaType: "video" | "image" | null,
+    deliveryFormat: "text" | null,
+  ) => existing.body === body &&
+    (existing.mediaUrl ?? null) === mediaUrl &&
+    (existing.mediaType ?? null) === mediaType &&
+    (existing.deliveryFormat ?? null) === deliveryFormat;
+
+  if (exactRepresentation(payload.replyText, null, null, null)) return true;
+
+  const isCanonicalDeposit = payload.intent === "confirm_slot" &&
+    payload.useVoice === false &&
+    payload.interleavedParts.length === 0 &&
+    payload.mediaParts.length === 0 &&
+    payload.pipelineAdvance === null;
+  if (isCanonicalDeposit && exactRepresentation(payload.replyText, null, null, "text")) {
+    return true;
+  }
+
+  const first = payload.interleavedParts[0];
+  if (!first) return false;
+  return first.type === "text"
+    ? exactRepresentation(first.content, null, null, null)
+    : exactRepresentation(first.title, first.url, first.mediaType, "text");
 }
 
 function automationDestinationMatchesLead(

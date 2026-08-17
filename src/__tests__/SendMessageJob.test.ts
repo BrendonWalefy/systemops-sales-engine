@@ -4,6 +4,7 @@ import { SendMessageJobHandler, SHADOW_DELIVERY_SUPPRESSED } from "@/application
 import type { OutboundMessage } from "@/application/ports/outbound-message-store";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 import { isConversationOutboundPayload } from "@/application/jobs/conversation-outbound-payload";
+import { buildInitialAgentMessage } from "@/core/pipeline/outbound-message-persistence";
 
 const outbound: OutboundMessage = {
   id: "outbound-1",
@@ -201,6 +202,88 @@ describe("SendMessageJobHandler", () => {
     await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
       .resolves.toBe("ignored");
     expect(delivery).not.toHaveBeenCalled();
+  });
+
+  it("delivers the exact canonical V1 deposit message persisted as text", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue({
+      ...outbound,
+      payload: {
+        ...(outbound.payload as Record<string, unknown>),
+        intent: "confirm_slot",
+        replyText: "Para reservar, envie o sinal via Pix.",
+      },
+    });
+    const delivery = vi.fn().mockResolvedValue("provider-deposit");
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: {
+        appendMessage: vi.fn(),
+        findMessageById: vi.fn().mockResolvedValue({
+          id: "agent-message-1",
+          conversationId: "conversation-1",
+          author: "agent",
+          body: "Para reservar, envie o sinal via Pix.",
+          mediaUrl: null,
+          mediaType: null,
+          sentAt: new Date("2026-06-23T11:59:00.000Z"),
+          externalId: null,
+          intent: "confirm_slot",
+          deliveryFormat: "text",
+        }),
+      },
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
+      .resolves.toBe("sent");
+    expect(delivery).toHaveBeenCalledOnce();
+    expect(store.markOutboundCancelled).not.toHaveBeenCalled();
+  });
+
+  it("delivers the exact first-media representation persisted by canonical V1 composition", async () => {
+    const firstMedia = {
+      type: "media" as const,
+      mediaId: "media-1",
+      url: "https://cdn.example.test/before-after.jpg",
+      mediaType: "image" as const,
+      title: "Antes e depois",
+    };
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue({
+      ...outbound,
+      payload: {
+        ...(outbound.payload as Record<string, unknown>),
+        replyText: "Veja este resultado.",
+        intent: "general_question",
+        interleavedParts: [firstMedia, { type: "text", content: "Gostou?" }],
+      },
+    });
+    const persisted = buildInitialAgentMessage({
+      id: "agent-message-1",
+      conversationId: "conversation-1",
+      replyText: "Veja este resultado.",
+      sentAt: new Date("2026-06-23T11:59:00.000Z"),
+      intent: "general_question",
+      hasInterleavedMedia: true,
+      outboundParts: [firstMedia, { type: "text", content: "Gostou?" }],
+    });
+    const delivery = vi.fn().mockResolvedValue("provider-media");
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: {
+        appendMessage: vi.fn(),
+        findMessageById: vi.fn().mockResolvedValue(persisted),
+      },
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
+      .resolves.toBe("sent");
+    expect(delivery).toHaveBeenCalledOnce();
+    expect(store.markOutboundCancelled).not.toHaveBeenCalled();
   });
 
   it("passes the exact delivery authorization returned immediately before V2 delivery", async () => {
