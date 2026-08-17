@@ -88,13 +88,24 @@ final realmente enviado. Por isso o braço V1 do live record é `unavailable` co
 lista vazia. Um plano intermediário nunca é promovido a final V1, e um V2 diferente não gera
 divergência fabricada. `model.calls` só é materializado quando o callback do provider foi de fato
 invocado; duplicate e shared-read unavailable antes desse callback registram `model: null`.
+Se o callback ocorreu e o runner só depois descobriu que o read compartilhado não era suficiente,
+o status continua `unsupported`, mas a telemetria real é preservada com `calls >= 1`; não há
+tokens ou custo inventados.
 
 O wire contract vigente é `conversation-v2-live-comparison.v2`, com uniões discriminadas exatas
 por `comparisonStatus` e status de cada braço. V2 nunca aceita `unavailable`; estados
 unsupported/error/simulation não podem carregar outcomes, classes ou FinalText incompatíveis.
+Outcomes observados/no-safe usam uma identidade única por resultado, ligando capability,
+Decision kind, OutcomeType concreto e semanticClass canônica; arrays estruturais redundantes têm
+mesma cardinalidade/ordem e duplicatas inválidas falham fechado. `intendedEffects` é não vazio e
+1:1 somente em `simulation_not_executed`, com Decision `execute` e mesmo owner; nos demais
+estados deve ser vazio.
 Antes do Zod, a boundary cria uma cópia plain-data única a partir de descriptors e rejeita
-proxy, accessor, symbol ou protótipo não-plain sem executar getters. A `.v1` era protótipo
+proxy, accessor, symbol ou protótipo não-plain sem executar getters; limites conservadores de
+depth, nodes, array e chaves impedem travessia adversarial sem limite. A `.v1` era protótipo
 pré-ativação: houve zero observação/persistência/ativação, e o parser a rejeita explicitamente.
+A conclusão relacional do `.v2` desta rodada também ocorreu antes de qualquer observação,
+persistência ou ativação desse wire, sem reinterpretar dado armazenado.
 
 ## Deadline canônico
 
@@ -239,6 +250,13 @@ no escopo, será necessária boundary externa imutável/assinada de build ou CI.
   O GREEN usa uniões discriminadas exatas, snapshot plain-data sem traps, wire `.v2`, taxonomia
   derivada de vocabulary/registry e callbacks executáveis por célula. O scan transitivo também
   bloqueia packages e símbolos explícitos de AI/Neon/Drizzle/calendar.
+- A terceira revisão independente encontrou 2 Important e 3 Minor, todos confirmados. O RED
+  mostrou relações paralelas outcome/Decision/owner ainda separáveis e perda de telemetria quando
+  um callback real terminava em `unsupported`; os Minor cobriram orçamento da canonicalização,
+  roots exatos `ai`/`@ai-sdk` no scan e relógio real flakey nos testes de deadline. O GREEN
+  introduziu outcome identity estruturada e alinhada, fechou efeitos simulados, preservou a
+  telemetria pós-provider, manteve `null` pré-provider, aplicou budgets antes da cópia, ampliou o
+  denylist e usa relógio/timers controlados nos testes do admission scheduler.
 - A nova re-review independente da Task 7 ainda é posterior a este checkpoint. Até artifact
   content-bound e assinado existir, `adversarial_review` permanece corretamente `not_measurable`
   no gate report.
@@ -289,7 +307,13 @@ ausentes (exit 1) e terminou com 3 arquivos/21 testes verdes. No primeiro harden
 reproduziram availability real como `unsupported`, V1 vazio marcado `observed` e model call
 contado antes do callback; os GREEN fecharam esses três caminhos e elevaram a suíte Task 7 para
 3 arquivos/24 testes. Na segunda rodada, o RED do comparison record teve 15 falhas/7 passes;
-o GREEN ampliado fechou todos os estados e traps em 35 testes.
+o GREEN ampliado fechou todos os estados e traps em 35 testes. Na terceira rodada, quatro REDs
+do record reproduziram efeitos/outcomes sem relação exata e um RED produtivo mostrou callback
+OpenAI executado uma vez com `model: null` persistido; o denylist também falhou para os quatro
+roots `ai`/`@ai-sdk`. A primeira regressão ampla ainda reproduziu a corrida do teste de scheduler:
+o relógio falso podia avançar antes da admissão e a suíte esperar indefinidamente. O GREEN
+sincroniza o avanço somente depois da evidência de início da operação, sem relaxar deadline,
+abort ou drain.
 
 - suíte focal exata do plano: 24 arquivos/270 testes verdes;
 - regressões Task 5/shadow: 10 arquivos/196 testes verdes;
@@ -301,11 +325,14 @@ o GREEN ampliado fechou todos os estados e traps em 35 testes.
   lint com zero erro e um warning legado em V1, typecheck verde, 358 arquivos/3.144 testes
   verdes e 11 skips no checkpoint inicial; após o primeiro hardening, 358 arquivos/3.150 testes
   verdes e 11 skips; após a segunda rodada, 358 arquivos/3.179 testes verdes e 11 skips;
+- terceira rodada antes do verify final: suíte focal exata 24 arquivos/275 testes; regressões
+  Task 5/shadow 12 arquivos/211 testes; agenda 4 arquivos/86 testes; PII clean em 41 arquivos;
+  `db:check`, typecheck e diffs de whitespace/V1/schema verdes;
 - `git diff 99a852aa -- src/core src/conversation-core`: somente o split genérico de pipeline e
   a seam observacional V1 previamente revisados; a Task 7 não alterou esses diretórios.
 
-A primeira e a segunda revisões independentes da Task 7 encontraram os gaps acima. A nova
-re-review da rodada 2 ocorre depois deste checkpoint. Os resultados locais não alteram
+A primeira, a segunda e a terceira revisões independentes da Task 7 encontraram os gaps acima.
+A nova re-review da rodada 3 ocorre depois deste checkpoint. Os resultados locais não alteram
 retroativamente o gate report
 unsigned nem fabricam observações V1×V2.
 

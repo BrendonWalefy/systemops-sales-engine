@@ -273,13 +273,18 @@ export type ModelCallSummary = Readonly<{
   latencyMs: number;
   estimatedCostMinor: number | null;
 }>;
+export type OutcomeStructuralSummary = Readonly<{
+  capabilityId: "dental-catalog" | "dental-scheduling" | "dental-escalation";
+  decisionKind: Decision["kind"];
+  type: DentalOutcomeType;
+  semanticClass: OutcomeSemanticClass;
+}>;
 export type EngineStructuralSummary = Readonly<{
   status: "observed" | "unsupported" | "error" | "no_safe_response" | "simulation_not_executed";
   understandingRequest: string | null;
   capabilityIds: readonly string[];
   decisionKinds: readonly Decision["kind"][];
-  outcomeTypes: readonly string[];
-  semanticClasses: readonly OutcomeSemanticClass[];
+  outcomes: readonly OutcomeStructuralSummary[];
   finalTextCharacters: number | null;
   finalTextDigest: HmacRef | null;
   fallbackSource: "draft" | "repair" | "fallback" | null;
@@ -347,6 +352,20 @@ V2 never accepts `unavailable`; unsupported/error/simulation cannot carry outcom
 semantics inconsistent with their status. The parser canonicalizes exact plain data before Zod.
 The `.v1` wire value was never observed, persisted or activated and is rejected rather than
 silently migrated. No V1×V2 result existed when this version was changed.
+
+**Task 7 hardening amendment — round 3 (2026-08-17, pre-activation):** the emitted `.v2`
+variants are relationally closed before their first live observation or persistence. Observed
+and no-safe results carry one structured outcome identity per prepared decision, binding
+`capabilityId`, `decisionKind`, concrete outcome `type` and canonical `semanticClass`; the
+redundant structural arrays must have identical length and order, and duplicate capability
+identities fail closed. `intendedEffects` exists only for `simulation_not_executed`, is nonempty,
+maps one-to-one to `execute` decisions and has the same capability owner; every other status
+requires an empty effect list. A non-null model summary always means at least one callback call.
+Unsupported may retain that summary when rejection happened after the provider callback, while
+duplicate/missing shared-read rejection before the callback keeps `model: null`. Exact root-key
+inspection and conservative depth/node/array/object budgets precede snapshot traversal. This
+completes the unpublished/unpersisted `.v2` contract rather than widening an activated wire
+format; zero V1×V2 result and zero tenant/channel activation still existed at this decision.
 
 `HmacRef` valida exatamente `^hmac:[a-f0-9]{64}$`. `modelId` não aceita texto arbitrário:
 `parseLiveComparisonRecord` exige membership no `allowedModelIds` congelado pelo run manifest;

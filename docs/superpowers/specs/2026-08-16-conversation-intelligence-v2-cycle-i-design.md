@@ -223,14 +223,26 @@ The `.v2` live schema is an exact discriminated union. `comparisonStatus = compa
 an observed V1 arm with an HMAC final digest and character count. `not_measurable` requires the
 exact V1 `unavailable/final_response_unavailable` arm and an empty divergence list. V2 has no
 `unavailable` variant. Unsupported/error/simulation variants cannot carry outcomes, semantic
-classes or final-response material; unsupported also cannot attribute a model call. The parser
-rejects proxies, accessors, symbol keys and non-plain prototypes before schema evaluation, then
-validates and freezes the one canonical snapshot.
+classes or final-response material. An unsupported result may carry model telemetry only when
+the provider callback actually ran; pre-provider duplicate or missing-read rejection carries
+`model: null`, and every non-null summary has `calls >= 1`. Observed/no-safe outcomes bind
+capability, prepared Decision kind, concrete outcome type and canonical semantic class in one
+structured identity. Redundant capability/Decision arrays must align one-to-one and in order;
+invalid duplicates fail closed. Intended effects are nonempty only for
+`simulation_not_executed`, align one-to-one with execute Decisions and their capability owner,
+and are forbidden for every other status. The parser rejects proxies, accessors, symbol keys and
+non-plain prototypes before schema evaluation, applies conservative depth/node/array/object
+budgets, then validates and freezes the one canonical snapshot.
 
 `conversation-v2-live-comparison.v1` was a pre-activation prototype. Zero live observations were
 captured or persisted and zero tenant/channel was activated under that contract. It is therefore
 rejected, not silently reinterpreted or migrated. This `.v2` decision was made during Task 7
 hardening, before any V1×V2 result existed.
+
+The round-3 relational completion also occurred before the first `.v2` observation,
+persistence or tenant/channel activation. It replaces the unpublished parallel outcome arrays
+with structured per-result identities under the already-selected `.v2` pre-activation contract;
+this decision is recorded explicitly and does not reinterpret stored data.
 
 Live records do not contain response text, raw lead input, raw history, prompts, names, phones,
 emails, URLs, provider payloads, opaque database identifiers or raw evidence references. The
