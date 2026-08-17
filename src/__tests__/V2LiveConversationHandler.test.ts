@@ -350,6 +350,7 @@ describe("V2LiveConversationHandler", () => {
     expect(harness.persistStopContact).toHaveBeenCalledWith(expect.objectContaining({
       leadId: lead.id,
       conversationId: conversation.id,
+      clinicId: clinic.id,
       decision: expect.objectContaining({ source: "lead_message" }),
     }));
     expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();

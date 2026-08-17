@@ -44,12 +44,15 @@ function assertOutsideWorktree(path: string, flag: string): void {
   }
 }
 
-async function readPrivateKeyOutsideWorktree(value: string): Promise<Buffer> {
-  if (!isAbsolute(value)) throw new Error("--private-key-file must be an absolute path");
+async function readOwnerControlledFileOutsideWorktree(
+  value: string,
+  flag: "--private-key-file" | "--resolved-artifact-file",
+): Promise<Buffer> {
+  if (!isAbsolute(value)) throw new Error(`${flag} must be an absolute path`);
   const lexicalPath = resolve(value);
-  assertOutsideWorktree(lexicalPath, "--private-key-file");
+  assertOutsideWorktree(lexicalPath, flag);
   const path = await realpath(lexicalPath);
-  assertOutsideWorktree(path, "--private-key-file");
+  assertOutsideWorktree(path, flag);
 
   const descriptor = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
@@ -60,10 +63,10 @@ async function readPrivateKeyOutsideWorktree(value: string): Promise<Buffer> {
       || (before.mode & 0o077n) !== 0n
       || (currentUid !== null && before.uid !== currentUid)
     ) {
-      throw new Error("--private-key-file must be an owner-controlled regular file with owner-only permissions");
+      throw new Error(`${flag} must be an owner-controlled regular file with owner-only permissions`);
     }
     if (before.nlink !== 1n) {
-      throw new Error("--private-key-file must have a single link and no hard-link aliases");
+      throw new Error(`${flag} must have a single link and no hard-link aliases`);
     }
 
     const bytes = await descriptor.readFile();
@@ -81,7 +84,7 @@ async function readPrivateKeyOutsideWorktree(value: string): Promise<Buffer> {
       || after.ino !== pathAfter.ino
     ) {
       bytes.fill(0);
-      throw new Error("--private-key-file changed while being read");
+      throw new Error(`${flag} changed while being read`);
     }
     return bytes;
   } finally {
@@ -158,29 +161,37 @@ async function main(): Promise<void> {
   const claimsBytes = await readFile(claimsPath, "utf8");
   const claims = JSON.parse(claimsBytes) as InternalLabApprovalClaims;
   const resolvedArtifactPathValue = requiredValue(argv, "--resolved-artifact-file");
-  if (!isAbsolute(resolvedArtifactPathValue)) {
-    throw new Error("--resolved-artifact-file must be an absolute path");
+  const resolvedArtifactBytes = await readOwnerControlledFileOutsideWorktree(
+    resolvedArtifactPathValue,
+    "--resolved-artifact-file",
+  );
+  let resolvedArtifact: InternalLabRuntimeArtifact;
+  try {
+    resolvedArtifact = JSON.parse(
+      resolvedArtifactBytes.toString("utf8"),
+    ) as InternalLabRuntimeArtifact;
+  } finally {
+    resolvedArtifactBytes.fill(0);
   }
-  const resolvedArtifactPath = await realpath(resolvedArtifactPathValue);
-  const resolvedArtifact = JSON.parse(
-    await readFile(resolvedArtifactPath, "utf8"),
-  ) as InternalLabRuntimeArtifact;
-  assertInternalLabRuntimeArtifactBindings({
-    tenantDigest: claims.tenantDigest,
-    channelDigest: claims.channelDigest,
-    configDigest: claims.configDigest,
-  }, resolvedArtifact);
-  const canonicalPayload = serializeInternalLabApprovalClaims(claims, new Date());
   const authority = loadConfiguredInternalLabAuthority();
   assertConfiguredInternalLabAuthorityBindings(authority, {
     tenantDigest: claims.tenantDigest,
     channelDigest: claims.channelDigest,
     configDigest: claims.configDigest,
   });
+  assertInternalLabRuntimeArtifactBindings({
+    tenantDigest: claims.tenantDigest,
+    channelDigest: claims.channelDigest,
+    configDigest: claims.configDigest,
+  }, resolvedArtifact);
+  const canonicalPayload = serializeInternalLabApprovalClaims(claims, new Date());
   const build = createGitCycleIBuildAttestation();
   const runtime = createConfiguredCycleIRuntimeBuildIdentity();
   assertExactBuild(claims, build, runtime);
-  const privateKeyBytes = await readPrivateKeyOutsideWorktree(privateKeyPath);
+  const privateKeyBytes = await readOwnerControlledFileOutsideWorktree(
+    privateKeyPath,
+    "--private-key-file",
+  );
   let privateKey: KeyObject;
   try {
     privateKey = createPrivateKey(privateKeyBytes);

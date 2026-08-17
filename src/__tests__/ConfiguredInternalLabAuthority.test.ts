@@ -51,6 +51,7 @@ function configureTarget(): void {
 function runSignerExpectingFailure(
   privateKeyPath: string,
   claimsPath = resolve(process.cwd(), "package.json"),
+  resolvedArtifactPath = claimsPath,
 ): string {
   try {
     execFileSync(
@@ -61,6 +62,8 @@ function runSignerExpectingFailure(
         privateKeyPath,
         "--claims-file",
         claimsPath,
+        "--resolved-artifact-file",
+        resolvedArtifactPath,
       ],
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
     );
@@ -245,6 +248,44 @@ describe("configured Internal Lab authority", () => {
     }
   });
 
+  it("rejects a resolved runtime artifact inside the worktree before parsing or signing", () => {
+    const external = mkdtempSync(join(tmpdir(), "internal-lab-artifact-path-"));
+    try {
+      const keyPath = join(external, "not-a-key.pem");
+      writeFileSync(keyPath, "not key material", { mode: 0o600 });
+
+      expect(runSignerExpectingFailure(
+        keyPath,
+        resolve(process.cwd(), "package.json"),
+        resolve(process.cwd(), "package.json"),
+      )).toMatch(/resolved-artifact-file.*outside.*worktree/i);
+    } finally {
+      rmSync(external, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a resolved runtime artifact with a hard-link alias", () => {
+    const external = mkdtempSync(join(tmpdir(), "internal-lab-artifact-hardlink-"));
+    try {
+      const keyPath = join(external, "not-a-key.pem");
+      const claimsPath = join(external, "claims.json");
+      const firstArtifact = join(external, "artifact.json");
+      const secondArtifact = join(external, "artifact-alias.json");
+      writeFileSync(keyPath, "not key material", { mode: 0o600 });
+      writeFileSync(claimsPath, "{}", { mode: 0o600 });
+      writeFileSync(firstArtifact, "{}", { mode: 0o600 });
+      linkSync(firstArtifact, secondArtifact);
+
+      expect(runSignerExpectingFailure(
+        keyPath,
+        claimsPath,
+        secondArtifact,
+      )).toMatch(/resolved-artifact-file.*hard.?link|single link/i);
+    } finally {
+      rmSync(external, { recursive: true, force: true });
+    }
+  });
+
   it("rejects non-configured target claims before it reads or signs with a private key", () => {
     const external = mkdtempSync(join(tmpdir(), "internal-lab-target-binding-"));
     try {
@@ -286,7 +327,7 @@ describe("configured Internal Lab authority", () => {
         ],
         issuedAt: "2026-08-17T15:00:00.000Z",
         expiresAt: "2026-08-18T15:00:00.000Z",
-      }));
+      }), { mode: 0o600 });
 
       expect(runSignerExpectingFailure(keyPath, claimsPath)).toMatch(/configured target|tenantDigest/i);
     } finally {

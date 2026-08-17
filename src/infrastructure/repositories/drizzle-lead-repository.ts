@@ -82,8 +82,6 @@ export class DrizzleLeadRepository implements LeadRepository {
         assignedToUserId: lead.assignedToUserId,
         nextActionAt: lead.nextActionAt,
         lostReason: lead.lostReason,
-        contactConsentRevokedAt: lead.contactConsentRevokedAt ?? null,
-        contactConsentSource: lead.contactConsentSource ?? null,
         createdAt: lead.createdAt,
         updatedAt: lead.updatedAt,
       })
@@ -122,8 +120,6 @@ export class DrizzleLeadRepository implements LeadRepository {
       assignedToUserId: lead.assignedToUserId,
       nextActionAt: lead.nextActionAt,
       lostReason: lead.lostReason,
-      contactConsentRevokedAt: lead.contactConsentRevokedAt ?? null,
-      contactConsentSource: lead.contactConsentSource ?? null,
       createdAt: lead.createdAt,
       updatedAt: lead.updatedAt,
     };
@@ -139,8 +135,6 @@ export class DrizzleLeadRepository implements LeadRepository {
       assignedToUserId: lead.assignedToUserId,
       nextActionAt: lead.nextActionAt,
       lostReason: lead.lostReason,
-      contactConsentRevokedAt: lead.contactConsentRevokedAt ?? null,
-      contactConsentSource: lead.contactConsentSource ?? null,
       updatedAt: lead.updatedAt,
     };
 
@@ -300,6 +294,17 @@ export class DrizzleLeadRepository implements LeadRepository {
         phone: canonical.phone ?? duplicate.phone,
         whatsappLid: canonical.whatsappLid ?? duplicate.whatsappLid,
         name: canonical.name ?? duplicate.name,
+        ...(canonical.contactConsentRevokedAt
+          ? {
+              contactConsentRevokedAt: canonical.contactConsentRevokedAt,
+              contactConsentSource: canonical.contactConsentSource ?? null,
+            }
+          : duplicate.contactConsentRevokedAt
+            ? {
+                contactConsentRevokedAt: duplicate.contactConsentRevokedAt,
+                contactConsentSource: duplicate.contactConsentSource ?? null,
+              }
+            : {}),
         updatedAt: now,
       })
       .where(eq(leads.id, params.canonicalLeadId));

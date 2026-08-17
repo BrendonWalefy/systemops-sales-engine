@@ -84,6 +84,7 @@ export type V2LiveConversationHandlerDependencies = Readonly<{
   persistStopContact(input: Readonly<{
     leadId: string;
     conversationId: string;
+    clinicId: string;
     decision: StopContactDecision;
   }>): Promise<void>;
   now?: () => Date;
@@ -242,11 +243,15 @@ export class V2LiveConversationHandler implements ConversationHandler {
               });
               if (decision) {
                 effectAttempted = true;
+                phase = "action";
                 await this.deps.persistStopContact({
                   leadId: context.leadId,
                   conversationId: context.conversationId,
+                  clinicId: context.clinicId,
                   decision,
                 });
+                effectCompleted = true;
+                phase = "outbox";
                 await enqueueOutboundMessage({
                   clinicId: context.clinicId,
                   conversationId: context.conversationId,
@@ -272,8 +277,8 @@ export class V2LiveConversationHandler implements ConversationHandler {
                     internalLabBinding: configuration.deliveryBinding,
                   },
                 }, this.deps.outbound);
-                effectCompleted = true;
                 stopContactConfirmationEnqueued = true;
+                phase = "understanding";
               }
             }
             understandingResolved = true;

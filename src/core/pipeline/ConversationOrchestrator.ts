@@ -4971,6 +4971,7 @@ export class ConversationOrchestrator {
       await persistStopContactDecision({
         leadId: lead.id,
         conversationId: conversation.id,
+        clinicId,
         decision,
       });
 

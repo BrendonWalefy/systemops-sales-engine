@@ -50,8 +50,8 @@ function sortedRecords(
 
 /**
  * Canonical evidence for the exact tenant facts consumed by the live runtime.
- * Credential values are reduced to configured/not-configured by the shared
- * runtime sanitizer before any digest is computed.
+ * Credential values contribute only domain-separated one-way digests to the
+ * channel binding; raw or reversible credential material never leaves here.
  */
 export function computeInternalLabRuntimeBindings(
   input: InternalLabRuntimeArtifact,
