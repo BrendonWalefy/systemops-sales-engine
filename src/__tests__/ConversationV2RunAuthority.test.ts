@@ -79,6 +79,60 @@ describe("Cycle I productive run authority", () => {
       authoritySignature: `ed25519:${signature}`,
     })).toThrow(/digest|signature|config/i);
 
+    const buildModule = await import(
+      "@/infrastructure/conversation-v2/git-cycle-i-build-attestation"
+    );
+    const buildAttestation = buildModule.createGitCycleIBuildAttestation();
+    const sourceMismatchUnsigned = {
+      ...unsigned,
+      implementationCommit: buildAttestation.commit,
+      implementationTreeDigest: buildAttestation.treeDigest,
+      implementationSourceDigest: `hmac:${"0".repeat(64)}`,
+    } as const;
+    const sourceMismatchConfig = authority.digestCycleIRunConfig(sourceMismatchUnsigned);
+    const sourceMismatchDigest = authority.digestCycleIRunManifest({
+      ...sourceMismatchUnsigned,
+      configDigest: sourceMismatchConfig,
+    });
+    const sourceMismatchToSign = {
+      ...sourceMismatchUnsigned,
+      configDigest: sourceMismatchConfig,
+      manifestDigest: sourceMismatchDigest,
+    };
+    const sourceMismatchSignature = sign(
+      null,
+      Buffer.from(
+        `${authority.CYCLE_I_RUN_MANIFEST_AUTHORITY_DOMAIN}\0${authority.serializeCycleIRunManifestAuthorityPayload(sourceMismatchToSign)}`,
+      ),
+      gate.privateKey,
+    ).toString("hex");
+    const sourceMismatchAuthority = authority.parseAuthorizedCycleIRunManifest({
+      ...sourceMismatchToSign,
+      authoritySignature: `ed25519:${sourceMismatchSignature}`,
+    });
+    const calls: string[] = [];
+    const injectedArm = Object.freeze({
+      async runCase() {
+        calls.push("provider");
+        throw new Error("must not be reached");
+      },
+    });
+    const runner = await import("@/application/conversation-v2/corpus-comparison-runner");
+    await expect(runner.runCycleICorpusComparison({
+      corpusRoot: sourceMismatchAuthority.corpusRoot,
+      manifestPath: sourceMismatchAuthority.manifestPath,
+      d0Path: sourceMismatchAuthority.d0Path,
+      decisionFixtureManifestPath: null,
+      v1Understanding: injectedArm,
+      v2Understanding: injectedArm,
+      runs: 6,
+      fixedClockByCase: Object.freeze({}),
+      comparabilityPath: sourceMismatchAuthority.comparabilityPath,
+      authority: sourceMismatchAuthority,
+      buildAttestation,
+    })).rejects.toThrow(/source bytes|implementation source/i);
+    expect(calls).toEqual([]);
+
     const decision = await import("@/application/conversation-v2/decision-fixture-manifest");
     const caseIds = [
       "injection-0001", "media-0005", "objection-0001", "price-0001", "price-0002",
