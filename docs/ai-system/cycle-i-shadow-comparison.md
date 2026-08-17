@@ -280,7 +280,8 @@ contado antes do callback; os GREEN fecharam esses três caminhos e elevaram a s
 - `db:check`, typecheck e `git diff --check`: verdes;
 - `npm run verify`, executado com worktree clean depois do commit documental: Drizzle meta OK,
   lint com zero erro e um warning legado em V1, typecheck verde, 358 arquivos/3.144 testes
-  verdes e 11 skips;
+  verdes e 11 skips no checkpoint inicial; após o hardening, 358 arquivos/3.150 testes verdes e
+  11 skips;
 - `git diff 99a852aa -- src/core src/conversation-core`: somente o split genérico de pipeline e
   a seam observacional V1 previamente revisados; a Task 7 não alterou esses diretórios.
 
