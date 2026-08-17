@@ -1,6 +1,6 @@
 # Arquitetura atual
 
-Atualizado em 2026-08-06. Este documento descreve o runtime em produção; planos antigos não são fonte de verdade.
+Atualizado em 2026-08-17. Este documento descreve o runtime em produção; planos antigos não são fonte de verdade.
 
 ## Resumo
 
@@ -187,6 +187,23 @@ próximas seams, nesta ordem, são `HandoffPolicy`, `AgendaOfferService`,
 O código e seus testes não autorizam operação externa. Validação com dados
 privados aprovados, banco de Lab e qualquer operação de cliente permanecem
 gates separados descritos em [Replay e Decision Trace](replay-and-decision-trace.md).
+
+### Conversation Intelligence V2: shadow fechado e sem ativação live
+
+O selector tenant-scoped da V2 tem vocabulário fechado `v1 | v1_with_v2_shadow |
+v2_internal` e default `v1`, separado do legado `shadowModeEnabled`. `observe` e `disabled`
+têm precedência e não executam V2. O único modo V2 alcançável é shadow explicitamente
+configurado: ele roda depois do processamento e da tentativa awaited do sender V1, usa somente
+snapshots imutáveis das leituras que a V1 realmente consumiu e transforma decisões de escrita em
+`would_have_executed`, sem chamar a capability, outbox, calendário ou canal.
+
+O deadline do lote é de admissão. Depois de T nenhuma operação começa; trabalho já admitido é
+drenado e eventual overrun é medido. Isso não é uma garantia de retorno estrito até T.
+
+`v2_internal` permanece fail-closed em V1 porque não há shell live V2 aprovado que preserve
+dedupe, estado, durable outbox e delivery. O gate report atual está sem assinatura, com zero
+observações V1×V2 e decisão `NO_GO`; nenhum tenant ou canal foi ativado. A evidência e os gaps
+estão em [Ciclo I — shadow e comparação](../ai-system/cycle-i-shadow-comparison.md).
 
 ## Agenda
 
