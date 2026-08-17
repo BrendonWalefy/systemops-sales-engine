@@ -54,7 +54,7 @@
 | selector por tenant | `src/application/ports/conversation-engine-policy-reader.ts`, `src/application/conversation-v2/engine-selection.ts` |
 | assembly produtivo e batch pós-sender | `src/infrastructure/conversation-v2/create-conversation-v2-runtime.ts`, `src/application/conversation-v2/run-shadow-batch.ts` |
 | persistência sanitizada | `src/application/ports/conversation-v2-comparison-sink.ts`, `src/infrastructure/repositories/drizzle-conversation-v2-comparison-sink.ts` |
-| runner e artefatos offline | `scripts/eval-conversation-v2-cycle-i.ts`, `evals/cycle-i/**` |
+| runner e artefatos offline | `scripts/eval-conversation-v2-cycle-i-bootstrap.ts`, `scripts/eval-conversation-v2-cycle-i.ts`, `evals/cycle-i/**` |
 
 ---
 
@@ -652,6 +652,7 @@ Rollback operacional imediato: atualizar `organizations.conversation_engine` par
 > Lab are real parser paths; absent evidence remains blocking and is never synthesized.
 
 **Files:**
+- Create: `scripts/eval-conversation-v2-cycle-i-bootstrap.ts`
 - Create: `scripts/eval-conversation-v2-cycle-i.ts`
 - Create: `src/application/conversation-v2/corpus-comparison-runner.ts`
 - Create: `src/application/conversation-v2/decision-fixture-manifest.ts`
@@ -716,7 +717,7 @@ npm run eval:conversation-v2:cycle-i -- --mode build-human-sheet --run evals/cyc
 npm run eval:conversation-v2:cycle-i -- --mode evaluate-gates --run evals/cycle-i/results/cycle-i-supported-n6.json --out evals/cycle-i/gate-report.json
 ```
 
-`package.json`: `"eval:conversation-v2:cycle-i": "dotenv -e .env.local -- tsx scripts/eval-conversation-v2-cycle-i.ts"`. O script não importa DB/repositories e lê apenas corpus/fixtures commitados.
+`package.json`: `"eval:conversation-v2:cycle-i": "tsx scripts/eval-conversation-v2-cycle-i-bootstrap.ts"`. O bootstrap captura a attestation antes de carregar dotenv/CLI/runner/providers; o runner não importa DB/repositories e lê apenas corpus/fixtures commitados.
 
 - [ ] **Step 1: escrever RED do runner**
 
