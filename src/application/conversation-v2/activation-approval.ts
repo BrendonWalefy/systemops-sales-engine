@@ -6,7 +6,9 @@ import {
 } from "@/application/conversation-v2/gate-report";
 import type { HmacRef } from "@/application/conversation-v2/comparison-record";
 import {
+  isRegisteredCycleIRuntimeBuildIdentity,
   verifyConfiguredCycleIApprovalAuthority,
+  type CycleIRuntimeBuildIdentity,
   type Ed25519SignatureRef,
 } from "@/application/conversation-v2/configured-cycle-i-authority";
 
@@ -23,14 +25,6 @@ export type InternalV2ActivationApproval = Readonly<{
   configDigest: HmacRef;
   approvedAt: string;
   readonly [internalV2ActivationApprovalBrand]: true;
-}>;
-
-export type InternalV2ActivationExpected = Readonly<{
-  commit: string;
-  reportDigest: HmacRef;
-  populationDigest: HmacRef;
-  datasetDigest: HmacRef;
-  configDigest: HmacRef;
 }>;
 
 const hmac = z.string().regex(/^hmac:[a-f0-9]{64}$/);
@@ -50,7 +44,7 @@ const approvalRecordSchema = z.object({
   signature: ed25519Signature,
 }).strict();
 
-const approvals = new WeakSet<object>();
+const approvals = new WeakMap<object, CycleIRuntimeBuildIdentity>();
 
 function snapshotPlainRecord(
   input: unknown,
@@ -87,7 +81,7 @@ function snapshotPlainRecord(
 
 export function parseInternalV2ActivationApproval(
   report: CycleIGateReport,
-  expected: InternalV2ActivationExpected,
+  runtimeIdentity: CycleIRuntimeBuildIdentity,
   approvalRecord: unknown,
 ): InternalV2ActivationApproval {
   if (!isRegisteredCycleIGateReport(report)) {
@@ -100,11 +94,9 @@ export function parseInternalV2ActivationApproval(
     throw new Error("Cycle I activation gate is not fully pass");
   }
 
-  const expectedSnapshot = snapshotPlainRecord(
-    expected,
-    ["commit", "reportDigest", "populationDigest", "datasetDigest", "configDigest"],
-    "invalid internal V2 expected authority",
-  );
+  if (!isRegisteredCycleIRuntimeBuildIdentity(runtimeIdentity)) {
+    throw new Error("Cycle I runtime build identity is not registered");
+  }
   const parsed = approvalRecordSchema.parse(snapshotPlainRecord(
     approvalRecord,
     null,
@@ -121,11 +113,11 @@ export function parseInternalV2ActivationApproval(
     throw new Error("internal V2 approval record signature is invalid");
   }
   const exact = {
-    commit: commit.parse(expectedSnapshot.commit),
-    reportDigest: hmac.parse(expectedSnapshot.reportDigest) as HmacRef,
-    populationDigest: hmac.parse(expectedSnapshot.populationDigest) as HmacRef,
-    datasetDigest: hmac.parse(expectedSnapshot.datasetDigest) as HmacRef,
-    configDigest: hmac.parse(expectedSnapshot.configDigest) as HmacRef,
+    commit: runtimeIdentity.commit,
+    reportDigest: runtimeIdentity.reportDigest,
+    populationDigest: runtimeIdentity.populationDigest,
+    datasetDigest: runtimeIdentity.datasetDigest,
+    configDigest: runtimeIdentity.configDigest,
   };
   for (const key of Object.keys(exact) as Array<keyof typeof exact>) {
     const reportMismatch = key === "commit"
@@ -141,12 +133,16 @@ export function parseInternalV2ActivationApproval(
     ...exact,
     approvedAt: parsed.approvedAt,
   }) as InternalV2ActivationApproval;
-  approvals.add(approval);
+  approvals.set(approval, runtimeIdentity);
   return approval;
 }
 
 export function isRegisteredInternalV2ActivationApproval(
   approval: InternalV2ActivationApproval | null,
+  runtimeIdentity: CycleIRuntimeBuildIdentity | null,
 ): boolean {
-  return typeof approval === "object" && approval !== null && approvals.has(approval);
+  return typeof approval === "object"
+    && approval !== null
+    && isRegisteredCycleIRuntimeBuildIdentity(runtimeIdentity)
+    && approvals.get(approval) === runtimeIdentity;
 }

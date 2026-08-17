@@ -123,6 +123,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
               evaluator: conversationV2Runtime.evaluator,
               sink: conversationV2Runtime.sink,
               approval: conversationV2Runtime.approval,
+              runtimeIdentity: conversationV2Runtime.runtimeIdentity,
               maxTurns: conversationV2Runtime.maxTurns,
               deadlineMs: conversationV2Runtime.deadlineMs,
               now: conversationV2Runtime.now,

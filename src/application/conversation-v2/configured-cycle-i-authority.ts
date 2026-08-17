@@ -1,4 +1,5 @@
 import { createPublicKey, verify, type KeyObject } from "node:crypto";
+import type { HmacRef } from "@/application/conversation-v2/comparison-record";
 
 export const CYCLE_I_GATE_REPORT_AUTHORITY_DOMAIN =
   "systemops.conversation-v2.cycle-i.gate-report.v1" as const;
@@ -7,21 +8,50 @@ export const CYCLE_I_ACTIVATION_APPROVAL_AUTHORITY_DOMAIN =
 
 export type Ed25519SignatureRef = `ed25519:${string}`;
 
+declare const cycleIRuntimeBuildIdentityBrand: unique symbol;
+export type CycleIRuntimeBuildIdentity = Readonly<{
+  commit: string;
+  reportDigest: HmacRef;
+  populationDigest: HmacRef;
+  datasetDigest: HmacRef;
+  configDigest: HmacRef;
+  readonly [cycleIRuntimeBuildIdentityBrand]: true;
+}>;
+
 type ConfiguredAuthorityRoot = Readonly<{
   gateReportPublicKey: KeyObject;
   activationApprovalPublicKey: KeyObject;
 }>;
 
 let configuredRoot: ConfiguredAuthorityRoot | null | undefined;
+const runtimeBuildIdentities = new WeakSet<object>();
+const commitPattern = /^[a-f0-9]{7,64}$/;
+const hmacPattern = /^hmac:[a-f0-9]{64}$/;
 
 function readEd25519PublicKey(name: string): KeyObject {
   const value = process.env[name];
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`Cycle I trusted authority root is not configured: ${name}`);
   }
-  const key = createPublicKey(value);
-  if (key.asymmetricKeyType !== "ed25519") {
-    throw new Error(`Cycle I trusted authority root must be Ed25519: ${name}`);
+  const encoded = value.trim();
+  let key: KeyObject;
+  if (
+    encoded.startsWith("-----BEGIN PUBLIC KEY-----")
+    && encoded.endsWith("-----END PUBLIC KEY-----")
+  ) {
+    key = createPublicKey(encoded);
+  } else if (encoded.startsWith("spki-der-base64:")) {
+    const base64 = encoded.slice("spki-der-base64:".length);
+    const der = Buffer.from(base64, "base64");
+    if (base64.length === 0 || der.toString("base64") !== base64) {
+      throw new Error(`Cycle I trusted authority root must be explicit SPKI public material: ${name}`);
+    }
+    key = createPublicKey({ key: der, format: "der", type: "spki" });
+  } else {
+    throw new Error(`Cycle I trusted authority root must be explicit SPKI public material: ${name}`);
+  }
+  if (key.type !== "public" || key.asymmetricKeyType !== "ed25519") {
+    throw new Error(`Cycle I trusted authority root must be an Ed25519 SPKI public key: ${name}`);
   }
   return key;
 }
@@ -49,6 +79,55 @@ function authorityRoot(): ConfiguredAuthorityRoot {
     configuredRoot = null;
     throw error;
   }
+}
+
+function requiredConfiguredValue(name: string, pattern: RegExp): string {
+  const value = process.env[name];
+  if (typeof value !== "string" || !pattern.test(value)) {
+    throw new Error(`Cycle I runtime build identity is not configured: ${name}`);
+  }
+  return value;
+}
+
+export function createConfiguredCycleIRuntimeBuildIdentity(): CycleIRuntimeBuildIdentity {
+  authorityRoot();
+  const vercelCommit = process.env.VERCEL_GIT_COMMIT_SHA;
+  const gitCommit = process.env.GIT_COMMIT_SHA;
+  if (vercelCommit && gitCommit && vercelCommit !== gitCommit) {
+    throw new Error("Cycle I runtime build identity has conflicting commit configuration");
+  }
+  const identity = Object.freeze({
+    commit: requiredConfiguredValue(
+      vercelCommit ? "VERCEL_GIT_COMMIT_SHA" : "GIT_COMMIT_SHA",
+      commitPattern,
+    ),
+    reportDigest: requiredConfiguredValue(
+      "CONVERSATION_V2_GATE_REPORT_DIGEST",
+      hmacPattern,
+    ) as HmacRef,
+    populationDigest: requiredConfiguredValue(
+      "CONVERSATION_V2_POPULATION_DIGEST",
+      hmacPattern,
+    ) as HmacRef,
+    datasetDigest: requiredConfiguredValue(
+      "CONVERSATION_V2_DATASET_DIGEST",
+      hmacPattern,
+    ) as HmacRef,
+    configDigest: requiredConfiguredValue(
+      "CONVERSATION_V2_CONFIG_DIGEST",
+      hmacPattern,
+    ) as HmacRef,
+  }) as CycleIRuntimeBuildIdentity;
+  runtimeBuildIdentities.add(identity);
+  return identity;
+}
+
+export function isRegisteredCycleIRuntimeBuildIdentity(
+  identity: CycleIRuntimeBuildIdentity | null,
+): identity is CycleIRuntimeBuildIdentity {
+  return typeof identity === "object"
+    && identity !== null
+    && runtimeBuildIdentities.has(identity);
 }
 
 function verifyConfiguredAuthority(

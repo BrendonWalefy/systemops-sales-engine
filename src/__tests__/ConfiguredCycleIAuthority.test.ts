@@ -54,6 +54,23 @@ describe("Cycle I configured authority root", () => {
     expect(Object.values(authority).some((value) => typeof value === "object")).toBe(false);
   });
 
+  it("accepts an explicitly tagged Ed25519 SPKI DER public key", async () => {
+    const gate = generateKeyPairSync("ed25519");
+    const approval = generateKeyPairSync("ed25519");
+    const gateDer = gate.publicKey.export({ type: "spki", format: "der" }).toString("base64");
+    process.env[gateEnv] = `spki-der-base64:${gateDer}`;
+    process.env[approvalEnv] = publicPem(approval.publicKey);
+    const authority = await import("@/application/conversation-v2/configured-cycle-i-authority");
+    const payload = "canonical-payload";
+    const signature = `ed25519:${sign(
+      null,
+      Buffer.from(`${authority.CYCLE_I_GATE_REPORT_AUTHORITY_DOMAIN}\0${payload}`),
+      gate.privateKey,
+    ).toString("hex")}` as const;
+
+    expect(authority.verifyConfiguredCycleIGateReportAuthority(payload, signature)).toBe(true);
+  });
+
   it("snapshots the trusted public root once and ignores later attacker configuration", async () => {
     const trustedGate = generateKeyPairSync("ed25519");
     const trustedApproval = generateKeyPairSync("ed25519");
@@ -90,4 +107,24 @@ describe("Cycle I configured authority root", () => {
       `ed25519:${"a".repeat(128)}`,
     )).toThrow(/distinct/i);
   });
+
+  it.each([gateEnv, approvalEnv])(
+    "rejects PKCS8 private key material in %s instead of deriving its public key",
+    async (privateKeyEnv) => {
+      const gate = generateKeyPairSync("ed25519");
+      const approval = generateKeyPairSync("ed25519");
+      process.env[gateEnv] = publicPem(gate.publicKey);
+      process.env[approvalEnv] = publicPem(approval.publicKey);
+      const privateKey = privateKeyEnv === gateEnv ? gate.privateKey : approval.privateKey;
+      process.env[privateKeyEnv] = privateKey
+        .export({ type: "pkcs8", format: "pem" })
+        .toString();
+      const authority = await import("@/application/conversation-v2/configured-cycle-i-authority");
+
+      expect(() => authority.verifyConfiguredCycleIGateReportAuthority(
+        "payload",
+        `ed25519:${"a".repeat(128)}`,
+      )).toThrow(/public|SPKI|private/i);
+    },
+  );
 });

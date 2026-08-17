@@ -4,6 +4,7 @@ import {
   isRegisteredInternalV2ActivationApproval,
   type InternalV2ActivationApproval,
 } from "@/application/conversation-v2/activation-approval";
+import type { CycleIRuntimeBuildIdentity } from "@/application/conversation-v2/configured-cycle-i-authority";
 
 export const CONVERSATION_ENGINES = [
   "v1",
@@ -74,6 +75,7 @@ export function resolveConversationEngine(input: {
   automationMode: ClinicAutomationMode;
   policy: ConversationEnginePolicy;
   approval: InternalV2ActivationApproval | null;
+  runtimeIdentity: CycleIRuntimeBuildIdentity | null;
 }): EffectiveConversationEngine {
   if (input.automationMode !== "live") {
     return { route: "v1", shadow: false, reason: "automation_not_live" };
@@ -86,7 +88,7 @@ export function resolveConversationEngine(input: {
   }
   if (
     !input.policy.isTest
-    || !isRegisteredInternalV2ActivationApproval(input.approval)
+    || !isRegisteredInternalV2ActivationApproval(input.approval, input.runtimeIdentity)
   ) {
     return { route: "v1", shadow: false, reason: "activation_gate_missing" };
   }

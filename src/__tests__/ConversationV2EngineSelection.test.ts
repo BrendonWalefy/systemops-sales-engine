@@ -34,6 +34,7 @@ describe("Cycle I conversation engine selection", () => {
       automationMode: row.automationMode,
       policy,
       approval: row.approval,
+      runtimeIdentity: null,
     });
 
     if (row.automationMode !== "live") {

@@ -4,6 +4,10 @@ import type { ConversationV2ComparisonSink } from "@/application/ports/conversat
 import type { ClinicAutomationMode } from "@/application/automation/clinic-automation-policy";
 import type { InternalV2ActivationApproval } from "@/application/conversation-v2/activation-approval";
 import {
+  isRegisteredCycleIRuntimeBuildIdentity,
+  type CycleIRuntimeBuildIdentity,
+} from "@/application/conversation-v2/configured-cycle-i-authority";
+import {
   canonicalizeComparisonRecordConfig,
 } from "@/application/conversation-v2/comparison-record-config";
 import {
@@ -319,6 +323,10 @@ function buildRecord(input: {
 }
 
 class ShadowDeadlineError extends Error {}
+class ShadowClockError extends Error {}
+
+const MAX_SHADOW_BATCH_TURNS = 1_000;
+const MAX_SHADOW_BATCH_DEADLINE_MS = 60_000;
 
 function requireRemainingBudget(remainingMs: number): void {
   if (remainingMs <= 0) throw new ShadowDeadlineError("shadow deadline reached before dependency start");
@@ -399,6 +407,29 @@ function consumeBatchTurns(turns: readonly ShadowBatchTurn[]): void {
   for (const turn of unique) consumedBatchTurns.add(turn);
 }
 
+function captureDependencyMethod<T extends (...args: never[]) => unknown>(
+  dependency: unknown,
+  method: string,
+): T {
+  if (
+    (typeof dependency !== "object" && typeof dependency !== "function")
+    || dependency === null
+    || isProxy(dependency)
+  ) throw new Error("invalid shadow batch dependency");
+  let owner: object | null = dependency;
+  while (owner) {
+    const descriptor = Object.getOwnPropertyDescriptor(owner, method);
+    if (descriptor) {
+      if (!("value" in descriptor) || typeof descriptor.value !== "function") {
+        throw new Error("invalid shadow batch dependency");
+      }
+      return descriptor.value.bind(dependency) as T;
+    }
+    owner = Object.getPrototypeOf(owner);
+  }
+  throw new Error("invalid shadow batch dependency");
+}
+
 export async function runConversationV2ShadowBatch(input: {
   senderBarrier: SenderDrainAttempted;
   turns: readonly ShadowBatchTurn[];
@@ -406,6 +437,7 @@ export async function runConversationV2ShadowBatch(input: {
   evaluator: ShadowEvaluator;
   sink: ConversationV2ComparisonSink;
   approval: InternalV2ActivationApproval | null;
+  runtimeIdentity: CycleIRuntimeBuildIdentity | null;
   maxTurns: number;
   deadlineMs: number;
   now(): number;
@@ -416,16 +448,68 @@ export async function runConversationV2ShadowBatch(input: {
     allowedModelIds: readonly string[];
   }>;
 }): Promise<ShadowBatchSummary> {
-  const canonicalRecordConfig = canonicalizeComparisonRecordConfig(input.recordConfig);
-  if (!Number.isSafeInteger(input.maxTurns) || input.maxTurns < 0) throw new Error("invalid maxTurns");
-  if (!Number.isFinite(input.deadlineMs) || input.deadlineMs < 0) throw new Error("invalid deadlineMs");
-  const turns = barrierBatches.get(input.senderBarrier);
-  const barrierRegistered = barriers.has(input.senderBarrier);
-  barriers.delete(input.senderBarrier);
-  barrierBatches.delete(input.senderBarrier);
+  const source = readDataRecord(input, [
+    "senderBarrier",
+    "turns",
+    "policyReader",
+    "evaluator",
+    "sink",
+    "approval",
+    "runtimeIdentity",
+    "maxTurns",
+    "deadlineMs",
+    "now",
+    "recordConfig",
+  ], "invalid shadow batch input");
+  const canonicalRecordConfig = canonicalizeComparisonRecordConfig(source.recordConfig);
+  const maxTurns = source.maxTurns;
+  if (
+    !Number.isSafeInteger(maxTurns)
+    || (maxTurns as number) < 0
+    || (maxTurns as number) > MAX_SHADOW_BATCH_TURNS
+  ) throw new Error("invalid maxTurns bound");
+  const deadlineMs = source.deadlineMs;
+  if (
+    !Number.isSafeInteger(deadlineMs)
+    || (deadlineMs as number) < 0
+    || (deadlineMs as number) > MAX_SHADOW_BATCH_DEADLINE_MS
+  ) throw new Error("invalid deadlineMs bound");
+  if (typeof source.now !== "function") throw new Error("invalid shadow batch clock");
+  const now = source.now as () => number;
+  let lastClockSample = Number.NEGATIVE_INFINITY;
+  const sampleNow = (): number => {
+    const sample = now();
+    if (!Number.isFinite(sample) || sample < lastClockSample) {
+      throw new ShadowClockError("shadow batch clock must be finite and monotonic");
+    }
+    lastClockSample = sample;
+    return sample;
+  };
+  const startedAt = sampleNow();
+  sampleNow();
+  const deadlineAt = startedAt + (deadlineMs as number);
+  if (!Number.isFinite(deadlineAt)) throw new Error("invalid shadow batch deadline");
+  const policyRead = captureDependencyMethod<
+    (clinicId: string) => Promise<unknown>
+  >(source.policyReader, "getConversationEnginePolicy");
+  const evaluate = captureDependencyMethod<
+    (reads: CapturedV2TurnReads, signal: AbortSignal) => Promise<ShadowEvaluation>
+  >(source.evaluator, "evaluate");
+  const append = captureDependencyMethod<
+    (appendInput: Readonly<{ clinicId: string; record: LiveComparisonRecord }>) => Promise<void>
+  >(source.sink, "append");
+  const runtimeIdentity = source.runtimeIdentity as CycleIRuntimeBuildIdentity | null;
+  if (runtimeIdentity !== null && !isRegisteredCycleIRuntimeBuildIdentity(runtimeIdentity)) {
+    throw new Error("shadow batch runtime identity is not registered");
+  }
+  const senderBarrier = source.senderBarrier as SenderDrainAttempted;
+  const turns = barrierBatches.get(senderBarrier);
+  const barrierRegistered = barriers.has(senderBarrier);
+  barriers.delete(senderBarrier);
+  barrierBatches.delete(senderBarrier);
   if (
     !turns
-    || turns !== input.turns
+    || turns !== source.turns
     || !barrierRegistered
   ) throw new Error("sender barrier is not registered for this batch snapshot");
   consumeBatchTurns(turns);
@@ -436,8 +520,6 @@ export async function runConversationV2ShadowBatch(input: {
     allowedModelIds: new Set(canonicalRecordConfig.allowedModelIds),
   });
 
-  const startedAt = input.now();
-  const deadlineAt = startedAt + input.deadlineMs;
   const summary = {
     received: turns.length,
     selected: 0,
@@ -472,12 +554,12 @@ export async function runConversationV2ShadowBatch(input: {
 
   for (let index = 0; index < turns.length; index += 1) {
     const turn = turns[index]!;
-    if (index >= input.maxTurns) {
+    if (index >= (maxTurns as number)) {
       summary.skipped += turns.length - index;
       summary.maxTurnsReached = true;
       break;
     }
-    if (input.now() >= deadlineAt) {
+    if (sampleNow() >= deadlineAt) {
       summary.skipped += turns.length - index;
       summary.deadlineReached = true;
       break;
@@ -497,14 +579,15 @@ export async function runConversationV2ShadowBatch(input: {
     let selected = false;
     try {
       const rawPolicy = await settleStartedDependency(
-        () => input.policyReader.getConversationEnginePolicy(turn.clinicId),
-        deadlineAt - input.now(),
+        () => policyRead(turn.clinicId),
+        deadlineAt - sampleNow(),
       );
       const policy = canonicalizeConversationEnginePolicy(rawPolicy, turn.clinicId);
       const effective = resolveConversationEngine({
         automationMode: turn.automationMode,
         policy,
-        approval: input.approval,
+        approval: source.approval as InternalV2ActivationApproval | null,
+        runtimeIdentity,
       });
       recordSelection(turn, {
         configuredEngine: policy.engine,
@@ -514,6 +597,7 @@ export async function runConversationV2ShadowBatch(input: {
       });
       selected = effective.shadow;
     } catch (error) {
+      if (error instanceof ShadowClockError) throw error;
       if (error instanceof ShadowDeadlineError) {
         summary.deadlineReached = true;
         summary.skipped += turns.length - index;
@@ -527,7 +611,7 @@ export async function runConversationV2ShadowBatch(input: {
         reason: "policy_unavailable",
       });
     }
-    if (input.now() >= deadlineAt) {
+    if (sampleNow() >= deadlineAt) {
       summary.deadlineReached = true;
       summary.skipped += turns.length - index;
       break;
@@ -547,13 +631,14 @@ export async function runConversationV2ShadowBatch(input: {
       try {
         const reads = turn.promotion.reads;
         evaluation = await settleAbortableDependency(
-          (signal) => input.evaluator.evaluate(reads, signal),
-          deadlineAt - input.now(),
+          (signal) => evaluate(reads, signal),
+          deadlineAt - sampleNow(),
         );
         if (evaluation.result.status === "unsupported") summary.unsupported += 1;
       } catch (error) {
         evaluation = errorEvaluation();
         summary.evaluationErrors += 1;
+        if (error instanceof ShadowClockError) throw error;
         if (error instanceof ShadowDeadlineError) {
           summary.deadlineReached = true;
           summary.skipped += turns.length - index - 1;
@@ -569,11 +654,12 @@ export async function runConversationV2ShadowBatch(input: {
         ...recordConfig,
       });
       await settleStartedDependency(
-        () => input.sink.append({ clinicId: turn.clinicId, record }),
-        deadlineAt - input.now(),
+        () => append({ clinicId: turn.clinicId, record }),
+        deadlineAt - sampleNow(),
       );
       summary.persisted += 1;
     } catch (error) {
+      if (error instanceof ShadowClockError) throw error;
       if (error instanceof ShadowDeadlineError) {
         summary.deadlineReached = true;
         summary.skipped += turns.length - index - 1;
@@ -581,7 +667,7 @@ export async function runConversationV2ShadowBatch(input: {
       }
       summary.sinkErrors += 1;
     }
-    if (input.now() >= deadlineAt) {
+    if (sampleNow() >= deadlineAt) {
       summary.deadlineReached = true;
       summary.skipped += turns.length - index - 1;
       break;

@@ -17,6 +17,7 @@ import { DentalUnderstandingProvider } from "@/infrastructure/adapters/ai/Dental
 import { OpenAIDentalUnderstandingModel } from "@/infrastructure/adapters/ai/OpenAIDentalUnderstandingModel";
 import { DrizzleConversationEnginePolicyReader } from "@/infrastructure/repositories/drizzle-conversation-engine-policy-reader";
 import { DrizzleConversationV2ComparisonSink } from "@/infrastructure/repositories/drizzle-conversation-v2-comparison-sink";
+import { createConfiguredCycleIRuntimeBuildIdentity } from "@/application/conversation-v2/configured-cycle-i-authority";
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
@@ -138,12 +139,19 @@ export function createConversationV2Runtime(input: {
   const comparisonSink = input.comparisonSink ?? new DrizzleConversationV2ComparisonSink({
     allowedModelIds: modelAllowlist,
   });
+  let runtimeIdentity = null;
+  try {
+    runtimeIdentity = createConfiguredCycleIRuntimeBuildIdentity();
+  } catch {
+    // Missing or invalid activation authority keeps v2_internal fail-closed.
+  }
 
   return Object.freeze({
     policyReader,
     sink: comparisonSink,
     evaluator: createEvaluator({ env, hmacKey, modelId }),
     approval: null,
+    runtimeIdentity,
     maxTurns: positiveInteger(env.CONVERSATION_V2_SHADOW_MAX_TURNS, 10),
     deadlineMs: positiveInteger(env.CONVERSATION_V2_SHADOW_DEADLINE_MS, 20_000),
     now: () => Date.now(),

@@ -18,6 +18,7 @@ import {
 import {
   CYCLE_I_ACTIVATION_APPROVAL_AUTHORITY_DOMAIN,
   CYCLE_I_GATE_REPORT_AUTHORITY_DOMAIN,
+  createConfiguredCycleIRuntimeBuildIdentity,
 } from "@/application/conversation-v2/configured-cycle-i-authority";
 
 const ref = (tail: string): HmacRef => `hmac:${"a".repeat(63)}${tail}`;
@@ -35,6 +36,18 @@ const digests = {
   reportDigest: ref("1"), populationDigest: ref("2"),
   datasetDigest: ref("3"), configDigest: ref("4"),
 };
+const buildCommit = "e86201adb3b7eb6665629f5e73cbb5964acdc745";
+
+function configureRuntimeIdentity(
+  overrides: Partial<typeof digests & { commit: string }> = {},
+) {
+  process.env.VERCEL_GIT_COMMIT_SHA = overrides.commit ?? buildCommit;
+  process.env.CONVERSATION_V2_GATE_REPORT_DIGEST = overrides.reportDigest ?? digests.reportDigest;
+  process.env.CONVERSATION_V2_POPULATION_DIGEST = overrides.populationDigest ?? digests.populationDigest;
+  process.env.CONVERSATION_V2_DATASET_DIGEST = overrides.datasetDigest ?? digests.datasetDigest;
+  process.env.CONVERSATION_V2_CONFIG_DIGEST = overrides.configDigest ?? digests.configDigest;
+  return createConfiguredCycleIRuntimeBuildIdentity();
+}
 const evidence = (denominator: number) => ({
   evidenceDigest: ref("5"), populationDigest: digests.populationDigest,
   datasetDigest: digests.datasetDigest, configDigest: digests.configDigest, denominator,
@@ -83,7 +96,7 @@ function approvalAuthority(
   privateKey = approvalAuthorityKeyPair.privateKey,
 ) {
   const expected = {
-    commit: "e86201adb3b7eb6665629f5e73cbb5964acdc745",
+    commit: buildCommit,
     reportDigest: report.reportDigest,
     populationDigest: report.populationDigest,
     datasetDigest: report.datasetDigest,
@@ -116,6 +129,13 @@ function parsePassingReport() {
   return parseCycleIGateReport(JSON.parse(JSON.stringify(passingReport())));
 }
 
+function runtimeIdentityFor(
+  report: CycleIGateReport,
+  overrides: Partial<typeof digests & { commit: string }> = {},
+) {
+  return configureRuntimeIdentity({ reportDigest: report.reportDigest, ...overrides });
+}
+
 describe("Cycle I internal activation approval", () => {
   it("does not accept a caller-supplied permissive structural verifier", () => {
     const selfDeclared = passingReport(attackerGateAuthority.privateKey, attackerKey);
@@ -139,29 +159,32 @@ describe("Cycle I internal activation approval", () => {
   it("accepts only a content-bound report and independently authenticated approval record", () => {
     const built = passingReport();
     const authority = approvalAuthority(built);
+    const runtimeIdentity = runtimeIdentityFor(built);
     expect(() => parseInternalV2ActivationApproval(
-      built, authority.expected, authority.approvalRecord,
+      built, runtimeIdentity, authority.approvalRecord,
     )).toThrow(/registered/i);
 
     const parsed = parseCycleIGateReport(JSON.parse(JSON.stringify(built)));
     const parsedAuthority = approvalAuthority(parsed);
     const approval = parseInternalV2ActivationApproval(
-      parsed, parsedAuthority.expected, parsedAuthority.approvalRecord,
+      parsed, runtimeIdentity, parsedAuthority.approvalRecord,
     );
-    expect(isRegisteredInternalV2ActivationApproval(approval)).toBe(true);
+    expect(isRegisteredInternalV2ActivationApproval(approval, runtimeIdentity)).toBe(true);
     expect(Object.isFrozen(approval)).toBe(true);
     expect(resolveConversationEngine({
       automationMode: "live",
       policy: { clinicId: "clinic-1", engine: "v2_internal", isTest: true },
       approval,
+      runtimeIdentity,
     })).toEqual({ route: "v1", shadow: false, reason: "v2_internal_runtime_unavailable" });
   });
 
   it("uses the registered approval in the full automation×engine×isTest matrix", () => {
     const parsed = parsePassingReport();
     const authority = approvalAuthority(parsed);
+    const runtimeIdentity = runtimeIdentityFor(parsed);
     const approval = parseInternalV2ActivationApproval(
-      parsed, authority.expected, authority.approvalRecord,
+      parsed, runtimeIdentity, authority.approvalRecord,
     );
 
     for (const automationMode of ["disabled", "observe", "live"] as const) {
@@ -171,6 +194,7 @@ describe("Cycle I internal activation approval", () => {
             automationMode,
             policy: { clinicId: "clinic-1", engine, isTest },
             approval,
+            runtimeIdentity,
           });
           if (automationMode !== "live") {
             expect(result).toEqual({ route: "v1", shadow: false, reason: "automation_not_live" });
@@ -192,15 +216,42 @@ describe("Cycle I internal activation approval", () => {
     }
   });
 
-  it.each(["commit", "reportDigest", "datasetDigest", "configDigest", "populationDigest"] as const)(
-    "rejects trusted runtime %s authority that differs from the signed artifacts",
+  it("binds an approval to the current registered runtime build identity", () => {
+    const parsed = parsePassingReport();
+    const authority = approvalAuthority(parsed);
+    const runtimeA = runtimeIdentityFor(parsed);
+    const approval = parseInternalV2ActivationApproval(parsed, runtimeA, authority.approvalRecord);
+    const runtimeB = runtimeIdentityFor(parsed, { configDigest: ref("9") });
+
+    expect(() => parseInternalV2ActivationApproval(
+      parsed,
+      runtimeB,
+      authority.approvalRecord,
+    )).toThrow(/configDigest|runtime|mismatch/i);
+    expect(resolveConversationEngine({
+      automationMode: "live",
+      policy: { clinicId: "clinic-1", engine: "v2_internal", isTest: true },
+      approval,
+      runtimeIdentity: runtimeB,
+    })).toEqual({ route: "v1", shadow: false, reason: "activation_gate_missing" });
+    runtimeIdentityFor(parsed);
+  });
+
+  it.each(["commit", "reportDigest", "populationDigest", "datasetDigest", "configDigest"] as const)(
+    "rejects a signed artifact whose %s differs from the registered runtime identity",
     (field) => {
       const parsed = parsePassingReport();
       const authority = approvalAuthority(parsed);
-      const wrongExpected = { ...authority.expected, [field]: field === "commit" ? "deadbee" : ref("9") };
+      const runtimeIdentity = runtimeIdentityFor(parsed, {
+        [field]: field === "commit" ? "deadbee" : ref("9"),
+      });
+
       expect(() => parseInternalV2ActivationApproval(
-        parsed, wrongExpected as never, authority.approvalRecord,
-      )).toThrow(/mismatch/i);
+        parsed,
+        runtimeIdentity,
+        authority.approvalRecord,
+      )).toThrow(new RegExp(`${field}|mismatch`, "i"));
+      runtimeIdentityFor(parsed);
     },
   );
 
@@ -211,48 +262,41 @@ describe("Cycle I internal activation approval", () => {
     ]) {
       const parsed = parsePassingReport();
       const authority = approvalAuthority(parsed);
+      const runtimeIdentity = runtimeIdentityFor(parsed);
       expect(() => parseInternalV2ActivationApproval(
-        parsed, authority.expected, alter(authority.approvalRecord),
+        parsed, runtimeIdentity, alter(authority.approvalRecord),
       )).toThrow();
     }
     const parsed = parsePassingReport();
     const attacker = approvalAuthority(parsed, attackerApprovalAuthority.privateKey);
+    const runtimeIdentity = runtimeIdentityFor(parsed);
     expect(() => parseInternalV2ActivationApproval(
-      parsed, attacker.expected, attacker.approvalRecord,
+      parsed, runtimeIdentity, attacker.approvalRecord,
     )).toThrow(/signature|authentic/i);
   });
 
   it("rejects casts, rebuilt approvals and mutation after parsing", () => {
     const parsed = parsePassingReport();
     const authority = approvalAuthority(parsed);
+    const runtimeIdentity = runtimeIdentityFor(parsed);
     const approval = parseInternalV2ActivationApproval(
-      parsed, authority.expected, authority.approvalRecord,
+      parsed, runtimeIdentity, authority.approvalRecord,
     );
-    expect(isRegisteredInternalV2ActivationApproval({ ...approval } as never)).toBe(false);
-    expect(isRegisteredInternalV2ActivationApproval({} as never)).toBe(false);
+    expect(isRegisteredInternalV2ActivationApproval({ ...approval } as never, runtimeIdentity)).toBe(false);
+    expect(isRegisteredInternalV2ActivationApproval({} as never, runtimeIdentity)).toBe(false);
     expect(() => Object.assign(approval, { commit: "deadbee" })).toThrow();
   });
 
-  it("rejects proxy/accessor expected authority without executing getters", () => {
+  it("rejects rebuilt/cast runtime identities", () => {
     const parsed = parsePassingReport();
     const authority = approvalAuthority(parsed);
-    let reads = 0;
-    const proxied = new Proxy({ ...authority.expected }, {
-      get(target, key, receiver) { reads += 1; return Reflect.get(target, key, receiver); },
-    });
+    const runtimeIdentity = runtimeIdentityFor(parsed);
     expect(() => parseInternalV2ActivationApproval(
-      parsed, proxied, authority.approvalRecord,
-    )).toThrow(/approval|expected|invalid/i);
-    expect(reads).toBe(0);
-    const accessor = { ...authority.expected } as Record<string, unknown>;
-    Object.defineProperty(accessor, "commit", {
-      enumerable: true,
-      get() { reads += 1; return authority.expected.commit; },
-    });
+      parsed, { ...runtimeIdentity } as never, authority.approvalRecord,
+    )).toThrow(/runtime|identity|registered/i);
     expect(() => parseInternalV2ActivationApproval(
-      parsed, accessor as never, authority.approvalRecord,
-    )).toThrow(/approval|expected|invalid/i);
-    expect(reads).toBe(0);
+      parsed, {} as never, authority.approvalRecord,
+    )).toThrow(/runtime|identity|registered/i);
   });
 
   it("rejects a registered report whose blocking evidence is not all pass", () => {
@@ -271,8 +315,9 @@ describe("Cycle I internal activation approval", () => {
     };
     const parsed = parseCycleIGateReport(JSON.parse(JSON.stringify(signed)));
     const authority = approvalAuthority(parsed);
+    const runtimeIdentity = runtimeIdentityFor(parsed);
     expect(() => parseInternalV2ActivationApproval(
-      parsed, authority.expected, authority.approvalRecord,
+      parsed, runtimeIdentity, authority.approvalRecord,
     )).toThrow(/gate|NO_GO|pass/i);
   });
 });
