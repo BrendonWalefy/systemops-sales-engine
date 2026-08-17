@@ -17,9 +17,11 @@ const registered = new WeakSet<object>();
 const objectId = /^[a-f0-9]{40,64}$/;
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const trustedGitExecutable = "/usr/bin/git";
+const statusEndMarker = "--CYCLE-I-STATUS-END--";
 const closedGitEnvironment = Object.freeze({
   GIT_CONFIG_GLOBAL: "/dev/null",
   GIT_CONFIG_NOSYSTEM: "1",
+  GIT_OPTIONAL_LOCKS: "0",
   LANG: "C",
   LC_ALL: "C",
   NODE_ENV: "production",
@@ -41,7 +43,7 @@ export function createGitCycleIBuildAttestation(): CycleIBuildAttestation {
     "/bin/sh",
     [
       "-c",
-      `${trustedGitExecutable} rev-parse HEAD && ${trustedGitExecutable} rev-parse 'HEAD^{tree}' && ${trustedGitExecutable} status --porcelain --untracked-files=all`,
+      `${trustedGitExecutable} rev-parse HEAD && ${trustedGitExecutable} rev-parse 'HEAD^{tree}' && ${trustedGitExecutable} status --porcelain=v1 --untracked-files=all --ignore-submodules=none && printf '%s\\n' '${statusEndMarker}' && ${trustedGitExecutable} ls-files -v`,
     ],
     {
       cwd: repositoryRoot,
@@ -50,12 +52,23 @@ export function createGitCycleIBuildAttestation(): CycleIBuildAttestation {
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
-  const [commit, tree, ...status] = output.trimEnd().split("\n");
+  const [commit, tree, ...remainder] = output.trimEnd().split("\n");
   if (!commit || !tree || !objectId.test(commit) || !objectId.test(tree)) {
     throw new Error("Cycle I build attestation could not resolve an exact Git HEAD/tree");
   }
+  const statusEndIndex = remainder.indexOf(statusEndMarker);
+  if (statusEndIndex < 0) {
+    throw new Error("Cycle I build attestation could not verify Git index flags");
+  }
+  const status = remainder.slice(0, statusEndIndex);
   if (status.some((line) => line.length > 0)) {
     throw new Error("Cycle I productive measurement requires a clean repository tree");
+  }
+  const indexEntries = remainder.slice(statusEndIndex + 1).filter((line) => line.length > 0);
+  if (indexEntries.some((line) => /^[a-zS] /.test(line))) {
+    throw new Error(
+      "Cycle I productive measurement rejects assume-unchanged or skip-worktree index flags",
+    );
   }
   const attestation = Object.freeze({
     commit,
