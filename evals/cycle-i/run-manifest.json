@@ -1,7 +1,7 @@
 {
   "version": "conversation-v2-cycle-i-run-manifest.v3",
-  "implementationCommit": "e603fab85b0d854c45ee3fa6044db754f7e87e65",
-  "implementationTreeDigest": "hmac:f7d7a253c139673c6786abe1313b2fcaf063c53206cf6a79f6b255d66891d1cf",
+  "implementationCommit": "1bfe340c575fd0df888a879642ed3d4a3cafdb3e",
+  "implementationTreeDigest": "hmac:cecd2974f236153adc91f602ba6e9a53d7ef0482b5b5c6ba5148f88626c63cd8",
   "implementationSourceDigest": "hmac:8c62a07a3e557b9211007604f371f4b246e39d746bcf284504693dd318b4f8eb",
   "corpusRoot": "evals/corpus",
   "manifestPath": "evals/understanding/cycle-f-dental.json",
@@ -18,8 +18,8 @@
   "decisionManifest": null,
   "proseManifest": null,
   "fullTurnEvidence": null,
-  "configDigest": "hmac:67521a192359e86683f34421d7b59202eb2f03d181b38da64707b0c0b767d629",
-  "manifestDigest": "hmac:68f61050b0c6dfec562dafb96e1877e672e50f4369c7a1329ea944ca9e8cf332",
+  "configDigest": "hmac:27cbbfd5807f7f21d14bca5c73239db64252104e6bdad0db00abfc0326cf2f80",
+  "manifestDigest": "hmac:350d651b46d9344c88aae9412720e9be3c1acf93e7dbd99c102cd41bff752f39",
   "judge": "experimental_non_gating",
   "evidence": { "h_entailment": null, "shadow_no_effects": null, "cycle_f_axes": null, "rollback": null, "observability": null, "verification": null, "adversarial_review": null },
   "authoritySignature": null
