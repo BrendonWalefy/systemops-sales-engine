@@ -236,8 +236,16 @@ class FakeAppointmentRepository implements AppointmentRepository {
     return [];
   }
 
-  async findByPeriod(): Promise<Appointment[]> {
-    return [];
+  async findByPeriod(
+    clinicId: string,
+    startsAt: Date,
+    endsAt: Date,
+  ): Promise<Appointment[]> {
+    return this.saved.filter((candidate) =>
+      candidate.clinicId === clinicId
+      && candidate.startsAt < endsAt
+      && candidate.endsAt > startsAt,
+    );
   }
 
   async findDueReminders(): Promise<Appointment[]> {
@@ -321,6 +329,18 @@ describe("BookingService — título do evento no Calendar", () => {
 });
 
 describe("BookingService — double-booking guards", () => {
+  it("keeps one appointment when the same conversation retries the exact booking", async () => {
+    const { appointmentRepo, calendar, service } = setup();
+
+    const first = await bookWith(service, "Clareamento");
+    const retry = await bookWith(service, "Clareamento");
+
+    expect(first.success).toBe(true);
+    expect(retry).toEqual({ success: false, reason: "slot_taken" });
+    expect(appointmentRepo.saved).toHaveLength(1);
+    expect(calendar.createAppointmentCalls).toBe(1);
+  });
+
   it("revalidates the Calendar after reserving and before creating the appointment", async () => {
     const { appointmentRepo, calendar, leadRepo, order, reservations, service } = setup();
 
@@ -365,7 +385,7 @@ describe("BookingService — double-booking guards", () => {
   });
 
   it("assume slot livre e conclui o booking quando isSlotFree falha (GCal indisponível)", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { calendar, order, service } = setup();
     calendar.isSlotFreeError = new Error("calendar unavailable");
 
@@ -378,7 +398,7 @@ describe("BookingService — double-booking guards", () => {
     expect(order).toContain("isSlotFree");
     expect(calendar.createAppointmentCalls).toBe(1);
 
-    consoleError.mockRestore();
+    consoleWarn.mockRestore();
   });
 
   it("saves the appointment without calendarEventId when event creation fails", async () => {

@@ -1,6 +1,7 @@
 import type { ClinicAutomationMode } from "@/application/automation/clinic-automation-policy";
 import type { ClinicAutomationPolicyReader } from "@/application/ports/clinic-automation-policy-reader";
 import type { InternalLabEligibilityReader } from "@/application/ports/internal-lab-eligibility-reader";
+import type { InternalLabRuntimeBindingsReader } from "@/application/conversation-v2/internal-lab-runtime-bindings";
 import {
   isInternalLabAuthorized,
   type InternalLabAuthorizationBindings,
@@ -9,6 +10,7 @@ import {
 type Dependencies = Readonly<{
   basePolicyReader: ClinicAutomationPolicyReader;
   eligibilityReader: InternalLabEligibilityReader;
+  runtimeBindingsReader: InternalLabRuntimeBindingsReader;
 }> & InternalLabAuthorizationBindings;
 
 export class InternalLabAutomationPolicyReader implements ClinicAutomationPolicyReader {
@@ -25,7 +27,19 @@ export class InternalLabAutomationPolicyReader implements ClinicAutomationPolicy
       return "disabled";
     }
 
-    const facts = await this.deps.eligibilityReader.getInternalLabEligibilityFacts(clinicId);
-    return isInternalLabAuthorized(facts, this.deps) ? "live" : "disabled";
+    try {
+      const [facts, currentBindings] = await Promise.all([
+        this.deps.eligibilityReader.getInternalLabEligibilityFacts(clinicId),
+        this.deps.runtimeBindingsReader.resolve(clinicId),
+      ]);
+      return isInternalLabAuthorized(facts, {
+        ...this.deps,
+        expectedTenantDigest: currentBindings.tenantDigest,
+        expectedChannelDigest: currentBindings.channelDigest,
+        expectedConfigDigest: currentBindings.configDigest,
+      }) ? "live" : "disabled";
+    } catch {
+      return "disabled";
+    }
   }
 }

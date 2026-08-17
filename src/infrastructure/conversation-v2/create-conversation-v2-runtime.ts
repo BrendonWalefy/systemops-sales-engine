@@ -31,6 +31,8 @@ import type { ConversationV2ComparisonSink } from "@/application/ports/conversat
 import type { JobQueue } from "@/application/ports/job-queue";
 import type { OutboundMessageStore } from "@/application/ports/outbound-message-store";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
+import type { ClinicAutomationPolicyReader } from "@/application/ports/clinic-automation-policy-reader";
+import type { InternalLabEligibilityReader } from "@/application/ports/internal-lab-eligibility-reader";
 import type { DecisionTraceSink } from "@/core/observability/DecisionTrace";
 import type { V1TurnObservationSink } from "@/core/observability/V1TurnObservation";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
@@ -251,6 +253,7 @@ export function createConversationV2Runtime(input: {
   decisionTraceSink?: DecisionTraceSink; v1Handler?: ConversationHandler; v2Handler?: ConversationHandler;
   authorizationBindings?: InternalLabAuthorizationBindings;
   runtimeBindingsReader?: InternalLabRuntimeBindingsReader;
+  eligibilityReader?: ClinicAutomationPolicyReader & InternalLabEligibilityReader;
   jobQueue?: JobQueue;
   outboundMessageStore?: OutboundMessageStore;
 } = {}): ConversationV2Runtime {
@@ -268,7 +271,8 @@ export function createConversationV2Runtime(input: {
   const authorization = input.authorizationBindings ?? closedAuthorizationBindings(env);
   const apiKey = env.OPENAI_API_KEY?.trim() ?? "";
   const liveProviderReady = apiKey.length > 0;
-  const eligibilityReader = new DrizzleClinicAutomationPolicyReader();
+  const eligibilityReader = input.eligibilityReader
+    ?? new DrizzleClinicAutomationPolicyReader();
   const runtimeBindingsReader = input.runtimeBindingsReader
     ?? new DrizzleInternalLabRuntimeBindingsReader();
   const jobQueue = input.jobQueue ?? new DrizzleJobQueue();
@@ -288,7 +292,12 @@ export function createConversationV2Runtime(input: {
     policyReader, eligibilityReader, runtimeBindingsReader, liveProviderReady,
     shadowSelections, decisionTraceSink, ...authorization,
   });
-  const automationPolicy = new InternalLabAutomationPolicyReader({ basePolicyReader: eligibilityReader, eligibilityReader, ...authorization });
+  const automationPolicy = new InternalLabAutomationPolicyReader({
+    basePolicyReader: eligibilityReader,
+    eligibilityReader,
+    runtimeBindingsReader,
+    ...authorization,
+  });
   const internalLabDeliveryGuard = createBoundInternalLabDeliveryGuard({
     authorization,
     runtimeBindingsReader,

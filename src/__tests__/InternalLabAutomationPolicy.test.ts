@@ -10,6 +10,11 @@ function makeReader(overrides: Record<string, unknown> = {}) {
       clinicId: INTERNAL_LAB_TEST_BINDINGS.expectedClinicId, isTest: true, isDemo: false,
       operationalStatus: "test", autoReplyEnabled: true, shadowModeEnabled: false,
     }) },
+    runtimeBindingsReader: { resolve: vi.fn().mockResolvedValue({
+      tenantDigest: INTERNAL_LAB_TEST_BINDINGS.tenantDigest,
+      channelDigest: INTERNAL_LAB_TEST_BINDINGS.channelDigest,
+      configDigest: INTERNAL_LAB_TEST_BINDINGS.configDigest,
+    }) },
     approval: registered.approval,
     runtimeIdentity: registered.runtimeIdentity,
     expectedClinicId: INTERNAL_LAB_TEST_BINDINGS.expectedClinicId,
