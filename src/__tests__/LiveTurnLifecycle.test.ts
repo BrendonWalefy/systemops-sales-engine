@@ -164,6 +164,10 @@ class MemoryConversationRepository implements ConversationRepository {
     return this.messagesByExternalId.get(externalId) ?? null;
   }
 
+  async findMessageById(id: string): Promise<Message | null> {
+    return [...this.messages.values()].flat().find((message) => message.id === id) ?? null;
+  }
+
   async findRecentLeadMessageByIdentityAndContent(input: {
     clinicId: string;
     phone: string | null;

@@ -20,6 +20,7 @@ export type {
   DentalOutcomeType,
   DentalPolicy,
 } from "@/domain-packs/dental/capabilities";
+export type { DentalSchedulingWritePort } from "@/domain-packs/dental/ports";
 export { DENTAL_OUTCOME_SCHEMA } from "@/domain-packs/dental/capabilities";
 export {
   DENTAL_OUTCOME_PROVENANCE,
@@ -81,5 +82,9 @@ export const dentalPack = createDentalPack({
     resolveOfferedSlot: unavailable,
     resolvePendingAppointment: unavailable,
   },
-  schedulingWrite: { bookSlot: unavailable, confirmAppointment: unavailable },
+  schedulingWrite: {
+    persistSlotOffer: unavailable,
+    bookSlot: unavailable,
+    confirmAppointment: unavailable,
+  },
 });

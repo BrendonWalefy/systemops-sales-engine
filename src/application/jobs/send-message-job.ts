@@ -47,7 +47,7 @@ import { bumpInboxVersion } from "@/application/read-versions/clinic-read-versio
 
 export type SendMessageJobDependencies = {
   outboundMessageStore: OutboundMessageStore;
-  conversationRepository?: Pick<ConversationRepository, "appendMessage">;
+  conversationRepository?: Pick<ConversationRepository, "appendMessage" | "findMessageById">;
   safetyContextReader?: OutboundSafetyContextReader;
   automationDispatchLifecycle?: AutomationDispatchLifecycle;
   now?: () => Date;
@@ -117,7 +117,7 @@ export class SendMessageJobHandler {
   >;
   private readonly conversationRepository: Pick<
     ConversationRepository,
-    "appendMessage"
+    "appendMessage" | "findMessageById"
   >;
 
   constructor(private readonly deps: SendMessageJobDependencies) {
@@ -184,7 +184,7 @@ export class SendMessageJobHandler {
       isConversationOutboundPayload(outbound.payload)
       && outbound.payload.agentMessagePersistence === "sender"
     ) {
-      await this.conversationRepository.appendMessage({
+      const placeholder = {
         id: outbound.payload.agentMessageId,
         conversationId: outbound.conversationId,
         author: "agent",
@@ -195,7 +195,26 @@ export class SendMessageJobHandler {
         externalId: null,
         intent: outbound.payload.intent,
         deliveryFormat: null,
-      });
+      } as const;
+      const inserted = await this.conversationRepository.appendMessage(placeholder);
+      if (!inserted) {
+        const existing = await this.conversationRepository.findMessageById(
+          placeholder.id,
+        );
+        const exactPlaceholder = existing !== null &&
+          existing.id === placeholder.id &&
+          existing.conversationId === placeholder.conversationId &&
+          existing.author === placeholder.author &&
+          existing.body === placeholder.body &&
+          (existing.intent ?? null) === (placeholder.intent ?? null) &&
+          (existing.deliveryFormat ?? null) === placeholder.deliveryFormat &&
+          (existing.externalId ?? null) === placeholder.externalId &&
+          (existing.mediaUrl ?? null) === placeholder.mediaUrl &&
+          (existing.mediaType ?? null) === placeholder.mediaType;
+        if (!exactPlaceholder) {
+          throw new Error("sender-owned agent message is missing or mismatched");
+        }
+      }
     }
 
     let safetyContext: OutboundSafetyContext | null = null;

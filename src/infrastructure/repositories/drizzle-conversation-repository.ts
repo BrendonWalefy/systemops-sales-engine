@@ -14,6 +14,15 @@ export class DrizzleConversationRepository implements ConversationRepository {
     return row ? mapConversationRow(row) : null;
   }
 
+  async findMessageById(id: string): Promise<Message | null> {
+    const [row] = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.id, id))
+      .limit(1);
+    return row ? mapMessageRow(row) : null;
+  }
+
   async findMessageByExternalId(externalId: string): Promise<Message | null> {
     const [row] = await db
       .select()

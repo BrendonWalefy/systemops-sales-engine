@@ -3,6 +3,7 @@ import type { Message } from "@/domain/entities/conversation";
 
 const dbMock = vi.hoisted(() => ({
   insert: vi.fn(),
+  select: vi.fn(),
   update: vi.fn(),
 }));
 
@@ -28,6 +29,14 @@ function updateChain(returningRows: Array<{ clinicId: string }>) {
     set: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     returning: vi.fn().mockResolvedValue(returningRows),
+  };
+}
+
+function selectChain(rows: unknown[]) {
+  return {
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue(rows),
   };
 }
 
@@ -90,5 +99,30 @@ describe("DrizzleConversationRepository.appendMessage", () => {
     expect(inserted).toBe(false);
     expect(dbMock.update).not.toHaveBeenCalled();
     expect(bumpInboxVersionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("DrizzleConversationRepository.findMessageById", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("reads the deterministic internal message id used by sender-owned retries", async () => {
+    dbMock.select.mockReturnValue(selectChain([{
+      id: "msg-1",
+      conversationId: "conv-1",
+      author: "agent",
+      body: "Oi",
+      mediaUrl: null,
+      mediaType: null,
+      sentAt: new Date("2026-08-10T00:00:00.000Z"),
+      externalId: null,
+      intent: null,
+      deliveryFormat: null,
+      simulated: false,
+    }]));
+
+    await expect(new DrizzleConversationRepository().findMessageById("msg-1"))
+      .resolves.toMatchObject({ id: "msg-1", author: "agent" });
   });
 });

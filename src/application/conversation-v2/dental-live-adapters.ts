@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import type {
   ConversationStateMachine,
@@ -31,8 +32,7 @@ import type {
 type LiveState = Pick<
   ConversationStateMachine,
   | "getCurrentState"
-  | "getPendingSlotOffer"
-  | "offerSlots"
+  | "offerSlotsForTurn"
   | "invalidateIfCurrent"
 >;
 
@@ -53,6 +53,10 @@ export type DentalLiveAdapterDependencies = {
   conversationId: string;
   turnId: string;
   now: Date;
+  effectLifecycle?: Readonly<{
+    attempted(): void;
+    completed(): void;
+  }>;
 };
 
 class DentalLiveAdapterError extends Error {
@@ -139,6 +143,17 @@ function parseSlotId(value: string): {
 
 function slotEvidence(stateId: string, index: number): string {
   return `conversation-state:${stateId}:slot:${index}`;
+}
+
+function deterministicUuid(input: string): string {
+  const bytes = Buffer.from(
+    createHash("sha256").update(input).digest("hex").slice(0, 32),
+    "hex",
+  );
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function appointmentEvidence(appointmentId: string): string {
@@ -280,6 +295,7 @@ export function createDentalLiveAdapters(
     clinic,
     conversation,
     conversationId,
+    effectLifecycle,
     lead,
     leadId,
     now: turnNow,
@@ -304,6 +320,12 @@ export function createDentalLiveAdapters(
 
   const timezone = new ClinicTimezone(clinic.timezone);
   const businessHours = parseBusinessHours(clinic.businessHours);
+  let preparedSlotOffer: Readonly<{
+    stateId: string;
+    treatment: Treatment;
+    slots: readonly { startsAt: Date; endsAt: Date }[];
+    exposed: Readonly<{ service: { id: string; name: string }; slots: readonly DentalSlot[] }>;
+  }> | null = null;
 
   async function listTenantTreatments(): Promise<Treatment[]> {
     return (await treatments.listByClinic(clinic.id)).filter(
@@ -494,44 +516,27 @@ export function createDentalLiveAdapters(
       if (slots.length === 0) {
         return { service: { id: treatment.id, name: treatment.name }, slots: [] };
       }
-      await state.offerSlots(
-        conversationId,
-        slots,
-        timezone,
-        treatment.name,
-        treatment.durationMinutes,
-        clinic.slotOfferTtlMinutes,
-        false,
-        treatment.id,
+      const stateId = deterministicUuid(
+        `conversation-v2-slot-offer:${conversationId}:${turnId}`,
       );
-      const persisted = await state.getCurrentState(conversationId);
-      const payload = persisted ? parseOfferedPayload(persisted) : null;
-      if (
-        !persisted ||
-        persisted.conversationId !== conversationId ||
-        !payload ||
-        payload.treatmentId !== treatment.id ||
-        payload.treatmentName !== treatment.name ||
-        payload.durationMinutes !== treatment.durationMinutes
-      ) {
-        throw new DentalLiveAdapterError("persisted slot offer unavailable");
-      }
-      const persistedIndices = new Set<number>();
-      if (payload.slots.some((slot) => {
-        if (!validOfferedSlot(slot, treatment) || persistedIndices.has(slot.index)) {
-          return true;
-        }
-        persistedIndices.add(slot.index);
-        return false;
-      })) {
-        throw new DentalLiveAdapterError("persisted slot offer unavailable");
-      }
-      return {
+      const exposed = Object.freeze({
         service: { id: treatment.id, name: treatment.name },
-        slots: payload.slots.map((slot) =>
-          toDentalSlot(persisted.id, slot, treatment.id),
-        ),
-      };
+        slots: Object.freeze(slots.map((slot, index) => Object.freeze({
+          id: `dental-slot-candidate:${stateId}:${index + 1}:${encodeURIComponent(treatment.id)}`,
+          label: timezone.formatForHuman(slot.startsAt),
+          evidenceRef: `slot-candidate:${stateId}:${index + 1}`,
+        }))),
+      });
+      preparedSlotOffer = Object.freeze({
+        stateId,
+        treatment,
+        slots: Object.freeze(slots.map((slot) => Object.freeze({
+          startsAt: new Date(slot.startsAt.getTime()),
+          endsAt: new Date(slot.endsAt.getTime()),
+        }))),
+        exposed,
+      });
+      return exposed;
     },
 
     async resolveOfferedSlot(input) {
@@ -591,7 +596,70 @@ export function createDentalLiveAdapters(
     };
   }
 
+  async function invalidateConsumedStateBestEffort(stateId: string): Promise<void> {
+    try {
+      await state.invalidateIfCurrent(conversationId, stateId);
+    } catch {
+      // BookingService/confirmation success is authoritative. State cleanup must
+      // never invert it or cause the action to be retried.
+    }
+  }
+
   const schedulingWrite: DentalSchedulingWritePort = {
+    async persistSlotOffer(offer) {
+      const prepared = preparedSlotOffer;
+      if (!prepared) {
+        throw new DentalLiveAdapterError("prepared slot offer unavailable");
+      }
+      const exactBinding = offer.service.id === prepared.exposed.service.id &&
+        offer.service.name === prepared.exposed.service.name &&
+        offer.slots.length === prepared.exposed.slots.length &&
+        offer.slots.every((slot, index) => {
+          const expected = prepared.exposed.slots[index];
+          return Boolean(expected) && slot.id === expected!.id &&
+            slot.label === expected!.label && slot.evidenceRef === expected!.evidenceRef;
+        });
+      if (!exactBinding) {
+        throw new DentalLiveAdapterError("prepared slot offer binding mismatch");
+      }
+      // Consume before the write. A failed write is never replayed by this adapter.
+      preparedSlotOffer = null;
+      effectLifecycle?.attempted();
+      const formatted = await state.offerSlotsForTurn(
+        prepared.stateId,
+        conversationId,
+        prepared.slots.map(({ startsAt, endsAt }) => ({
+          startsAt: new Date(startsAt.getTime()),
+          endsAt: new Date(endsAt.getTime()),
+        })),
+        timezone,
+        prepared.treatment.name,
+        prepared.treatment.durationMinutes,
+        clinic.slotOfferTtlMinutes,
+        false,
+        prepared.treatment.id,
+      );
+      effectLifecycle?.completed();
+      if (
+        formatted.length !== prepared.slots.length ||
+        formatted.some((slot, index) => {
+          const candidate = prepared.slots[index];
+          const valid = validOfferedSlot(slot, prepared.treatment);
+          return !candidate || !valid || slot.index !== index + 1 ||
+            valid.startsAt.getTime() !== candidate.startsAt.getTime() ||
+            valid.endsAt.getTime() !== candidate.endsAt.getTime();
+        })
+      ) {
+        throw new DentalLiveAdapterError("persisted slot offer unavailable");
+      }
+      return {
+        service: { id: prepared.treatment.id, name: prepared.treatment.name },
+        slots: formatted.map((slot) =>
+          toDentalSlot(prepared.stateId, slot, prepared.treatment.id),
+        ),
+      };
+    },
+
     async bookSlot(id) {
       const offered = await currentOfferedSlot(id);
       if (!offered) {
@@ -601,6 +669,7 @@ export function createDentalLiveAdapters(
           evidenceRef: `booking:${turnId}:stale_offer`,
         };
       }
+      effectLifecycle?.attempted();
       const { startsAt, endsAt } = offered;
       let inPeriod = await appointments.findByPeriod(clinic.id, startsAt, endsAt);
       const existing = activeAppointmentForLead(
@@ -611,7 +680,8 @@ export function createDentalLiveAdapters(
         endsAt,
       );
       if (existing) {
-        await state.invalidateIfCurrent(conversationId, offered.state.id);
+        effectLifecycle?.completed();
+        await invalidateConsumedStateBestEffort(offered.state.id);
         return successfulOutcome(existing, offered.slot.label);
       }
       if (inPeriod.some((appointment) =>
@@ -645,7 +715,8 @@ export function createDentalLiveAdapters(
             endsAt,
           );
           if (reconciled) {
-            await state.invalidateIfCurrent(conversationId, offered.state.id);
+            effectLifecycle?.completed();
+            await invalidateConsumedStateBestEffort(offered.state.id);
             return successfulOutcome(reconciled, offered.slot.label);
           }
         }
@@ -665,7 +736,8 @@ export function createDentalLiveAdapters(
           evidenceRef: `booking:${turnId}:invalid_binding`,
         };
       }
-      await state.invalidateIfCurrent(conversationId, offered.state.id);
+      effectLifecycle?.completed();
+      await invalidateConsumedStateBestEffort(offered.state.id);
       return successfulOutcome(result.appointment, offered.slot.label);
     },
 
@@ -678,6 +750,7 @@ export function createDentalLiveAdapters(
           evidenceRef: `appointment-confirmation:${turnId}:not_found`,
         };
       }
+      effectLifecycle?.attempted();
       const result = await booking.confirmAppointment({
         clinic,
         lead,
@@ -701,7 +774,8 @@ export function createDentalLiveAdapters(
           evidenceRef: `appointment-confirmation:${turnId}:invalid_binding`,
         };
       }
-      await state.invalidateIfCurrent(conversationId, pending.stateId);
+      effectLifecycle?.completed();
+      await invalidateConsumedStateBestEffort(pending.stateId);
       return successfulOutcome(result.appointment, pending.label);
     },
   };

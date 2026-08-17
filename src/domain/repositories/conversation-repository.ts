@@ -2,6 +2,7 @@ import type { Conversation, Message } from "../entities/conversation";
 
 export type ConversationRepository = {
   findByLeadId(leadId: string): Promise<Conversation | null>;
+  findMessageById(id: string): Promise<Message | null>;
   findMessageByExternalId(externalId: string): Promise<Message | null>;
   findRecentLeadMessageByIdentityAndContent(input: {
     clinicId: string;

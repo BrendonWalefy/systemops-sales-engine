@@ -165,6 +165,12 @@ export class InMemoryDemoStore
     ) ?? null;
   }
 
+  async findMessageById(id: string): Promise<Message | null> {
+    return Array.from(this.messages.values()).flat().find(
+      (message) => message.id === id,
+    ) ?? null;
+  }
+
   async findRecentLeadMessageByIdentityAndContent(input: {
     clinicId: string;
     phone: string | null;
@@ -274,9 +280,13 @@ export class InMemoryDemoStore
   }
 
   async appendMessage(message: Message): Promise<boolean> {
-    if (message.externalId && Array.from(this.messages.values()).flat().some(
-      (stored) => stored.externalId === message.externalId,
-    )) {
+    const storedMessages = Array.from(this.messages.values()).flat();
+    if (
+      storedMessages.some((stored) => stored.id === message.id) ||
+      (message.externalId && storedMessages.some(
+        (stored) => stored.externalId === message.externalId,
+      ))
+    ) {
       return false;
     }
     const messages = this.messages.get(message.conversationId) ?? [];

@@ -123,6 +123,10 @@ class RacyConversationRepository implements ConversationRepository {
     ) ?? null;
   }
 
+  async findMessageById(id: string): Promise<Message | null> {
+    return [...this.messages.values()].flat().find((message) => message.id === id) ?? null;
+  }
+
   async findRecentLeadMessageByIdentityAndContent(): Promise<Message | null> {
     return null;
   }
@@ -230,6 +234,10 @@ class SimpleConversationRepository implements ConversationRepository {
     return [...this.messages.values()].flat().find(
       (message) => message.externalId === externalId,
     ) ?? null;
+  }
+
+  async findMessageById(id: string): Promise<Message | null> {
+    return [...this.messages.values()].flat().find((message) => message.id === id) ?? null;
   }
 
   async findRecentLeadMessageByIdentityAndContent(): Promise<Message | null> {

@@ -203,6 +203,40 @@ function setup(options: {
       };
       return formatted;
     }),
+    offerSlotsForTurn: vi.fn(async (
+      stateId: string,
+      _conversationId: string,
+      slots: Array<{ startsAt: Date; endsAt: Date }>,
+      timezone: { formatForHuman(value: Date): string },
+      treatmentName?: string,
+      durationMinutes?: number,
+      _ttlMinutes?: number,
+      _voiceEnabled?: boolean,
+      treatmentId?: string,
+    ) => {
+      const formatted = slots.map((slot, index) => ({
+        index: index + 1,
+        startsAt: slot.startsAt.toISOString(),
+        endsAt: slot.endsAt.toISOString(),
+        label: timezone.formatForHuman(slot.startsAt),
+      }));
+      currentState = {
+        id: stateId,
+        conversationId: "conversation-lab",
+        state: "slots_offered",
+        payload: {
+          slots: formatted,
+          expiresAt: new Date(now.getTime() + 15 * 60_000).toISOString(),
+          treatmentName,
+          treatmentId,
+          durationMinutes,
+        },
+        supersedesStateId: null,
+        createdAt: now,
+        expiresAt: new Date(now.getTime() + 15 * 60_000),
+      };
+      return formatted;
+    }),
     invalidate: vi.fn(async () => {
       currentState = {
         id: "idle-state",
@@ -300,7 +334,7 @@ function setup(options: {
   };
 }
 
-async function offerOneSlot(fixture: ReturnType<typeof setup>) {
+async function discoverOneSlot(fixture: ReturnType<typeof setup>) {
   return fixture.adapters.schedulingRead.listSlots({
     service: "clareamento",
     date: "amanhã",
@@ -308,6 +342,11 @@ async function offerOneSlot(fixture: ReturnType<typeof setup>) {
     minimumLeadTimeHours: 2,
     now,
   });
+}
+
+async function offerOneSlot(fixture: ReturnType<typeof setup>) {
+  const discovered = await discoverOneSlot(fixture);
+  return fixture.adapters.schedulingWrite.persistSlotOffer(discovered);
 }
 
 describe("Dental live adapters — tenant-scoped catalog", () => {
@@ -392,11 +431,27 @@ describe("Dental live adapters — persisted offers", () => {
       source: "manual",
     }] });
 
-    const result = await offerOneSlot(fixture);
+    const discovered = await discoverOneSlot(fixture);
+    expect(fixture.getCurrentState()).toBeNull();
+    expect(fixture.state.offerSlotsForTurn).not.toHaveBeenCalled();
+
+    const result = await fixture.adapters.schedulingWrite.persistSlotOffer(discovered);
     const stateId = fixture.getCurrentState()?.id;
     expect(result.service).toEqual({ id: "treatment-whitening", name: "Clareamento" });
     expect(result.slots).toHaveLength(1);
-    expect(fixture.state.offerSlots).toHaveBeenCalledOnce();
+    expect(fixture.state.offerSlots).not.toHaveBeenCalled();
+    expect(fixture.state.offerSlotsForTurn).toHaveBeenCalledOnce();
+    expect(fixture.state.offerSlotsForTurn).toHaveBeenCalledWith(
+      expect.any(String),
+      conversation.id,
+      [{ startsAt, endsAt }],
+      expect.anything(),
+      "Clareamento",
+      60,
+      15,
+      false,
+      "treatment-whitening",
+    );
 
     await expect(fixture.adapters.schedulingRead.resolveOfferedSlot({
       pendingStepId: stateId!,
@@ -476,7 +531,7 @@ describe("Dental live adapters — persisted offers", () => {
         expiresAt: new Date(now.getTime() + 10 * 60_000),
       }],
     });
-    await expect(offerOneSlot(fixture)).resolves.toMatchObject({ slots: [] });
+    await expect(discoverOneSlot(fixture)).resolves.toMatchObject({ slots: [] });
     expect(fixture.reservations.findActiveByPeriod).toHaveBeenCalledWith(
       clinic.id,
       expect.any(Date),
@@ -484,6 +539,7 @@ describe("Dental live adapters — persisted offers", () => {
       now,
     );
     expect(fixture.state.offerSlots).not.toHaveBeenCalled();
+    expect(fixture.state.offerSlotsForTurn).not.toHaveBeenCalled();
   });
 });
 
@@ -530,6 +586,32 @@ describe("Dental live adapters — BookingService write boundary", () => {
       "conversation-lab",
       offeredStateId,
     );
+  });
+
+  it("keeps an authoritative booking success when best-effort state cleanup throws", async () => {
+    const fixture = setup();
+    const offered = await offerOneSlot(fixture);
+    fixture.state.invalidateIfCurrent.mockRejectedValueOnce(new Error("cleanup unavailable"));
+
+    await expect(fixture.adapters.schedulingWrite.bookSlot(offered.slots[0]!.id)).resolves.toMatchObject({
+      success: true,
+      appointmentId: "appointment-1",
+    });
+    expect(fixture.booking.book).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a reconciled booking success when best-effort state cleanup throws", async () => {
+    const existing = appointment({ id: "existing-appointment" });
+    const fixture = setup();
+    const offered = await offerOneSlot(fixture);
+    fixture.appointments.findByPeriod.mockResolvedValue([existing]);
+    fixture.state.invalidateIfCurrent.mockRejectedValueOnce(new Error("cleanup unavailable"));
+
+    await expect(fixture.adapters.schedulingWrite.bookSlot(offered.slots[0]!.id)).resolves.toMatchObject({
+      success: true,
+      appointmentId: existing.id,
+    });
+    expect(fixture.booking.book).not.toHaveBeenCalled();
   });
 
   it("does not write when the offer was replaced", async () => {
@@ -692,6 +774,27 @@ describe("Dental live adapters — appointment confirmation", () => {
       "conversation-lab",
       "confirmation-state",
     );
+  });
+
+  it("keeps an authoritative confirmation success when best-effort state cleanup throws", async () => {
+    const pending = appointment({ id: "pending-appointment" });
+    const fixture = setup({ appointmentById: pending });
+    fixture.setCurrentState({
+      id: "confirmation-state",
+      conversationId: conversation.id,
+      state: "awaiting_appointment_confirmation",
+      payload: { appointmentId: pending.id, appointmentLabel: "Ter 18/08 às 15h" },
+      supersedesStateId: null,
+      createdAt: now,
+      expiresAt: new Date(now.getTime() + 60_000),
+    });
+    fixture.state.invalidateIfCurrent.mockRejectedValueOnce(new Error("cleanup unavailable"));
+
+    await expect(fixture.adapters.schedulingWrite.confirmAppointment(pending.id)).resolves.toMatchObject({
+      success: true,
+      appointmentId: pending.id,
+    });
+    expect(fixture.booking.confirmAppointment).toHaveBeenCalledOnce();
   });
 
   it("uses only the tenant-and-lead-scoped appointment read", async () => {

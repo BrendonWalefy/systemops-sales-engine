@@ -38,6 +38,7 @@ export type DentalSchedulingWriteOutcome =
   | { success: false; reason: string; evidenceRef: string };
 
 export type DentalSchedulingWritePort = {
+  persistSlotOffer(offer: DentalSlotSearchResult): Promise<DentalSlotSearchResult>;
   bookSlot(slotId: string): Promise<DentalSchedulingWriteOutcome>;
   confirmAppointment(appointmentId: string): Promise<DentalSchedulingWriteOutcome>;
 };

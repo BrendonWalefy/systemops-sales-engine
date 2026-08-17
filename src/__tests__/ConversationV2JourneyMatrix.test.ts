@@ -319,7 +319,7 @@ describe("Cycle I supported journey matrix", () => {
         }),
         resolvePendingAppointment: vi.fn(),
       },
-      { bookSlot, confirmAppointment: vi.fn() },
+      { persistSlotOffer: vi.fn(async (offer) => offer), bookSlot, confirmAppointment: vi.fn() },
     );
     const state = {
       phase: "awaiting_slot",

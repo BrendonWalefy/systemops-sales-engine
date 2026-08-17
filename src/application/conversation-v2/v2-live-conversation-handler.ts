@@ -33,6 +33,10 @@ import {
   type DentalPolicy,
   type DentalRequest,
 } from "@/domain-packs/dental";
+import {
+  parseLiveDentalUnderstandingModelId,
+  type LiveDentalUnderstandingModelId,
+} from "@/infrastructure/adapters/ai/DentalUnderstandingProvider";
 
 export type V2SafeFailureReason =
   | "duplicate"
@@ -58,12 +62,13 @@ type DynamicDentalDependencies =
   | "conversation"
   | "conversationId"
   | "turnId"
-  | "now";
+  | "now"
+  | "effectLifecycle";
 
 export type V2LiveConversationHandlerDependencies = Readonly<{
   lifecycle: Pick<LiveTurnLifecycle, "begin" | "loadSnapshot" | "complete" | "fail">;
   understanding: Readonly<{
-    modelId: string;
+    modelId: LiveDentalUnderstandingModelId;
     understand(input: {
       leadMessage: string;
       history: readonly { author: "lead" | "agent"; body: string }[];
@@ -154,11 +159,11 @@ export class V2LiveConversationHandler implements ConversationHandler {
     }
 
     const context = begun.context;
-    const turnNow = new Date((this.deps.now?.() ?? new Date()).getTime());
     let phase: FailurePhase = "decision";
     let effectAttempted = false;
     let effectCompleted = false;
     let terminalHandled = false;
+    let turnNow: Date | null = null;
 
     const trace = async (
       stage: "v2.understanding" | "v2.decision" | "v2.action_result" | "v2.outbox" | "turn.failed",
@@ -168,11 +173,20 @@ export class V2LiveConversationHandler implements ConversationHandler {
       clinicId: context.clinicId,
       conversationId: context.conversationId,
       stage,
-      occurredAt: turnNow.toISOString(),
+      occurredAt: turnNow?.toISOString() ??
+        (Number.isFinite(input.timestamp.getTime())
+          ? input.timestamp.toISOString()
+          : "1970-01-01T00:00:00.000Z"),
       metadata,
     });
 
     try {
+      turnNow = new Date((this.deps.now?.() ?? new Date()).getTime());
+      phase = "understanding";
+      const modelId = parseLiveDentalUnderstandingModelId(
+        this.deps.understanding.modelId,
+      );
+      phase = "decision";
       const snapshot = await this.deps.lifecycle.loadSnapshot(context);
       const configuration = await this.deps.resolveTurnConfiguration({
         context,
@@ -193,6 +207,10 @@ export class V2LiveConversationHandler implements ConversationHandler {
         conversationId: context.conversationId,
         turnId: context.turnId,
         now: new Date(turnNow.getTime()),
+        effectLifecycle: {
+          attempted() { effectAttempted = true; },
+          completed() { effectCompleted = true; },
+        },
       });
       const pack = createDentalPack(adapters);
 
@@ -220,7 +238,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
             await trace("v2.understanding", {
               status: "completed",
               durationMs: Math.max(0, Math.round(performance.now() - understandingStartedAt)),
-              modelId: this.deps.understanding.modelId,
+              modelId,
               request: result.request,
             });
             return result;
@@ -228,7 +246,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
             await trace("v2.understanding", {
               status: "failed",
               durationMs: Math.max(0, Math.round(performance.now() - understandingStartedAt)),
-              modelId: this.deps.understanding.modelId,
+              modelId,
               request: null,
             });
             throw error;
@@ -266,7 +284,6 @@ export class V2LiveConversationHandler implements ConversationHandler {
         return { replied: false, reason };
       }
 
-      effectAttempted = executeCount > 0;
       phase = "action";
       const actionStartedAt = performance.now();
       const completed = await completeTurnPipeline({
@@ -278,7 +295,10 @@ export class V2LiveConversationHandler implements ConversationHandler {
           const completedEffectCount = actionResults.filter(
             ({ semanticClass }) => semanticClass === "effect_completed",
           ).length;
-          effectCompleted = completedEffectCount > 0;
+          const persistedOfferCount = actionResults.filter(
+            ({ type }) => type === "slots_found",
+          ).length;
+          effectCompleted ||= completedEffectCount + persistedOfferCount > 0;
           const failedEffectCount = actionResults.filter(
             ({ semanticClass }) => semanticClass === "effect_failed",
           ).length;
@@ -286,7 +306,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
             status: "completed",
             durationMs: Math.max(0, Math.round(performance.now() - actionStartedAt)),
             resultCount: actionResults.length,
-            completedEffectCount,
+            completedEffectCount: completedEffectCount + persistedOfferCount,
             failedEffectCount,
           });
           phase = "response";

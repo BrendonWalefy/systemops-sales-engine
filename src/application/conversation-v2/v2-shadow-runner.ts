@@ -12,6 +12,7 @@ import {
   DENTAL_OUTCOME_SCHEMA,
   type DentalExecuteDecisionIdentity,
   type DentalRequest,
+  type DentalSchedulingWritePort,
 } from "@/domain-packs/dental";
 
 export type V2ShadowResult =
@@ -21,6 +22,9 @@ export type V2ShadowResult =
   | Readonly<{ status: "error"; errorName: string }>;
 
 const shadowWritePort = {
+  async persistSlotOffer(offer: Parameters<DentalSchedulingWritePort["persistSlotOffer"]>[0]) {
+    return offer;
+  },
   async bookSlot(): Promise<never> { throw new Error("shadow execution cannot write"); },
   async confirmAppointment(): Promise<never> { throw new Error("shadow execution cannot write"); },
 };

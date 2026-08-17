@@ -256,6 +256,56 @@ export class ConversationStateMachine {
     voiceEnabled?: boolean,
     treatmentId?: string,
   ): Promise<FormattedSlot[]> {
+    return this.persistSlotOffer(
+      undefined,
+      conversationId,
+      slots,
+      timezone,
+      treatmentName,
+      durationMinutes,
+      ttlMinutes,
+      voiceEnabled,
+      treatmentId,
+    );
+  }
+
+  // V2 live binds the persisted offer to a deterministic turn-scoped state id.
+  // The write remains behind the prepared capability token.
+  async offerSlotsForTurn(
+    stateId: string,
+    conversationId: string,
+    slots: Array<{ startsAt: Date; endsAt: Date }>,
+    timezone: ClinicTimezone,
+    treatmentName?: string,
+    durationMinutes?: number,
+    ttlMinutes?: number,
+    voiceEnabled?: boolean,
+    treatmentId?: string,
+  ): Promise<FormattedSlot[]> {
+    return this.persistSlotOffer(
+      stateId,
+      conversationId,
+      slots,
+      timezone,
+      treatmentName,
+      durationMinutes,
+      ttlMinutes,
+      voiceEnabled,
+      treatmentId,
+    );
+  }
+
+  private async persistSlotOffer(
+    stateId: string | undefined,
+    conversationId: string,
+    slots: Array<{ startsAt: Date; endsAt: Date }>,
+    timezone: ClinicTimezone,
+    treatmentName?: string,
+    durationMinutes?: number,
+    ttlMinutes?: number,
+    voiceEnabled?: boolean,
+    treatmentId?: string,
+  ): Promise<FormattedSlot[]> {
     const formatted: FormattedSlot[] = slots.map((s, i) => ({
       index: i + 1,
       startsAt: s.startsAt.toISOString(),
@@ -273,6 +323,7 @@ export class ConversationStateMachine {
     };
 
     await db.insert(conversationStates).values({
+      ...(stateId ? { id: stateId } : {}),
       conversationId,
       state: "slots_offered",
       payload,

@@ -391,8 +391,7 @@ export function createDentalSchedulingCapability(
     },
     async execute(decision): Promise<ActionResult<typeof DENTAL_OUTCOME_SCHEMA>> {
       if (decision.kind === "offer") {
-        const [firstOption, ...remainingOptions] = decision.options;
-        if (!firstOption) {
+        if (decision.options.length === 0) {
           return {
             type: "clarification_required",
             semanticClass: "clarification_required",
@@ -402,14 +401,43 @@ export function createDentalSchedulingCapability(
             facts: [],
           };
         }
-        const toResultOption = (option: typeof firstOption) => {
-          const subject = option.facts[0]?.subject;
-          if (!subject) throw new Error(`option ${option.id} requires a subject`);
-          return { id: option.id, subject, facts: option.facts };
+        const candidateSlots = decision.options.map((option) => {
+          const fact = option.facts.find(({ key }) => key === "slot_label");
+          if (
+            !fact?.subject ||
+            fact.subject.id !== option.id ||
+            fact.value.kind !== "display_text"
+          ) {
+            throw new Error(`option ${option.id} requires a bound slot label`);
+          }
+          return {
+            id: option.id,
+            label: fact.value.value,
+            evidenceRef: fact.evidence.reference,
+          };
+        });
+        const persisted = await writePort.persistSlotOffer({
+          service: {
+            id: decision.subject.id,
+            name: decision.subject.displayName,
+          },
+          slots: candidateSlots,
+        });
+        if (
+          persisted.service.id !== decision.subject.id ||
+          persisted.service.name !== decision.subject.displayName ||
+          persisted.slots.length !== candidateSlots.length
+        ) {
+          throw new Error("persisted slot offer binding mismatch");
+        }
+        const toResultOption = (slot: (typeof persisted.slots)[number]) => {
+          const fact = slotFact(slot.id, slot.label, slot.evidenceRef, "write");
+          return { id: slot.id, subject: fact.subject!, facts: [fact] };
         };
-        const evidence = decision.options.flatMap(({ facts }) =>
-          facts.map((fact) => fact.evidence),
-        );
+        const evidence = persisted.slots.map((slot) => ({
+          source: "write" as const,
+          reference: slot.evidenceRef,
+        }));
         const [firstEvidence, ...remainingEvidence] = evidence;
         if (!firstEvidence) {
           throw new Error("slots_found requires evidence");
@@ -421,10 +449,7 @@ export function createDentalSchedulingCapability(
           subject: decision.subject,
           evidence: [firstEvidence, ...remainingEvidence],
           facts: [],
-          options: [
-            toResultOption(firstOption),
-            ...remainingOptions.map(toResultOption),
-          ],
+          options: [toResultOption(persisted.slots[0]!), ...persisted.slots.slice(1).map(toResultOption)],
         };
       }
       if (decision.kind !== "execute") {
@@ -500,12 +525,17 @@ export function createDentalSchedulingCapability(
   };
 }
 
-function slotFact(id: string, label: string, evidenceRef: string): Fact {
+function slotFact(
+  id: string,
+  label: string,
+  evidenceRef: string,
+  source: "read" | "write" = "read",
+): Fact {
   return {
     key: "slot_label",
     value: { kind: "display_text", value: label },
     subject: { type: "slot", id, displayName: label },
-    evidence: { source: "read", reference: evidenceRef },
+    evidence: { source, reference: evidenceRef },
     disclosure: "allowed",
   };
 }

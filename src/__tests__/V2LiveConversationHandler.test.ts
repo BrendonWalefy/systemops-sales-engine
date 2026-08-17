@@ -88,7 +88,11 @@ function makeHarness(options: {
   understandingFailure?: boolean;
   decisionFailure?: boolean;
   bookingTurn?: boolean;
+  schedulingOfferTurn?: boolean;
+  cleanupFailure?: boolean;
   outboxFailure?: boolean;
+  clockFailure?: boolean;
+  modelId?: "gpt-4o-mini";
   nonPreparedStatus?: "suppressed" | "needs_clarification" | "escalated";
 } = {}) {
   const releaseLease = vi.fn().mockResolvedValue(undefined);
@@ -158,6 +162,15 @@ function makeHarness(options: {
     const safety = options.nonPreparedStatus === "escalated"
       ? { requestsHuman: true }
       : {};
+    if (options.schedulingOfferTurn) {
+      return {
+        version: UNDERSTANDING_VERSION,
+        request: "book-appointment" as const,
+        dialogueMove: "new_topic" as const,
+        entities: { service: "clareamento", date: "amanhã", period: "afternoon" },
+        signals: {}, safety, confidence: 1, ambiguity: null,
+      };
+    }
     return options.bookingTurn
       ? {
           version: UNDERSTANDING_VERSION,
@@ -197,25 +210,40 @@ function makeHarness(options: {
   const trace = new InMemoryDecisionTraceSink();
   const handler = new V2LiveConversationHandler({
     lifecycle,
-    understanding: { modelId: "gpt-5-mini", understand },
+    understanding: { modelId: options.modelId ?? "gpt-4o-mini", understand },
     dental: {
       treatments: {
         listByClinic: options.decisionFailure
           ? vi.fn().mockRejectedValue(new Error("catalog unavailable"))
           : vi.fn().mockResolvedValue([treatment]),
       },
-      calendar: { listAvailableSlots: vi.fn() },
+      calendar: {
+        listAvailableSlots: vi.fn().mockResolvedValue([{
+          id: "calendar-slot-1",
+          clinicId: clinic.id,
+          professionalId: null,
+          startsAt: new Date("2026-08-18T18:00:00.000Z"),
+          endsAt: new Date("2026-08-18T19:00:00.000Z"),
+          source: "manual",
+        }]),
+      },
       state: {
         getCurrentState: currentState,
-        getPendingSlotOffer: vi.fn(),
-        offerSlots: vi.fn(),
-        invalidateIfCurrent: vi.fn().mockResolvedValue(true),
+        offerSlotsForTurn: vi.fn().mockResolvedValue([{
+          index: 1,
+          startsAt: "2026-08-18T18:00:00.000Z",
+          endsAt: "2026-08-18T19:00:00.000Z",
+          label: "Ter 18/08 às 15h",
+        }]),
+        invalidateIfCurrent: options.cleanupFailure
+          ? vi.fn().mockRejectedValue(new Error("cleanup unavailable"))
+          : vi.fn().mockResolvedValue(true),
       },
       appointments: {
         findByPeriod: vi.fn().mockResolvedValue([]),
         findByIdForClinicAndLead: vi.fn(),
       },
-      reservations: { findActiveByPeriod: vi.fn() },
+      reservations: { findActiveByPeriod: vi.fn().mockResolvedValue([]) },
       booking,
     },
     resolveTurnConfiguration: vi.fn().mockReturnValue({
@@ -248,7 +276,9 @@ function makeHarness(options: {
       jobQueue: { enqueueJob: vi.fn() } as never,
     },
     decisionTraceSink: trace,
-    now: () => new Date(now),
+    now: options.clockFailure
+      ? () => { throw new Error("clock unavailable"); }
+      : () => new Date(now),
   });
   return {
     handler,
@@ -389,6 +419,65 @@ describe("V2LiveConversationHandler", () => {
         effectCompleted: true,
       },
     });
+  });
+
+  it("keeps one successful booking response when non-authoritative cleanup fails", async () => {
+    const harness = makeHarness({ bookingTurn: true, cleanupFailure: true });
+
+    await expect(harness.handler.handle(handleInput("Pode marcar a primeira opção?")))
+      .resolves.toEqual({ replied: true });
+
+    expect(harness.booking.book).toHaveBeenCalledTimes(1);
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledTimes(1);
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "v2.action_result",
+        metadata: expect.objectContaining({ completedEffectCount: 1 }),
+      }),
+    ]));
+  });
+
+  it("tracks persisted slot offers as an attempted and completed action without retry", async () => {
+    const harness = makeHarness({ schedulingOfferTurn: true, outboxFailure: true });
+
+    await expect(harness.handler.handle(handleInput("Tem horário amanhã?")))
+      .rejects.toThrow("outbox unavailable");
+
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledTimes(1);
+    expect(harness.trace.getEvents(turnId).at(-1)).toMatchObject({
+      stage: "turn.failed",
+      metadata: {
+        phase: "outbox",
+        reason: "outbox_failed",
+        effectAttempted: true,
+        effectCompleted: true,
+      },
+    });
+  });
+
+  it("rejects an unknown understanding model before provider use and never traces its value", async () => {
+    const secretModel = "secret-model-api-key-sk-live";
+    const harness = makeHarness({ modelId: secretModel as never });
+
+    await expect(harness.handler.handle(handleInput())).resolves.toEqual({
+      replied: false,
+      reason: "understanding_failed",
+    });
+    expect(harness.understand).not.toHaveBeenCalled();
+    expect(harness.createOutboundMessageAndEnqueue).not.toHaveBeenCalled();
+    expect(JSON.stringify(harness.trace.getEvents(turnId))).not.toContain(secretModel);
+    expect(harness.releaseLease).toHaveBeenCalledOnce();
+  });
+
+  it("releases the ready lease when the turn clock throws", async () => {
+    const harness = makeHarness({ clockFailure: true });
+
+    await expect(harness.handler.handle(handleInput())).resolves.toEqual({
+      replied: false,
+      reason: "decision_failed",
+    });
+    expect(harness.lifecycle.fail).toHaveBeenCalledOnce();
+    expect(harness.releaseLease).toHaveBeenCalledOnce();
   });
 
   it("emits only allowlisted structural V2 trace metadata", async () => {
