@@ -56,6 +56,8 @@ describe("TenantEngineRouter", () => {
     expect(fixture.decisionTraceSink.getEvents(turn.turnId).at(-1)).toMatchObject({
       stage: "engine.selected", metadata: { route: "v2", shadow: false, reason: "internal_lab_authorized" },
     });
+    expect(fixture.decisionTraceSink.getEvents(turn.turnId)
+      .filter(({ stage }) => stage === "engine.selected")).toHaveLength(1);
   });
 
   it("never calls V1 after a V2 exception in the same turn", async () => {

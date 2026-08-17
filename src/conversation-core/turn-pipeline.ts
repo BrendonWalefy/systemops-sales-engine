@@ -183,6 +183,7 @@ export async function prepareTurnPipeline<Request extends string, Policy extends
 export async function completeTurnPipeline<Request extends string, Policy extends object, ClaimPayload extends object, Schema extends OutcomeSchema>(input: {
   prepared: PreparedTurn<Request, Policy, ClaimPayload, Schema>;
   outcomeSchema: Schema;
+  onActionResults?: (actionResults: readonly ActionResult<Schema>[]) => void | Promise<void>;
   response: { style: ComposerStyle; composer: ResponseComposerPort<OutcomeTypeOf<Schema>> };
 }): Promise<TurnPipelineResult<Schema>> {
   const executions = preparedTurnRegistry.get(input.prepared);
@@ -200,6 +201,7 @@ export async function completeTurnPipeline<Request extends string, Policy extend
     const expectedOwner = executions[index]!.capability.id;
     if (result.origin.capabilityId !== expectedOwner) throw new Error(`action result owner mismatch: ${result.origin.capabilityId}`);
   });
+  await input.onActionResults?.(actionResults);
   const plan = buildV2AuthorizedResponsePlan(input.outcomeSchema, actionResults);
   const responseResult = await runV2ResponsePipeline({ plan, style: input.response.style, composer: input.response.composer });
   if (responseResult.status === "no_safe_response") return { status: "rejected", actionResults };

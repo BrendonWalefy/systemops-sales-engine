@@ -72,6 +72,12 @@ describe("Conversation V2 isolated execution boundary", () => {
     expect(source).not.toMatch(/BookingService|CalendarGateway|ChannelAdapter|enqueueOutboundMessage|outbound_messages|infrastructure\//);
   });
 
+  it("limita o live handler a application ports sem provider, sender, DB ou calendário direto", () => {
+    const source = readFileSync("src/application/conversation-v2/v2-live-conversation-handler.ts", "utf8");
+    expect(source).not.toMatch(/ChannelAdapter|sendVoiceOrText|sendMediaMessage|whatsapp-sender|infrastructure\/db|drizzle-orm|GoogleCalendarGateway|Drizzle|ConversationOrchestrator|v1Handler|appendMessage|conversationRepository/);
+    expect(source).not.toContain("engine.selected");
+  });
+
   it("shadow intercepta write antes de Capability.execute e não produz texto de sucesso", async () => {
     const runner = new V2ShadowRunner({
       understand: async () => ({

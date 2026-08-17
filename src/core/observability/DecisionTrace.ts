@@ -26,6 +26,10 @@ export const DECISION_TRACE_STAGES = [
   "response.plan_built",
   "response.validated",
   "response.fallback_applied",
+  "v2.understanding",
+  "v2.decision",
+  "v2.action_result",
+  "v2.outbox",
   "state.before_delivery",
   "outbound.planned",
   "outbound.enqueued",
@@ -85,6 +89,31 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     "action",
     "fallbackReason",
     "requiresHandoff",
+  ],
+  "v2.understanding": [
+    "status",
+    "durationMs",
+    "modelId",
+    "request",
+  ],
+  "v2.decision": [
+    "status",
+    "durationMs",
+    "decisionCount",
+    "executeCount",
+  ],
+  "v2.action_result": [
+    "status",
+    "durationMs",
+    "resultCount",
+    "completedEffectCount",
+    "failedEffectCount",
+  ],
+  "v2.outbox": [
+    "status",
+    "durationMs",
+    "messageWasNew",
+    "jobWasNew",
   ],
 } as const satisfies Partial<Record<DecisionTraceStage, readonly string[]>>;
 

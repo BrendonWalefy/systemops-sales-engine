@@ -34,6 +34,9 @@ const PERSISTED_METADATA_KEYS = new Set([
   "pipelineStepIndex", "pipelineTreatmentId", "playbookVersionId", "procedureCount", "provider",
   "providerAccepted", "queue", "reason", "replay", "replied", "replyEnabled",
   "responsePlanVersion",
+  "status", "durationMs", "modelId", "request", "decisionCount",
+  "executeCount", "resultCount", "completedEffectCount", "failedEffectCount",
+  "effectAttempted", "effectCompleted",
   "segment", "selectedTreatmentId", "selectedTreatmentName", "skipLlm", "source",
   "state", "timezone", "useVoice",
 ]);

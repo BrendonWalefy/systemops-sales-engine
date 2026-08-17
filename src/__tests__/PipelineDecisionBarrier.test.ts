@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { Capability } from "@/conversation-core/capability/contract";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
 import { defineOutcomeSchema } from "@/conversation-core/decision";
-import { runTurnPipeline } from "@/conversation-core/turn-pipeline";
+import {
+  completeTurnPipeline,
+  prepareTurnPipeline,
+  runTurnPipeline,
+} from "@/conversation-core/turn-pipeline";
 import { UNDERSTANDING_VERSION } from "@/conversation-core/understanding/schema";
 
 describe("barreira entre decisão e efeitos", () => {
@@ -122,5 +126,64 @@ describe("barreira entre decisão e efeitos", () => {
     if (result.status !== "delivered") throw new Error("expected delivered");
     expect(result.actionResults[0]?.origin.capabilityId).toBe("cap");
     expect(originReads).toBe(1);
+  });
+
+  it("exposes canonical action results once before response composition", async () => {
+    const outcomeSchema = defineOutcomeSchema({
+      work_completed: {
+        semanticClass: "effect_completed",
+        subjectRequirement: "required",
+        evidenceRequirement: "optional",
+      },
+    } as const);
+    const events: string[] = [];
+    const capability: Capability<
+      "work", Record<string, never>, Record<never, never>, typeof outcomeSchema
+    > = {
+      id: "cap",
+      claim: () => ({ capabilityId: "cap", confidence: 1, reason: "test", payload: {} }),
+      decide: async () => ({ kind: "close" }),
+      execute: async () => ({
+        type: "work_completed",
+        semanticClass: "effect_completed",
+        origin: { capabilityId: "cap" },
+        subject: { type: "work", id: "work", displayName: "Work" },
+        evidence: [], facts: [],
+      }),
+    };
+    const preparation = await prepareTurnPipeline({
+      gateInput: { automationEnabled: true, duplicate: false, humanControlled: false, optedOut: false },
+      state: { phase: "ready", pendingStepId: null, completedStepIds: [] },
+      policy: {},
+      now: new Date(0),
+      understand: async () => ({
+        version: UNDERSTANDING_VERSION,
+        request: "work",
+        dialogueMove: "new_topic",
+        entities: {}, signals: {}, safety: {}, confidence: 1, ambiguity: null,
+      }),
+      capabilities: [capability],
+    });
+    if (preparation.status !== "prepared") throw new Error("expected prepared turn");
+
+    const result = await completeTurnPipeline({
+      prepared: preparation.prepared,
+      outcomeSchema,
+      onActionResults(actionResults) {
+        events.push(`action:${actionResults[0]?.type}`);
+      },
+      response: {
+        style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
+        composer: {
+          compose: async () => {
+            events.push("compose");
+            return { acts: [] };
+          },
+        },
+      },
+    });
+
+    expect(result.status).toBe("delivered");
+    expect(events).toEqual(["action:work_completed", "compose"]);
   });
 });

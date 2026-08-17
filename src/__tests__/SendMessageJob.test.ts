@@ -109,6 +109,41 @@ function makeAutomationDispatchLifecycle() {
 }
 
 describe("SendMessageJobHandler", () => {
+  it("persiste a mensagem agent no sender quando o payload live V2 delega essa ownership", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue({
+      ...outbound,
+      payload: {
+        ...(outbound.payload as Record<string, unknown>),
+        turnId: "turn-v2",
+        agentMessagePersistence: "sender",
+      },
+    });
+    const appendMessage = vi.fn().mockResolvedValue(true);
+    const delivery = vi.fn().mockResolvedValue("provider-message-v2");
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: { appendMessage },
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id, turnId: "turn-v2" } }))
+      .resolves.toBe("sent");
+
+    expect(appendMessage).toHaveBeenCalledTimes(1);
+    expect(appendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      id: "agent-message-1",
+      conversationId: "conversation-1",
+      author: "agent",
+      body: "Olá",
+      externalId: null,
+    }));
+    expect(appendMessage.mock.invocationCallOrder[0]).toBeLessThan(
+      delivery.mock.invocationCallOrder[0]!,
+    );
+  });
+
   it("devolve a mensagem para espera quando existe uma saída anterior ativa", async () => {
     const store = makeStore();
     store.hasEarlierActiveMessage.mockResolvedValue(true);

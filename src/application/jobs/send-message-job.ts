@@ -32,6 +32,7 @@ import {
 } from "@/infrastructure/adapters/channels/whatsapp/outbound-delivery-service";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
+import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { areEquivalentWhatsAppPhones } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { createLogger } from "@/infrastructure/logging/logger";
@@ -46,6 +47,7 @@ import { bumpInboxVersion } from "@/application/read-versions/clinic-read-versio
 
 export type SendMessageJobDependencies = {
   outboundMessageStore: OutboundMessageStore;
+  conversationRepository?: Pick<ConversationRepository, "appendMessage">;
   safetyContextReader?: OutboundSafetyContextReader;
   automationDispatchLifecycle?: AutomationDispatchLifecycle;
   now?: () => Date;
@@ -113,6 +115,10 @@ export class SendMessageJobHandler {
     ConversationStateMachine,
     "getCurrentState"
   >;
+  private readonly conversationRepository: Pick<
+    ConversationRepository,
+    "appendMessage"
+  >;
 
   constructor(private readonly deps: SendMessageJobDependencies) {
     const outboundBoundary = {
@@ -128,6 +134,8 @@ export class SendMessageJobHandler {
     this.capJitterMs = deps.capJitterMs ?? (() => Math.floor(Math.random() * 30 * 60_000));
     this.conversationStateReader =
       deps.conversationStateReader ?? new ConversationStateMachine();
+    this.conversationRepository =
+      deps.conversationRepository ?? new DrizzleConversationRepository();
   }
 
   async processJob(job: { id?: string; payload: unknown }): Promise<SendMessageJobProcessResult> {
@@ -171,6 +179,24 @@ export class SendMessageJobHandler {
       clinicId: outbound.clinicId,
       payload: outbound.payload,
     };
+
+    if (
+      isConversationOutboundPayload(outbound.payload)
+      && outbound.payload.agentMessagePersistence === "sender"
+    ) {
+      await this.conversationRepository.appendMessage({
+        id: outbound.payload.agentMessageId,
+        conversationId: outbound.conversationId,
+        author: "agent",
+        body: outbound.payload.replyText,
+        mediaUrl: null,
+        mediaType: null,
+        sentAt: this.now(),
+        externalId: null,
+        intent: outbound.payload.intent,
+        deliveryFormat: null,
+      });
+    }
 
     let safetyContext: OutboundSafetyContext | null = null;
     if (isAutomationOutboundPayload(outbound.payload)) {

@@ -32,6 +32,8 @@ export type ConversationOutboundPayload = {
   turnId?: string;
   to: string;
   agentMessageId: string;
+  /** V2 live delegates the idempotent Inbox placeholder to the existing sender. */
+  agentMessagePersistence?: "sender";
   replyText: string;
   intent: IntentType | null;
   useVoice: boolean;
@@ -87,6 +89,7 @@ export function isConversationOutboundPayload(
     (value.turnId === undefined || typeof value.turnId === "string") &&
     typeof value.to === "string" &&
     typeof value.agentMessageId === "string" &&
+    (value.agentMessagePersistence === undefined || value.agentMessagePersistence === "sender") &&
     typeof value.replyText === "string" &&
     typeof value.useVoice === "boolean" &&
     Array.isArray(value.interleavedParts) &&
