@@ -237,8 +237,19 @@ assinatura ou PASS do gate report.
 ## Verificação da Task 7
 
 A matriz/boundaries foi desenvolvida em RED → GREEN: o comando focal iniciou com os três arquivos
-ausentes (exit 1) e terminou com 3 arquivos/21 testes verdes. A verificação completa e a revisão
-independente são executadas no checkpoint final; seus resultados não alteram retroativamente o
-gate report unsigned nem fabricam observações V1×V2.
+ausentes (exit 1) e terminou com 3 arquivos/21 testes verdes.
+
+- suíte focal exata do plano: 24 arquivos/235 testes verdes;
+- agenda: 4 arquivos/86 testes verdes;
+- auditoria PII executada diretamente, sem dotenv: 40 arquivos, zero finding bloqueante;
+- `db:check`, typecheck e `git diff --check`: verdes;
+- `npm run verify`, executado com worktree clean depois do commit documental: Drizzle meta OK,
+  lint com zero erro e um warning legado em V1, typecheck verde, 358 arquivos/3.144 testes
+  verdes e 11 skips;
+- `git diff 99a852aa -- src/core src/conversation-core`: somente o split genérico de pipeline e
+  a seam observacional V1 previamente revisados; a Task 7 não alterou esses diretórios.
+
+A revisão independente da Task 7 ocorre depois deste checkpoint. Os resultados locais não alteram
+retroativamente o gate report unsigned nem fabricam observações V1×V2.
 
 NO-GO INTERNAL V2
