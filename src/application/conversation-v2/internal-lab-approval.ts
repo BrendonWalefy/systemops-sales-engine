@@ -7,9 +7,14 @@ import {
 } from "@/application/conversation-v2/configured-cycle-i-authority";
 import {
   INTERNAL_LAB_APPROVAL_AUTHORITY_DOMAIN,
+  assertConfiguredInternalLabAuthorityBindings,
   isRegisteredConfiguredInternalLabAuthority,
   type ConfiguredInternalLabAuthority,
 } from "@/infrastructure/conversation-v2/configured-internal-lab-authority";
+import {
+  isRegisteredCycleIBuildAttestation,
+  type CycleIBuildAttestation,
+} from "@/infrastructure/conversation-v2/git-cycle-i-build-attestation";
 
 export type InternalLabApprovalDecision =
   | "INTERNAL_LAB_SMOKE_AUTHORIZED"
@@ -148,7 +153,10 @@ const claimKeys = Object.freeze([
 ]);
 const evidenceKeys = Object.freeze(["kind", "digest"]);
 const approvals = new WeakSet<object>();
-const approvalRuntimeIdentities = new WeakMap<object, CycleIRuntimeBuildIdentity>();
+const approvalBuildBindings = new WeakMap<object, Readonly<{
+  runtimeIdentity: CycleIRuntimeBuildIdentity;
+  buildAttestation: CycleIBuildAttestation;
+}>>();
 
 function snapshotPlainRecord(
   input: unknown,
@@ -288,6 +296,7 @@ export function parseAndRegisterInternalLabApproval(input: {
   serializedApproval: string;
   authority: ConfiguredInternalLabAuthority;
   runtimeIdentity: CycleIRuntimeBuildIdentity;
+  buildAttestation: CycleIBuildAttestation;
   expectedTenantDigest: string;
   expectedChannelDigest: string;
   expectedConfigDigest: string;
@@ -299,9 +308,17 @@ export function parseAndRegisterInternalLabApproval(input: {
   if (!isRegisteredCycleIRuntimeBuildIdentity(input.runtimeIdentity)) {
     throw new Error("Internal Lab runtime build identity is not registered");
   }
+  if (!isRegisteredCycleIBuildAttestation(input.buildAttestation)) {
+    throw new Error("Internal Lab Git build attestation is not registered");
+  }
   if (typeof input.serializedApproval !== "string") {
     throw new Error("Internal Lab approval must be serialized JSON");
   }
+  assertConfiguredInternalLabAuthorityBindings(input.authority, {
+    tenantDigest: input.expectedTenantDigest,
+    channelDigest: input.expectedChannelDigest,
+    configDigest: input.expectedConfigDigest,
+  });
 
   let decoded: unknown;
   try {
@@ -319,8 +336,20 @@ export function parseAndRegisterInternalLabApproval(input: {
   )) throw new Error("Internal Lab approval signature is invalid");
 
   assertDecisionRequirements(claims, input.now);
+  assertConfiguredInternalLabAuthorityBindings(input.authority, {
+    serializedApproval: input.serializedApproval,
+    tenantDigest: input.expectedTenantDigest,
+    channelDigest: input.expectedChannelDigest,
+    configDigest: input.expectedConfigDigest,
+  });
+  if (input.runtimeIdentity.commit !== input.buildAttestation.commit) {
+    throw new Error("Internal Lab runtime commit does not match the registered Git build");
+  }
   const exactBindings = {
-    commitSha: input.runtimeIdentity.commit,
+    commitSha: input.buildAttestation.commit,
+    treeSha: input.buildAttestation.tree,
+    sourceDigest: input.buildAttestation.sourceDigest,
+    runtimeDigest: computeInternalLabRuntimeDigest(input.buildAttestation.runtime),
     cycleIGateDigest: input.runtimeIdentity.reportDigest,
     tenantDigest: input.expectedTenantDigest,
     channelDigest: input.expectedChannelDigest,
@@ -337,7 +366,10 @@ export function parseAndRegisterInternalLabApproval(input: {
     signature,
   }) as RegisteredInternalLabApproval;
   approvals.add(approval);
-  approvalRuntimeIdentities.set(approval, input.runtimeIdentity);
+  approvalBuildBindings.set(approval, Object.freeze({
+    runtimeIdentity: input.runtimeIdentity,
+    buildAttestation: input.buildAttestation,
+  }));
   return approval;
 }
 
@@ -357,7 +389,13 @@ export function isRegisteredInternalLabApproval(
     || approval === null
     || !approvals.has(approval)
     || !isRegisteredCycleIRuntimeBuildIdentity(expected.runtimeIdentity)
-    || approvalRuntimeIdentities.get(approval) !== expected.runtimeIdentity
+  ) return false;
+
+  const buildBinding = approvalBuildBindings.get(approval);
+  if (
+    !buildBinding
+    || buildBinding.runtimeIdentity !== expected.runtimeIdentity
+    || !isRegisteredCycleIBuildAttestation(buildBinding.buildAttestation)
   ) return false;
 
   const registered = approval as RegisteredInternalLabApproval;

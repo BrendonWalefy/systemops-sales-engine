@@ -11,6 +11,7 @@ import {
 import { createConfiguredCycleIRuntimeBuildIdentity } from "../src/application/conversation-v2/configured-cycle-i-authority";
 import {
   INTERNAL_LAB_APPROVAL_AUTHORITY_DOMAIN,
+  assertConfiguredInternalLabAuthorityBindings,
   loadConfiguredInternalLabAuthority,
 } from "../src/infrastructure/conversation-v2/configured-internal-lab-authority";
 import { createGitCycleIBuildAttestation } from "../src/infrastructure/conversation-v2/git-cycle-i-build-attestation";
@@ -84,6 +85,31 @@ async function readPrivateKeyOutsideWorktree(value: string): Promise<Buffer> {
   }
 }
 
+async function validatePrivateKeyPath(value: string): Promise<void> {
+  if (!isAbsolute(value)) throw new Error("--private-key-file must be an absolute path");
+  const lexicalPath = resolve(value);
+  assertOutsideWorktree(lexicalPath, "--private-key-file");
+  const path = await realpath(lexicalPath);
+  assertOutsideWorktree(path, "--private-key-file");
+  const descriptor = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const metadata = await descriptor.stat({ bigint: true });
+    const currentUid = typeof process.getuid === "function" ? BigInt(process.getuid()) : null;
+    if (
+      !metadata.isFile()
+      || (metadata.mode & 0o077n) !== 0n
+      || (currentUid !== null && metadata.uid !== currentUid)
+    ) {
+      throw new Error("--private-key-file must be an owner-controlled regular file with owner-only permissions");
+    }
+    if (metadata.nlink !== 1n) {
+      throw new Error("--private-key-file must have a single link and no hard-link aliases");
+    }
+  } finally {
+    await descriptor.close();
+  }
+}
+
 async function resolveOutputPath(value: string): Promise<string> {
   if (!isAbsolute(value)) throw new Error("--output must be an absolute path");
   const lexicalPath = resolve(value);
@@ -118,14 +144,26 @@ function assertExactBuild(
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
+  const privateKeyPath = requiredValue(argv, "--private-key-file");
+  await validatePrivateKeyPath(privateKeyPath);
   const claimsPathValue = requiredValue(argv, "--claims-file");
   if (!isAbsolute(claimsPathValue)) throw new Error("--claims-file must be an absolute path");
   const claimsPath = await realpath(claimsPathValue);
   const outputValue = optionalValue(argv, "--output");
   const outputPath = outputValue ? await resolveOutputPath(outputValue) : null;
-  const privateKeyBytes = await readPrivateKeyOutsideWorktree(
-    requiredValue(argv, "--private-key-file"),
-  );
+  const claimsBytes = await readFile(claimsPath, "utf8");
+  const claims = JSON.parse(claimsBytes) as InternalLabApprovalClaims;
+  const canonicalPayload = serializeInternalLabApprovalClaims(claims, new Date());
+  const authority = loadConfiguredInternalLabAuthority();
+  assertConfiguredInternalLabAuthorityBindings(authority, {
+    tenantDigest: claims.tenantDigest,
+    channelDigest: claims.channelDigest,
+    configDigest: claims.configDigest,
+  });
+  const build = createGitCycleIBuildAttestation();
+  const runtime = createConfiguredCycleIRuntimeBuildIdentity();
+  assertExactBuild(claims, build, runtime);
+  const privateKeyBytes = await readPrivateKeyOutsideWorktree(privateKeyPath);
   let privateKey: KeyObject;
   try {
     privateKey = createPrivateKey(privateKeyBytes);
@@ -135,19 +173,11 @@ async function main(): Promise<void> {
   if (privateKey.type !== "private" || privateKey.asymmetricKeyType !== "ed25519") {
     throw new Error("--private-key-file must contain an Ed25519 private key");
   }
-
-  const claimsBytes = await readFile(claimsPath, "utf8");
-  const claims = JSON.parse(claimsBytes) as InternalLabApprovalClaims;
-  const canonicalPayload = serializeInternalLabApprovalClaims(claims, new Date());
-  const build = createGitCycleIBuildAttestation();
-  const runtime = createConfiguredCycleIRuntimeBuildIdentity();
-  assertExactBuild(claims, build, runtime);
   const signatureBytes = sign(null, Buffer.concat([
     Buffer.from(INTERNAL_LAB_APPROVAL_AUTHORITY_DOMAIN),
     Buffer.from([0]),
     Buffer.from(canonicalPayload),
   ]), privateKey);
-  const authority = loadConfiguredInternalLabAuthority();
   if (!authority.verifyCanonicalPayload(Buffer.from(canonicalPayload), signatureBytes)) {
     throw new Error("private key does not match the configured Internal Lab authority root");
   }

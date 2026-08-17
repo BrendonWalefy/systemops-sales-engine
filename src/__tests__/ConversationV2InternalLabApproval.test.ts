@@ -2,6 +2,7 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   isRegisteredInternalLabApproval,
+  computeInternalLabRuntimeDigest,
   parseAndRegisterInternalLabApproval,
   serializeInternalLabApprovalClaims,
   type InternalLabApprovalClaims,
@@ -11,11 +12,13 @@ import {
   INTERNAL_LAB_APPROVAL_AUTHORITY_DOMAIN,
   loadConfiguredInternalLabAuthority,
 } from "@/infrastructure/conversation-v2/configured-internal-lab-authority";
+import { createGitCycleIBuildAttestation } from "@/infrastructure/conversation-v2/git-cycle-i-build-attestation";
 
 const hmac = (tail: string) => `hmac:${"a".repeat(63)}${tail}`;
 const internalAuthority = generateKeyPairSync("ed25519");
 const gateAuthority = generateKeyPairSync("ed25519");
 const activationAuthority = generateKeyPairSync("ed25519");
+const buildAttestation = createGitCycleIBuildAttestation();
 
 process.env.CONVERSATION_V2_INTERNAL_LAB_AUTHORITY_PUBLIC_KEY = internalAuthority.publicKey
   .export({ type: "spki", format: "pem" }).toString();
@@ -23,7 +26,7 @@ process.env.CONVERSATION_V2_GATE_REPORT_AUTHORITY_PUBLIC_KEY = gateAuthority.pub
   .export({ type: "spki", format: "pem" }).toString();
 process.env.CONVERSATION_V2_ACTIVATION_APPROVAL_AUTHORITY_PUBLIC_KEY = activationAuthority.publicKey
   .export({ type: "spki", format: "pem" }).toString();
-process.env.VERCEL_GIT_COMMIT_SHA = "e86201adb3b7eb6665629f5e73cbb5964acdc745";
+process.env.VERCEL_GIT_COMMIT_SHA = buildAttestation.commit;
 process.env.CONVERSATION_V2_GATE_REPORT_DIGEST = hmac("1");
 process.env.CONVERSATION_V2_POPULATION_DIGEST = hmac("2");
 process.env.CONVERSATION_V2_DATASET_DIGEST = hmac("3");
@@ -77,9 +80,9 @@ function smokeClaims(
     decision: "INTERNAL_LAB_SMOKE_AUTHORIZED",
     authorityDomain: INTERNAL_LAB_APPROVAL_AUTHORITY_DOMAIN,
     commitSha: process.env.VERCEL_GIT_COMMIT_SHA!,
-    treeSha: "b".repeat(40),
-    sourceDigest: hmac("d"),
-    runtimeDigest: hmac("e"),
+    treeSha: buildAttestation.tree,
+    sourceDigest: buildAttestation.sourceDigest,
+    runtimeDigest: computeInternalLabRuntimeDigest(buildAttestation.runtime),
     tenantDigest: hmac("f"),
     channelDigest: hmac("0"),
     configDigest: hmac("a"),
@@ -133,13 +136,19 @@ function serializeApproval(
 }
 
 function validInput(claims = smokeClaims()) {
+  const serializedApproval = serializeApproval(claims);
+  process.env.CONVERSATION_V2_INTERNAL_LAB_APPROVAL_JSON = serializedApproval;
+  process.env.CONVERSATION_V2_INTERNAL_LAB_TENANT_DIGEST = claims.tenantDigest;
+  process.env.CONVERSATION_V2_INTERNAL_LAB_CHANNEL_DIGEST = claims.channelDigest;
+  process.env.CONVERSATION_V2_INTERNAL_LAB_CONFIG_DIGEST = claims.configDigest;
   return {
-    serializedApproval: serializeApproval(claims),
+    serializedApproval,
     authority: loadConfiguredInternalLabAuthority(),
     runtimeIdentity: createConfiguredCycleIRuntimeBuildIdentity(),
-    expectedTenantDigest: hmac("f"),
-    expectedChannelDigest: hmac("0"),
-    expectedConfigDigest: hmac("a"),
+    buildAttestation,
+    expectedTenantDigest: claims.tenantDigest,
+    expectedChannelDigest: claims.channelDigest,
+    expectedConfigDigest: claims.configDigest,
     now: new Date("2026-08-17T15:05:00.000Z"),
   };
 }
