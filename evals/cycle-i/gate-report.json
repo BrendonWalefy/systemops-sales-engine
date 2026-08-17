@@ -1,0 +1,212 @@
+{
+  "version": "conversation-v2-cycle-i-gate.v1",
+  "reportDigest": "hmac:0ad1f47618ad262027e3eb40ffbbb308851841eb44be6065c175d41cd4c282e8",
+  "authoritySignature": null,
+  "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+  "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+  "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+  "judge": "experimental_non_gating",
+  "measurements": {
+    "h_entailment": {
+      "evidenceDigest": "hmac:d1a6cbadc956fb5d88fdf441503b6ec49d39b8eff29f150f5a3b3300a14c969c",
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "denominator": 1,
+      "passed": true
+    },
+    "shadow_no_effects": {
+      "evidenceDigest": "hmac:975d6d6cf35e277be54af10ac9f5393e72aabac9fb4159778e5e7d24754d94a9",
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "denominator": 1,
+      "sideEffects": 0,
+      "contamination": 0
+    },
+    "protocol_integrity": null,
+    "supported_understanding": null,
+    "supported_decision": null,
+    "critical_regressions": null,
+    "qualitative": null,
+    "full_turn_cost": null,
+    "full_turn_p95": null,
+    "rollback": {
+      "evidenceDigest": "hmac:56848c6a8b69ab52d044ddc7c6732e61e768ca08be8af68e259ba1712fbdb8f0",
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "denominator": 1,
+      "passed": true
+    },
+    "observability": {
+      "evidenceDigest": "hmac:7ae11918d9bfdacfbd7bb549b6c7c8f3a5c9b41f78c0b47e7742ce27c02ea3f2",
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "denominator": 1,
+      "passed": true
+    },
+    "verification": null,
+    "adversarial_review": null
+  },
+  "criteria": {
+    "h_entailment": {
+      "layer": "cycles_a_to_h",
+      "population": "h-entailment",
+      "denominator": 1,
+      "applicable": true,
+      "blocking": true,
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "status": "pass",
+      "evidenceDigest": "hmac:d1a6cbadc956fb5d88fdf441503b6ec49d39b8eff29f150f5a3b3300a14c969c"
+    },
+    "shadow_no_effects": {
+      "layer": "shadow",
+      "population": "all-shadow-observations",
+      "denominator": 1,
+      "applicable": true,
+      "blocking": true,
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "status": "pass",
+      "evidenceDigest": "hmac:975d6d6cf35e277be54af10ac9f5393e72aabac9fb4159778e5e7d24754d94a9"
+    },
+    "protocol_integrity": {
+      "layer": "corpus",
+      "population": "cycle-f-supported-dental-corpus",
+      "denominator": 204,
+      "applicable": true,
+      "blocking": true,
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "status": "not_measurable",
+      "evidenceDigest": null
+    },
+    "supported_understanding": {
+      "layer": "understanding",
+      "population": "cycle-f-supported-dental-corpus",
+      "denominator": 102,
+      "applicable": true,
+      "blocking": true,
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "status": "not_measurable",
+      "evidenceDigest": null
+    },
+    "supported_decision": {
+      "layer": "decision",
+      "population": "approved-decision-receipts",
+      "denominator": 1,
+      "applicable": true,
+      "blocking": true,
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "status": "not_measurable",
+      "evidenceDigest": null
+    },
+    "critical_regressions": {
+      "layer": "safety",
+      "population": "stable-primary-and-d0-sensitivity",
+      "denominator": 204,
+      "applicable": true,
+      "blocking": true,
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "status": "not_measurable",
+      "evidenceDigest": null
+    },
+    "qualitative": {
+      "layer": "prose",
+      "population": "blind-human-review",
+      "denominator": 1,
+      "applicable": true,
+      "blocking": true,
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "status": "not_measurable",
+      "evidenceDigest": null
+    },
+    "full_turn_cost": {
+      "layer": "performance",
+      "population": "approved-replay-or-lab",
+      "denominator": 1,
+      "applicable": true,
+      "blocking": true,
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "status": "not_measurable",
+      "evidenceDigest": null
+    },
+    "full_turn_p95": {
+      "layer": "performance",
+      "population": "approved-replay-or-lab",
+      "denominator": 1,
+      "applicable": true,
+      "blocking": true,
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "status": "not_measurable",
+      "evidenceDigest": null
+    },
+    "rollback": {
+      "layer": "activation",
+      "population": "test-tenant-selector",
+      "denominator": 1,
+      "applicable": true,
+      "blocking": true,
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "status": "pass",
+      "evidenceDigest": "hmac:56848c6a8b69ab52d044ddc7c6732e61e768ca08be8af68e259ba1712fbdb8f0"
+    },
+    "observability": {
+      "layer": "observability",
+      "population": "minimum-required-fields",
+      "denominator": 1,
+      "applicable": true,
+      "blocking": true,
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "status": "pass",
+      "evidenceDigest": "hmac:7ae11918d9bfdacfbd7bb549b6c7c8f3a5c9b41f78c0b47e7742ce27c02ea3f2"
+    },
+    "verification": {
+      "layer": "verification",
+      "population": "required-suite",
+      "denominator": 1,
+      "applicable": true,
+      "blocking": true,
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "status": "not_measurable",
+      "evidenceDigest": null
+    },
+    "adversarial_review": {
+      "layer": "review",
+      "population": "independent-adversarial-review",
+      "denominator": 1,
+      "applicable": true,
+      "blocking": true,
+      "populationDigest": "hmac:dbe9a966cbbbc62491e95fb56ae5d5d11bcffe62eebb3260a4964a4d173b7011",
+      "datasetDigest": "hmac:49dcd718151ccd0213c2f80b5fb6edec8707754deebc114949cd95b903b30bd0",
+      "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+      "status": "not_measurable",
+      "evidenceDigest": null
+    }
+  },
+  "decision": "NO_GO"
+}

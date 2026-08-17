@@ -1,0 +1,21 @@
+{
+  "version": "conversation-v2-cycle-i-run-manifest.v1",
+  "implementationBaseCommit": "9899fb8b91af17eda23ed65a50db5811ed402d85",
+  "corpusRoot": "evals/corpus",
+  "manifestPath": "evals/understanding/cycle-f-dental.json",
+  "d0Path": "evals/corpus/measurement-stability-d0.json",
+  "decisionFixtureManifestPath": null,
+  "runs": 6,
+  "v1ModelId": "gpt-4o-mini",
+  "v2ModelId": "gpt-4o-mini",
+  "configDigest": "hmac:5de16fe02967302e4c7509ff0faad1b16cadc54a2ab2506e9604c83582c84922",
+  "judge": "experimental_non_gating",
+  "evidence": {
+    "hEntailment": "hmac:d1a6cbadc956fb5d88fdf441503b6ec49d39b8eff29f150f5a3b3300a14c969c",
+    "shadowNoEffects": "hmac:975d6d6cf35e277be54af10ac9f5393e72aabac9fb4159778e5e7d24754d94a9",
+    "cycleFAxes": "hmac:f772614dd9fdb9f0726409f126d7c94dcb43cbb3bdf84fb79cb6f11c7433ccd8",
+    "rollback": "hmac:56848c6a8b69ab52d044ddc7c6732e61e768ca08be8af68e259ba1712fbdb8f0",
+    "observability": "hmac:7ae11918d9bfdacfbd7bb549b6c7c8f3a5c9b41f78c0b47e7742ce27c02ea3f2"
+  },
+  "fullTurnEvidence": null
+}
