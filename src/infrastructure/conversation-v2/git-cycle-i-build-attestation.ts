@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHmac } from "node:crypto";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { HmacRef } from "@/application/conversation-v2/comparison-record";
 
 declare const buildAttestationBrand: unique symbol;
@@ -13,6 +15,7 @@ export type CycleIBuildAttestation = Readonly<{
 
 const registered = new WeakSet<object>();
 const objectId = /^[a-f0-9]{40,64}$/;
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 function digestTree(tree: string): HmacRef {
   return `hmac:${createHmac("sha256", "cycle-i-implementation-tree.v1")
@@ -20,9 +23,7 @@ function digestTree(tree: string): HmacRef {
     .digest("hex")}`;
 }
 
-export function createGitCycleIBuildAttestation(
-  repositoryRoot: string,
-): CycleIBuildAttestation {
+export function createGitCycleIBuildAttestation(): CycleIBuildAttestation {
   // A single child-process boundary captures HEAD, its tree, and cleanliness.
   // The command is fixed; repositoryRoot is passed as cwd and is never interpolated.
   const output = execFileSync(
@@ -52,4 +53,3 @@ export function isRegisteredCycleIBuildAttestation(
 ): input is CycleIBuildAttestation {
   return typeof input === "object" && input !== null && registered.has(input);
 }
-

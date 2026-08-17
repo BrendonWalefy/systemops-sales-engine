@@ -134,7 +134,7 @@ export async function runCycleICli(
     const authority = parseAuthorizedCycleIRunManifest(
       JSON.parse(readFileSync(runManifestPath, "utf8")),
     );
-    const buildAttestation = createGitCycleIBuildAttestation(process.cwd());
+    const buildAttestation = createGitCycleIBuildAttestation();
     const arms = createProductiveCycleIUnderstandingArms({ manifest: authority, apiKey });
     const result = await runCycleICorpusComparison({
       corpusRoot: authority.corpusRoot,

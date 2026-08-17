@@ -1,24 +1,32 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { createGitCycleIBuildAttestation, isRegisteredCycleIBuildAttestation } from "@/infrastructure/conversation-v2/git-cycle-i-build-attestation";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  createGitCycleIBuildAttestation,
+  isRegisteredCycleIBuildAttestation,
+} from "@/infrastructure/conversation-v2/git-cycle-i-build-attestation";
+
+vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
+const git = vi.mocked(execFileSync);
+const commit = "a".repeat(40);
+const tree = "b".repeat(40);
 
 describe("Cycle I build attestation", () => {
-  it("registers the actual clean HEAD/tree and rejects a dirty relevant tree", () => {
-    const root = mkdtempSync(join(tmpdir(), "cycle-i-build-"));
-    execFileSync("git", ["init", "-q"], { cwd: root });
-    execFileSync("git", ["config", "user.email", "test@example.invalid"], { cwd: root });
-    execFileSync("git", ["config", "user.name", "Cycle I Test"], { cwd: root });
-    writeFileSync(join(root, "source.ts"), "export const value = 1;\n", "utf8");
-    execFileSync("git", ["add", "source.ts"], { cwd: root });
-    execFileSync("git", ["commit", "-qm", "fixture"], { cwd: root });
-    const attestation = createGitCycleIBuildAttestation(root);
+  beforeEach(() => git.mockReset());
+
+  it("does not let a caller select which repository is attested", () => {
+    git.mockReturnValue(`${commit}\n${tree}\n`);
+    expect(createGitCycleIBuildAttestation).toHaveLength(0);
+    const attestation = createGitCycleIBuildAttestation();
+    expect(attestation).toMatchObject({ commit, tree, clean: true });
     expect(isRegisteredCycleIBuildAttestation(attestation)).toBe(true);
-    expect(attestation.commit).toMatch(/^[a-f0-9]{40}$/);
-    expect(attestation.tree).toMatch(/^[a-f0-9]{40}$/);
-    writeFileSync(join(root, "source.ts"), "export const value = 2;\n", "utf8");
-    expect(() => createGitCycleIBuildAttestation(root)).toThrow(/dirty|clean/i);
+    expect(Object.isFrozen(attestation)).toBe(true);
+    expect(git).toHaveBeenCalledOnce();
+    const options = git.mock.calls[0]![2] as { cwd: string };
+    expect(options.cwd).toMatch(/systemops-sales-engine-v2$/);
+  });
+
+  it("rejects a dirty relevant tree instead of issuing an attestation", () => {
+    git.mockReturnValue(`${commit}\n${tree}\n M src/relevant.ts\n`);
+    expect(() => createGitCycleIBuildAttestation()).toThrow(/clean|dirty|tree/i);
   });
 });
