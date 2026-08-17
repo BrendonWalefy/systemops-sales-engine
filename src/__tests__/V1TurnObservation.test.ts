@@ -5,10 +5,15 @@ import {
   type V1TurnObservationSink,
 } from "@/core/observability/V1TurnObservation";
 import {
+  buildV1TenantSnapshotObservation,
+  buildV1TurnContextObservation,
+} from "@/core/observability/V1TurnObservationBuilders";
+import {
   V1ObservationCollector,
   buildCapturedV2TurnReads,
   type CapturedV1Turn,
   type CapturedV1TurnSharedProjection,
+  type CapturedV2TurnReadsPromotion,
 } from "@/application/conversation-v2/v1-observation-collector";
 
 const turnInput = (turnId: string, leadMessage = "Quero agendar") => ({
@@ -61,6 +66,13 @@ const gateFacts = (turnId: string) => [
   { kind: "turn_gate_fact" as const, turnId, field: "humanControlled" as const, value: false, source: "v1_human_control" as const },
   { kind: "turn_gate_fact" as const, turnId, field: "optedOut" as const, value: false, source: "v1_opt_out" as const },
 ];
+
+function readyV2Reads(turn: CapturedV1Turn) {
+  const promotion = buildCapturedV2TurnReads(turn);
+  expect(promotion.status).toBe("ready");
+  if (promotion.status !== "ready") throw new Error("expected ready V2 reads");
+  return promotion.reads;
+}
 
 describe("V1 turn observation seam", () => {
   it("mantém o observer opcional e torna falha do observer best-effort", () => {
@@ -136,7 +148,7 @@ describe("V1 turn observation seam", () => {
     expect(Object.isFrozen(captured)).toBe(true);
     expect(Object.isFrozen(captured!.sharedReads.context!.history[0])).toBe(true);
 
-    const reads = buildCapturedV2TurnReads(captured!);
+    const reads = readyV2Reads(captured!);
     const serialized = JSON.stringify(reads);
     expect(serialized).not.toContain("outcomeSummary");
     expect(serialized).not.toContain("responseDigest");
@@ -177,7 +189,7 @@ describe("V1 turn observation seam", () => {
 
     const captured = collector.complete("turn-1");
     expect(captured).not.toBeNull();
-    expect(buildCapturedV2TurnReads(captured!).gateInput).toEqual({
+    expect(readyV2Reads(captured!).gateInput).toEqual({
       status: "unavailable",
       reason: "not_read_by_v1",
     });
@@ -222,7 +234,7 @@ describe("V1 turn observation seam", () => {
     expect(collector.drain()).toEqual([]);
   });
 
-  it("falha fechado quando política ou completed steps não foram lidos pela V1", () => {
+  it("preserva o turno e promove indisponibilidade por campo sem fabricar policy ou completed steps", () => {
     const unavailablePolicy = new V1ObservationCollector();
     unavailablePolicy.record(turnInput("policy-unavailable"));
     unavailablePolicy.record(turnContext("policy-unavailable"));
@@ -231,7 +243,12 @@ describe("V1 turn observation seam", () => {
       policy: { status: "unavailable", reason: "not_read_by_v1" },
     });
     unavailablePolicy.record(terminal("policy-unavailable"));
-    expect(unavailablePolicy.complete("policy-unavailable")).toBeNull();
+    const policyTurn = unavailablePolicy.complete("policy-unavailable");
+    expect(policyTurn).not.toBeNull();
+    expect(buildCapturedV2TurnReads(policyTurn!)).toEqual({
+      status: "shared_read_unavailable",
+      unavailableReads: [{ field: "policy", reason: "not_read_by_v1" }],
+    });
 
     const unavailableSteps = new V1ObservationCollector();
     unavailableSteps.record(turnInput("steps-unavailable"));
@@ -241,7 +258,139 @@ describe("V1 turn observation seam", () => {
     });
     unavailableSteps.record(tenantSnapshot("steps-unavailable"));
     unavailableSteps.record(terminal("steps-unavailable"));
-    expect(unavailableSteps.complete("steps-unavailable")).toBeNull();
+    const stepsTurn = unavailableSteps.complete("steps-unavailable");
+    expect(stepsTurn).not.toBeNull();
+    expect(buildCapturedV2TurnReads(stepsTurn!)).toEqual({
+      status: "shared_read_unavailable",
+      unavailableReads: [{ field: "state.completedStepIds", reason: "not_read_by_v1" }],
+    });
+  });
+
+  it("preserva um terminal runtime completo e promove reads indisponíveis sem apagar o turno", () => {
+    const collector = new V1ObservationCollector();
+    collector.record(turnInput("runtime-unavailable"));
+    collector.record(buildV1TurnContextObservation({
+      turnId: "runtime-unavailable",
+      phase: "idle",
+      pendingStepId: null,
+      history: [{ author: "lead", body: "Quero confirmar" }],
+      historyWindowMessages: 4,
+    }));
+    collector.record(buildV1TenantSnapshotObservation({
+      turnId: "runtime-unavailable",
+      configFingerprint: "config:runtime-unavailable",
+      treatments: [],
+    }));
+    collector.record(terminal("runtime-unavailable"));
+
+    const captured = collector.complete("runtime-unavailable");
+    expect(captured).not.toBeNull();
+    expect(captured?.sharedReads.context.completedStepIds).toEqual({
+      status: "unavailable",
+      reason: "not_read_by_v1",
+    });
+    expect(captured?.sharedReads.tenantSnapshot.policy).toEqual({
+      status: "unavailable",
+      reason: "not_read_by_v1",
+    });
+    expect(collector.drain()).toEqual([captured]);
+    expect(buildCapturedV2TurnReads(captured!)).toEqual({
+      status: "shared_read_unavailable",
+      unavailableReads: [
+        { field: "state.completedStepIds", reason: "not_read_by_v1" },
+        { field: "policy", reason: "not_read_by_v1" },
+      ],
+    });
+    expect(collector.drain()).toEqual([]);
+  });
+
+  it("projeta pending appointment somente para o read exato e distingue ausência de query mismatch", () => {
+    const promote = (
+      turnId: string,
+      event?: V1TurnObservationEvent,
+    ): unknown => {
+      const collector = new V1ObservationCollector();
+      collector.record(turnInput(turnId));
+      collector.record({
+        ...turnContext(turnId),
+        phase: "awaiting_appointment_confirmation",
+      });
+      collector.record(tenantSnapshot(turnId));
+      if (event) collector.record(event);
+      collector.record(terminal(turnId));
+      const captured = collector.complete(turnId);
+      expect(captured).not.toBeNull();
+      return buildCapturedV2TurnReads(captured!);
+    };
+
+    const exact = promote("pending-exact", {
+      kind: "pending_appointment_resolution",
+      turnId: "pending-exact",
+      pendingStepId: "pending-exact:offer",
+      result: {
+        kind: "exact",
+        appointment: {
+          id: "appointment-db-id",
+          label: "17/08 às 15h",
+          evidenceRef: "v1-pending-appointment:pending-exact:exact",
+        },
+      },
+    } as V1TurnObservationEvent);
+    expect(exact).toMatchObject({
+      status: "ready",
+      reads: {
+        pendingAppointmentResolutions: [{
+          pendingStepId: "pending-exact:offer",
+          result: {
+            id: "appointment-db-id",
+            label: "17/08 às 15h",
+            evidenceRef: "v1-pending-appointment:pending-exact:exact",
+          },
+        }],
+      },
+    });
+
+    const absent = promote("pending-absent", {
+      kind: "pending_appointment_resolution",
+      turnId: "pending-absent",
+      pendingStepId: "pending-absent:offer",
+      result: {
+        kind: "absent",
+        evidenceRef: "v1-pending-appointment:pending-absent:absent",
+      },
+    } as V1TurnObservationEvent);
+    expect(absent).toMatchObject({
+      status: "ready",
+      reads: {
+        pendingAppointmentResolutions: [{
+          pendingStepId: "pending-absent:offer",
+          result: null,
+        }],
+      },
+    });
+
+    const mismatched = promote("pending-mismatch", {
+      kind: "pending_appointment_resolution",
+      turnId: "pending-mismatch",
+      pendingStepId: "another-step",
+      result: {
+        kind: "exact",
+        appointment: {
+          id: "appointment-db-id",
+          label: "17/08 às 15h",
+          evidenceRef: "v1-pending-appointment:pending-mismatch:exact",
+        },
+      },
+    } as V1TurnObservationEvent);
+    expect(mismatched).toMatchObject({
+      status: "ready",
+      reads: { pendingAppointmentResolutions: [] },
+    });
+
+    expect(promote("pending-unobserved")).toMatchObject({
+      status: "ready",
+      reads: { pendingAppointmentResolutions: [] },
+    });
   });
 
   it("transporta somente resoluções de serviço observadas e não as infere de slot search ou catálogo", () => {
@@ -286,7 +435,7 @@ describe("V1 turn observation seam", () => {
 
     const captured = collector.complete("turn-resolution");
     expect(captured).not.toBeNull();
-    const reads = buildCapturedV2TurnReads(captured!);
+    const reads = readyV2Reads(captured!);
     expect(reads.serviceResolutions).toEqual([{
       query: "clareamento",
       result: {
@@ -347,7 +496,7 @@ describe("V1 turn observation seam", () => {
 
     const captured = collector.complete("turn-slots");
     expect(captured).not.toBeNull();
-    expect(buildCapturedV2TurnReads(captured!).slotSearches).toEqual([]);
+    expect(readyV2Reads(captured!).slotSearches).toEqual([]);
   });
 
   it("não projeta nem uma busca isolada quando a chave V2 omite duração e janela", () => {
@@ -387,7 +536,7 @@ describe("V1 turn observation seam", () => {
 
     const captured = collector.complete("turn-single-slot");
     expect(captured).not.toBeNull();
-    expect(buildCapturedV2TurnReads(captured!).slotSearches).toEqual([]);
+    expect(readyV2Reads(captured!).slotSearches).toEqual([]);
   });
 
   it("rejeita Proxy root, nested, array e accessor sem executar traps de leitura", () => {
@@ -433,5 +582,7 @@ describe("V1 turn observation seam", () => {
       .toMatchTypeOf<CapturedV1TurnSharedProjection>();
     expectTypeOf<keyof CapturedV1TurnSharedProjection>()
       .toEqualTypeOf<"turnId" | "sharedReads">();
+    expectTypeOf<ReturnType<typeof buildCapturedV2TurnReads>>()
+      .toEqualTypeOf<CapturedV2TurnReadsPromotion>();
   });
 });

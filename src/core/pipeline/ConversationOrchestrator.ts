@@ -147,6 +147,7 @@ import {
 } from "@/core/observability/V1TurnObservation";
 import {
   buildV1HumanControlGateFact,
+  buildV1PendingAppointmentResolutionObservation,
   buildV1ServiceResolutionObservation,
   buildV1SlotSearchObservation,
   buildV1TenantSnapshotObservation,
@@ -4571,6 +4572,18 @@ export class ConversationOrchestrator {
         } else if (confirmationSignal !== "ambiguous") {
           await this.stateMachine.invalidate(conversation.id);
           const appt = await this.appointmentRepo.findById(confirmPayload.appointmentId);
+          if (params.turnObservationSink) {
+            recordV1TurnObservation(
+              params.turnObservationSink,
+              buildV1PendingAppointmentResolutionObservation({
+                turnId,
+                pendingStepId: currentConversationState.id,
+                requestedAppointmentId: confirmPayload.appointmentId,
+                appointment: appt,
+                appointmentLabel: confirmPayload.appointmentLabel,
+              }),
+            );
+          }
           let confirmReplyText: string;
           let confirmationPlannedResponse: PlannedResponse | undefined;
           const composeAppointmentConfirmation = async (

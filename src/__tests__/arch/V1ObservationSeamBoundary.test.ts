@@ -48,6 +48,7 @@ describe("V1 observation seam boundary", () => {
     expect(orchestrator).toMatch(/buildV1TurnContextObservation\(\{/);
     expect(orchestrator).toMatch(/buildV1TenantSnapshotObservation\(\{/);
     expect(orchestrator).toMatch(/buildV1ServiceResolutionObservation\(\{/);
+    expect(orchestrator).toMatch(/buildV1PendingAppointmentResolutionObservation\(\{/);
     expect(orchestrator).toMatch(/recordV1SlotSearchBeforeWrite\(\{/);
     expect(collector).not.toMatch(/serviceResolutions\s*=\s*reads\.slotSearches/);
     expect(mapper).toMatch(/slotSearches:\s*\[\]/);
@@ -82,5 +83,20 @@ describe("V1 observation seam boundary", () => {
     expect(gate.slice(0, pausedBranch)).not.toContain('field: "humanControlled"');
     expect(activePauseFact).toBeGreaterThan(pausedBranch);
     expect(resumedFact).toBeGreaterThan(activePauseFact);
+  });
+
+  it("observa o pending appointment no read existente antes de qualquer save", async () => {
+    const orchestrator = await readFile(ORCHESTRATOR, "utf8");
+    const branchStart = orchestrator.indexOf('currentConversationState?.state === "awaiting_appointment_confirmation"');
+    const branchEnd = orchestrator.indexOf("const isMenuActive", branchStart);
+    const branch = orchestrator.slice(branchStart, branchEnd);
+    const read = branch.indexOf("this.appointmentRepo.findById(confirmPayload.appointmentId)");
+    const observation = branch.indexOf("buildV1PendingAppointmentResolutionObservation({");
+    const write = branch.indexOf("this.appointmentRepo.save(");
+
+    expect(read).toBeGreaterThan(-1);
+    expect(observation).toBeGreaterThan(read);
+    expect(observation).toBeLessThan(write);
+    expect(branch.match(/appointmentRepo\.findById/g)).toHaveLength(1);
   });
 });

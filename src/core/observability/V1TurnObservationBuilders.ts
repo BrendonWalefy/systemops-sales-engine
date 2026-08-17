@@ -121,6 +121,48 @@ export function buildV1ServiceResolutionObservation(input: {
   };
 }
 
+export function buildV1PendingAppointmentResolutionObservation(input: {
+  turnId: string;
+  pendingStepId: string;
+  requestedAppointmentId: string;
+  appointment: Readonly<{ id: string }> | null;
+  appointmentLabel: string;
+}): Extract<V1TurnObservationEvent, { kind: "pending_appointment_resolution" }> {
+  const evidencePrefix = `v1-pending-appointment:${input.turnId}`;
+  if (input.appointment === null) {
+    return {
+      kind: "pending_appointment_resolution",
+      turnId: input.turnId,
+      pendingStepId: input.pendingStepId,
+      result: { kind: "absent", evidenceRef: `${evidencePrefix}:absent` },
+    };
+  }
+  if (input.appointment.id !== input.requestedAppointmentId) {
+    return {
+      kind: "pending_appointment_resolution",
+      turnId: input.turnId,
+      pendingStepId: input.pendingStepId,
+      result: {
+        kind: "query_mismatch",
+        evidenceRef: `${evidencePrefix}:query-mismatch`,
+      },
+    };
+  }
+  return {
+    kind: "pending_appointment_resolution",
+    turnId: input.turnId,
+    pendingStepId: input.pendingStepId,
+    result: {
+      kind: "exact",
+      appointment: {
+        id: input.appointment.id,
+        label: input.appointmentLabel,
+        evidenceRef: `${evidencePrefix}:exact`,
+      },
+    },
+  };
+}
+
 export function buildV1SlotSearchObservation(input: {
   turnId: string;
   searchNow: Date;

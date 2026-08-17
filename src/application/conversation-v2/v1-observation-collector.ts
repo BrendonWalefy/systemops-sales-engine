@@ -14,21 +14,14 @@ type EventOf<Kind extends V1TurnObservationEvent["kind"]> = Extract<
   { kind: Kind }
 >;
 
-type CapturedObservationRead<T> = Readonly<{ status: "captured"; value: T }>;
-type CapturedTurnContext = Omit<EventOf<"turn_context">, "completedStepIds"> & Readonly<{
-  completedStepIds: CapturedObservationRead<readonly string[]>;
-}>;
-type CapturedTenantSnapshot = Omit<EventOf<"tenant_snapshot">, "policy"> & Readonly<{
-  policy: Extract<EventOf<"tenant_snapshot">["policy"], { status: "captured" }>;
-}>;
-
 export type CapturedV1SharedReads = Readonly<{
   input: EventOf<"turn_input">;
   gateFacts: readonly EventOf<"turn_gate_fact">[];
-  context: CapturedTurnContext;
-  tenantSnapshot: CapturedTenantSnapshot;
+  context: EventOf<"turn_context">;
+  tenantSnapshot: EventOf<"tenant_snapshot">;
   pendingSlotOffers: readonly EventOf<"pending_slot_offer">[];
   serviceResolutions: readonly EventOf<"service_resolution">[];
+  pendingAppointmentResolutions: readonly EventOf<"pending_appointment_resolution">[];
   slotSearches: readonly EventOf<"slot_search">[];
 }>;
 
@@ -48,6 +41,16 @@ export type CapturedV1TurnSharedProjection = Readonly<{
   sharedReads: CapturedV1SharedReads;
 }>;
 
+export type CapturedV2TurnReadsPromotion =
+  | Readonly<{ status: "ready"; reads: CapturedV2TurnReads }>
+  | Readonly<{
+      status: "shared_read_unavailable";
+      unavailableReads: readonly Readonly<{
+        field: "state.completedStepIds" | "policy";
+        reason: "not_read_by_v1";
+      }>[];
+    }>;
+
 type TurnAccumulator = {
   invalid: boolean;
   invalidGate: boolean;
@@ -57,6 +60,7 @@ type TurnAccumulator = {
   tenantSnapshot?: EventOf<"tenant_snapshot">;
   pendingSlotOffers: EventOf<"pending_slot_offer">[];
   serviceResolutions: EventOf<"service_resolution">[];
+  pendingAppointmentResolutions: EventOf<"pending_appointment_resolution">[];
   slotSearches: EventOf<"slot_search">[];
   responsePlans: EventOf<"v1_response_plan">[];
   terminal?: EventOf<"turn_terminal">;
@@ -110,6 +114,7 @@ export class V1ObservationCollector implements V1TurnObservationSink {
       gateFacts: [],
       pendingSlotOffers: [],
       serviceResolutions: [],
+      pendingAppointmentResolutions: [],
       slotSearches: [],
       responsePlans: [],
     };
@@ -122,6 +127,7 @@ export class V1ObservationCollector implements V1TurnObservationSink {
       case "turn_terminal": setSingleton(accumulator, "terminal", event); break;
       case "pending_slot_offer": accumulator.pendingSlotOffers.push(event); break;
       case "service_resolution": accumulator.serviceResolutions.push(event); break;
+      case "pending_appointment_resolution": accumulator.pendingAppointmentResolutions.push(event); break;
       case "slot_search": accumulator.slotSearches.push(event); break;
       case "v1_response_plan": accumulator.responsePlans.push(event); break;
       case "turn_gate_fact": {
@@ -146,8 +152,6 @@ export class V1ObservationCollector implements V1TurnObservationSink {
       || !accumulator.input
       || !accumulator.context
       || !accumulator.tenantSnapshot
-      || accumulator.context.completedStepIds.status !== "captured"
-      || accumulator.tenantSnapshot.policy.status !== "captured"
     ) return null;
 
     const captured: CapturedV1Turn = {
@@ -165,6 +169,7 @@ export class V1ObservationCollector implements V1TurnObservationSink {
         },
         pendingSlotOffers: [...accumulator.pendingSlotOffers],
         serviceResolutions: [...accumulator.serviceResolutions],
+        pendingAppointmentResolutions: [...accumulator.pendingAppointmentResolutions],
         slotSearches: [...accumulator.slotSearches],
       },
       controlArm: {
@@ -212,8 +217,35 @@ function gateInput(
 
 export function buildCapturedV2TurnReads(
   turn: CapturedV1TurnSharedProjection,
-): CapturedV2TurnReads {
+): CapturedV2TurnReadsPromotion {
   const reads = turn.sharedReads;
+  const completedStepIds = reads.context.completedStepIds;
+  const policy = reads.tenantSnapshot.policy;
+  if (completedStepIds.status === "unavailable" || policy.status === "unavailable") {
+    const unavailableReads: Array<{
+      field: "state.completedStepIds" | "policy";
+      reason: "not_read_by_v1";
+    }> = [];
+    if (completedStepIds.status === "unavailable") {
+      unavailableReads.push({
+        field: "state.completedStepIds",
+        reason: completedStepIds.reason,
+      });
+    }
+    if (policy.status === "unavailable") {
+      unavailableReads.push({
+        field: "policy",
+        reason: policy.reason,
+      });
+    }
+    const unavailable: CapturedV2TurnReadsPromotion = {
+      status: "shared_read_unavailable",
+      unavailableReads,
+    };
+    deepFreeze(unavailable);
+    return unavailable;
+  }
+
   const pendingOffers = reads.pendingSlotOffers.filter((offer) => offer.pendingStepId !== null);
   const resolutionGroups = new Map<string, EventOf<"service_resolution">[]>();
   for (const resolution of reads.serviceResolutions) {
@@ -227,18 +259,40 @@ export function buildCapturedV2TurnReads(
     return [{ query: first.query, result: first.result }];
   });
 
-  return parseCapturedV2TurnReads({
+  const pendingAppointmentGroups = new Map<string, EventOf<"pending_appointment_resolution">[]>();
+  for (const resolution of reads.pendingAppointmentResolutions) {
+    if (resolution.pendingStepId !== reads.context.pendingStepId) continue;
+    const group = pendingAppointmentGroups.get(resolution.pendingStepId) ?? [];
+    group.push(resolution);
+    pendingAppointmentGroups.set(resolution.pendingStepId, group);
+  }
+  const pendingAppointmentResolutions = [...pendingAppointmentGroups.values()].flatMap((group) => {
+    const [first] = group;
+    if (
+      !first
+      || first.result.kind === "query_mismatch"
+      || group.some((entry) => !same(entry, first))
+    ) return [];
+    return [{
+      pendingStepId: first.pendingStepId,
+      result: first.result.kind === "exact" ? first.result.appointment : null,
+    }];
+  });
+  // An unobserved or mismatched pending appointment stays absent so the captured
+  // booking adapter reports shared_read_unavailable instead of guessing.
+
+  const promoted = parseCapturedV2TurnReads({
     version: "captured-v2-turn-reads.v1",
     now: reads.input.now,
     gateInput: gateInput(reads),
     state: {
       phase: reads.context.phase,
       pendingStepId: reads.context.pendingStepId,
-      completedStepIds: reads.context.completedStepIds.value,
+      completedStepIds: completedStepIds.value,
     },
     leadMessage: reads.input.leadMessage,
     history: reads.context.history,
-    policy: reads.tenantSnapshot.policy.value,
+    policy: policy.value,
     catalog: { status: "captured", value: reads.tenantSnapshot.catalog },
     serviceResolutions,
     // The V2 query cannot express the V1 duration, preferred time, search window,
@@ -252,6 +306,7 @@ export function buildCapturedV2TurnReads(
       time: null,
       result: slot,
     }))),
-    pendingAppointmentResolutions: [],
+    pendingAppointmentResolutions,
   });
+  return Object.freeze({ status: "ready", reads: promoted });
 }

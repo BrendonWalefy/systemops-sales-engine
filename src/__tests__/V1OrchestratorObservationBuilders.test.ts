@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildV1ServiceResolutionObservation,
   buildV1HumanControlGateFact,
+  buildV1PendingAppointmentResolutionObservation,
   buildV1SlotSearchObservation,
   buildV1TenantSnapshotObservation,
   buildV1TurnContextObservation,
@@ -115,6 +116,42 @@ describe("ConversationOrchestrator V1 observation builders", () => {
       evidenceRef: "v1-service:turn-price:ambiguous",
     });
     expect(unknown.result).toEqual({ kind: "unknown", evidenceRef: "v1-service:turn-price:unknown" });
+  });
+
+  it("fecha o read de pending appointment em exact, absent ou query_mismatch", () => {
+    expect(buildV1PendingAppointmentResolutionObservation({
+      turnId: "turn-pending",
+      pendingStepId: "step-pending",
+      requestedAppointmentId: "appointment-1",
+      appointment: { id: "appointment-1" },
+      appointmentLabel: "17/08 às 15h",
+    })).toEqual({
+      kind: "pending_appointment_resolution",
+      turnId: "turn-pending",
+      pendingStepId: "step-pending",
+      result: {
+        kind: "exact",
+        appointment: {
+          id: "appointment-1",
+          label: "17/08 às 15h",
+          evidenceRef: "v1-pending-appointment:turn-pending:exact",
+        },
+      },
+    });
+    expect(buildV1PendingAppointmentResolutionObservation({
+      turnId: "turn-pending",
+      pendingStepId: "step-pending",
+      requestedAppointmentId: "appointment-1",
+      appointment: null,
+      appointmentLabel: "17/08 às 15h",
+    })).toMatchObject({ result: { kind: "absent" } });
+    expect(buildV1PendingAppointmentResolutionObservation({
+      turnId: "turn-pending",
+      pendingStepId: "step-pending",
+      requestedAppointmentId: "appointment-1",
+      appointment: { id: "appointment-other" },
+      appointmentLabel: "17/08 às 15h",
+    })).toMatchObject({ result: { kind: "query_mismatch" } });
   });
 
   it("normaliza a chave completa da busca com clock do read, horário, duração e janelas", () => {

@@ -72,6 +72,22 @@ export type V1TurnObservationEvent =
         | Readonly<{ kind: "unknown"; evidenceRef: string }>;
     }>
   | Readonly<{
+      kind: "pending_appointment_resolution";
+      turnId: string;
+      pendingStepId: string;
+      result:
+        | Readonly<{
+            kind: "exact";
+            appointment: Readonly<{
+              id: string;
+              label: string;
+              evidenceRef: string;
+            }>;
+          }>
+        | Readonly<{ kind: "absent"; evidenceRef: string }>
+        | Readonly<{ kind: "query_mismatch"; evidenceRef: string }>;
+    }>
+  | Readonly<{
       kind: "slot_search";
       turnId: string;
       query: Readonly<{
@@ -123,6 +139,7 @@ const EVENT_KEYS = {
   tenant_snapshot: ["kind", "turnId", "configFingerprint", "policy", "catalog"],
   pending_slot_offer: ["kind", "turnId", "pendingStepId", "slots"],
   service_resolution: ["kind", "turnId", "query", "result"],
+  pending_appointment_resolution: ["kind", "turnId", "pendingStepId", "result"],
   slot_search: ["kind", "turnId", "query", "service", "slots"],
   v1_response_plan: ["kind", "turnId", "actionType", "outcomeSummary", "responseDigest", "responseCharacters", "latencyMs", "modelId", "inputTokens", "outputTokens"],
   turn_terminal: ["kind", "turnId", "replied", "reason"],
@@ -366,6 +383,40 @@ export function snapshotV1TurnObservation(
         turnId,
         query: nonEmptyString(source.query),
         result: { kind: resultKind, evidenceRef: nonEmptyString(unknown.evidenceRef) },
+      };
+      break;
+    }
+    case "pending_appointment_resolution": {
+      const result = plainRecord(source.result);
+      const resultKind = string(result.kind);
+      if (resultKind === "exact") {
+        const exact = plainRecord(result, ["kind", "appointment"]);
+        const appointment = plainRecord(exact.appointment, ["id", "label", "evidenceRef"]);
+        snapshot = {
+          kind,
+          turnId,
+          pendingStepId: nonEmptyString(source.pendingStepId),
+          result: {
+            kind: resultKind,
+            appointment: {
+              id: nonEmptyString(appointment.id),
+              label: nonEmptyString(appointment.label),
+              evidenceRef: nonEmptyString(appointment.evidenceRef),
+            },
+          },
+        };
+        break;
+      }
+      if (resultKind !== "absent" && resultKind !== "query_mismatch") invalid();
+      const unavailable = plainRecord(result, ["kind", "evidenceRef"]);
+      snapshot = {
+        kind,
+        turnId,
+        pendingStepId: nonEmptyString(source.pendingStepId),
+        result: {
+          kind: resultKind,
+          evidenceRef: nonEmptyString(unavailable.evidenceRef),
+        },
       };
       break;
     }
