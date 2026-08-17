@@ -197,6 +197,11 @@ configurado: ele roda depois do processamento e da tentativa awaited do sender V
 snapshots imutáveis das leituras que a V1 realmente consumiu e transforma decisões de escrita em
 `would_have_executed`, sem chamar a capability, outbox, calendário ou canal.
 
+Quando uma leitura V1 não possui chave lossless no contrato V2 — atualmente a busca de
+availability — o shadow retorna `shared_read_unavailable`; não reconstrói o snapshot. Como o seam
+atual também não captura o artifact final enviado pela V1, live records marcam o braço V1
+`unavailable` e a comparação `not_measurable`, sem inferir divergência de planos intermediários.
+
 O deadline do lote é de admissão. Depois de T nenhuma operação começa; trabalho já admitido é
 drenado e eventual overrun é medido. Isso não é uma garantia de retorno estrito até T.
 

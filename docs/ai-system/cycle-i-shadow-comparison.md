@@ -1,9 +1,14 @@
 # Ciclo I — shadow, comparação V1×V2 e gate interno
 
-Data: 2026-08-17  
-Checkpoint H: `99a852aa382c0327e221923f93509bb6151fdb3f`  
-Base da Task 7: `b54e165098af02e06a6613d275f705df056b657f`  
+Data: 2026-08-17
+
+Checkpoint H: `99a852aa382c0327e221923f93509bb6151fdb3f`
+
+Base da Task 7: `b54e165098af02e06a6613d275f705df056b657f`
+
 Matriz e boundaries finais: `8e2c7b9506325ba0831c2962ec75033e666dd978`
+
+Hardening da revisão Task 7: `5e3f2c64`
 
 ## Estado terminal
 
@@ -59,6 +64,12 @@ Captured read ausente retorna `shared_read_unavailable`; não há fallback para 
 catálogo produtivo. Outcome, resposta e efeito V1 ficam no braço de controle e não entram em
 Understanding, claim, decide, plano ou texto V2.
 
+A chave observada pela busca de slots V1 inclui duração, janela, horário preferido e janelas de
+atendimento que a chave V2 atual não representa. O mapper não descarta esses campos e chama o
+resultado de equivalente: ele deixa `slotSearches` vazio. Portanto availability no shadow
+produtivo é `unsupported/deferred` com `shared_read_unavailable`; o Ciclo I não adicionou uma
+capability nem um mapping lossy para fazê-la parecer suportada.
+
 ### Writes e sender
 
 Uma decisão `execute` para antes de `Capability.execute()`. O Dental adapter aceita somente
@@ -68,6 +79,13 @@ Uma decisão `execute` para antes de `Capability.execute()`. O Dental adapter ac
 O batch só começa depois do settlement da tentativa do sender, inclusive quando a falha já foi
 tratada. Persistência de comparação é observabilidade best-effort; não é porta de capability e
 não escreve estado, agenda, CRM, outbox ou canal.
+
+O seam V1 observa planos intermediários de resposta, mas não possui autoridade sobre o artifact
+final realmente enviado. Por isso o braço V1 do live record é `unavailable` com
+`final_response_unavailable`, e o record inteiro é `not_measurable` com divergências fechadas em
+lista vazia. Um plano intermediário nunca é promovido a final V1, e um V2 diferente não gera
+divergência fabricada. `model.calls` só é materializado quando o callback do provider foi de fato
+invocado; duplicate e shared-read unavailable antes desse callback registram `model: null`.
 
 ## Deadline canônico
 
@@ -128,18 +146,22 @@ Métricas de componente e custo zero do renderer H não foram renomeados como fu
 
 ## Matriz de jornadas
 
-| Jornada | Classe | Evidência exercida | Estado |
-| --- | --- | --- | --- |
-| price | happy | preço/subject/evidence capturados; ID interno não verbalizado | supported |
-| availability | happy | somente slots do snapshot; nenhum ID/evidence ref no texto | supported |
-| booking intent | boundary | seleção pendente vira `would_have_executed`; sem execute/resultado/texto | supported em shadow |
-| write failure | failure | falha do write permanece `effect_failed`; zero fato de sucesso | supported offline |
-| escalation | recovery | `human_action_required`; não afirma handoff concluído | supported |
-| multi-intent | adversarial | subject A/B preservados; cross-link rejeitado; IDs não expostos | supported no H |
+Cada célula está explicitamente classificada. `N/A` significa que o modo não pertence ao contrato
+da jornada indicada; não significa PASS implícito.
 
-Boundary adicional: captura obrigatória ausente para antes do provider e retorna
-`shared_read_unavailable`. Media, Objection, Discount e FollowUp permanecem
-`unsupported/deferred`; nenhuma capability foi criada para preencher a matriz.
+| Jornada | happy | boundary | failure | adversarial | recovery |
+| --- | --- | --- | --- | --- | --- |
+| price | supported: runtime verbaliza apenas preço autorizado | supported: missing capture falha fechado antes do provider | N/A: não há write | N/A: cross-subject pertence a multi-intent | N/A: pertence a escalation |
+| availability | **unsupported/deferred**: promoção V1 real resulta `shared_read_unavailable` | N/A: já falha no shared-read boundary | N/A: shadow não admite write | N/A: pertence a multi-intent | N/A: sem capability de recovery |
+| booking intent | N/A: shadow não executa booking | supported: `would_have_executed` HMAC sem resultado/texto | N/A: write failure é contrato offline | N/A: sem cross-subject write | N/A: sem recovery executável |
+| write failure | N/A: success write é proibido no shadow | N/A: boundary coberta pelo booking intent | supported offline: permanece `effect_failed` | N/A: sem cross-subject write | N/A: falha não é convertida em recovery |
+| escalation | N/A: é outcome de recovery | N/A: handoff concluído está fora do contrato | N/A: não há write de handoff | N/A: pertence a multi-intent | supported: `human_action_required`, nunca handoff concluído |
+| multi-intent | N/A: happy paths single-subject estão separados | N/A: capture boundary coberta em price | N/A: teste não contém write | supported no H: subject A/B preservados e cross-link rejeitado | N/A: não há policy de recovery multi-intent |
+
+Media, Objection, Discount e FollowUp permanecem `unsupported/deferred`. A evidência não vem de
+uma constante local: o pack real expõe apenas price/availability/scheduling e o runner real
+retorna `unsupported_request` para cada request fora do vocabulário fechado. Nenhuma capability
+foi criada para preencher a matriz.
 
 Esta matriz é evidência determinística de contracts e segurança. Ela não substitui as 204
 observações do protocolo, revisão humana nem replay full-turn.
@@ -191,9 +213,17 @@ no escopo, será necessária boundary externa imutável/assinada de build ou CI.
 - Nenhum finding executável foi descartado por conveniência. A revisão independente final da
   Task 6 retornou SPEC PASS / QUALITY PASS, sem Critical/Important; um Minor documental foi
   corrigido em `b54e1650`.
-- A revisão adversarial independente final da Task 7 é uma etapa posterior ao presente
-  checkpoint. Até artifact content-bound e assinado existir, `adversarial_review` permanece
-  corretamente `not_measurable` no gate report.
+- A primeira revisão independente da Task 7 retornou SPEC FAIL / QUALITY FAIL com 3 Important e
+  3 Minor. Os três Important foram confirmados: availability havia sido fabricada no teste; o
+  braço V1 vazio era marcado `observed`; e a matriz era um Set global com deferred autoafirmado.
+  O hardening `5e3f2c64` substituiu esses claims por runtime real, status
+  `unavailable/not_measurable` e matriz explícita journey×mode.
+- Os Minor de contagem de modelo, scan arquitetural direto e whitespace também foram confirmados
+  e corrigidos: contagem nasce no callback real, o scan percorre o grafo local transitivo e
+  `git diff --check b54e1650..HEAD` é gate explícito.
+- A re-review independente da Task 7 ainda é posterior a este checkpoint. Até artifact
+  content-bound e assinado existir, `adversarial_review` permanece corretamente `not_measurable`
+  no gate report.
 
 ## Gate report
 
@@ -237,11 +267,16 @@ assinatura ou PASS do gate report.
 ## Verificação da Task 7
 
 A matriz/boundaries foi desenvolvida em RED → GREEN: o comando focal iniciou com os três arquivos
-ausentes (exit 1) e terminou com 3 arquivos/21 testes verdes.
+ausentes (exit 1) e terminou com 3 arquivos/21 testes verdes. No hardening da revisão, os RED
+reproduziram availability real como `unsupported`, V1 vazio marcado `observed` e model call
+contado antes do callback; os GREEN fecharam esses três caminhos e elevaram a suíte Task 7 para
+3 arquivos/24 testes.
 
-- suíte focal exata do plano: 24 arquivos/235 testes verdes;
+- suíte focal exata do plano: 24 arquivos/241 testes verdes;
+- regressões Task 5/shadow: 10 arquivos/171 testes verdes;
+- regressões Task 4/V1: 6 arquivos/74 testes verdes;
 - agenda: 4 arquivos/86 testes verdes;
-- auditoria PII executada diretamente, sem dotenv: 40 arquivos, zero finding bloqueante;
+- auditoria PII executada diretamente, sem dotenv: 41 arquivos, zero finding bloqueante;
 - `db:check`, typecheck e `git diff --check`: verdes;
 - `npm run verify`, executado com worktree clean depois do commit documental: Drizzle meta OK,
   lint com zero erro e um warning legado em V1, typecheck verde, 358 arquivos/3.144 testes
@@ -249,7 +284,8 @@ ausentes (exit 1) e terminou com 3 arquivos/21 testes verdes.
 - `git diff 99a852aa -- src/core src/conversation-core`: somente o split genérico de pipeline e
   a seam observacional V1 previamente revisados; a Task 7 não alterou esses diretórios.
 
-A revisão independente da Task 7 ocorre depois deste checkpoint. Os resultados locais não alteram
-retroativamente o gate report unsigned nem fabricam observações V1×V2.
+A primeira revisão independente da Task 7 encontrou os gaps acima. A re-review do hardening
+ocorre depois deste checkpoint. Os resultados locais não alteram retroativamente o gate report
+unsigned nem fabricam observações V1×V2.
 
 NO-GO INTERNAL V2
