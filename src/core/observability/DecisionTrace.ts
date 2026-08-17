@@ -28,6 +28,7 @@ export const DECISION_TRACE_STAGES = [
   "state.before_delivery",
   "outbound.planned",
   "outbound.enqueued",
+  "conversation.engine_selected",
   "state.pipeline_committed",
   "orchestrator.completed",
   "delivery.started",

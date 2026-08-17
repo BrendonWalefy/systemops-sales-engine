@@ -20,11 +20,12 @@ const MAX_EVENTS_PER_TURN = 40;
 const PERSISTED_METADATA_KEYS = new Set([
   "action", "activeModuleCount", "agentMessageId", "applied",
   "attempt", "automationMode", "canonicalTreatmentId",
+  "configuredEngine",
   "canonicalTreatmentName", "category", "classifiedIntent",
   "classifierOverridden", "clinicConfigUpdatedAt", "coercedIntent", "commercialPauseDetected",
   "confidence", "configFieldCount", "configFingerprint", "configFingerprintSchema",
   "contentType", "deterministic", "errorName",
-  "expectedStepIndex", "expectedTreatmentId", "finalIntent", "hasActiveEditorial",
+  "effectiveRoute", "expectedStepIndex", "expectedTreatmentId", "finalIntent", "hasActiveEditorial",
   "hasPipeline", "hasPendingOffer", "hasResetBoundary", "hasText",
   "intent", "interleavedPartCount", "isConversationOpening", "jobWasNew",
   "leadMessageCount", "mediaAssetCount", "mediaPartCount", "mediaType",
@@ -34,7 +35,7 @@ const PERSISTED_METADATA_KEYS = new Set([
   "pipelineStepIndex", "pipelineTreatmentId", "playbookVersionId", "procedureCount", "provider",
   "providerAccepted", "queue", "reason", "replay", "replied", "replyEnabled",
   "responsePlanVersion",
-  "segment", "selectedTreatmentId", "selectedTreatmentName", "skipLlm", "source",
+  "segment", "selectedTreatmentId", "selectedTreatmentName", "selectorReason", "shadow", "skipLlm", "source",
   "state", "timezone", "useVoice",
 ]);
 
@@ -122,6 +123,7 @@ export function sanitizeDecisionTraceRecord(
 function isFlushStage(record: DecisionTraceRecord): boolean {
   return (
     record.stage === "orchestrator.completed" ||
+    record.stage === "conversation.engine_selected" ||
     record.stage === "delivery.sent" ||
     record.stage === "turn.failed" ||
     record.stage === "turn.ignored"

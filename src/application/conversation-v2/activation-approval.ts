@@ -5,6 +5,7 @@ import {
   type CycleIGateReport,
 } from "@/application/conversation-v2/gate-report";
 import type { HmacRef } from "@/application/conversation-v2/comparison-record";
+import type { CycleIAuthorityVerifier } from "@/application/ports/cycle-i-authority-verifier";
 
 export const INTERNAL_V2_ACTIVATION_APPROVAL_VERSION =
   "conversation-v2-internal-activation-approval.v1" as const;
@@ -27,7 +28,6 @@ export type InternalV2ActivationExpected = Readonly<{
   populationDigest: HmacRef;
   datasetDigest: HmacRef;
   configDigest: HmacRef;
-  approvalRecord: unknown;
 }>;
 
 const hmac = z.string().regex(/^hmac:[a-f0-9]{64}$/);
@@ -43,6 +43,7 @@ const approvalRecordSchema = z.object({
   populationDigest: hmac,
   datasetDigest: hmac,
   configDigest: hmac,
+  signature: hmac,
 }).strict();
 
 const approvals = new WeakSet<object>();
@@ -83,6 +84,8 @@ function snapshotPlainRecord(
 export function parseInternalV2ActivationApproval(
   report: CycleIGateReport,
   expected: InternalV2ActivationExpected,
+  approvalRecord: unknown,
+  verifier: CycleIAuthorityVerifier,
 ): InternalV2ActivationApproval {
   if (!isRegisteredCycleIGateReport(report)) {
     throw new Error("Cycle I gate report is not registered by the canonical parser");
@@ -96,14 +99,21 @@ export function parseInternalV2ActivationApproval(
 
   const expectedSnapshot = snapshotPlainRecord(
     expected,
-    ["commit", "reportDigest", "populationDigest", "datasetDigest", "configDigest", "approvalRecord"],
+    ["commit", "reportDigest", "populationDigest", "datasetDigest", "configDigest"],
     "invalid internal V2 expected authority",
   );
   const parsed = approvalRecordSchema.parse(snapshotPlainRecord(
-    expectedSnapshot.approvalRecord,
+    approvalRecord,
     null,
     "invalid internal V2 approval record",
   ));
+  const { signature, ...unsignedApproval } = parsed;
+  const approvalPayload = JSON.stringify(Object.fromEntries(
+    Object.entries(unsignedApproval).sort(([left], [right]) => left.localeCompare(right)),
+  ));
+  if (!verifier.verifyApprovalRecord(approvalPayload, signature as HmacRef)) {
+    throw new Error("internal V2 approval record signature is invalid");
+  }
   const exact = {
     commit: commit.parse(expectedSnapshot.commit),
     reportDigest: hmac.parse(expectedSnapshot.reportDigest) as HmacRef,

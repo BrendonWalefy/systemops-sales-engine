@@ -4,7 +4,10 @@ import type { DentalUnderstandingModel, DentalUnderstandingModelRequest } from "
 type OpenAIClientBoundary = {
   chat: {
     completions: {
-      create(input: unknown): Promise<{ choices: { message: { content: string | null } }[] }>;
+      create(
+        input: unknown,
+        options?: Readonly<{ signal?: AbortSignal }>,
+      ): Promise<{ choices: { message: { content: string | null } }[] }>;
     };
   };
 };
@@ -56,8 +59,11 @@ export class OpenAIDentalUnderstandingModel implements DentalUnderstandingModel 
     readonly modelId: string,
   ) {}
 
-  async generate(input: DentalUnderstandingModelRequest): Promise<unknown> {
-    const response = await this.client.chat.completions.create({
+  async generate(
+    input: DentalUnderstandingModelRequest,
+    options?: Readonly<{ signal?: AbortSignal }>,
+  ): Promise<unknown> {
+    const request = {
       model: this.modelId,
       temperature: 0,
       messages: [
@@ -73,7 +79,10 @@ export class OpenAIDentalUnderstandingModel implements DentalUnderstandingModel 
         type: "json_schema",
         json_schema: { name: "dental_understanding_v1", strict: true, schema: responseSchema },
       },
-    });
+    };
+    const response = await (options?.signal
+      ? this.client.chat.completions.create(request, { signal: options.signal })
+      : this.client.chat.completions.create(request));
     const content = response.choices[0]?.message.content;
     if (!content) throw new Error("OpenAI returned no dental understanding output");
     return JSON.parse(content);

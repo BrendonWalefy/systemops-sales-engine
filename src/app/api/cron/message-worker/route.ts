@@ -57,7 +57,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const jobQueue = new DrizzleJobQueue();
   const audioTranscriber = new ZApiAudioTranscriber(new WhisperGateway());
   const decisionTraceSink = createRuntimeDecisionTraceSink();
-  const conversationV2Runtime = createConversationV2Runtime();
+  const conversationV2Runtime = createConversationV2Runtime({ decisionTraceSink });
   const handler = new ProcessMessageJobHandler({
     inboundEventStore,
     automationPolicy: new DrizzleClinicAutomationPolicyReader(),
@@ -97,6 +97,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const capturedV2Turns = conversationV2Runtime.drainCapturedTurns();
     if (result.processed > 0) {
       const postSender = await runAfterSenderDrainAttempt({
+        turns: capturedV2Turns,
         drainSender: async () => {
           const outboundMessageStore = new DrizzleOutboundMessageStore();
           return drainMessageSendQueue({
@@ -113,12 +114,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         },
         onSenderFailure: (error) => { log.error("inline_send.failed", error); },
         occurredAt: () => new Date().toISOString(),
-        afterAttempt: async (senderBarrier) => {
+        afterAttempt: async (senderBarrier, turns) => {
           try {
             return await runConversationV2ShadowBatch({
               senderBarrier,
-              turns: capturedV2Turns,
+              turns,
               policyReader: conversationV2Runtime.policyReader,
+              selectionTrace: conversationV2Runtime.selectionTrace,
               evaluator: conversationV2Runtime.evaluator,
               sink: conversationV2Runtime.sink,
               approval: conversationV2Runtime.approval,

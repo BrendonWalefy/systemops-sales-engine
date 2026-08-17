@@ -353,8 +353,8 @@ describe("ProcessMessageJobHandler", () => {
   it("cria uma seam por turn live e só emite terminal depois do handle e acknowledgement", async () => {
     const order: string[] = [];
     const events: V1TurnObservationEvent[] = [];
-    const createTurnObservationSink = vi.fn((input: { turnId: string; clinicId: string }) => {
-      expect(input).toEqual({ turnId: "event-1", clinicId: "clinic-1" });
+    const createTurnObservationSink = vi.fn((input: { turnId: string; clinicId: string; automationMode: "live" }) => {
+      expect(input).toEqual({ turnId: "event-1", clinicId: "clinic-1", automationMode: "live" });
       return {
         record(observation: V1TurnObservationEvent) {
           events.push(observation);

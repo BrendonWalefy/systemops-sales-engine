@@ -18,20 +18,26 @@ export type DentalUnderstandingModelRequest = {
 
 export type DentalUnderstandingModel = {
   modelId: string;
-  generate(input: DentalUnderstandingModelRequest): Promise<unknown>;
+  generate(input: DentalUnderstandingModelRequest, options?: Readonly<{ signal?: AbortSignal }>): Promise<unknown>;
 };
 
 export class DentalUnderstandingProvider {
   constructor(private readonly model: DentalUnderstandingModel) {}
 
-  async understand(input: Omit<DentalUnderstandingModelRequest, "modelId" | "promptVersion" | "schemaVersion" | "systemPrompt">): Promise<Understanding<DentalRequest>> {
-    const raw = await this.model.generate({
+  async understand(
+    input: Omit<DentalUnderstandingModelRequest, "modelId" | "promptVersion" | "schemaVersion" | "systemPrompt">,
+    options?: Readonly<{ signal?: AbortSignal }>,
+  ): Promise<Understanding<DentalRequest>> {
+    const request = {
       ...input,
       modelId: this.model.modelId,
       promptVersion: DENTAL_UNDERSTANDING_PROMPT_VERSION,
       schemaVersion: UNDERSTANDING_VERSION,
       systemPrompt: DENTAL_UNDERSTANDING_PROMPT,
-    });
+    };
+    const raw = await (options
+      ? this.model.generate(request, options)
+      : this.model.generate(request));
     return parseDentalUnderstanding(raw);
   }
 }

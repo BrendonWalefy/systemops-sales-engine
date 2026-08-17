@@ -1,8 +1,19 @@
+import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { buildCycleIGateReport, CYCLE_I_GATE_REPORT_VERSION, parseCycleIGateReport } from "@/application/conversation-v2/gate-report";
+import { buildCycleIGateReport, CYCLE_I_GATE_REPORT_VERSION, parseCycleIGateReport, serializeCycleIGateReportAuthorityPayload, type CycleIGateReport } from "@/application/conversation-v2/gate-report";
+import { HmacCycleIAuthorityVerifier } from "@/infrastructure/conversation-v2/hmac-cycle-i-authority-verifier";
 
 const ref = (tail: string): `hmac:${string}` => `hmac:${"a".repeat(63)}${tail}`;
 const base = { reportDigest: ref("1"), populationDigest: ref("2"), datasetDigest: ref("3"), configDigest: ref("4") };
+const authorityKey = "cycle-i-authority-key-with-at-least-32-characters";
+const verifier = new HmacCycleIAuthorityVerifier(authorityKey);
+function seal(report: CycleIGateReport): CycleIGateReport {
+  return {
+    ...report,
+    reportDigest: `hmac:${createHmac("sha256", authorityKey)
+      .update(serializeCycleIGateReportAuthorityPayload(report)).digest("hex")}`,
+  };
+}
 
 describe("Cycle I activation gate", () => {
   it("converts missing measurements to not_measurable and never emits GO when a blocker is not pass", () => {
@@ -14,8 +25,8 @@ describe("Cycle I activation gate", () => {
 
   it("rejects altered immutable applicability and a forged GO", () => {
     const report = buildCycleIGateReport(base);
-    expect(() => parseCycleIGateReport({ ...report, decision: "GO" })).toThrow(/GO|block|rederive/i);
-    expect(() => parseCycleIGateReport({ ...report, criteria: { ...report.criteria, protocol_integrity: { ...report.criteria.protocol_integrity, denominator: 1 } } })).toThrow(/denominator|applicability|rederive/i);
+    expect(() => parseCycleIGateReport({ ...report, decision: "GO" }, verifier)).toThrow(/GO|block|rederive/i);
+    expect(() => parseCycleIGateReport({ ...report, criteria: { ...report.criteria, protocol_integrity: { ...report.criteria.protocol_integrity, denominator: 1 } } }, verifier)).toThrow(/denominator|applicability|rederive/i);
   });
 
   it("derives gates from measured evidence and rejects evidence-free or threshold-forged GO", () => {
@@ -29,7 +40,17 @@ describe("Cycle I activation gate", () => {
     } });
     expect(passing.decision).toBe("GO");
     expect(buildCycleIGateReport({ ...base, measurements: { supported_understanding: { ...evidence(102), v1Correct: 9, v2Correct: 8, cycleFAxesPassed: true, criticalRegressionCount: 0 } } }).criteria.supported_understanding.status).toBe("fail");
-    expect(() => parseCycleIGateReport({ ...passing, criteria: Object.fromEntries(Object.entries(passing.criteria).map(([key, value]) => [key, { ...value, status: "pass", evidenceDigest: ref("9") }])) })).toThrow(/measurement|rederive|evidence/i);
-    expect(() => parseCycleIGateReport({ ...passing, measurements: undefined })).toThrow();
+    expect(() => parseCycleIGateReport({ ...passing, criteria: Object.fromEntries(Object.entries(passing.criteria).map(([key, value]) => [key, { ...value, status: "pass", evidenceDigest: ref("9") }])) }, verifier)).toThrow(/measurement|rederive|evidence/i);
+    expect(() => parseCycleIGateReport({ ...passing, measurements: undefined }, verifier)).toThrow();
+  });
+
+  it("binds reportDigest to the complete canonically rederived report", () => {
+    const original = seal(buildCycleIGateReport(base));
+    expect(parseCycleIGateReport(JSON.parse(JSON.stringify(original)), verifier).reportDigest)
+      .toBe(original.reportDigest);
+    const changed = buildCycleIGateReport({ ...base, reportDigest: original.reportDigest, measurements: {
+      rollback: { passed: true },
+    } as never });
+    expect(() => parseCycleIGateReport(changed, verifier)).toThrow(/authority|digest/i);
   });
 });

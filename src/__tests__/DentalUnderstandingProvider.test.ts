@@ -53,4 +53,27 @@ describe("provider dental de Understanding", () => {
     expect(request.response_format.json_schema.schema.properties.signals.additionalProperties).toBe(false);
     expect(request.response_format.json_schema.schema.properties.safety.additionalProperties).toBe(false);
   });
+
+  it("encaminha o AbortSignal ao client OpenAI", async () => {
+    const create = vi.fn().mockResolvedValue({ choices: [{ message: { content: JSON.stringify({
+      version: "understanding.v1", request: "book-appointment", dialogueMove: "new_topic",
+      entities: {}, signals: {}, safety: {}, confidence: 0.8, ambiguity: null,
+    }) } }] });
+    const controller = new AbortController();
+    const model = new OpenAIDentalUnderstandingModel(
+      { chat: { completions: { create } } },
+      "gpt-test",
+    );
+
+    await model.generate({
+      modelId: "gpt-test", promptVersion: "dental-understanding.v1",
+      schemaVersion: "understanding.v1", systemPrompt: "system", leadMessage: "quero marcar",
+      history: [], state: null, catalog: [],
+    }, { signal: controller.signal });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "gpt-test" }),
+      { signal: controller.signal },
+    );
+  });
 });

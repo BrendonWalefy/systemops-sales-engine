@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createConversationV2Runtime } from "@/infrastructure/conversation-v2/create-conversation-v2-runtime";
 import { V1ObservationCollector } from "@/application/conversation-v2/v1-observation-collector";
 import type { V1TurnObservationEvent } from "@/core/observability/V1TurnObservation";
+import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 
 function readyEvents(turnId: string): V1TurnObservationEvent[] {
   return [
@@ -26,7 +27,11 @@ describe("Cycle I message worker composition", () => {
       },
       collector: new V1ObservationCollector(),
     });
-    const sink = runtime.createTurnObservationSink({ turnId: "turn-a", clinicId: "clinic-a" });
+    const sink = runtime.createTurnObservationSink({
+      turnId: "turn-a",
+      clinicId: "clinic-a",
+      automationMode: "live",
+    });
     for (const event of readyEvents("turn-a")) sink.record(event);
 
     const turns = runtime.drainCapturedTurns();
@@ -44,8 +49,16 @@ describe("Cycle I message worker composition", () => {
       },
       collector: new V1ObservationCollector(),
     });
-    const sinkA = runtime.createTurnObservationSink({ turnId: "turn-a", clinicId: "clinic-a" });
-    const sinkB = runtime.createTurnObservationSink({ turnId: "turn-b", clinicId: "clinic-b" });
+    const sinkA = runtime.createTurnObservationSink({
+      turnId: "turn-a",
+      clinicId: "clinic-a",
+      automationMode: "live",
+    });
+    const sinkB = runtime.createTurnObservationSink({
+      turnId: "turn-b",
+      clinicId: "clinic-b",
+      automationMode: "live",
+    });
     const eventsA = readyEvents("turn-a");
     const eventsB = readyEvents("turn-b");
     await Promise.all([
@@ -78,12 +91,19 @@ describe("Cycle I message worker composition", () => {
       },
       collector: new V1ObservationCollector(),
     });
-    const sink = runtime.createTurnObservationSink({ turnId: "turn-a", clinicId: "clinic-a" });
+    const sink = runtime.createTurnObservationSink({
+      turnId: "turn-a",
+      clinicId: "clinic-a",
+      automationMode: "live",
+    });
     for (const event of readyEvents("turn-a")) sink.record(event);
     const turn = runtime.drainCapturedTurns()[0]!;
     if (turn.promotion.status !== "ready") throw new Error("expected ready turn");
 
-    await expect(runtime.evaluator.evaluate(turn.promotion.reads)).resolves.toEqual({
+    await expect(runtime.evaluator.evaluate(
+      turn.promotion.reads,
+      new AbortController().signal,
+    )).resolves.toEqual({
       result: { status: "error", errorName: "MissingOpenAIKey" },
       understandingRequest: null,
       model: null,
@@ -96,7 +116,50 @@ describe("Cycle I message worker composition", () => {
     expect(source).toContain("runAfterSenderDrainAttempt");
     expect(source).not.toContain("shadowModeEnabled");
     expect(source).not.toMatch(/Dental|bookSlot|confirmAppointment|OpenAI/);
-    expect(source.indexOf("drainMessageProcessQueue")).toBeLessThan(source.indexOf("runAfterSenderDrainAttempt"));
+    const processCall = source.indexOf("await drainMessageProcessQueue({");
+    const senderBarrierCall = source.indexOf("await runAfterSenderDrainAttempt({");
+    const shadowBatchCall = source.indexOf("await runConversationV2ShadowBatch({");
+    expect(processCall).toBeGreaterThanOrEqual(0);
+    expect(senderBarrierCall).toBeGreaterThan(processCall);
+    expect(shadowBatchCall).toBeGreaterThan(senderBarrierCall);
+  });
+
+  it("emits only the sanitized HMAC selector trace through the runtime adapter", async () => {
+    const decisionTraceSink = new InMemoryDecisionTraceSink();
+    const runtime = createConversationV2Runtime({
+      env: {
+        CONVERSATION_V2_COMPARISON_HMAC_KEY: "x".repeat(32),
+        VERCEL_GIT_COMMIT_SHA: "e86201adb3b7eb6665629f5e73cbb5964acdc745",
+      },
+      collector: new V1ObservationCollector(),
+      decisionTraceSink,
+    });
+    const turnRef = `hmac:${"a".repeat(64)}` as const;
+
+    await runtime.selectionTrace.record({
+      turnRef,
+      clinicId: "clinic-a",
+      occurredAt: "2026-08-16T12:00:00.000Z",
+      automationMode: "live",
+      configuredEngine: "v1_with_v2_shadow",
+      effectiveRoute: "v1",
+      shadow: true,
+      reason: "configured_shadow",
+    });
+
+    expect(decisionTraceSink.getEvents(turnRef)).toEqual([expect.objectContaining({
+      turnId: turnRef,
+      clinicId: "clinic-a",
+      stage: "conversation.engine_selected",
+      metadata: {
+        automationMode: "live",
+        configuredEngine: "v1_with_v2_shadow",
+        effectiveRoute: "v1",
+        shadow: true,
+        selectorReason: "configured_shadow",
+      },
+    })]);
+    expect(JSON.stringify(decisionTraceSink.getEvents(turnRef))).not.toContain("leadMessage");
   });
 
   it("does not cache policy in runtime assembly", async () => {
@@ -121,13 +184,13 @@ describe("Cycle I message worker composition", () => {
       },
       collector: new V1ObservationCollector(),
     });
-    expect([...runtime.recordConfig.allowedModelIds]).toEqual(expect.arrayContaining([
+    expect(runtime.recordConfig.allowedModelIds).toEqual(expect.arrayContaining([
       "deterministic-safety",
       "deterministic-fallback",
       "gpt-4o-mini",
     ]));
-    expect(() => (runtime.recordConfig.allowedModelIds as Set<string>).add("unapproved-model"))
+    expect(() => (runtime.recordConfig.allowedModelIds as string[]).push("unapproved-model"))
       .toThrow();
-    expect(runtime.recordConfig.allowedModelIds.has("unapproved-model")).toBe(false);
+    expect(runtime.recordConfig.allowedModelIds.includes("unapproved-model")).toBe(false);
   });
 });

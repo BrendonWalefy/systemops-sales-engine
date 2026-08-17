@@ -56,6 +56,7 @@ export type ProcessMessageJobDependencies = {
   createTurnObservationSink?: (input: {
     turnId: string;
     clinicId: string;
+    automationMode: "live";
   }) => V1TurnObservationSink | undefined;
 };
 
@@ -165,6 +166,7 @@ export class ProcessMessageJobHandler {
         turnObservationSink = this.deps.createTurnObservationSink({
           turnId: inboundEventId,
           clinicId: event.clinicId,
+          automationMode,
         });
       } catch {
         turnObservationSink = undefined;

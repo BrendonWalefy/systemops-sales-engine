@@ -1,7 +1,12 @@
 import { isProxy } from "node:util/types";
 import type { ConversationEnginePolicyReader } from "@/application/ports/conversation-engine-policy-reader";
+import type { ConversationEngineSelectionTraceSink } from "@/application/ports/conversation-engine-selection-trace";
 import type { ConversationV2ComparisonSink } from "@/application/ports/conversation-v2-comparison-sink";
+import type { ClinicAutomationMode } from "@/application/automation/clinic-automation-policy";
 import type { InternalV2ActivationApproval } from "@/application/conversation-v2/activation-approval";
+import {
+  canonicalizeComparisonRecordConfig,
+} from "@/application/conversation-v2/comparison-record-config";
 import {
   keyedRef,
   parseLiveComparisonRecord,
@@ -10,7 +15,11 @@ import {
   type LiveComparisonRecord,
   type ModelCallSummary,
 } from "@/application/conversation-v2/comparison-record";
-import { resolveConversationEngine } from "@/application/conversation-v2/engine-selection";
+import {
+  resolveConversationEngine,
+  type ConversationEngine,
+  type EffectiveConversationEngine,
+} from "@/application/conversation-v2/engine-selection";
 import {
   buildCapturedV2TurnReads,
   isRegisteredCapturedV1Turn,
@@ -28,6 +37,7 @@ export type SenderDrainAttempted = Readonly<{
 
 export type ShadowBatchTurn = Readonly<{
   clinicId: string;
+  automationMode: ClinicAutomationMode;
   turn: CapturedV1Turn;
   promotion: CapturedV2TurnReadsPromotion;
 }>;
@@ -36,6 +46,10 @@ export type ShadowEvaluation = Readonly<{
   result: V2ShadowResult;
   understandingRequest: DentalRequest | null;
   model: ModelCallSummary | null;
+}>;
+
+export type ShadowEvaluator = Readonly<{
+  evaluate(reads: CapturedV2TurnReads, signal: AbortSignal): Promise<ShadowEvaluation>;
 }>;
 
 export type ShadowBatchSummary = Readonly<{
@@ -53,7 +67,9 @@ export type ShadowBatchSummary = Readonly<{
 }>;
 
 const barriers = new WeakSet<object>();
+const barrierBatches = new WeakMap<object, readonly ShadowBatchTurn[]>();
 const batchTurns = new WeakSet<object>();
+const consumedBatchTurns = new WeakSet<object>();
 
 function readDataRecord(
   input: unknown,
@@ -104,15 +120,20 @@ function recordSenderDrainAttempt(input: {
 }
 
 export async function runAfterSenderDrainAttempt<SenderResult, ShadowResult>(input: {
+  turns: readonly ShadowBatchTurn[];
   drainSender(): Promise<SenderResult>;
   onSenderFailure(error: unknown): void | Promise<void>;
   occurredAt(): string;
-  afterAttempt(barrier: SenderDrainAttempted): Promise<ShadowResult>;
+  afterAttempt(
+    barrier: SenderDrainAttempted,
+    turns: readonly ShadowBatchTurn[],
+  ): Promise<ShadowResult>;
 }): Promise<Readonly<{
   senderOutcome: "completed" | "failed_handled";
   senderResult: SenderResult | null;
   shadowResult: ShadowResult;
 }>> {
+  const turns = snapshotBatchTurns(input.turns);
   let senderOutcome: SenderDrainAttempted["outcome"] = "completed";
   let senderResult: SenderResult | null = null;
   try {
@@ -125,36 +146,55 @@ export async function runAfterSenderDrainAttempt<SenderResult, ShadowResult>(inp
     outcome: senderOutcome,
     occurredAt: input.occurredAt(),
   });
-  const shadowResult = await input.afterAttempt(barrier);
+  barrierBatches.set(barrier, turns);
+  const shadowResult = await input.afterAttempt(barrier, turns);
   return Object.freeze({ senderOutcome, senderResult, shadowResult });
 }
 
 export function createShadowTurnCaptureRegistry(): Readonly<{
-  bindTurn(input: Readonly<{ turnId: string; clinicId: string }>): void;
+  bindTurn(input: Readonly<{
+    turnId: string;
+    clinicId: string;
+    automationMode: ClinicAutomationMode;
+  }>): void;
   promote(turn: CapturedV1Turn): ShadowBatchTurn;
 }> {
-  const tenantByTurn = new Map<string, string>();
+  const bindingByTurn = new Map<string, Readonly<{
+    clinicId: string;
+    automationMode: ClinicAutomationMode;
+  }>>();
   return Object.freeze({
     bindTurn(input) {
-      const source = readDataRecord(input, ["turnId", "clinicId"], "invalid shadow turn binding");
+      const source = readDataRecord(
+        input,
+        ["turnId", "clinicId", "automationMode"],
+        "invalid shadow turn binding",
+      );
       const turnId = nonEmpty(source.turnId, "invalid shadow turn binding");
       const clinicId = nonEmpty(source.clinicId, "invalid shadow turn binding");
-      const existing = tenantByTurn.get(turnId);
-      if (existing && existing !== clinicId) throw new Error("shadow turn clinic binding mismatch");
-      tenantByTurn.set(turnId, clinicId);
+      const automationMode = source.automationMode;
+      if (automationMode !== "live" && automationMode !== "observe" && automationMode !== "disabled") {
+        throw new Error("invalid shadow turn automation binding");
+      }
+      const existing = bindingByTurn.get(turnId);
+      if (
+        existing
+        && (existing.clinicId !== clinicId || existing.automationMode !== automationMode)
+      ) throw new Error("shadow turn binding mismatch");
+      bindingByTurn.set(turnId, Object.freeze({ clinicId, automationMode }));
     },
     promote(turn) {
       if (!isRegisteredCapturedV1Turn(turn)) {
         throw new Error("captured V1 turn is not registered");
       }
-      const clinicId = tenantByTurn.get(turn.turnId);
-      if (!clinicId) throw new Error("shadow turn has no tenant binding");
-      tenantByTurn.delete(turn.turnId);
+      const binding = bindingByTurn.get(turn.turnId);
+      if (!binding) throw new Error("shadow turn has no tenant binding");
+      bindingByTurn.delete(turn.turnId);
       const promotion = buildCapturedV2TurnReads({
         turnId: turn.turnId,
         sharedReads: turn.sharedReads,
       });
-      const envelope = Object.freeze({ clinicId, turn, promotion });
+      const envelope = Object.freeze({ ...binding, turn, promotion });
       batchTurns.add(envelope);
       return envelope;
     },
@@ -173,28 +213,11 @@ const emptyEngineSummary = Object.freeze({
   model: null,
 });
 
-function v1Summary(
-  turn: CapturedV1Turn,
-  hmacKey: string,
-): EngineStructuralSummary {
-  const plan = turn.controlArm.responsePlans.at(-1);
-  const model = plan?.modelId
-    ? {
-        modelId: plan.modelId,
-        calls: 1,
-        inputTokens: plan.inputTokens,
-        outputTokens: plan.outputTokens,
-        latencyMs: plan.latencyMs,
-        estimatedCostMinor: null,
-      }
-    : null;
+function v1Summary(): EngineStructuralSummary {
   return {
     ...emptyEngineSummary,
     status: "observed",
-    finalTextCharacters: plan?.responseCharacters ?? null,
-    finalTextDigest: plan ? keyedRef(plan.responseDigest, hmacKey) : null,
     errorCode: null,
-    model,
   };
 }
 
@@ -277,25 +300,46 @@ function buildRecord(input: {
       input.hmacKey,
     ),
     datasetDigest: input.datasetDigest,
-    v1: v1Summary(input.turn.turn, input.hmacKey),
+    v1: v1Summary(),
     v2: v2Summary(input.evaluation, input.hmacKey),
     intendedEffects,
     divergenceCodes: [],
   }, input.allowedModelIds);
 }
 
-async function withDeadline<T>(promise: Promise<T>, remainingMs: number): Promise<T> {
-  if (remainingMs <= 0) throw new Error("shadow deadline reached");
-  let timeout: ReturnType<typeof setTimeout> | undefined;
+class ShadowDeadlineError extends Error {}
+
+function requireRemainingBudget(remainingMs: number): void {
+  if (remainingMs <= 0) throw new ShadowDeadlineError("shadow deadline reached before dependency start");
+}
+
+async function settleStartedDependency<T>(
+  start: () => Promise<T>,
+  remainingMs: number,
+): Promise<T> {
+  requireRemainingBudget(remainingMs);
+  return start();
+}
+
+async function settleAbortableDependency<T>(
+  start: (signal: AbortSignal) => Promise<T>,
+  remainingMs: number,
+): Promise<T> {
+  requireRemainingBudget(remainingMs);
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(new ShadowDeadlineError("shadow dependency deadline reached")),
+    remainingMs,
+  );
   try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(() => reject(new Error("shadow deadline reached")), remainingMs);
-      }),
-    ]);
+    const result = await start(controller.signal);
+    if (controller.signal.aborted) throw new ShadowDeadlineError("shadow dependency deadline reached");
+    return result;
+  } catch (error) {
+    if (controller.signal.aborted) throw new ShadowDeadlineError("shadow dependency deadline reached");
+    throw error;
   } finally {
-    if (timeout) clearTimeout(timeout);
+    clearTimeout(timeout);
   }
 }
 
@@ -333,13 +377,23 @@ function snapshotBatchTurns(input: readonly ShadowBatchTurn[]): readonly ShadowB
   return Object.freeze(turns);
 }
 
+function consumeBatchTurns(turns: readonly ShadowBatchTurn[]): void {
+  const unique = new Set<object>();
+  for (const turn of turns) {
+    if (unique.has(turn)) throw new Error("duplicate shadow batch turn");
+    if (!batchTurns.has(turn)) throw new Error("shadow batch turn is not registered");
+    if (consumedBatchTurns.has(turn)) throw new Error("shadow batch turn is already consumed");
+    unique.add(turn);
+  }
+  for (const turn of unique) consumedBatchTurns.add(turn);
+}
+
 export async function runConversationV2ShadowBatch(input: {
   senderBarrier: SenderDrainAttempted;
   turns: readonly ShadowBatchTurn[];
   policyReader: ConversationEnginePolicyReader;
-  evaluator: Readonly<{
-    evaluate(reads: CapturedV2TurnReads): Promise<ShadowEvaluation>;
-  }>;
+  selectionTrace: ConversationEngineSelectionTraceSink;
+  evaluator: ShadowEvaluator;
   sink: ConversationV2ComparisonSink;
   approval: InternalV2ActivationApproval | null;
   maxTurns: number;
@@ -349,19 +403,27 @@ export async function runConversationV2ShadowBatch(input: {
     hmacKey: string;
     commit: string;
     datasetDigest: HmacRef | null;
-    allowedModelIds: ReadonlySet<string>;
+    allowedModelIds: readonly string[];
   }>;
 }): Promise<ShadowBatchSummary> {
-  if (!barriers.has(input.senderBarrier)) throw new Error("sender barrier is not registered");
-  if (input.recordConfig.hmacKey.length < 32) throw new Error("comparison HMAC key must have at least 32 characters");
+  const turns = barrierBatches.get(input.senderBarrier);
+  const barrierRegistered = barriers.has(input.senderBarrier);
+  barriers.delete(input.senderBarrier);
+  barrierBatches.delete(input.senderBarrier);
+  if (
+    !turns
+    || turns !== input.turns
+    || !barrierRegistered
+  ) throw new Error("sender barrier is not registered for this batch snapshot");
+  consumeBatchTurns(turns);
+  const canonicalRecordConfig = canonicalizeComparisonRecordConfig(input.recordConfig);
   if (!Number.isSafeInteger(input.maxTurns) || input.maxTurns < 0) throw new Error("invalid maxTurns");
   if (!Number.isFinite(input.deadlineMs) || input.deadlineMs < 0) throw new Error("invalid deadlineMs");
-  const turns = snapshotBatchTurns(input.turns);
   const recordConfig = Object.freeze({
-    hmacKey: input.recordConfig.hmacKey,
-    commit: input.recordConfig.commit,
-    datasetDigest: input.recordConfig.datasetDigest,
-    allowedModelIds: new Set(input.recordConfig.allowedModelIds),
+    hmacKey: canonicalRecordConfig.hmacKey,
+    commit: canonicalRecordConfig.commit,
+    datasetDigest: canonicalRecordConfig.datasetDigest,
+    allowedModelIds: new Set(canonicalRecordConfig.allowedModelIds),
   });
 
   const startedAt = input.now();
@@ -380,6 +442,28 @@ export async function runConversationV2ShadowBatch(input: {
     deadlineReached: false,
   };
 
+  const recordSelection = async (
+    turn: ShadowBatchTurn,
+    selection: Readonly<{
+      configuredEngine: ConversationEngine | null;
+      effectiveRoute: "v1";
+      shadow: boolean;
+      reason: EffectiveConversationEngine["reason"] | "policy_unavailable";
+    }>,
+  ): Promise<void> => {
+    try {
+      await input.selectionTrace.record(Object.freeze({
+        turnRef: keyedRef(turn.turn.turnId, recordConfig.hmacKey),
+        clinicId: turn.clinicId,
+        occurredAt: turn.turn.sharedReads.input.now,
+        automationMode: turn.automationMode,
+        ...selection,
+      }));
+    } catch {
+      // Selection observability is best-effort and cannot affect V1 or shadow.
+    }
+  };
+
   for (let index = 0; index < turns.length; index += 1) {
     const turn = turns[index]!;
     if (index >= input.maxTurns) {
@@ -393,21 +477,54 @@ export async function runConversationV2ShadowBatch(input: {
       break;
     }
 
+    if (turn.automationMode !== "live") {
+      await recordSelection(turn, {
+        configuredEngine: null,
+        effectiveRoute: "v1",
+        shadow: false,
+        reason: "automation_not_live",
+      });
+      summary.skipped += 1;
+      continue;
+    }
+
     let selected = false;
     try {
-      const policy = await withDeadline(
-        input.policyReader.getConversationEnginePolicy(turn.clinicId),
+      const policy = await settleStartedDependency(
+        () => input.policyReader.getConversationEnginePolicy(turn.clinicId),
         deadlineAt - input.now(),
       );
       if (policy.clinicId !== turn.clinicId) throw new Error("conversation engine policy tenant mismatch");
       const effective = resolveConversationEngine({
-        automationMode: "live",
+        automationMode: turn.automationMode,
         policy,
         approval: input.approval,
       });
+      await recordSelection(turn, {
+        configuredEngine: policy.engine,
+        effectiveRoute: effective.route,
+        shadow: effective.shadow,
+        reason: effective.reason,
+      });
       selected = effective.shadow;
-    } catch {
+    } catch (error) {
+      if (error instanceof ShadowDeadlineError) {
+        summary.deadlineReached = true;
+        summary.skipped += turns.length - index;
+        break;
+      }
       summary.policyErrors += 1;
+      await recordSelection(turn, {
+        configuredEngine: null,
+        effectiveRoute: "v1",
+        shadow: false,
+        reason: "policy_unavailable",
+      });
+    }
+    if (input.now() >= deadlineAt) {
+      summary.deadlineReached = true;
+      summary.skipped += turns.length - index;
+      break;
     }
     if (!selected) {
       summary.skipped += 1;
@@ -422,14 +539,20 @@ export async function runConversationV2ShadowBatch(input: {
     } else {
       summary.attempted += 1;
       try {
-        evaluation = await withDeadline(
-          input.evaluator.evaluate(turn.promotion.reads),
+        const reads = turn.promotion.reads;
+        evaluation = await settleAbortableDependency(
+          (signal) => input.evaluator.evaluate(reads, signal),
           deadlineAt - input.now(),
         );
         if (evaluation.result.status === "unsupported") summary.unsupported += 1;
-      } catch {
+      } catch (error) {
         evaluation = errorEvaluation();
         summary.evaluationErrors += 1;
+        if (error instanceof ShadowDeadlineError) {
+          summary.deadlineReached = true;
+          summary.skipped += turns.length - index - 1;
+          break;
+        }
       }
     }
 
@@ -439,13 +562,23 @@ export async function runConversationV2ShadowBatch(input: {
         evaluation,
         ...recordConfig,
       });
-      await withDeadline(
-        input.sink.append({ clinicId: turn.clinicId, record }),
+      await settleStartedDependency(
+        () => input.sink.append({ clinicId: turn.clinicId, record }),
         deadlineAt - input.now(),
       );
       summary.persisted += 1;
-    } catch {
+    } catch (error) {
+      if (error instanceof ShadowDeadlineError) {
+        summary.deadlineReached = true;
+        summary.skipped += turns.length - index - 1;
+        break;
+      }
       summary.sinkErrors += 1;
+    }
+    if (input.now() >= deadlineAt) {
+      summary.deadlineReached = true;
+      summary.skipped += turns.length - index - 1;
+      break;
     }
   }
 

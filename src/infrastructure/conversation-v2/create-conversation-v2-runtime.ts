@@ -1,10 +1,14 @@
 import OpenAI from "openai";
 import type { ConversationEnginePolicyReader } from "@/application/ports/conversation-engine-policy-reader";
+import type {
+  ConversationEngineSelectionTraceSink,
+} from "@/application/ports/conversation-engine-selection-trace";
 import type { ConversationV2ComparisonSink } from "@/application/ports/conversation-v2-comparison-sink";
 import {
   createShadowTurnCaptureRegistry,
   type ShadowBatchTurn,
   type ShadowEvaluation,
+  type ShadowEvaluator,
 } from "@/application/conversation-v2/run-shadow-batch";
 import {
   V1ObservationCollector,
@@ -12,6 +16,10 @@ import {
 import { V2ShadowRunner } from "@/application/conversation-v2/v2-shadow-runner";
 import type { CapturedV2TurnReads } from "@/application/conversation-v2/captured-turn-reads";
 import type { V1TurnObservationSink } from "@/core/observability/V1TurnObservation";
+import {
+  recordDecisionTrace,
+  type DecisionTraceSink,
+} from "@/core/observability/DecisionTrace";
 import { DentalUnderstandingProvider } from "@/infrastructure/adapters/ai/DentalUnderstandingProvider";
 import { OpenAIDentalUnderstandingModel } from "@/infrastructure/adapters/ai/OpenAIDentalUnderstandingModel";
 import { DrizzleConversationEnginePolicyReader } from "@/infrastructure/repositories/drizzle-conversation-engine-policy-reader";
@@ -31,23 +39,7 @@ function positiveInteger(value: string | undefined, fallback: number): number {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function immutableStringSet(values: readonly string[]): ReadonlySet<string> {
-  const backing = new Set(values);
-  const result: ReadonlySet<string> = Object.freeze({
-    get size() { return backing.size; },
-    has: (value: string) => backing.has(value),
-    entries: () => backing.entries(),
-    keys: () => backing.keys(),
-    values: () => backing.values(),
-    forEach(callback: (value: string, value2: string, set: ReadonlySet<string>) => void, thisArg?: unknown) {
-      backing.forEach((value) => callback.call(thisArg, value, value, result));
-    },
-    [Symbol.iterator]: () => backing[Symbol.iterator](),
-  });
-  return result;
-}
-
-function allowedModels(env: RuntimeEnvironment, v2ModelId: string): ReadonlySet<string> {
+function allowedModels(env: RuntimeEnvironment, v2ModelId: string): readonly string[] {
   const configured = [
     v2ModelId,
     "gpt-4o-mini",
@@ -62,14 +54,14 @@ function allowedModels(env: RuntimeEnvironment, v2ModelId: string): ReadonlySet<
     env.OPENAI_COMPOSER_MODEL_ENTERPRISE,
     env.OPENAI_COMPOSER_MODEL_PREMIUM,
   ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
-  return immutableStringSet(configured.map((value) => value.trim()));
+  return Object.freeze([...new Set(configured.map((value) => value.trim()))]);
 }
 
 function createEvaluator(input: {
   env: RuntimeEnvironment;
   hmacKey: string;
   modelId: string;
-}): Readonly<{ evaluate(reads: CapturedV2TurnReads): Promise<ShadowEvaluation> }> {
+}): ShadowEvaluator {
   const apiKey = input.env.OPENAI_API_KEY?.trim() ?? "";
   if (!apiKey) {
     return Object.freeze({
@@ -87,7 +79,7 @@ function createEvaluator(input: {
     new OpenAIDentalUnderstandingModel(new OpenAI({ apiKey }), input.modelId),
   );
   return Object.freeze({
-    async evaluate(reads: CapturedV2TurnReads): Promise<ShadowEvaluation> {
+    async evaluate(reads: CapturedV2TurnReads, signal: AbortSignal): Promise<ShadowEvaluation> {
       if (reads.catalog.status !== "captured") {
         return Object.freeze({
           result: Object.freeze({ status: "unsupported" as const, reason: "shared_read_unavailable" as const }),
@@ -112,7 +104,7 @@ function createEvaluator(input: {
                   aliases: [],
                 }))
               : [],
-          });
+          }, { signal });
           understandingRequest = understanding.request;
           return understanding;
         },
@@ -139,6 +131,7 @@ export function createConversationV2Runtime(input: {
   collector?: V1ObservationCollector;
   policyReader?: ConversationEnginePolicyReader;
   comparisonSink?: ConversationV2ComparisonSink;
+  decisionTraceSink?: DecisionTraceSink;
 } = {}) {
   const env = input.env ?? process.env;
   const hmacKey = env.CONVERSATION_V2_COMPARISON_HMAC_KEY?.trim() ?? "";
@@ -156,6 +149,23 @@ export function createConversationV2Runtime(input: {
 
   return Object.freeze({
     policyReader,
+    selectionTrace: Object.freeze({
+      async record(trace: Parameters<ConversationEngineSelectionTraceSink["record"]>[0]) {
+        await recordDecisionTrace(input.decisionTraceSink, {
+          turnId: trace.turnRef,
+          stage: "conversation.engine_selected",
+          occurredAt: trace.occurredAt,
+          clinicId: trace.clinicId,
+          metadata: {
+            automationMode: trace.automationMode,
+            configuredEngine: trace.configuredEngine,
+            effectiveRoute: trace.effectiveRoute,
+            shadow: trace.shadow,
+            selectorReason: trace.reason,
+          },
+        });
+      },
+    }),
     sink: comparisonSink,
     evaluator: createEvaluator({ env, hmacKey, modelId }),
     approval: null,
@@ -171,6 +181,7 @@ export function createConversationV2Runtime(input: {
     createTurnObservationSink(binding: Readonly<{
       turnId: string;
       clinicId: string;
+      automationMode: "live";
     }>): V1TurnObservationSink {
       captureRegistry.bindTurn(binding);
       return Object.freeze({
