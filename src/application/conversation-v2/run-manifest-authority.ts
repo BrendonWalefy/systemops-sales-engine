@@ -10,7 +10,7 @@ import {
 
 export { CYCLE_I_RUN_MANIFEST_AUTHORITY_DOMAIN };
 export const CYCLE_I_RUN_MANIFEST_VERSION =
-  "conversation-v2-cycle-i-run-manifest.v2" as const;
+  "conversation-v2-cycle-i-run-manifest.v3" as const;
 export const CYCLE_I_GATE_ARTIFACT_KINDS = [
   "h_entailment", "shadow_no_effects", "cycle_f_axes", "rollback",
   "observability", "verification", "adversarial_review",
@@ -22,6 +22,7 @@ export type CycleIRunManifestSnapshot = Readonly<{
   version: typeof CYCLE_I_RUN_MANIFEST_VERSION;
   implementationCommit: string;
   implementationTreeDigest: HmacRef;
+  implementationSourceDigest: HmacRef;
   corpusRoot: string;
   manifestPath: string;
   d0Path: string;
@@ -56,6 +57,7 @@ const schema = z.object({
   version: z.literal(CYCLE_I_RUN_MANIFEST_VERSION),
   implementationCommit: z.string().regex(/^[a-f0-9]{7,64}$/),
   implementationTreeDigest: hmac,
+  implementationSourceDigest: hmac,
   corpusRoot: z.string().min(1), manifestPath: z.string().min(1),
   d0Path: z.string().min(1), comparabilityPath: z.string().min(1),
   comparabilityDigest: hmac, tenantConfigDigest: hmac,
@@ -137,7 +139,7 @@ function configMaterial(input: Record<string, unknown>): unknown {
 
 export function digestCycleIRunConfig(input: unknown): HmacRef {
   const snapshot = snapshotPlainData(input) as Record<string, unknown>;
-  return digest(configMaterial(snapshot), "cycle-i-run-config.v2");
+  return digest(configMaterial(snapshot), "cycle-i-run-config.v3");
 }
 
 export function digestCycleIRunManifest(input: unknown): HmacRef {
@@ -145,7 +147,7 @@ export function digestCycleIRunManifest(input: unknown): HmacRef {
   const material = Object.fromEntries(Object.entries(snapshot).filter(
     ([key]) => key !== "manifestDigest" && key !== "authoritySignature",
   ));
-  return digest(material, "cycle-i-run-manifest.v2");
+  return digest(material, "cycle-i-run-manifest.v3");
 }
 
 export function serializeCycleIRunManifestAuthorityPayload(input: unknown): string {

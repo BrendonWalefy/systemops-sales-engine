@@ -1,6 +1,9 @@
 import { execFileSync } from "node:child_process";
+import { statSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  computeCycleIImplementationSourceDigest,
   createGitCycleIBuildAttestation,
   isRegisteredCycleIBuildAttestation,
 } from "@/infrastructure/conversation-v2/git-cycle-i-build-attestation";
@@ -18,7 +21,11 @@ describe("Cycle I build attestation", () => {
     git.mockReturnValue(`${commit}\n${tree}\n${statusEnd}\nH src/relevant.ts\n`);
     expect(createGitCycleIBuildAttestation).toHaveLength(0);
     const attestation = createGitCycleIBuildAttestation();
-    expect(attestation).toMatchObject({ commit, tree, clean: true });
+    expect(attestation).toMatchObject({
+      commit,
+      tree,
+      sourceDigest: expect.stringMatching(/^hmac:[a-f0-9]{64}$/),
+    });
     expect(isRegisteredCycleIBuildAttestation(attestation)).toBe(true);
     expect(Object.isFrozen(attestation)).toBe(true);
     expect(git).toHaveBeenCalledOnce();
@@ -30,8 +37,10 @@ describe("Cycle I build attestation", () => {
     git.mockReturnValue(`${commit}\n${tree}\n${statusEnd}\nH src/relevant.ts\n`);
     const callerPath = process.env.PATH;
     const callerGitDir = process.env.GIT_DIR;
+    const callerWorkTree = process.env.GIT_WORK_TREE;
     process.env.PATH = "/tmp/cycle-i-malicious-path";
     process.env.GIT_DIR = "/tmp/cycle-i-attacker-repository";
+    process.env.GIT_WORK_TREE = "/tmp/cycle-i-clean-decoy";
     try {
       createGitCycleIBuildAttestation();
     } finally {
@@ -39,6 +48,8 @@ describe("Cycle I build attestation", () => {
       else process.env.PATH = callerPath;
       if (callerGitDir === undefined) delete process.env.GIT_DIR;
       else process.env.GIT_DIR = callerGitDir;
+      if (callerWorkTree === undefined) delete process.env.GIT_WORK_TREE;
+      else process.env.GIT_WORK_TREE = callerWorkTree;
     }
 
     const [executable, args, options] = git.mock.calls[0]!;
@@ -52,13 +63,15 @@ describe("Cycle I build attestation", () => {
         GIT_CONFIG_GLOBAL: "/dev/null",
         GIT_CONFIG_NOSYSTEM: "1",
         GIT_OPTIONAL_LOCKS: "0",
+        GIT_WORK_TREE: expect.stringMatching(/systemops-sales-engine-v2$/),
         LANG: "C",
         LC_ALL: "C",
         PATH: "/usr/bin:/bin",
       },
     });
     expect((options as { env?: Record<string, string> }).env).not.toHaveProperty("GIT_DIR");
-    expect((options as { env?: Record<string, string> }).env).not.toHaveProperty("GIT_WORK_TREE");
+    expect((options as { env?: Record<string, string> }).env?.GIT_WORK_TREE)
+      .toBe((options as { cwd: string }).cwd);
   });
 
   it.each([
@@ -79,5 +92,21 @@ describe("Cycle I build attestation", () => {
   ])("rejects the %s index flag even when status is empty", (_label, indexEntry) => {
     git.mockReturnValue(`${commit}\n${tree}\n${statusEnd}\n${indexEntry}\n`);
     expect(() => createGitCycleIBuildAttestation()).toThrow(/index|flag|clean|tree/i);
+  });
+
+  it("changes the source digest for same-size bytes even when mtime and Git output are unchanged", () => {
+    git.mockReturnValue(`${commit}\n${tree}\n${statusEnd}\nH src/relevant.ts\n`);
+    const probe = resolve("src/infrastructure/conversation-v2/.cycle-i-source-digest-probe");
+    try {
+      writeFileSync(probe, "aaaa", "utf8");
+      const before = statSync(probe);
+      const first = computeCycleIImplementationSourceDigest();
+      writeFileSync(probe, "bbbb", "utf8");
+      utimesSync(probe, before.atime, before.mtime);
+      const second = computeCycleIImplementationSourceDigest();
+      expect(second).not.toBe(first);
+    } finally {
+      try { unlinkSync(probe); } catch { /* cleanup after a failed assertion */ }
+    }
   });
 });

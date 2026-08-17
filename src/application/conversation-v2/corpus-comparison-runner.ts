@@ -93,6 +93,7 @@ export type CycleIComparisonRun = Readonly<{
   binding: Readonly<{
     implementationCommit: string;
     implementationTreeDigest: HmacRef;
+    implementationSourceDigest: HmacRef;
     runManifestDigest: HmacRef;
     configDigest: HmacRef;
     v1ModelId: string;
@@ -206,7 +207,8 @@ const comparisonRunSchema = z.object({
   authoritySignature: signatureSchema.nullable(),
   binding: z.object({
     implementationCommit: z.string().regex(/^[a-f0-9]{7,64}$/),
-    implementationTreeDigest: hmacSchema, runManifestDigest: hmacSchema,
+    implementationTreeDigest: hmacSchema, implementationSourceDigest: hmacSchema,
+    runManifestDigest: hmacSchema,
     configDigest: hmacSchema, v1ModelId: z.string().min(1), v2ModelId: z.string().min(1),
     v1PromptDigest: hmacSchema, v2PromptDigest: hmacSchema,
     v1AdapterId: z.literal("intent-classifier.v1"),
@@ -554,7 +556,10 @@ export async function runCycleICorpusComparison(input: Readonly<{
     if (
       input.buildAttestation.commit !== input.authority.implementationCommit
       || input.buildAttestation.treeDigest !== input.authority.implementationTreeDigest
-    ) throw new Error("Cycle I actual Git HEAD/tree does not match its authorized manifest");
+      || input.buildAttestation.sourceDigest !== input.authority.implementationSourceDigest
+    ) throw new Error(
+      "Cycle I actual Git HEAD/tree or implementation source bytes do not match its authorized manifest",
+    );
   }
   const productive = input.authority !== undefined
     && isRegisteredProductiveCycleIArms(
@@ -748,6 +753,7 @@ export async function runCycleICorpusComparison(input: Readonly<{
     binding: productive ? freeze({
       implementationCommit: input.authority!.implementationCommit,
       implementationTreeDigest: input.authority!.implementationTreeDigest,
+      implementationSourceDigest: input.authority!.implementationSourceDigest,
       runManifestDigest: input.authority!.manifestDigest,
       configDigest: input.authority!.configDigest,
       v1ModelId: input.authority!.v1.modelId,
@@ -905,6 +911,7 @@ export function parseProductiveCycleIComparisonRun(
     binding === null
     || binding.implementationCommit !== authority.implementationCommit
     || binding.implementationTreeDigest !== authority.implementationTreeDigest
+    || binding.implementationSourceDigest !== authority.implementationSourceDigest
     || binding.runManifestDigest !== authority.manifestDigest
     || binding.configDigest !== authority.configDigest
     || binding.v1ModelId !== authority.v1.modelId

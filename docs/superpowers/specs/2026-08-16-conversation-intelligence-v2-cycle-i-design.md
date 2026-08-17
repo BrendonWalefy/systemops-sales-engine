@@ -273,6 +273,23 @@ Before either productive arm is invoked, a closed Git adapter snapshots the actu
 manifest's commit and tree digest; caller/env claims and a dirty tree are rejected with zero model
 calls.
 
+**Superseding source-attestation amendment (2026-08-17, pre-result).** Independent review proved
+that Git status/index/config alone cannot attest the bytes actually executed: `PATH`,
+`core.worktree`, stat-cache settings, `assume-unchanged` and `skip-worktree` can each hide a
+different working file set. This decision was recorded while the real measurement state still had
+zero observations, no result artifact, an unsigned manifest/report and `NO_GO`; no denominator or
+quality threshold changed. Productive authority therefore additionally binds
+`implementationSourceDigest`, computed directly by Node filesystem reads from the module-derived
+repository root over the closed implementation scope (`src/**`, the Cycle-I CLI, package manifest,
+lockfile and TypeScript config). Canonical entries bind normalized relative path, file mode, size
+and SHA-256 of the bytes. Symlinks, root escapes, duplicate paths, hard-linked aliases,
+non-regular files and files changing during capture fail closed. This source digest—not Git
+status—is the primary proof of executed implementation bytes and must match the signed run
+manifest before any arm call. Commit/tree/status remain additional traceability and defense; the
+Git worktree and config overrides are closed constants rather than caller or local-config
+authority. Metadata and generated gate artifacts are deliberately outside the implementation
+scope to avoid an autorreferential digest and remain separately content-bound.
+
 Decision evidence uses `conversation-v2-decision-fixtures.v2`. The signed run manifest binds the
 fixture file digest and its frozen population digest. The file predeclares applicability for all
 17 cases, and fixtures must exactly equal the applicable subset. A write receipt is content-bound

@@ -621,6 +621,16 @@ Rollback operacional imediato: atualizar `organizations.conversation_engine` par
 > all gate/human/replay evidence must come from registered, content-bound authority parsers rather
 > than HMAC-shaped caller inputs.
 
+> **Superseding source-attestation amendment (2026-08-17, pre-result):** review demonstrated that
+> Git config/index/stat state cannot prove the bytes being executed. While the committed state
+> still had zero real observations, unsigned artifacts and `NO_GO` (with every threshold and
+> denominator unchanged), productive admission was strengthened to require a manifest-bound
+> `implementationSourceDigest`. Node recomputes it from a closed module-root scope covering
+> `src/**`, the Cycle-I CLI, package/lock and TypeScript config; path, mode, size and file bytes are
+> canonical, while symlinks/escapes/duplicates/hardlinks/non-regular or concurrently changing files
+> fail closed. Git commit/tree are retained only as additional traceability. The source digest must
+> match before any productive arm call; generated metadata is excluded to avoid self-reference.
+
 > **Amendment after independent Task 6 review:** productive evidence is accepted only from the
 > canonical parsed runner snapshot bound to a configured-authority-signed run manifest; serialized
 > runs additionally require a measurement-run signature. The manifest binds commit/tree,
