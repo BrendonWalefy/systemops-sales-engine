@@ -29,6 +29,13 @@ export type BookingResult =
   | { success: true; appointment: Appointment }
   | { success: false; reason: "slot_taken" | "calendar_error" | "db_error" };
 
+export type AppointmentConfirmationResult =
+  | { success: true; appointment: Appointment }
+  | {
+      success: false;
+      reason: "invalid_binding" | "appointment_not_active" | "db_error";
+    };
+
 export type BookingReservationService = {
   releaseExpired(): Promise<void>;
   reserve(clinicId: string, leadId: string, startsAt: Date, endsAt: Date, ttlMinutes?: number): Promise<SlotReservation | null>;
@@ -222,6 +229,40 @@ export class BookingService {
     }
 
     return { success: true, appointment };
+  }
+
+  async confirmAppointment(params: {
+    clinic: Organization;
+    lead: Lead;
+    appointment: Appointment;
+  }): Promise<AppointmentConfirmationResult> {
+    const { clinic, lead, appointment } = params;
+    if (
+      lead.clinicId !== clinic.id ||
+      appointment.clinicId !== clinic.id ||
+      appointment.leadId !== lead.id
+    ) {
+      return { success: false, reason: "invalid_binding" };
+    }
+    if (appointment.status === "confirmed") {
+      return { success: true, appointment };
+    }
+    if (appointment.status !== "scheduled") {
+      return { success: false, reason: "appointment_not_active" };
+    }
+
+    const confirmed = {
+      ...appointment,
+      status: "confirmed" as const,
+      updatedAt: new Date(),
+    };
+    try {
+      await this.appointmentRepo.save(confirmed);
+    } catch (err) {
+      console.error("[BookingService] Failed to confirm appointment in DB:", err);
+      return { success: false, reason: "db_error" };
+    }
+    return { success: true, appointment: confirmed };
   }
 
   async cancel(params: {

@@ -379,3 +379,51 @@ describe("BookingService — double-booking guards", () => {
     consoleError.mockRestore();
   });
 });
+
+describe("BookingService — tenant-scoped appointment confirmation", () => {
+  it("confirms a scheduled appointment through the existing appointment repository", async () => {
+    const { appointmentRepo, service } = setup();
+    const scheduled = appointment();
+
+    const result = await service.confirmAppointment({ clinic, lead, appointment: scheduled });
+
+    expect(result.success).toBe(true);
+    expect(appointmentRepo.saved).toEqual([
+      expect.objectContaining({ id: scheduled.id, status: "confirmed" }),
+    ]);
+  });
+
+  it("returns an already-confirmed same-lead appointment without writing again", async () => {
+    const { appointmentRepo, service } = setup();
+    const confirmed = appointment();
+    confirmed.status = "confirmed";
+
+    const result = await service.confirmAppointment({ clinic, lead, appointment: confirmed });
+
+    expect(result).toEqual({ success: true, appointment: confirmed });
+    expect(appointmentRepo.saved).toEqual([]);
+  });
+
+  it("rejects a foreign tenant or lead before writing", async () => {
+    const { appointmentRepo, service } = setup();
+
+    await expect(service.confirmAppointment({
+      clinic,
+      lead,
+      appointment: appointment(),
+    })).resolves.toMatchObject({ success: true });
+    appointmentRepo.saved.length = 0;
+
+    await expect(service.confirmAppointment({
+      clinic,
+      lead,
+      appointment: { ...appointment(), clinicId: "other-clinic" },
+    })).resolves.toEqual({ success: false, reason: "invalid_binding" });
+    await expect(service.confirmAppointment({
+      clinic,
+      lead,
+      appointment: { ...appointment(), leadId: "other-lead" },
+    })).resolves.toEqual({ success: false, reason: "invalid_binding" });
+    expect(appointmentRepo.saved).toEqual([]);
+  });
+});

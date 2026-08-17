@@ -32,6 +32,7 @@ export type FormattedSlot = {
 export type SlotsOfferedPayload = {
   slots: FormattedSlot[];
   expiresAt: string; // ISO UTC
+  treatmentId?: string;
   treatmentName?: string;
   durationMinutes?: number;
 };
@@ -232,6 +233,7 @@ export class ConversationStateMachine {
     durationMinutes?: number,
     ttlMinutes?: number,
     voiceEnabled?: boolean,
+    treatmentId?: string,
   ): Promise<FormattedSlot[]> {
     const formatted: FormattedSlot[] = slots.map((s, i) => ({
       index: i + 1,
@@ -244,6 +246,7 @@ export class ConversationStateMachine {
     const payload: SlotsOfferedPayload = {
       slots: formatted,
       expiresAt: expiresAt.toISOString(),
+      ...(treatmentId && { treatmentId }),
       ...(treatmentName && { treatmentName }),
       ...(durationMinutes && { durationMinutes }),
     };
