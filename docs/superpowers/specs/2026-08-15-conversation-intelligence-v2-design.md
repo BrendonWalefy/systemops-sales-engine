@@ -611,6 +611,36 @@ O desenho operacional, schema de persistência, critérios de privacidade, rollb
 decisão estão em
 [`2026-08-16-conversation-intelligence-v2-cycle-i-design.md`](./2026-08-16-conversation-intelligence-v2-cycle-i-design.md).
 
+### 11.2 Emenda canônica: deadline de admissão e drain obrigatório
+
+Decisão `CI-V2-I-ADMISSION-DEADLINE-2026-08-16`, aprovada em 2026-08-16 como resolução
+prospectiva do blocker arquitetural restante da Task 5:
+
+- `deadlineAt` fecha **admissão**. A partir desse instante, nenhuma nova chamada a provider,
+  leitura/escrita de banco, side effect ou operação assíncrona relevante pode começar;
+- toda operação admitida antes de `deadlineAt` é observada e aguardada até conclusão ou falha
+  explícita. Não existe Promise órfã, fire-and-forget nem `Promise.race` que devolva enquanto
+  trabalho iniciado permanece vivo;
+- cancelamento é cooperativo e só é alegado onde a primitiva o comprova. O provider/OpenAI
+  recebe `AbortSignal`; aborto do fetch não é evidência de cancelamento server-side no Neon;
+- para Drizzle/Neon, o runtime verifica a admissão imediatamente antes de iniciar cada operação
+  e, depois do início, aguarda seu settlement. Nenhuma mutação nova começa com admissão fechada
+  nem pode ser despachada depois da criação do summary;
+- o retorno pode ocorrer depois de T enquanto operações já admitidas são drenadas. Esse estado é
+  **overrun**, nunca conformidade com deadline estrito;
+- o summary expõe, sem IDs crus ou PII, o overrun medido, se a admissão fechou e os fatos de drain
+  das operações admitidas. Relógio malformado não pode converter overrun em sucesso aparente;
+- strict return-by-T com zero órfão e zero commit pós-retorno requer outra fronteira de execução
+  e propriedade de cancelamento. Essa evolução fica futura; nenhum worker, fila ou redesign é
+  introduzido nesta emenda.
+
+Racional: a implementação anterior da Task 5 recebeu QUALITY PASS; o blocker era exclusivamente
+semântico/arquitetural. As portas atuais não demonstram a antiga garantia e o `AbortSignal` do
+Neon HTTP não prova ausência de commit server-side. Preservar segurança por drain explícito tem
+precedência sobre simular strictness com abandono de Promise. Esta decisão não relaxa isolamento
+de tenant, aprovação, autoridade, envelopes single-use, sender barrier, rollback, isolamento de
+escrita ou observabilidade.
+
 ## 12. Corpus e evals
 
 Três camadas. A do meio é a que a V1 nunca teve, e é onde os bugs vivem.

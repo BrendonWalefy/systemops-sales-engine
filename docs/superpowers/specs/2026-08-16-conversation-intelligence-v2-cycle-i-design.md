@@ -94,10 +94,37 @@ durable inbound event
 ```
 
 The shadow batch is turn-local and in memory; it does no I/O while V1 runs. The worker invokes it
-only after V1 inbound processing and the existing sender drain are terminal. It has a strict
-tenant/window budget and is awaited—never fire-and-forget in serverless. An exception, timeout,
-malformed result or missing captured read becomes a best-effort V2 error record after delivery
-and cannot change V1 acknowledgement, outbox or delivery.
+only after V1 inbound processing and the existing sender drain are terminal. It has a
+tenant/window admission deadline and is awaited—never fire-and-forget in serverless. An exception,
+admission closure, malformed result or missing captured read becomes a best-effort V2 error
+record after delivery and cannot change V1 acknowledgement, outbox or delivery. Work admitted
+before the deadline is drained even when that makes the batch return after the nominal window.
+
+## Admission deadline, mandatory drain and cooperative cancellation
+
+Decision `CI-V2-I-ADMISSION-DEADLINE-2026-08-16`, approved on 2026-08-16, replaces every promise
+of strict return-by-T in Task 5 with this exact runtime contract:
+
+1. `deadlineAt` is an admission deadline. No provider call, DB read/write, side effect or other
+   relevant asynchronous operation may start at or after it.
+2. Every operation admitted before `deadlineAt` is observed and awaited to explicit completion or
+   failure. No orphan Promise and no `Promise.race` may let the batch return while work remains.
+3. Cancellation is cooperative where proven. The provider/OpenAI boundary receives
+   `AbortSignal`; fetch cancellation is not treated as proof of server-side DB cancellation.
+4. Drizzle/Neon operations are prechecked immediately before start and then awaited. No mutation
+   may start after admission closes or be dispatched after summary creation.
+5. Return after T while draining admitted work is measured and named `overrun`, never strict
+   deadline compliance.
+6. The frozen, PII-free summary exposes whether admission closed, measured overrun and admitted
+   operation drain facts. A malformed/non-monotonic clock fails closed and cannot hide overrun.
+7. Strict return-by-T together with no orphan and no post-return commit needs a different
+   execution boundary and cancellation owner. That is future architecture, not part of Cycle I.
+
+This amendment is prospective and traceable to the Task 5 report: the prior implementation had a
+QUALITY PASS, while the remaining blocker was semantic/architectural. Current ports cannot prove
+the old guarantee, and a Neon HTTP abort cannot prove that the server did not commit. Mandatory
+drain is therefore the safety-preserving choice. Tenant isolation, approvals, authority,
+single-use envelopes, sender ordering, rollback, write isolation and observability remain intact.
 
 ## Composition root and dependency direction
 

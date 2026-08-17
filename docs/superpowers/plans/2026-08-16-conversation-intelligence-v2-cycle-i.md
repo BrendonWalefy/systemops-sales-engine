@@ -28,6 +28,7 @@
 - Selector fechado: `v1 | v1_with_v2_shadow | v2_internal`, default `v1`, distinto do legado `shadowModeEnabled`. `disabled` e `observe` têm precedência e nunca executam shadow/V2.
 - A implementação inicial mantém execução real `v2_internal` desabilitada, mesmo para tenant `isTest`; falta do shell produtivo completo ou de qualquer gate retorna a V1 antes de efeito V2 e registra razão fechada.
 - Shadow só começa após V1 terminal e depois da tentativa de drenagem do sender. É awaited e best-effort; sua falha não muda acknowledgement, outbox, entrega ou resposta V1.
+- Decisão `CI-V2-I-ADMISSION-DEADLINE-2026-08-16`: o budget da Task 5 é deadline de **admissão**, não garantia de retorno por T. Nenhuma operação relevante começa em/depois de `deadlineAt`; toda operação admitida antes dele é drenada até settlement explícito. Provider recebe cancelamento cooperativo por `AbortSignal`; Drizzle/Neon é prechecked antes do início e, uma vez iniciado, sempre awaited. Retorno após T é overrun medido e visível, nunca compliance estrito. Não usar `Promise.race`, abandonar Promise nem inferir cancelamento server-side de DB. Strict return-by-T exige outra fronteira de execução/cancelamento e fica fora deste plano.
 - O core genérico continua sem imports de Domain Pack, provider, DB, calendário, config, V1 ou persistência de comparação. O Dental Pack continua sem importar provider específico.
 - Sem novo event bus, framework de plugin, RAG, renderer probabilístico, capability Information/Media/Objection/Discount/FollowUp, cutover externo, remoção de V1 ou limpeza do Ciclo J.
 - Mudança em `src/infrastructure/db/schema.ts` exige migration gerada por `npm run db:generate`; não editar SQL/snapshot gerado à mão.
@@ -474,6 +475,15 @@ git commit -m "feat(conversation-v2): expose immutable V1 turn observations"
 
 ### Task 5: Selector tenant-scoped, persistência sanitizada e wiring pós-sender
 
+**Emenda datada de 2026-08-16.** A implementação anterior recebeu QUALITY PASS; o único blocker
+remanescente era a promessa semanticamente impossível de strict return-by-T junto de zero
+trabalho abandonado e zero mutação pós-retorno nas portas in-process atuais. Neon HTTP
+`AbortSignal` não prova ausência de commit server-side. A Task 5 passa a ser aceita pelo contrato
+de admission deadline + mandatory drain da decisão
+`CI-V2-I-ADMISSION-DEADLINE-2026-08-16`, sem relaxar nenhum gate de autoridade, tenant, sender,
+single-use, write isolation, rollback, privacidade ou observabilidade. A arquitetura futura para
+strict return-by-T não será construída nesta task.
+
 **Files:**
 - Modify: `src/infrastructure/db/schema.ts`
 - Create generated: `drizzle/0099_*.sql`
@@ -520,6 +530,13 @@ export async function runConversationV2ShadowBatch(input: { senderBarrier: Sende
 tentativa de `drainMessageSendQueue` terminou, com sucesso ou erro já tratado. O batch rejeita
 cast/objeto forjado. O token prova ordering da tentativa do lote; não afirma entrega individual.
 
+`ShadowBatchSummary` é frozen e registra: instante de deadline de admissão, se/quando a admissão
+fechou, instante de retorno, overrun medido e contagem fechada das operações admitidas,
+concluídas, falhas, aborts cooperativos e operações ainda ativas (que deve ser zero). Esses fatos
+não contêm IDs crus ou PII. Relógio não finito ou regressivo fecha admissão/falha conservadoramente
+e jamais permite summary que aparente compliance. O summary é criado somente depois do drain;
+portanto nenhuma escrita pode ser despachada depois dele.
+
 Schema: enum PostgreSQL `conversation_engine`; coluna `organizations.conversation_engine NOT NULL DEFAULT 'v1'`; tabela `conversation_v2_comparisons` com `turn_ref` PK HMAC, `organization_id` FK cascade, `record` JSONB, `occurred_at`, `expires_at`, `created_at`, índices tenant/time e expiry. Retenção: 30 dias. Nenhum texto/PII tem coluna própria.
 
 - [ ] **Step 1: escrever RED do selector e aprovação**
@@ -544,7 +561,7 @@ Expected: FAIL por adapters ausentes.
 
 - [ ] **Step 5: escrever RED do batch e composition root**
 
-Testar que o batch rejeita ausência/cast de `SenderDrainAttempted`, só começa com token criado após uma promise-sentinel do sender, e aceita `completed` ou `failed_handled` sem confundir tentativa com entrega. Cobrir lote vazio e processamento V1 concorrente; o batch é awaited, respeita `maxTurns`/deadline, e uma falha V2/sink não altera summary V1. Nunca roda para `observe`, `disabled`, `v1` ou `v2_internal`; resolve policy uma vez por `clinicId`/turn sem cache cross-tenant. Teste estático confirma que route não reutiliza `shadowModeEnabled` como selector e não contém lógica de domínio.
+Testar que o batch rejeita ausência/cast de `SenderDrainAttempted`, só começa com token criado após uma promise-sentinel do sender, e aceita `completed` ou `failed_handled` sem confundir tentativa com entrega. Cobrir lote vazio e processamento V1 concorrente; o batch é awaited, respeita `maxTurns` e a deadline de admissão, e uma falha V2/sink não altera summary V1. Provar por thunks que nenhuma policy read, avaliação, sink write ou operação relevante começa em/depois de `deadlineAt`; provider cancelável recebe abort; cada operação admitida é observada e drenada antes do retorno; zero Promise fica órfã; sink/DB write não começa depois do fechamento da admissão nem depois da criação do summary; operação DB não cancelável admitida pode terminar após T, mas incrementa overrun em vez de strict compliance; relógio malformado não oculta overrun. Nunca roda para `observe`, `disabled`, `v1` ou `v2_internal`; resolve policy uma vez por `clinicId`/turn sem cache cross-tenant. Teste estático confirma que route não reutiliza `shadowModeEnabled` como selector e não contém lógica de domínio.
 
 - [ ] **Step 6: implementar adapters e wiring mínimo**
 
@@ -553,7 +570,9 @@ trata o resultado, cria `SenderDrainAttempted` e somente então chama
 `runConversationV2ShadowBatch`. `createConversationV2Runtime` instancia OpenAI Understanding,
 deterministic composer, collector, policy reader e comparison sink; ausência de
 `OPENAI_API_KEY` torna shadow `error` sem afetar V1. Não adicionar chamada a V2 dentro do core V1
-nem fire-and-forget.
+nem fire-and-forget. Implementar admission controller único: precheck imediatamente antes de cada
+thunk; `AbortSignal` apenas no provider; toda Promise iniciada registrada e awaited; summary
+somente após o drain, com overrun e fatos de admissão congelados. Não usar `Promise.race`.
 
 - [ ] **Step 7: confirmar GREEN, schema e purge**
 
@@ -563,7 +582,9 @@ Run: `npm run db:check`
 
 Run only against the dedicated test env if `.env.test.local` is configured: `npm run test:db`. Nunca carregar `.env.local` para teste/migration apply.
 
-Expected: PASS; migration metadata consistente; `v2_internal` não executável.
+Expected: PASS; migration metadata consistente; `v2_internal` não executável; zero operação
+ativa no retorno, nenhuma nova admissão após T e todo retorno após T explicitamente contado como
+overrun.
 
 - [ ] **Step 8: commit schema/migration separadamente**
 
