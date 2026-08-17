@@ -151,6 +151,17 @@ async function runRawRegisteredBatch(
   return postSender.shadowResult;
 }
 
+async function flushMicrotasksUntil(
+  predicate: () => boolean,
+  failureMessage: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await Promise.resolve();
+  }
+  throw new Error(failureMessage);
+}
+
 describe("Cycle I post-sender shadow batch", () => {
   it.each(["completed", "failed_handled"] as const)(
     "creates a registered %s barrier only after the awaited sender attempt settles",
@@ -736,6 +747,10 @@ describe("Cycle I post-sender shadow batch", () => {
 
     try {
       const running = runRegisteredBatch({ turns: [turn], ...input });
+      await flushMicrotasksUntil(
+        () => receivedSignals.length === 1,
+        "evaluator was not admitted before the controlled deadline",
+      );
       await vi.advanceTimersByTimeAsync(10);
       const summary = await running;
       expect(summary).toMatchObject({
@@ -776,12 +791,14 @@ describe("Cycle I post-sender shadow batch", () => {
   it("drains a provider that ignores abort without claiming cooperative cancellation", async () => {
     vi.useFakeTimers({ now: 0 });
     const turn = capturedTurn({ turnId: "turn-provider-ignored-abort", clinicId: "clinic-a", ready: true });
+    let providerStarted = false;
     let providerSettled = false;
     const input = deps({
       deadlineMs: 5,
       now: () => Date.now(),
       evaluator: {
         evaluate: vi.fn(() => new Promise((resolve) => {
+          providerStarted = true;
           setTimeout(() => {
             providerSettled = true;
             resolve({
@@ -796,6 +813,10 @@ describe("Cycle I post-sender shadow batch", () => {
 
     try {
       const running = runRegisteredBatch({ turns: [turn], ...input });
+      await flushMicrotasksUntil(
+        () => providerStarted,
+        "provider was not admitted before the controlled deadline",
+      );
       await vi.advanceTimersByTimeAsync(25);
       const summary = await running;
 
@@ -869,6 +890,10 @@ describe("Cycle I post-sender shadow batch", () => {
 
     try {
       const running = runRegisteredBatch({ turns: [turn], ...input });
+      await flushMicrotasksUntil(
+        () => create.mock.calls.length === 1,
+        "productive provider was not admitted before the controlled deadline",
+      );
       await vi.advanceTimersByTimeAsync(5);
       const summary = await running;
 
