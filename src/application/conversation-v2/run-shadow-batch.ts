@@ -66,6 +66,26 @@ export type ShadowEngineSelection = Readonly<{
   reason: EffectiveConversationEngine["reason"] | "policy_unavailable";
 }>;
 
+export type ShadowAdmissionDeadlineSummary = Readonly<{
+  startedAt: number;
+  deadlineAt: number;
+  admissionClosed: boolean;
+  admissionClosedAt: number | null;
+  returnedAt: number | null;
+  overrun: boolean;
+  overrunMs: number;
+  clockStatus: "valid" | "malformed";
+}>;
+
+export type ShadowOperationDrainSummary = Readonly<{
+  admitted: number;
+  settled: number;
+  completed: number;
+  failed: number;
+  cooperativelyAborted: number;
+  activeAtReturn: number;
+}>;
+
 export type ShadowBatchSummary = Readonly<{
   received: number;
   selected: number;
@@ -78,6 +98,8 @@ export type ShadowBatchSummary = Readonly<{
   sinkErrors: number;
   maxTurnsReached: boolean;
   deadlineReached: boolean;
+  deadline: ShadowAdmissionDeadlineSummary;
+  drain: ShadowOperationDrainSummary;
   selections: readonly ShadowEngineSelection[];
 }>;
 
@@ -328,38 +350,185 @@ class ShadowClockError extends Error {}
 const MAX_SHADOW_BATCH_TURNS = 1_000;
 const MAX_SHADOW_BATCH_DEADLINE_MS = 60_000;
 
-function requireRemainingBudget(remainingMs: number): void {
-  if (remainingMs <= 0) throw new ShadowDeadlineError("shadow deadline reached before dependency start");
+type ShadowOperationKind = "policy_read" | "provider_call" | "comparison_write";
+
+type AdmissionState = {
+  now: () => number;
+  startedAt: number;
+  deadlineAt: number;
+  deadlineMs: number;
+  monotonicStartedAt: number;
+  lastClockSample: number;
+  clockStatus: "valid" | "malformed";
+  admissionClosed: boolean;
+  admissionClosedAt: number | null;
+  operations: {
+    admitted: number;
+    completed: number;
+    failed: number;
+    cooperativelyAborted: number;
+    active: number;
+  };
+};
+
+function monotonicElapsedMs(state: AdmissionState): number {
+  return Math.max(0, performance.now() - state.monotonicStartedAt);
+}
+
+function closeAdmission(state: AdmissionState, occurredAt: number): void {
+  state.admissionClosed = true;
+  if (state.admissionClosedAt === null) state.admissionClosedAt = occurredAt;
+}
+
+function sampleRuntimeClock(state: AdmissionState): number | null {
+  let sample: number;
+  try {
+    sample = state.now();
+  } catch {
+    state.clockStatus = "malformed";
+    closeAdmission(
+      state,
+      monotonicElapsedMs(state) >= state.deadlineMs
+        ? state.deadlineAt
+        : state.lastClockSample,
+    );
+    return null;
+  }
+  if (!Number.isFinite(sample) || sample < state.lastClockSample) {
+    state.clockStatus = "malformed";
+    closeAdmission(
+      state,
+      monotonicElapsedMs(state) >= state.deadlineMs
+        ? state.deadlineAt
+        : state.lastClockSample,
+    );
+    return null;
+  }
+  state.lastClockSample = sample;
+  return sample;
+}
+
+function observeAdmission(state: AdmissionState): Readonly<{ remainingMs: number }> | null {
+  if (state.admissionClosed) return null;
+  const sample = sampleRuntimeClock(state);
+  if (sample === null) return null;
+  const wallRemainingMs = state.deadlineAt - sample;
+  const monotonicRemainingMs = state.deadlineMs - monotonicElapsedMs(state);
+  if (wallRemainingMs <= 0 || monotonicRemainingMs <= 0) {
+    closeAdmission(state, wallRemainingMs <= 0 ? sample : state.deadlineAt);
+    return null;
+  }
+  return Object.freeze({ remainingMs: Math.min(wallRemainingMs, monotonicRemainingMs) });
+}
+
+function requireAdmission(state: AdmissionState): Readonly<{ remainingMs: number }> {
+  const admission = observeAdmission(state);
+  if (!admission) {
+    throw new ShadowDeadlineError("shadow admission deadline reached before dependency start");
+  }
+  return admission;
 }
 
 async function settleStartedDependency<T>(
+  state: AdmissionState,
+  _kind: Exclude<ShadowOperationKind, "provider_call">,
   start: () => Promise<T>,
-  remainingMs: number,
 ): Promise<T> {
-  requireRemainingBudget(remainingMs);
-  return start();
+  requireAdmission(state);
+  state.operations.admitted += 1;
+  state.operations.active += 1;
+  try {
+    const result = await start();
+    state.operations.completed += 1;
+    return result;
+  } catch (error) {
+    state.operations.failed += 1;
+    throw error;
+  } finally {
+    state.operations.active -= 1;
+  }
 }
 
 async function settleAbortableDependency<T>(
+  state: AdmissionState,
+  _kind: Extract<ShadowOperationKind, "provider_call">,
   start: (signal: AbortSignal) => Promise<T>,
-  remainingMs: number,
 ): Promise<T> {
-  requireRemainingBudget(remainingMs);
+  const { remainingMs } = requireAdmission(state);
+  state.operations.admitted += 1;
+  state.operations.active += 1;
   const controller = new AbortController();
   const timeout = setTimeout(
-    () => controller.abort(new ShadowDeadlineError("shadow dependency deadline reached")),
+    () => {
+      closeAdmission(state, state.deadlineAt);
+      controller.abort(new ShadowDeadlineError("shadow dependency admission deadline reached"));
+    },
     remainingMs,
   );
   try {
     const result = await start(controller.signal);
     if (controller.signal.aborted) throw new ShadowDeadlineError("shadow dependency deadline reached");
+    state.operations.completed += 1;
     return result;
   } catch (error) {
-    if (controller.signal.aborted) throw new ShadowDeadlineError("shadow dependency deadline reached");
+    state.operations.failed += 1;
+    if (controller.signal.aborted) {
+      state.operations.cooperativelyAborted += 1;
+      throw new ShadowDeadlineError("shadow dependency deadline reached");
+    }
     throw error;
   } finally {
     clearTimeout(timeout);
+    state.operations.active -= 1;
   }
+}
+
+function finalizeAdmission(state: AdmissionState): Readonly<{
+  deadline: ShadowAdmissionDeadlineSummary;
+  drain: ShadowOperationDrainSummary;
+}> {
+  const returnedAt = sampleRuntimeClock(state);
+  const elapsedMs = monotonicElapsedMs(state);
+  if (
+    (returnedAt !== null && returnedAt >= state.deadlineAt)
+    || elapsedMs >= state.deadlineMs
+  ) {
+    closeAdmission(
+      state,
+      returnedAt !== null && returnedAt >= state.deadlineAt
+        ? returnedAt
+        : state.deadlineAt,
+    );
+  }
+  const wallOverrunMs = returnedAt === null
+    ? 0
+    : Math.max(0, returnedAt - state.deadlineAt);
+  const overrunMs = Math.max(
+    wallOverrunMs,
+    Math.max(0, elapsedMs - state.deadlineMs),
+  );
+  const deadline = Object.freeze({
+    startedAt: state.startedAt,
+    deadlineAt: state.deadlineAt,
+    admissionClosed: state.admissionClosed,
+    admissionClosedAt: state.admissionClosedAt,
+    returnedAt,
+    overrun: overrunMs > 0,
+    overrunMs,
+    clockStatus: state.clockStatus,
+  });
+  const drain = Object.freeze({
+    admitted: state.operations.admitted,
+    settled: state.operations.completed + state.operations.failed,
+    completed: state.operations.completed,
+    failed: state.operations.failed,
+    cooperativelyAborted: state.operations.cooperativelyAborted,
+    activeAtReturn: state.operations.active,
+  });
+  if (drain.activeAtReturn !== 0 || drain.settled !== drain.admitted) {
+    throw new Error("shadow batch returned before mandatory drain completed");
+  }
+  return Object.freeze({ deadline, drain });
 }
 
 function snapshotBatchTurns(input: readonly ShadowBatchTurn[]): readonly ShadowBatchTurn[] {
@@ -476,19 +645,40 @@ export async function runConversationV2ShadowBatch(input: {
   ) throw new Error("invalid deadlineMs bound");
   if (typeof source.now !== "function") throw new Error("invalid shadow batch clock");
   const now = source.now as () => number;
-  let lastClockSample = Number.NEGATIVE_INFINITY;
-  const sampleNow = (): number => {
-    const sample = now();
-    if (!Number.isFinite(sample) || sample < lastClockSample) {
-      throw new ShadowClockError("shadow batch clock must be finite and monotonic");
-    }
-    lastClockSample = sample;
-    return sample;
-  };
-  const startedAt = sampleNow();
-  sampleNow();
+  const monotonicStartedAt = performance.now();
+  let startedAt: number;
+  let confirmedAt: number;
+  try {
+    startedAt = now();
+    confirmedAt = now();
+  } catch {
+    throw new ShadowClockError("shadow batch clock must be finite and monotonic");
+  }
+  if (
+    !Number.isFinite(startedAt)
+    || !Number.isFinite(confirmedAt)
+    || confirmedAt < startedAt
+  ) throw new ShadowClockError("shadow batch clock must be finite and monotonic");
   const deadlineAt = startedAt + (deadlineMs as number);
   if (!Number.isFinite(deadlineAt)) throw new Error("invalid shadow batch deadline");
+  const admission: AdmissionState = {
+    now,
+    startedAt,
+    deadlineAt,
+    deadlineMs: deadlineMs as number,
+    monotonicStartedAt,
+    lastClockSample: confirmedAt,
+    clockStatus: "valid",
+    admissionClosed: false,
+    admissionClosedAt: null,
+    operations: {
+      admitted: 0,
+      completed: 0,
+      failed: 0,
+      cooperativelyAborted: 0,
+      active: 0,
+    },
+  };
   const policyRead = captureDependencyMethod<
     (clinicId: string) => Promise<unknown>
   >(source.policyReader, "getConversationEnginePolicy");
@@ -559,7 +749,7 @@ export async function runConversationV2ShadowBatch(input: {
       summary.maxTurnsReached = true;
       break;
     }
-    if (sampleNow() >= deadlineAt) {
+    if (!observeAdmission(admission)) {
       summary.skipped += turns.length - index;
       summary.deadlineReached = true;
       break;
@@ -579,8 +769,9 @@ export async function runConversationV2ShadowBatch(input: {
     let selected = false;
     try {
       const rawPolicy = await settleStartedDependency(
+        admission,
+        "policy_read",
         () => policyRead(turn.clinicId),
-        deadlineAt - sampleNow(),
       );
       const policy = canonicalizeConversationEnginePolicy(rawPolicy, turn.clinicId);
       const effective = resolveConversationEngine({
@@ -597,7 +788,6 @@ export async function runConversationV2ShadowBatch(input: {
       });
       selected = effective.shadow;
     } catch (error) {
-      if (error instanceof ShadowClockError) throw error;
       if (error instanceof ShadowDeadlineError) {
         summary.deadlineReached = true;
         summary.skipped += turns.length - index;
@@ -611,7 +801,7 @@ export async function runConversationV2ShadowBatch(input: {
         reason: "policy_unavailable",
       });
     }
-    if (sampleNow() >= deadlineAt) {
+    if (!observeAdmission(admission)) {
       summary.deadlineReached = true;
       summary.skipped += turns.length - index;
       break;
@@ -631,14 +821,14 @@ export async function runConversationV2ShadowBatch(input: {
       try {
         const reads = turn.promotion.reads;
         evaluation = await settleAbortableDependency(
+          admission,
+          "provider_call",
           (signal) => evaluate(reads, signal),
-          deadlineAt - sampleNow(),
         );
         if (evaluation.result.status === "unsupported") summary.unsupported += 1;
       } catch (error) {
         evaluation = errorEvaluation();
         summary.evaluationErrors += 1;
-        if (error instanceof ShadowClockError) throw error;
         if (error instanceof ShadowDeadlineError) {
           summary.deadlineReached = true;
           summary.skipped += turns.length - index - 1;
@@ -654,12 +844,12 @@ export async function runConversationV2ShadowBatch(input: {
         ...recordConfig,
       });
       await settleStartedDependency(
+        admission,
+        "comparison_write",
         () => append({ clinicId: turn.clinicId, record }),
-        deadlineAt - sampleNow(),
       );
       summary.persisted += 1;
     } catch (error) {
-      if (error instanceof ShadowClockError) throw error;
       if (error instanceof ShadowDeadlineError) {
         summary.deadlineReached = true;
         summary.skipped += turns.length - index - 1;
@@ -667,12 +857,18 @@ export async function runConversationV2ShadowBatch(input: {
       }
       summary.sinkErrors += 1;
     }
-    if (sampleNow() >= deadlineAt) {
+    if (!observeAdmission(admission)) {
       summary.deadlineReached = true;
       summary.skipped += turns.length - index - 1;
       break;
     }
   }
 
-  return Object.freeze({ ...summary, selections: Object.freeze(selections) });
+  const deadlineFacts = finalizeAdmission(admission);
+  summary.deadlineReached = deadlineFacts.deadline.admissionClosed;
+  return Object.freeze({
+    ...summary,
+    ...deadlineFacts,
+    selections: Object.freeze(selections),
+  });
 }

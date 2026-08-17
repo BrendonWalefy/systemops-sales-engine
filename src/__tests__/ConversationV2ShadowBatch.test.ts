@@ -569,9 +569,23 @@ describe("Cycle I post-sender shadow batch", () => {
     expect(JSON.stringify(summary.selections)).not.toContain("clinic-a");
   });
 
-  it("honors empty batch, maxTurns and deadline before starting extra model work", async () => {
+  it("honors empty batch, maxTurns and the admission deadline before starting extra model work", async () => {
     await expect(runRegisteredBatch({ turns: [], ...deps() }))
-      .resolves.toMatchObject({ received: 0, attempted: 0 });
+      .resolves.toMatchObject({
+        received: 0,
+        attempted: 0,
+        deadline: {
+          admissionClosed: false,
+          overrun: false,
+          overrunMs: 0,
+          clockStatus: "valid",
+        },
+        drain: {
+          admitted: 0,
+          settled: 0,
+          activeAtReturn: 0,
+        },
+      });
 
     const turns = [
       capturedTurn({ turnId: "turn-a", clinicId: "clinic-a", ready: true }),
@@ -593,14 +607,74 @@ describe("Cycle I post-sender shadow batch", () => {
     expect(expired.evaluator.evaluate).not.toHaveBeenCalled();
   });
 
+  it.each(["policy", "evaluator", "sink"] as const)(
+    "does not start a %s dependency thunk at or after the admission deadline",
+    async (blockedDependency) => {
+      const turn = capturedTurn({
+        turnId: `turn-admission-${blockedDependency}`,
+        clinicId: "clinic-a",
+        ready: true,
+      });
+      let current = 0;
+      const starts: Readonly<{ dependency: string; at: number }>[] = [];
+      const input = deps({
+        deadlineMs: 5,
+        now: () => current,
+        policyReader: {
+          getConversationEnginePolicy: vi.fn(async (clinicId: string) => {
+            starts.push({ dependency: "policy", at: current });
+            if (blockedDependency === "evaluator") current = 5;
+            return { clinicId, engine: "v1_with_v2_shadow" as const, isTest: false };
+          }),
+        },
+        evaluator: {
+          evaluate: vi.fn(async () => {
+            starts.push({ dependency: "evaluator", at: current });
+            if (blockedDependency === "sink") current = 5;
+            return {
+              result: { status: "unsupported" as const, reason: "unsupported_request" as const },
+              understandingRequest: null,
+              model: null,
+            };
+          }),
+        },
+        sink: {
+          append: vi.fn(async () => {
+            starts.push({ dependency: "sink", at: current });
+          }),
+        },
+      });
+      if (blockedDependency === "policy") {
+        const ticks = [0, 0, 5];
+        input.now = () => ticks.shift() ?? 5;
+      }
+
+      const summary = await runRegisteredBatch({ turns: [turn], ...input });
+
+      expect(starts.every(({ at }) => at < 5)).toBe(true);
+      expect(starts.some(({ dependency }) => dependency === blockedDependency)).toBe(false);
+      expect(summary).toMatchObject({
+        deadlineReached: true,
+        deadline: {
+          admissionClosed: true,
+          overrun: false,
+          clockStatus: "valid",
+        },
+        drain: { activeAtReturn: 0 },
+      });
+    },
+  );
+
   it("aborts and awaits the evaluator at the deadline without work surviving the summary", async () => {
     const turn = capturedTurn({ turnId: "turn-a", clinicId: "clinic-a", ready: true });
     let settled = false;
+    const receivedSignals: AbortSignal[] = [];
     const input = deps({
       deadlineMs: 10,
       now: () => Date.now(),
       evaluator: {
         evaluate: vi.fn((_reads: unknown, signal?: AbortSignal) => new Promise((resolve, reject) => {
+          if (signal) receivedSignals.push(signal);
           const timer = setTimeout(() => {
             settled = true;
             resolve({ result: { status: "unsupported", reason: "unsupported_request" }, understandingRequest: null, model: null });
@@ -622,7 +696,26 @@ describe("Cycle I post-sender shadow batch", () => {
       persisted: 0,
       deadlineReached: true,
     });
+    expect(receivedSignals).toHaveLength(1);
+    expect(receivedSignals[0]!.aborted).toBe(true);
     expect(settled).toBe(true);
+    expect(summary).toMatchObject({
+      deadline: {
+        admissionClosed: true,
+        clockStatus: "valid",
+      },
+      drain: {
+        admitted: 2,
+        settled: 2,
+        completed: 1,
+        failed: 1,
+        cooperativelyAborted: 1,
+        activeAtReturn: 0,
+      },
+    });
+    expect(summary.deadline.overrunMs).toBeGreaterThanOrEqual(0);
+    expect(Object.isFrozen(summary.deadline)).toBe(true);
+    expect(Object.isFrozen(summary.drain)).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 120));
     expect(settled).toBe(true);
   });
@@ -655,8 +748,94 @@ describe("Cycle I post-sender shadow batch", () => {
       expect(result).toMatchObject(dependency === "policy"
         ? { received: 1, deadlineReached: true, attempted: 0, persisted: 0 }
         : { received: 1, selected: 1, attempted: 1, deadlineReached: true, persisted: 1 });
+      expect(result.drain).toMatchObject({
+        admitted: dependency === "policy" ? 1 : 3,
+        settled: dependency === "policy" ? 1 : 3,
+        activeAtReturn: 0,
+      });
     },
   );
+
+  it("drains an admitted non-cancelable DB write, measures overrun, and starts no later write", async () => {
+    const turn = capturedTurn({ turnId: "turn-db-overrun", clinicId: "clinic-a", ready: true });
+    let current = 0;
+    let release!: () => void;
+    const sink = {
+      append: vi.fn(() => new Promise<void>((resolve) => { release = resolve; })),
+    };
+    const input = deps({ deadlineMs: 5, now: () => current, sink });
+    const running = runRegisteredBatch({ turns: [turn], ...input });
+    while (!release) await Promise.resolve();
+
+    current = 12;
+    let returned = false;
+    void running.then(() => { returned = true; });
+    await Promise.resolve();
+    expect(returned).toBe(false);
+    release();
+    const summary = await running;
+
+    expect(sink.append).toHaveBeenCalledTimes(1);
+    expect(summary).toMatchObject({
+      persisted: 1,
+      deadlineReached: true,
+      deadline: {
+        deadlineAt: 5,
+        admissionClosed: true,
+        returnedAt: 12,
+        overrun: true,
+        overrunMs: 7,
+        clockStatus: "valid",
+      },
+      drain: {
+        admitted: 3,
+        settled: 3,
+        completed: 3,
+        failed: 0,
+        cooperativelyAborted: 0,
+        activeAtReturn: 0,
+      },
+    });
+    await Promise.resolve();
+    expect(sink.append).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks a post-admission malformed clock without hiding a real overrun", async () => {
+    const turn = capturedTurn({ turnId: "turn-malformed-overrun", clinicId: "clinic-a", ready: true });
+    let malformed = false;
+    const sink = {
+      append: vi.fn(() => new Promise<void>((resolve) => {
+        setTimeout(() => {
+          malformed = true;
+          resolve();
+        }, 25);
+      })),
+    };
+    const input = deps({
+      deadlineMs: 5,
+      now: () => malformed ? Number.NaN : 0,
+      sink,
+    });
+
+    const summary = await runRegisteredBatch({ turns: [turn], ...input });
+
+    expect(summary).toMatchObject({
+      persisted: 1,
+      deadlineReached: true,
+      deadline: {
+        admissionClosed: true,
+        returnedAt: null,
+        overrun: true,
+        clockStatus: "malformed",
+      },
+      drain: {
+        admitted: 3,
+        settled: 3,
+        activeAtReturn: 0,
+      },
+    });
+    expect(summary.deadline.overrunMs).toBeGreaterThan(0);
+  });
 
   it("checks the remaining budget before invoking a dependency thunk", async () => {
     const turn = capturedTurn({ turnId: "turn-a", clinicId: "clinic-a", ready: true });
