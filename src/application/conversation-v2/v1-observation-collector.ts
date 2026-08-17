@@ -69,6 +69,7 @@ type TurnAccumulator = {
 };
 
 const registeredSharedSnapshots = new WeakMap<object, string>();
+const registeredCapturedTurns = new WeakSet<object>();
 const INVALID_SHARED_PROJECTION = "invalid captured V1 shared projection";
 
 function deepFreeze(value: unknown, seen = new WeakSet<object>()): void {
@@ -184,6 +185,7 @@ export class V1ObservationCollector implements V1TurnObservationSink {
     };
     deepFreeze(captured);
     registeredSharedSnapshots.set(captured.sharedReads, captured.turnId);
+    registeredCapturedTurns.add(captured);
     this.completed.push(captured);
     return captured;
   }
@@ -193,6 +195,10 @@ export class V1ObservationCollector implements V1TurnObservationSink {
     this.completed = [];
     return drained;
   }
+}
+
+export function isRegisteredCapturedV1Turn(turn: CapturedV1Turn): boolean {
+  return typeof turn === "object" && turn !== null && registeredCapturedTurns.has(turn);
 }
 
 function readRegisteredSharedProjection(

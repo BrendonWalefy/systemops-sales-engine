@@ -22,6 +22,12 @@ import {
   MAX_MESSAGE_PROCESS_BATCH_SIZE,
   resolveWorkerBatchSize,
 } from "@/application/jobs/worker-capacity";
+import {
+  runAfterSenderDrainAttempt,
+  runConversationV2ShadowBatch,
+  type ShadowBatchSummary,
+} from "@/application/conversation-v2/run-shadow-batch";
+import { createConversationV2Runtime } from "@/infrastructure/conversation-v2/create-conversation-v2-runtime";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -51,12 +57,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const jobQueue = new DrizzleJobQueue();
   const audioTranscriber = new ZApiAudioTranscriber(new WhisperGateway());
   const decisionTraceSink = createRuntimeDecisionTraceSink();
+  const conversationV2Runtime = createConversationV2Runtime();
   const handler = new ProcessMessageJobHandler({
     inboundEventStore,
     automationPolicy: new DrizzleClinicAutomationPolicyReader(),
     conversationHandler: new ConversationOrchestrator({ decisionTraceSink }),
     transcribeAudio: audioTranscriber.transcribe.bind(audioTranscriber),
     decisionTraceSink,
+    createTurnObservationSink: conversationV2Runtime.createTurnObservationSink,
   });
 
   try {
@@ -85,32 +93,58 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     // risco de rajada nem de pilha de funções longas. Falha aqui não derruba o
     // worker: as mensagens já foram processadas, e o cron do sender reprocessa.
     let sendDrain: Awaited<ReturnType<typeof drainMessageSendQueue>> | null = null;
+    let conversationV2Shadow: ShadowBatchSummary | null = null;
+    const capturedV2Turns = conversationV2Runtime.drainCapturedTurns();
     if (result.processed > 0) {
-      try {
-        const outboundMessageStore = new DrizzleOutboundMessageStore();
-        sendDrain = await drainMessageSendQueue({
-          jobQueue,
-          outboundMessageStore,
-          handler: new SendMessageJobHandler({
+      const postSender = await runAfterSenderDrainAttempt({
+        drainSender: async () => {
+          const outboundMessageStore = new DrizzleOutboundMessageStore();
+          return drainMessageSendQueue({
+            jobQueue,
             outboundMessageStore,
-            safetyContextReader: new DrizzleOutboundSafetyContextReader(),
-            decisionTraceSink,
-          }),
-          workerId: `${workerId}:send`,
-          maxJobs: MAX_JOBS_PER_RUN,
-        });
-      } catch (error) {
-        log.error("inline_send.failed", error);
-      }
+            handler: new SendMessageJobHandler({
+              outboundMessageStore,
+              safetyContextReader: new DrizzleOutboundSafetyContextReader(),
+              decisionTraceSink,
+            }),
+            workerId: `${workerId}:send`,
+            maxJobs: MAX_JOBS_PER_RUN,
+          });
+        },
+        onSenderFailure: (error) => { log.error("inline_send.failed", error); },
+        occurredAt: () => new Date().toISOString(),
+        afterAttempt: async (senderBarrier) => {
+          try {
+            return await runConversationV2ShadowBatch({
+              senderBarrier,
+              turns: capturedV2Turns,
+              policyReader: conversationV2Runtime.policyReader,
+              evaluator: conversationV2Runtime.evaluator,
+              sink: conversationV2Runtime.sink,
+              approval: conversationV2Runtime.approval,
+              maxTurns: conversationV2Runtime.maxTurns,
+              deadlineMs: conversationV2Runtime.deadlineMs,
+              now: conversationV2Runtime.now,
+              recordConfig: conversationV2Runtime.recordConfig,
+            });
+          } catch (error) {
+            log.error("conversation_v2.shadow.failed", error);
+            return null;
+          }
+        },
+      });
+      sendDrain = postSender.senderResult;
+      conversationV2Shadow = postSender.shadowResult;
     }
 
     log.info("worker.run.completed", {
       ...result,
       orphanReconciliation,
       sendDrain,
+      conversationV2Shadow,
       durationMs: Date.now() - startedAt,
     });
-    return NextResponse.json({ ...result, orphanReconciliation, sendDrain });
+    return NextResponse.json({ ...result, orphanReconciliation, sendDrain, conversationV2Shadow });
   } catch (error) {
     log.error("worker.run.failed", error, { durationMs: Date.now() - startedAt });
     return NextResponse.json({ error: "message_worker_failed" }, { status: 500 });
