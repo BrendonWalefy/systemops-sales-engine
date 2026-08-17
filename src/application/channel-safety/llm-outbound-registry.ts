@@ -8,8 +8,8 @@
  *
  * - `autonomous_external`: o sistema envia sozinho ao lead. **Obrigatoriamente**
  *   atravessa plano → gerador → validador → fallback, direto pelo
- *   `ConversationResponsePlanner` ou delegando ao `ConversationOrchestrator`,
- *   que o usa.
+ *   `ConversationResponsePlanner`, pelo pipeline V2 autorizado, ou delegando
+ *   ao `ConversationOrchestrator`, que usa o planner.
  * - `human_approved_external`: o modelo redige, uma pessoa aprova antes de sair.
  *   Provado por teste em `LlmOutboundHumanGate.test.ts`.
  * - `transport_only`: entrega o que a outbox já carrega. Não gera texto e não
@@ -31,10 +31,11 @@ export type LlmOutboundDeclaration = {
   reason: string;
   /**
    * Só para `autonomous_external`: como a fronteira é alcançada. `planner` = o
-   * módulo importa `ConversationResponsePlanner`. `orchestrator` = delega para
-   * o `ConversationOrchestrator`, que a aplica por dentro.
+   * módulo importa `ConversationResponsePlanner`; `turn_pipeline` = usa o
+   * pipeline V2 de plano autorizado + validador + fallback; `orchestrator` =
+   * delega para o `ConversationOrchestrator`, que aplica o planner por dentro.
    */
-  boundary?: "planner" | "orchestrator";
+  boundary?: "planner" | "turn_pipeline" | "orchestrator";
   /**
    * `true` quando o caminho não é descoberto pelo grafo de imports e só existe
    * aqui. Hoje: texto que viaja pelo banco entre a geração e o envio.
@@ -75,6 +76,12 @@ export const LLM_OUTBOUND_REGISTRY: Record<string, LlmOutboundDeclaration> = {
       "`resumeAfterHumanReviewDecision` continua o turno pelo orquestrador; o resto do arquivo envia texto determinístico de operação.",
     boundary: "orchestrator",
   },
+  "application/conversation-v2/v2-live-conversation-handler": {
+    classification: "autonomous_external",
+    reason:
+      "Turno live V2: monta plano apenas de resultados canônicos, valida a resposta e só então grava na outbox.",
+    boundary: "turn_pipeline",
+  },
 
   "app/(clinic)/app/inbox/recovery-actions": {
     classification: "human_approved_external",
@@ -105,13 +112,18 @@ export const LLM_OUTBOUND_REGISTRY: Record<string, LlmOutboundDeclaration> = {
 };
 
 export function unprotectedAutonomousPaths(
-  discovered: ReadonlyArray<{ module: string; usesPlanner: boolean }>,
+  discovered: ReadonlyArray<{
+    module: string;
+    usesPlanner: boolean;
+    usesTurnPipeline?: boolean;
+  }>,
 ): string[] {
   return discovered
     .filter((path) => {
       const declaration = LLM_OUTBOUND_REGISTRY[path.module];
       if (declaration?.classification !== "autonomous_external") return false;
       if (declaration.boundary === "orchestrator") return false;
+      if (declaration.boundary === "turn_pipeline") return !path.usesTurnPipeline;
       return !path.usesPlanner;
     })
     .map((path) => path.module);

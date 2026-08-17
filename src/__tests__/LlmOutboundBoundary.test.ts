@@ -66,6 +66,22 @@ describe("fronteira LLM → canal externo", () => {
     expect(orchestrator?.usesPlanner).toBe(true);
   });
 
+  it("o handler live V2 usa o pipeline autorizado antes da outbox", () => {
+    const liveV2 = paths.find(
+      (path) => path.module === "application/conversation-v2/v2-live-conversation-handler",
+    );
+    expect(liveV2?.usesTurnPipeline).toBe(true);
+    expect(
+      unprotectedAutonomousPaths([
+        {
+          module: "application/conversation-v2/v2-live-conversation-handler",
+          usesPlanner: false,
+          usesTurnPipeline: false,
+        },
+      ]),
+    ).toEqual(["application/conversation-v2/v2-live-conversation-handler"]);
+  });
+
   it("os quatro caminhos autônomos conhecidos continuam sendo encontrados", () => {
     // Trava o outro lado: se alguém quebrar o analisador, ele para de encontrar
     // caminho nenhum e os testes acima passam vazios. Isto acusa.
@@ -107,7 +123,7 @@ describe("fronteira LLM → canal externo", () => {
         (declaration) => declaration.classification === classification,
       ).length;
 
-    expect(byClass("autonomous_external")).toBe(6);
+    expect(byClass("autonomous_external")).toBe(7);
     expect(byClass("human_approved_external")).toBe(2);
     expect(unprotectedAutonomousPaths(paths)).toHaveLength(0);
   });
