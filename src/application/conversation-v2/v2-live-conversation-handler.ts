@@ -18,7 +18,9 @@ import type { ComposerStyle } from "@/conversation-core/composer/contract";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
 import type { ActionResult } from "@/conversation-core/decision";
 import type { TurnGateInput } from "@/conversation-core/gate";
+import type { InternalLabDeliveryBinding } from "@/application/conversation-v2/internal-lab-delivery-guard";
 import { completeTurnPipeline, prepareTurnPipeline } from "@/conversation-core/turn-pipeline";
+import { resolveStopContactDecision, type StopContactDecision } from "@/application/channel-safety/stop-contact-policy";
 import { takeRecentConversationHistory } from "@/core/intelligence/ConversationHistoryWindow";
 import {
   recordDecisionTrace,
@@ -51,6 +53,7 @@ export type V2LiveTurnConfiguration = Readonly<{
   style: ComposerStyle;
   useVoice: boolean;
   ttsConfig: TtsConfig;
+  deliveryBinding: InternalLabDeliveryBinding;
 }>;
 
 type DynamicDentalDependencies =
@@ -70,6 +73,7 @@ export type V2LiveConversationHandlerDependencies = Readonly<{
   resolveTurnConfiguration(input: Readonly<{
     context: LiveTurnContext;
     snapshot: LiveTurnSnapshot;
+    turnInput: ConversationHandleInput;
     now: Date;
   }>): V2LiveTurnConfiguration | Promise<V2LiveTurnConfiguration>;
   outbound: Readonly<{
@@ -77,6 +81,11 @@ export type V2LiveConversationHandlerDependencies = Readonly<{
     jobQueue: JobQueue;
   }>;
   decisionTraceSink?: DecisionTraceSink;
+  persistStopContact(input: Readonly<{
+    leadId: string;
+    conversationId: string;
+    decision: StopContactDecision;
+  }>): Promise<void>;
   now?: () => Date;
 }>;
 
@@ -153,6 +162,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
     let effectAttempted = false;
     let effectCompleted = false;
     let terminalHandled = false;
+    let stopContactConfirmationEnqueued = false;
     let turnNow: Date | null = null;
 
     const trace = async (
@@ -180,6 +190,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
       const configuration = await this.deps.resolveTurnConfiguration({
         context,
         snapshot,
+        turnInput: input,
         now: new Date(turnNow.getTime()),
       });
       const state = coreState(snapshot);
@@ -223,6 +234,48 @@ export class V2LiveConversationHandler implements ConversationHandler {
                 aliases: Object.freeze([...treatment.aliases]),
               })),
             });
+            if (result.safety.optOut === true) {
+              const decision = resolveStopContactDecision({
+                classifiedIntent: "stop_contact",
+                messageText: input.messageText,
+                now: new Date(turnNow!.getTime()),
+              });
+              if (decision) {
+                effectAttempted = true;
+                await this.deps.persistStopContact({
+                  leadId: context.leadId,
+                  conversationId: context.conversationId,
+                  decision,
+                });
+                await enqueueOutboundMessage({
+                  clinicId: context.clinicId,
+                  conversationId: context.conversationId,
+                  channel: "whatsapp",
+                  deliveryKind: "text",
+                  category: "reply",
+                  dedupeKey: `conversation-reply:${context.turnId}`,
+                  payload: {
+                    version: 1,
+                    kind: "conversation_reply",
+                    turnId: context.turnId,
+                    to: context.outboundAddress,
+                    agentMessageId: deterministicUuid(`conversation-v2-agent:${context.turnId}`),
+                    agentMessagePersistence: "sender",
+                    replyText: decision.confirmationText,
+                    intent: "stop_contact",
+                    useVoice: false,
+                    ttsConfig: configuration.ttsConfig,
+                    interleavedParts: [],
+                    mediaParts: [],
+                    leadId: context.leadId,
+                    pipelineAdvance: null,
+                    internalLabBinding: configuration.deliveryBinding,
+                  },
+                }, this.deps.outbound);
+                effectCompleted = true;
+                stopContactConfirmationEnqueued = true;
+              }
+            }
             understandingResolved = true;
             await trace("v2.understanding", {
               status: "completed",
@@ -265,12 +318,13 @@ export class V2LiveConversationHandler implements ConversationHandler {
           ? preparation.reason
           : "no_safe_response";
         terminalHandled = true;
+        const replied = reason === "opted_out" && stopContactConfirmationEnqueued;
         await this.deps.lifecycle.complete({
           context,
-          replied: false,
+          replied,
           reason,
         });
-        return { replied: false, reason };
+        return { replied, reason };
       }
 
       phase = "action";
@@ -340,6 +394,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
           mediaParts: [],
           leadId: context.leadId,
           pipelineAdvance: null,
+          internalLabBinding: configuration.deliveryBinding,
         },
       }, this.deps.outbound);
       await trace("v2.outbox", {

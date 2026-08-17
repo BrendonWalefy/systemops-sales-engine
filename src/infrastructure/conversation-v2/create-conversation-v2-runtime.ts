@@ -17,6 +17,12 @@ import { TenantEngineRouter, V2ShadowSelectionRegistry } from "@/application/con
 import { V1ObservationCollector } from "@/application/conversation-v2/v1-observation-collector";
 import { V2LiveConversationHandler } from "@/application/conversation-v2/v2-live-conversation-handler";
 import { V2ShadowRunner } from "@/application/conversation-v2/v2-shadow-runner";
+import { resolveInternalLabLiveTurnConfiguration } from "@/application/conversation-v2/internal-lab-live-turn-configuration";
+import type { InternalLabRuntimeBindingsReader } from "@/application/conversation-v2/internal-lab-runtime-bindings";
+import {
+  createInternalLabDeliveryGuard as createBoundInternalLabDeliveryGuard,
+  type InternalLabDeliveryGuard,
+} from "@/application/conversation-v2/internal-lab-delivery-guard";
 import { createConfiguredCycleIRuntimeBuildIdentity } from "@/application/conversation-v2/configured-cycle-i-authority";
 import type { CapturedV2TurnReads } from "@/application/conversation-v2/captured-turn-reads";
 import type { ConversationEnginePolicyReader } from "@/application/ports/conversation-engine-policy-reader";
@@ -33,7 +39,6 @@ import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrat
 import { BookingService } from "@/core/scheduling/BookingService";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { SlotReservationService } from "@/core/scheduling/SlotReservationService";
-import { DEFAULT_TTS_CONFIG } from "@/domain/entities/tts-config";
 import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
 import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-incoming-message";
 import { DentalUnderstandingProvider } from "@/infrastructure/adapters/ai/DentalUnderstandingProvider";
@@ -44,6 +49,7 @@ import {
   loadConfiguredInternalLabAuthority,
   loadConfiguredInternalLabDeploymentIdentity,
 } from "@/infrastructure/conversation-v2/configured-internal-lab-authority";
+import { DrizzleInternalLabRuntimeBindingsReader } from "@/infrastructure/conversation-v2/drizzle-internal-lab-runtime-bindings-reader";
 import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleClinicAutomationPolicyReader } from "@/infrastructure/repositories/drizzle-clinic-automation-policy-reader";
@@ -58,6 +64,8 @@ import { DrizzleLiveConversationContextReader } from "@/infrastructure/repositor
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
 import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
+import { persistStopContactDecision } from "@/infrastructure/repositories/drizzle-stop-contact-persistence";
+import { resolveClinicVoiceConfig } from "@/lib/tts-send";
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 const style = Object.freeze({ tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" } as const);
@@ -137,11 +145,12 @@ function closedAuthorizationBindings(env: RuntimeEnvironment): InternalLabAuthor
 }
 
 function createLiveHandler(input: {
-  env: RuntimeEnvironment;
+  apiKey: string;
   expectedClinicId: string;
   decisionTraceSink: DecisionTraceSink;
   jobQueue: JobQueue;
   outboundMessageStore: OutboundMessageStore;
+  runtimeBindingsReader: InternalLabRuntimeBindingsReader;
 }): ConversationHandler {
   const conversationRepository = new DrizzleConversationRepository();
   const leadRepository = new DrizzleLeadRepository();
@@ -202,14 +211,18 @@ function createLiveHandler(input: {
   const booking = new BookingService(calendar, appointmentRepository, leadRepository, reservations, followUps);
   return new V2LiveConversationHandler({
     lifecycle,
-    understanding: createLiveDentalUnderstanding(new OpenAI({ apiKey: input.env.OPENAI_API_KEY?.trim() || "missing-live-key" })),
+    understanding: createLiveDentalUnderstanding(new OpenAI({ apiKey: input.apiKey })),
     dental: { treatments: new DrizzleTreatmentRepository(), calendar, state, appointments: appointmentRepository, reservations, booking },
-    resolveTurnConfiguration: ({ context }) => Object.freeze({
-      gateInput: Object.freeze({ automationEnabled: true, duplicate: false, humanControlled: context.conversation.aiPaused, optedOut: false }),
-      policy: Object.freeze({ priceDisclosureEnabled: true, humanEscalationRequired: false, schedulingMinimumLeadTimeHours: 2, schedulingRequiresEvaluationFirst: false }),
-      style, useVoice: false, ttsConfig: DEFAULT_TTS_CONFIG,
-    }),
+    resolveTurnConfiguration: (configurationInput) =>
+      resolveInternalLabLiveTurnConfiguration(configurationInput, {
+        resolveVoice: resolveClinicVoiceConfig,
+        resumeExpiredTakeover: (conversationId) =>
+          conversationRepository.setTakeover(conversationId, null),
+        resolveDeliveryBinding: (clinicId) =>
+          input.runtimeBindingsReader.resolve(clinicId),
+      }),
     outbound: { outboundMessageStore: input.outboundMessageStore, jobQueue: input.jobQueue },
+    persistStopContact: persistStopContactDecision,
     decisionTraceSink: input.decisionTraceSink,
   });
 }
@@ -222,6 +235,7 @@ export type ConversationV2Runtime = Readonly<{
   drainCapturedTurns(): readonly ShadowBatchTurn[];
   runSelectedShadowTurns(input: Readonly<{ senderBarrier: SenderDrainAttempted; turns: readonly ShadowBatchTurn[] }>): Promise<ShadowBatchSummary>;
   runtimeIdentity: InternalLabAuthorizationBindings["runtimeIdentity"];
+  internalLabDeliveryGuard: InternalLabDeliveryGuard;
   policyReader: ConversationEnginePolicyReader;
   sink: ConversationV2ComparisonSink;
   evaluator: ShadowEvaluator;
@@ -236,6 +250,7 @@ export function createConversationV2Runtime(input: {
   policyReader?: ConversationEnginePolicyReader; comparisonSink?: ConversationV2ComparisonSink;
   decisionTraceSink?: DecisionTraceSink; v1Handler?: ConversationHandler; v2Handler?: ConversationHandler;
   authorizationBindings?: InternalLabAuthorizationBindings;
+  runtimeBindingsReader?: InternalLabRuntimeBindingsReader;
   jobQueue?: JobQueue;
   outboundMessageStore?: OutboundMessageStore;
 } = {}): ConversationV2Runtime {
@@ -251,28 +266,41 @@ export function createConversationV2Runtime(input: {
   const comparisonSink = input.comparisonSink ?? new DrizzleConversationV2ComparisonSink({ allowedModelIds: modelAllowlist });
   const decisionTraceSink = input.decisionTraceSink ?? createRuntimeDecisionTraceSink();
   const authorization = input.authorizationBindings ?? closedAuthorizationBindings(env);
+  const apiKey = env.OPENAI_API_KEY?.trim() ?? "";
+  const liveProviderReady = apiKey.length > 0;
   const eligibilityReader = new DrizzleClinicAutomationPolicyReader();
+  const runtimeBindingsReader = input.runtimeBindingsReader
+    ?? new DrizzleInternalLabRuntimeBindingsReader();
   const jobQueue = input.jobQueue ?? new DrizzleJobQueue();
   const outboundMessageStore = input.outboundMessageStore ?? new DrizzleOutboundMessageStore();
   const conversationHandler = new TenantEngineRouter({
     v1Handler: input.v1Handler ?? new ConversationOrchestrator({ decisionTraceSink }),
-    v2Handler: input.v2Handler ?? createLiveHandler({
-      env,
+    v2Handler: input.v2Handler ?? (liveProviderReady ? createLiveHandler({
+      apiKey,
       expectedClinicId: authorization.expectedClinicId,
       decisionTraceSink,
       jobQueue,
       outboundMessageStore,
-    }),
-    policyReader, eligibilityReader, shadowSelections, decisionTraceSink, ...authorization,
+      runtimeBindingsReader,
+    }) : Object.freeze({
+      async handle() { throw new Error("V2 live understanding provider unavailable"); },
+    })),
+    policyReader, eligibilityReader, runtimeBindingsReader, liveProviderReady,
+    shadowSelections, decisionTraceSink, ...authorization,
   });
   const automationPolicy = new InternalLabAutomationPolicyReader({ basePolicyReader: eligibilityReader, eligibilityReader, ...authorization });
+  const internalLabDeliveryGuard = createBoundInternalLabDeliveryGuard({
+    authorization,
+    runtimeBindingsReader,
+  });
   const evaluator = createEvaluator({ env, hmacKey, modelId });
   const recordConfig = Object.freeze({ hmacKey, commit, datasetDigest: null, allowedModelIds: modelAllowlist });
   const maxTurns = positiveInteger(env.CONVERSATION_V2_SHADOW_MAX_TURNS, 10);
   const deadlineMs = positiveInteger(env.CONVERSATION_V2_SHADOW_DEADLINE_MS, 20_000);
   const now = () => Date.now();
   return Object.freeze({
-    conversationHandler, automationPolicy, decisionTraceSink, runtimeIdentity: authorization.runtimeIdentity,
+    conversationHandler, automationPolicy, internalLabDeliveryGuard,
+    decisionTraceSink, runtimeIdentity: authorization.runtimeIdentity,
     policyReader, sink: comparisonSink, evaluator, recordConfig, maxTurns, deadlineMs, now,
     createTurnObservationSink(binding) {
       captureRegistry.bindTurn(binding);
@@ -289,5 +317,14 @@ export function createConversationV2Runtime(input: {
         sink: comparisonSink, maxTurns, deadlineMs, now, recordConfig,
       });
     },
+  });
+}
+
+export function createInternalLabDeliveryGuard(
+  env: RuntimeEnvironment = process.env,
+): InternalLabDeliveryGuard {
+  return createBoundInternalLabDeliveryGuard({
+    authorization: closedAuthorizationBindings(env),
+    runtimeBindingsReader: new DrizzleInternalLabRuntimeBindingsReader(),
   });
 }

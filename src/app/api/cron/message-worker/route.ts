@@ -105,6 +105,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
               outboundMessageStore,
               safetyContextReader: new DrizzleOutboundSafetyContextReader(),
               decisionTraceSink: conversationV2Runtime.decisionTraceSink,
+              internalLabDeliveryGuard: conversationV2Runtime.internalLabDeliveryGuard,
             }),
             workerId: `${workerId}:send`,
             maxJobs: MAX_JOBS_PER_RUN,

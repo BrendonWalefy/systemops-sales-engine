@@ -5,6 +5,7 @@ import type {
   ConversationHandleResult,
 } from "@/application/ports/conversation-handler";
 import type { InternalLabEligibilityReader } from "@/application/ports/internal-lab-eligibility-reader";
+import type { InternalLabRuntimeBindingsReader } from "@/application/conversation-v2/internal-lab-runtime-bindings";
 import { canonicalizeConversationEnginePolicy } from "@/application/conversation-v2/engine-selection";
 import {
   isInternalLabAuthorized,
@@ -72,6 +73,8 @@ type RouterDependencies = Readonly<{
   eligibilityReader: InternalLabEligibilityReader;
   shadowSelections: V2ShadowSelectionRegistry;
   decisionTraceSink?: DecisionTraceSink;
+  runtimeBindingsReader: InternalLabRuntimeBindingsReader;
+  liveProviderReady: boolean;
 }> & InternalLabAuthorizationBindings;
 
 export class TenantEngineRouter implements ConversationHandler {
@@ -133,11 +136,21 @@ export class TenantEngineRouter implements ConversationHandler {
     if (input.clinicId !== this.deps.expectedClinicId || !policy.isTest) {
       return { route: "v1", shadow: false, reason: "internal_lab_not_eligible" };
     }
+    if (!this.deps.liveProviderReady) {
+      return { route: "v1", shadow: false, reason: "internal_lab_not_eligible" };
+    }
 
     try {
-      const facts = await this.deps.eligibilityReader
-        .getInternalLabEligibilityFacts(input.clinicId);
-      if (!isInternalLabAuthorized(facts, this.deps)) {
+      const [facts, currentBindings] = await Promise.all([
+        this.deps.eligibilityReader.getInternalLabEligibilityFacts(input.clinicId),
+        this.deps.runtimeBindingsReader.resolve(input.clinicId),
+      ]);
+      if (!isInternalLabAuthorized(facts, {
+        ...this.deps,
+        expectedTenantDigest: currentBindings.tenantDigest,
+        expectedChannelDigest: currentBindings.channelDigest,
+        expectedConfigDigest: currentBindings.configDigest,
+      })) {
         return { route: "v1", shadow: false, reason: "internal_lab_not_eligible" };
       }
     } catch {

@@ -39,6 +39,14 @@ function makeRouter(overrides: Record<string, unknown> = {}) {
     expectedTenantDigest: INTERNAL_LAB_TEST_BINDINGS.tenantDigest,
     expectedChannelDigest: INTERNAL_LAB_TEST_BINDINGS.channelDigest,
     expectedConfigDigest: INTERNAL_LAB_TEST_BINDINGS.configDigest,
+    runtimeBindingsReader: {
+      resolve: vi.fn().mockResolvedValue({
+        tenantDigest: INTERNAL_LAB_TEST_BINDINGS.tenantDigest,
+        channelDigest: INTERNAL_LAB_TEST_BINDINGS.channelDigest,
+        configDigest: INTERNAL_LAB_TEST_BINDINGS.configDigest,
+      }),
+    },
+    liveProviderReady: true,
     now: () => INTERNAL_LAB_TEST_BINDINGS.now,
     shadowSelections: new V2ShadowSelectionRegistry(),
     decisionTraceSink: new InMemoryDecisionTraceSink(),
@@ -66,6 +74,32 @@ describe("TenantEngineRouter", () => {
     await expect(fixture.router.handle(turn)).rejects.toThrow("v2 failed");
     expect(v2Handler.handle).toHaveBeenCalledTimes(1);
     expect(fixture.v1Handler.handle).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the current resolved tenant facts drift from the signed approval", async () => {
+    const runtimeBindingsReader = {
+      resolve: vi.fn().mockResolvedValue({
+        tenantDigest: `sha256:${"1".repeat(64)}`,
+        channelDigest: INTERNAL_LAB_TEST_BINDINGS.channelDigest,
+        configDigest: INTERNAL_LAB_TEST_BINDINGS.configDigest,
+      }),
+    };
+    const fixture = makeRouter({ runtimeBindingsReader });
+
+    await expect(fixture.router.handle(turn)).resolves.toEqual({ replied: true });
+
+    expect(runtimeBindingsReader.resolve).toHaveBeenCalledWith(turn.clinicId);
+    expect(fixture.v1Handler.handle).toHaveBeenCalledOnce();
+    expect(fixture.v2Handler.handle).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before V2 when the live understanding provider is unavailable", async () => {
+    const fixture = makeRouter({ liveProviderReady: false });
+
+    await expect(fixture.router.handle(turn)).resolves.toEqual({ replied: true });
+
+    expect(fixture.v1Handler.handle).toHaveBeenCalledOnce();
+    expect(fixture.v2Handler.handle).not.toHaveBeenCalled();
   });
 
   it("fails closed for a different test tenant even when all structural facts match", async () => {

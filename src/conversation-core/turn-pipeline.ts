@@ -155,6 +155,9 @@ export async function prepareTurnPipeline<Request extends string, Policy extends
   const gate = evaluateTurnGate(input.gateInput);
   if (gate.outcome === "suppress") return { status: "suppressed", reason: gate.reason };
   const understanding = await input.understand();
+  if (understanding.safety.optOut === true) {
+    return { status: "suppressed", reason: "opted_out" };
+  }
   const coordination = coordinateCapabilities({ capabilities: input.capabilities, understanding, state: input.state });
   if (coordination.outcome === "conflict") {
     return { status: "escalated", reason: "capability_conflict", capabilityIds: Object.freeze([...coordination.capabilityIds]) };

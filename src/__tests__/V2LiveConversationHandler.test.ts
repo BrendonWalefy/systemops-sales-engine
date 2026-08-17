@@ -97,6 +97,8 @@ function makeHarness(options: {
   modelId?: "gpt-4o-mini";
   canonicalProviderSpoof?: boolean;
   nonPreparedStatus?: "suppressed" | "needs_clarification" | "escalated";
+  deriveReplyGate?: boolean;
+  safetyOptOut?: boolean;
 } = {}) {
   const releaseLease = vi.fn().mockResolvedValue(undefined);
   const context: LiveTurnContext = Object.freeze({
@@ -162,7 +164,9 @@ function makeHarness(options: {
         signals: {}, safety: {}, confidence: 1, ambiguity: null,
       } as never;
     }
-    const safety = options.nonPreparedStatus === "escalated"
+    const safety = options.safetyOptOut
+      ? { optOut: true }
+      : options.nonPreparedStatus === "escalated"
       ? { requestsHuman: true }
       : {};
     if (options.schedulingOfferTurn) {
@@ -211,6 +215,7 @@ function makeHarness(options: {
         jobWasNew: true,
       });
   const trace = new InMemoryDecisionTraceSink();
+  const persistStopContact = vi.fn().mockResolvedValue(undefined);
   const registeredUnderstanding = createLiveDentalUnderstanding({
     chat: {
       completions: {
@@ -264,9 +269,12 @@ function makeHarness(options: {
       reservations: { findActiveByPeriod: vi.fn().mockResolvedValue([]) },
       booking,
     },
-    resolveTurnConfiguration: vi.fn().mockReturnValue({
+    resolveTurnConfiguration: vi.fn().mockImplementation((resolutionInput) => ({
       gateInput: {
-        automationEnabled: true,
+        automationEnabled: options.deriveReplyGate
+          ? resolutionInput.turnInput.replyEnabled !== false
+            && resolutionInput.turnInput.automationMode === "live"
+          : true,
         duplicate: false,
         humanControlled: options.nonPreparedStatus === "suppressed",
         optedOut: false,
@@ -285,7 +293,13 @@ function makeHarness(options: {
       },
       useVoice: false,
       ttsConfig: { provider: "nova", speed: 0.92 },
-    }),
+      deliveryBinding: {
+        schemaVersion: "conversation-v2.internal-lab-delivery-binding.v1",
+        tenantDigest: `sha256:${"1".repeat(64)}`,
+        channelDigest: `sha256:${"2".repeat(64)}`,
+        configDigest: `sha256:${"3".repeat(64)}`,
+      },
+    })),
     outbound: {
       outboundMessageStore: {
         createOutboundMessageAndEnqueue,
@@ -294,6 +308,7 @@ function makeHarness(options: {
       jobQueue: { enqueueJob: vi.fn() } as never,
     },
     decisionTraceSink: trace,
+    persistStopContact,
     now: options.clockFailure
       ? () => { throw new Error("clock unavailable"); }
       : () => new Date(now),
@@ -305,11 +320,49 @@ function makeHarness(options: {
     understand,
     booking,
     createOutboundMessageAndEnqueue,
+    persistStopContact,
     trace,
   };
 }
 
 describe("V2LiveConversationHandler", () => {
+  it("suppresses a reaction/sticker turn from the real reply gate before provider and outbox", async () => {
+    const harness = makeHarness({ deriveReplyGate: true });
+
+    await expect(harness.handler.handle({
+      ...handleInput("👍"),
+      replyEnabled: false,
+    })).resolves.toEqual({ replied: false, reason: "disabled" });
+
+    expect(harness.understand).not.toHaveBeenCalled();
+    expect(harness.booking.book).not.toHaveBeenCalled();
+    expect(harness.createOutboundMessageAndEnqueue).not.toHaveBeenCalled();
+  });
+
+  it("blocks compound stop-contact plus booking before scheduling and outbound", async () => {
+    const harness = makeHarness({ schedulingOfferTurn: true, safetyOptOut: true });
+
+    await expect(harness.handler.handle(
+      handleInput("Não quero mais receber mensagens; mas marque clareamento amanhã"),
+    )).resolves.toEqual({ replied: true, reason: "opted_out" });
+
+    expect(harness.booking.book).not.toHaveBeenCalled();
+    expect(harness.persistStopContact).toHaveBeenCalledWith(expect.objectContaining({
+      leadId: lead.id,
+      conversationId: conversation.id,
+      decision: expect.objectContaining({ source: "lead_message" }),
+    }));
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          intent: "stop_contact",
+          replyText: expect.stringContaining("não vou mais te enviar mensagens"),
+        }),
+      }),
+      { turnId },
+    );
+  });
   it("runs the real prepared pipeline and enqueues one authorized current-version reply", async () => {
     const harness = makeHarness();
 

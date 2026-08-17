@@ -28,6 +28,13 @@ export function isInternalLabAuthorized(
     || facts.shadowModeEnabled
     || !bindings.runtimeIdentity) return false;
 
+  return isInternalLabApprovalAuthorized(bindings);
+}
+
+export function isInternalLabApprovalAuthorized(
+  bindings: InternalLabAuthorizationBindings,
+): boolean {
+  if (!bindings.runtimeIdentity) return false;
   const expected = {
     runtimeIdentity: bindings.runtimeIdentity,
     tenantDigest: bindings.expectedTenantDigest,

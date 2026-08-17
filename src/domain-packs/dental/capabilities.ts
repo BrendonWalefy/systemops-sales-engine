@@ -330,8 +330,6 @@ export function createDentalSchedulingCapability(
         return { kind: "ask", questionId: "invalid-scheduling-claim" };
       }
       if (claim.payload.request === "book-appointment") {
-        if (context.policy.schedulingRequiresEvaluationFirst)
-          return { kind: "ask", questionId: "evaluation-required" };
         const availability = await readPort.listSlots({
           service: claim.payload.serviceQuery,
           date: claim.payload.requestedDate,
@@ -339,6 +337,10 @@ export function createDentalSchedulingCapability(
           minimumLeadTimeHours: context.policy.schedulingMinimumLeadTimeHours,
           now: context.now,
         });
+        if (
+          context.policy.schedulingRequiresEvaluationFirst
+          || availability.service.requiresEvaluationFirst
+        ) return { kind: "ask", questionId: "evaluation-required" };
         if (availability.slots.length === 0)
           return { kind: "ask", questionId: "no-slots-available" };
         return {
@@ -420,6 +422,7 @@ export function createDentalSchedulingCapability(
           service: {
             id: decision.subject.id,
             name: decision.subject.displayName,
+            requiresEvaluationFirst: false,
           },
           slots: candidateSlots,
         });

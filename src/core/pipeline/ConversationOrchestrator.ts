@@ -69,6 +69,7 @@ import {
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { SlotReservationService } from "@/core/scheduling/SlotReservationService";
+import { SCHEDULING_MINIMUM_LEAD_TIME_HOURS } from "@/core/scheduling/scheduling-policy";
 import {
   buildAppointmentConfirmationMessage,
   buildDepositRequestMessage,
@@ -89,6 +90,7 @@ import { DrizzlePushSubscriptionRepository } from "@/infrastructure/repositories
 import { WebPushGateway } from "@/infrastructure/adapters/push/web-push-gateway";
 import { getClinicModules } from "@/application/modules/module-gate";
 import { resolveStopContactDecision } from "@/application/channel-safety/stop-contact-policy";
+import { persistStopContactDecision } from "@/infrastructure/repositories/drizzle-stop-contact-persistence";
 
 import type { Organization, MenuItem, MenuItemIntent } from "@/domain/entities/clinic";
 import type { ConversationExperience } from "@/domain/entities/clinic";
@@ -219,7 +221,6 @@ type ConversationDeterministicTraceCompletion = Omit<
 >;
 
 const RESPONSE_PLAN_ATTENTION_REASON = "Resposta segura requer revisão humana";
-const V1_SCHEDULING_MINIMUM_LEAD_TIME_HOURS = 2;
 
 export function resolveResponseMaxCharacters(
   verbosity: ConciergeVerbosity | undefined,
@@ -4967,22 +4968,11 @@ export class ConversationOrchestrator {
         return { replied: false, reason: "stop_contact_decision_missing" };
       }
       const optOutNow = decision.revokedAt;
-      await db
-        .update(leadsTable)
-        .set({
-          contactConsentRevokedAt: optOutNow,
-          contactConsentSource: decision.source,
-          updatedAt: optOutNow,
-        })
-        .where(eq(leadsTable.id, lead.id));
-      await db
-        .update(conversationsTable)
-        .set({
-          needsAttention: true,
-          attentionReason: decision.attentionReason,
-          updatedAt: optOutNow,
-        })
-        .where(eq(conversationsTable.id, conversation.id));
+      await persistStopContactDecision({
+        leadId: lead.id,
+        conversationId: conversation.id,
+        decision,
+      });
 
       const optOutText = decision.confirmationText;
       const optOutAgentId = randomUUID();
@@ -8375,7 +8365,7 @@ export class ConversationOrchestrator {
   // Snapa para a próxima hora cheia com antecedência mínima de 2h.
   // Evita que o cursor do SlotEngine gere slots em :51 ou :37.
   private slotWindowStart(now = runtimeNow()): Date {
-    const minAdvanceMs = V1_SCHEDULING_MINIMUM_LEAD_TIME_HOURS * 60 * 60_000;
+    const minAdvanceMs = SCHEDULING_MINIMUM_LEAD_TIME_HOURS * 60 * 60_000;
     const earliest = new Date(now.getTime() + minAdvanceMs);
     const hourMs = 60 * 60_000;
     return new Date(Math.ceil(earliest.getTime() / hourMs) * hourMs);
@@ -8431,7 +8421,7 @@ export class ConversationOrchestrator {
         preferredDate: preferredDate ?? null,
         preferredPeriod: preferredPeriod ?? null,
         preferredTime: preferredTime ?? null,
-        minimumLeadTimeHours: V1_SCHEDULING_MINIMUM_LEAD_TIME_HOURS,
+        minimumLeadTimeHours: SCHEDULING_MINIMUM_LEAD_TIME_HOURS,
         durationMinutes: duration,
         windowStart: from,
         windowEnd: to,

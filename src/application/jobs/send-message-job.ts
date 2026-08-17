@@ -44,6 +44,7 @@ import { db } from "@/infrastructure/db/client";
 import { organizations, messages, followUps, leads, conversations } from "@/infrastructure/db/schema";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
+import type { InternalLabDeliveryGuard } from "@/application/conversation-v2/internal-lab-delivery-guard";
 
 export type SendMessageJobDependencies = {
   outboundMessageStore: OutboundMessageStore;
@@ -60,6 +61,7 @@ export type SendMessageJobDependencies = {
     clinicId: string;
     conversationId: string;
   }) => Promise<string | null>;
+  internalLabDeliveryGuard?: InternalLabDeliveryGuard;
 };
 
 export type OutboundDeliveryBoundary = {
@@ -179,6 +181,29 @@ export class SendMessageJobHandler {
       clinicId: outbound.clinicId,
       payload: outbound.payload,
     };
+
+    if (
+      isConversationOutboundPayload(outbound.payload)
+      && outbound.payload.agentMessagePersistence === "sender"
+    ) {
+      const authorized = outbound.payload.internalLabBinding
+        ? await this.deps.internalLabDeliveryGuard?.authorize({
+            clinicId: outbound.clinicId,
+            binding: outbound.payload.internalLabBinding,
+          }) ?? false
+        : false;
+      if (!authorized) {
+        await this.deps.outboundMessageStore.markOutboundCancelled(
+          outbound.id,
+          "internal_lab_binding_drift",
+        );
+        outboundLog.warn("job.ignored", {
+          reason: "internal_lab_binding_drift",
+          durationMs: Date.now() - startedAt,
+        });
+        return "ignored";
+      }
+    }
 
     if (
       isConversationOutboundPayload(outbound.payload)

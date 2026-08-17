@@ -82,6 +82,8 @@ export class DrizzleLeadRepository implements LeadRepository {
         assignedToUserId: lead.assignedToUserId,
         nextActionAt: lead.nextActionAt,
         lostReason: lead.lostReason,
+        contactConsentRevokedAt: lead.contactConsentRevokedAt ?? null,
+        contactConsentSource: lead.contactConsentSource ?? null,
         createdAt: lead.createdAt,
         updatedAt: lead.updatedAt,
       })
@@ -120,6 +122,8 @@ export class DrizzleLeadRepository implements LeadRepository {
       assignedToUserId: lead.assignedToUserId,
       nextActionAt: lead.nextActionAt,
       lostReason: lead.lostReason,
+      contactConsentRevokedAt: lead.contactConsentRevokedAt ?? null,
+      contactConsentSource: lead.contactConsentSource ?? null,
       createdAt: lead.createdAt,
       updatedAt: lead.updatedAt,
     };
@@ -135,6 +139,8 @@ export class DrizzleLeadRepository implements LeadRepository {
       assignedToUserId: lead.assignedToUserId,
       nextActionAt: lead.nextActionAt,
       lostReason: lead.lostReason,
+      contactConsentRevokedAt: lead.contactConsentRevokedAt ?? null,
+      contactConsentSource: lead.contactConsentSource ?? null,
       updatedAt: lead.updatedAt,
     };
 
@@ -326,6 +332,8 @@ function mapRow(row: typeof leads.$inferSelect): Lead {
     assignedToUserId: row.assignedToUserId,
     nextActionAt: row.nextActionAt,
     lostReason: row.lostReason,
+    contactConsentRevokedAt: row.contactConsentRevokedAt,
+    contactConsentSource: row.contactConsentSource,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

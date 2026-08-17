@@ -35,6 +35,17 @@ const outbound: OutboundMessage = {
   sentAt: null,
 };
 
+const internalLabBinding = {
+  schemaVersion: "conversation-v2.internal-lab-delivery-binding.v1" as const,
+  tenantDigest: `sha256:${"1".repeat(64)}`,
+  channelDigest: `sha256:${"2".repeat(64)}`,
+  configDigest: `sha256:${"3".repeat(64)}`,
+};
+
+function allowingInternalLabDeliveryGuard() {
+  return { authorize: vi.fn().mockResolvedValue(true) };
+}
+
 function makeStore() {
   return {
     findOutboundMessage: vi.fn().mockResolvedValue(outbound),
@@ -109,6 +120,49 @@ function makeAutomationDispatchLifecycle() {
 }
 
 describe("SendMessageJobHandler", () => {
+  it("suppresses a V2 reply when channel bindings drift after outbox enqueue", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue({
+      ...outbound,
+      payload: {
+        ...(outbound.payload as Record<string, unknown>),
+        turnId: "turn-v2-drift",
+        agentMessagePersistence: "sender",
+        internalLabBinding: {
+          schemaVersion: "conversation-v2.internal-lab-delivery-binding.v1",
+          tenantDigest: `sha256:${"1".repeat(64)}`,
+          channelDigest: `sha256:${"2".repeat(64)}`,
+          configDigest: `sha256:${"3".repeat(64)}`,
+        },
+      },
+    });
+    const delivery = vi.fn();
+    const authorize = vi.fn().mockResolvedValue(false);
+    const appendMessage = vi.fn();
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: { appendMessage, findMessageById: vi.fn() },
+      internalLabDeliveryGuard: { authorize },
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({
+      payload: { outboundMessageId: outbound.id, turnId: "turn-v2-drift" },
+    })).resolves.toBe("ignored");
+
+    expect(authorize).toHaveBeenCalledWith(expect.objectContaining({
+      clinicId: outbound.clinicId,
+      binding: expect.objectContaining({ channelDigest: `sha256:${"2".repeat(64)}` }),
+    }));
+    expect(store.markOutboundCancelled).toHaveBeenCalledWith(
+      outbound.id,
+      "internal_lab_binding_drift",
+    );
+    expect(appendMessage).not.toHaveBeenCalled();
+    expect(delivery).not.toHaveBeenCalled();
+  });
+
   it("persiste a mensagem agent no sender quando o payload live V2 delega essa ownership", async () => {
     const store = makeStore();
     store.findOutboundMessage.mockResolvedValue({
@@ -117,6 +171,7 @@ describe("SendMessageJobHandler", () => {
         ...(outbound.payload as Record<string, unknown>),
         turnId: "turn-v2",
         agentMessagePersistence: "sender",
+        internalLabBinding,
       },
     });
     const appendMessage = vi.fn().mockResolvedValue(true);
@@ -124,6 +179,7 @@ describe("SendMessageJobHandler", () => {
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       conversationRepository: { appendMessage, findMessageById: vi.fn() },
+      internalLabDeliveryGuard: allowingInternalLabDeliveryGuard(),
       delivery,
       conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
     });
@@ -152,6 +208,7 @@ describe("SendMessageJobHandler", () => {
         ...(outbound.payload as Record<string, unknown>),
         turnId: "turn-v2",
         agentMessagePersistence: "sender",
+        internalLabBinding,
       },
     });
     const appendMessage = vi.fn().mockResolvedValue(false);
@@ -171,6 +228,7 @@ describe("SendMessageJobHandler", () => {
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       conversationRepository: { appendMessage, findMessageById },
+      internalLabDeliveryGuard: allowingInternalLabDeliveryGuard(),
       delivery,
       conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
     });
@@ -199,6 +257,7 @@ describe("SendMessageJobHandler", () => {
           ...(outbound.payload as Record<string, unknown>),
           turnId: "turn-v2",
           agentMessagePersistence: "sender",
+          internalLabBinding,
         },
       });
       const appendMessage = vi.fn().mockResolvedValue(false);
@@ -220,6 +279,7 @@ describe("SendMessageJobHandler", () => {
       const handler = new SendMessageJobHandler({
         outboundMessageStore: store as never,
         conversationRepository: { appendMessage, findMessageById },
+        internalLabDeliveryGuard: allowingInternalLabDeliveryGuard(),
         delivery,
         conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
       });

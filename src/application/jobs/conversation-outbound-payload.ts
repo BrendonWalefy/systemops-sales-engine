@@ -1,5 +1,6 @@
 import type { IntentType } from "@/core/intelligence/IntentClassifier";
 import type { TtsConfig } from "@/domain/entities/tts-config";
+import type { InternalLabDeliveryBinding } from "@/application/conversation-v2/internal-lab-delivery-guard";
 
 export type OutboundDeliveryPart =
   | { type: "text"; content: string }
@@ -34,6 +35,8 @@ export type ConversationOutboundPayload = {
   agentMessageId: string;
   /** V2 live delegates the idempotent Inbox placeholder to the existing sender. */
   agentMessagePersistence?: "sender";
+  /** V2-only non-secret binding revalidated by the existing sender. */
+  internalLabBinding?: InternalLabDeliveryBinding;
   replyText: string;
   intent: IntentType | null;
   useVoice: boolean;
@@ -90,12 +93,22 @@ export function isConversationOutboundPayload(
     typeof value.to === "string" &&
     typeof value.agentMessageId === "string" &&
     (value.agentMessagePersistence === undefined || value.agentMessagePersistence === "sender") &&
+    (value.internalLabBinding === undefined || isInternalLabDeliveryBinding(value.internalLabBinding)) &&
     typeof value.replyText === "string" &&
     typeof value.useVoice === "boolean" &&
     Array.isArray(value.interleavedParts) &&
     Array.isArray(value.mediaParts) &&
     typeof value.leadId === "string"
   );
+}
+
+function isInternalLabDeliveryBinding(input: unknown): input is InternalLabDeliveryBinding {
+  if (!input || typeof input !== "object") return false;
+  const value = input as Record<string, unknown>;
+  return value.schemaVersion === "conversation-v2.internal-lab-delivery-binding.v1"
+    && typeof value.tenantDigest === "string"
+    && typeof value.channelDigest === "string"
+    && typeof value.configDigest === "string";
 }
 
 export function isAutomationOutboundPayload(

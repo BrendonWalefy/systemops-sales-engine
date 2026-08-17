@@ -324,7 +324,7 @@ export function createDentalLiveAdapters(
     stateId: string;
     treatment: Treatment;
     slots: readonly { startsAt: Date; endsAt: Date }[];
-    exposed: Readonly<{ service: { id: string; name: string }; slots: readonly DentalSlot[] }>;
+    exposed: Readonly<{ service: { id: string; name: string; requiresEvaluationFirst: boolean }; slots: readonly DentalSlot[] }>;
   }> | null = null;
 
   async function listTenantTreatments(): Promise<Treatment[]> {
@@ -453,6 +453,12 @@ export function createDentalLiveAdapters(
   const schedulingRead: DentalSchedulingReadPort = {
     async listSlots(input) {
       const treatment = await exactTreatmentForScheduling(input.service);
+      const service = {
+        id: treatment.id,
+        name: treatment.name,
+        requiresEvaluationFirst: treatment.requiresEvaluationFirst,
+      };
+      if (treatment.requiresEvaluationFirst) return { service, slots: [] };
       const minimumLeadTimeMs = Math.max(0, input.minimumLeadTimeHours) * 60 * 60_000;
       const from = new Date(input.now.getTime() + minimumLeadTimeMs);
       const to = new Date(from.getTime() + clinic.slotLookaheadDays * 24 * 60 * 60_000);
@@ -460,7 +466,7 @@ export function createDentalLiveAdapters(
         ? timezone.resolvePreferredDate(input.date, input.now, businessHours)
         : null;
       if (input.date && !requestedDay) {
-        return { service: { id: treatment.id, name: treatment.name }, slots: [] };
+        return { service, slots: [] };
       }
       const requestedParts = requestedDay
         ? timezone.toLocalParts(requestedDay)
@@ -514,13 +520,13 @@ export function createDentalLiveAdapters(
         .slice(0, clinic.maxSlotsToOffer);
 
       if (slots.length === 0) {
-        return { service: { id: treatment.id, name: treatment.name }, slots: [] };
+        return { service, slots: [] };
       }
       const stateId = deterministicUuid(
         `conversation-v2-slot-offer:${conversationId}:${turnId}`,
       );
       const exposed = Object.freeze({
-        service: { id: treatment.id, name: treatment.name },
+        service,
         slots: Object.freeze(slots.map((slot, index) => Object.freeze({
           id: `dental-slot-candidate:${stateId}:${index + 1}:${encodeURIComponent(treatment.id)}`,
           label: timezone.formatForHuman(slot.startsAt),
@@ -653,7 +659,10 @@ export function createDentalLiveAdapters(
         throw new DentalLiveAdapterError("persisted slot offer unavailable");
       }
       return {
-        service: { id: prepared.treatment.id, name: prepared.treatment.name },
+        service: {
+          id: prepared.treatment.id,
+          name: prepared.treatment.name,
+        },
         slots: formatted.map((slot) =>
           toDentalSlot(prepared.stateId, slot, prepared.treatment.id),
         ),

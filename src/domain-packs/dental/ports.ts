@@ -11,7 +11,7 @@ export type DentalCatalogReadPort = {
 
 export type DentalSlot = { id: string; label: string; evidenceRef: string };
 export type DentalSlotSearchResult = {
-  service: { id: string; name: string };
+  service: { id: string; name: string; requiresEvaluationFirst?: boolean };
   slots: readonly DentalSlot[];
 };
 export type PendingDentalAppointment = { id: string; label: string; evidenceRef: string };

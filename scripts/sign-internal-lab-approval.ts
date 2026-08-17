@@ -15,6 +15,10 @@ import {
   loadConfiguredInternalLabAuthority,
 } from "../src/infrastructure/conversation-v2/configured-internal-lab-authority";
 import { createGitCycleIBuildAttestation } from "../src/infrastructure/conversation-v2/git-cycle-i-build-attestation";
+import {
+  assertInternalLabRuntimeArtifactBindings,
+  type InternalLabRuntimeArtifact,
+} from "../src/application/conversation-v2/internal-lab-runtime-bindings";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -153,6 +157,19 @@ async function main(): Promise<void> {
   const outputPath = outputValue ? await resolveOutputPath(outputValue) : null;
   const claimsBytes = await readFile(claimsPath, "utf8");
   const claims = JSON.parse(claimsBytes) as InternalLabApprovalClaims;
+  const resolvedArtifactPathValue = requiredValue(argv, "--resolved-artifact-file");
+  if (!isAbsolute(resolvedArtifactPathValue)) {
+    throw new Error("--resolved-artifact-file must be an absolute path");
+  }
+  const resolvedArtifactPath = await realpath(resolvedArtifactPathValue);
+  const resolvedArtifact = JSON.parse(
+    await readFile(resolvedArtifactPath, "utf8"),
+  ) as InternalLabRuntimeArtifact;
+  assertInternalLabRuntimeArtifactBindings({
+    tenantDigest: claims.tenantDigest,
+    channelDigest: claims.channelDigest,
+    configDigest: claims.configDigest,
+  }, resolvedArtifact);
   const canonicalPayload = serializeInternalLabApprovalClaims(claims, new Date());
   const authority = loadConfiguredInternalLabAuthority();
   assertConfiguredInternalLabAuthorityBindings(authority, {

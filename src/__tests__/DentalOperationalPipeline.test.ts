@@ -124,6 +124,58 @@ describe("pipeline operacional dental", () => {
     });
   });
 
+  it("honors the exactly resolved treatment evaluation gate before listing or persisting slots", async () => {
+    const persistSlotOffer = vi.fn();
+    const listSlots = vi.fn().mockResolvedValue({
+      service: {
+        id: "facets",
+        name: "Facetas",
+        requiresEvaluationFirst: true,
+      },
+      slots: [],
+    });
+    const pack = createDentalPack({
+      catalogRead: { resolveService: vi.fn() },
+      schedulingRead: {
+        listSlots,
+        resolveOfferedSlot: vi.fn(),
+        resolvePendingAppointment: vi.fn(),
+      },
+      schedulingWrite: {
+        persistSlotOffer,
+        bookSlot: vi.fn(),
+        confirmAppointment: vi.fn(),
+      },
+    });
+
+    const result = await runTurnPipeline({
+      gateInput,
+      state: { phase: "idle", pendingStepId: null, completedStepIds: [] },
+      policy,
+      now: new Date("2026-08-17T12:00:00.000Z"),
+      understand: async () => ({
+        version: UNDERSTANDING_VERSION,
+        request: "book-appointment" as const,
+        dialogueMove: "new_topic" as const,
+        entities: { service: "facetas", date: "amanhã" },
+        signals: {}, safety: {}, confidence: 1, ambiguity: null,
+      }),
+      capabilities: pack.capabilities,
+      outcomeSchema: pack.outcomeSchema,
+      response: {
+        style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
+        composer: new DeterministicResponseComposer(),
+      },
+    });
+
+    expect(listSlots).toHaveBeenCalledOnce();
+    expect(persistSlotOffer).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      status: "delivered",
+      actionResults: [{ type: "clarification_required" }],
+    });
+  });
+
   it("dependency ausente bloqueia execute", async () => {
     let writes = 0;
     const outcomeSchema = defineOutcomeSchema({
