@@ -250,13 +250,46 @@ Decision scoring compares concrete expected outcomes only where the fixture supp
 execution receipt needed to decide them. Unsupported or unmeasurable cases remain separate
 denominators. Safety metrics always include both strata and are blocking.
 
+### Task 6 authority and comparability hardening (post-review)
+
+The productive comparison is not authorized by structural JSON, HMAC-shaped strings or a caller
+supplied model label. A configured Ed25519 public root verifies a frozen run manifest that binds
+the implementation commit/tree, exact corpus/population/D0/comparability digests, tenant-fixture
+digest, model IDs, prompt/adapter source digests and optional Decision/prose/full-turn artifacts.
+The public root is process configuration and is distinct from the activation-approval root; it is
+not accepted as a function argument. A serialized measurement run requires its own signature over
+the complete canonical run before it can be re-registered for gate evaluation. The in-process
+runner may register only the snapshot it parsed after executing the registered real V1/V2 arms.
+
+Decision evidence uses `conversation-v2-decision-fixtures.v2`. The signed run manifest binds the
+fixture file digest and its frozen population digest. The file predeclares applicability for all
+17 cases, and fixtures must exactly equal the applicable subset. A write receipt is content-bound
+to `caseId`, captured-read `snapshotDigest`, intended effect action and payload hash, concrete
+outcome type and source evidence. Missing, partial, dangling or incompatible material makes the
+whole Decision layer `not_measurable`; it cannot shrink the denominator into PASS. In particular,
+`scheduling-0003` and its `book_slot`/`appointment_confirmed` mismatch remain explicitly
+unmeasurable until a canonical corpus decision is approved.
+
+Understanding comparability is predeclared before calls. The corpus currently lacks a structured
+pending-slot state for `scheduling-0003` and `burst-0002`; neither arm is called for those cases,
+both scheduled rows remain visible as `not_measurable`, and they do not enter the
+accuracy/critical-regression PASS denominators (90 per arm / 180 observations). They still remain
+in the 204-row protocol-integrity denominator. This state is never inferred from prose.
+
+Approved prose is a separately content-bound artifact covering exactly the same 90 V1/V2 pairs.
+Qualitative scoring becomes reachable only through its parser plus a complete calibration manifest
+and two distinct calibrated reviewers. Full-turn cost/p95 becomes reachable only through a
+content-bound artifact, a cryptographically approved `replay-dataset.v2`, and an isolated Lab
+record with automation disabled. Without those artifacts the gates stay `not_measurable` (or
+`pending_human_review` only after approved prose exists); no synthetic ratings or replay are made.
+
 ### Frozen applicability matrix
 
 Applicability is fixed before measurements and recorded in the report schema:
 
 | Layer | Gating population and instrument | Gating rule |
 | --- | --- | --- |
-| Understanding `request`, supported scope | Exact 17 valid Cycle-F-supported cases; paired/interleaved live-model observations, stable primary and D0 sensitivity | V2 accuracy ≥ V1 on identical cases, Cycle-F per-axis gate remains green, zero critical regressions |
+| Understanding `request`, supported scope | Exact 17-case schedule; 15 predeclared comparable cases (90 observations per arm), with both non-comparable arms retained as explicit `not_measurable`; paired/interleaved live-model observations, stable primary and D0 sensitivity | V2 accuracy ≥ V1 on identical comparable cases, Cycle-F per-axis gate remains green, zero critical regressions |
 | Understanding `request`, original D0 scope | Original digest and 64-case comparable denominator only | Contextual program benchmark: Cycle C/D0 delta/range/improvement rules; `not_measurable` while V2 lacks that population, never credited toward or required for scoped internal activation |
 | Other Understanding axes | Same cases where V1 emits a comparable value | No regression on comparable axes; V2-only axes are reported, not credited as wins |
 | Decision / ActionResult | Cases with explicit expected result plus required read or offline execution receipt | Exact expected result and zero critical regressions; no 3-point aggregate rule |

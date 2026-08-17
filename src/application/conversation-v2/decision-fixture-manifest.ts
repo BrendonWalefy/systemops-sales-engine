@@ -1,114 +1,69 @@
 import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import {
-  parseCapturedV2TurnReads,
-  type CapturedV2TurnReads,
-} from "@/application/conversation-v2/captured-turn-reads";
+import { parseCapturedV2TurnReads, type CapturedV2TurnReads } from "@/application/conversation-v2/captured-turn-reads";
 import type { HmacRef } from "@/application/conversation-v2/comparison-record";
-import {
-  DENTAL_OUTCOME_SCHEMA,
-  type DentalOutcomeType,
-} from "@/domain-packs/dental";
+import { isRegisteredAuthorizedCycleIRunManifest, type AuthorizedCycleIRunManifest } from "@/application/conversation-v2/run-manifest-authority";
+import { DENTAL_OUTCOME_SCHEMA, type DentalOutcomeType } from "@/domain-packs/dental";
 
-export const CYCLE_I_DECISION_FIXTURE_MANIFEST_VERSION =
-  "conversation-v2-decision-fixtures.v1" as const;
-
+export const CYCLE_I_DECISION_FIXTURE_MANIFEST_VERSION = "conversation-v2-decision-fixtures.v2" as const;
 export type CycleIDecisionFixture = Readonly<{
-  caseId: string;
-  snapshotDigest: HmacRef;
-  reads: CapturedV2TurnReads;
+  caseId: string; snapshotDigest: HmacRef; reads: CapturedV2TurnReads;
   executionReceipt: Readonly<{
-    outcomeType: DentalOutcomeType;
-    evidenceDigest: HmacRef;
+    caseId: string; snapshotDigest: HmacRef;
+    effect: Readonly<{ action: "book_slot" | "confirm_appointment"; payloadHash: string }>;
+    outcomeType: DentalOutcomeType; sourceEvidenceDigest: HmacRef; receiptDigest: HmacRef;
   }> | null;
-  approval: Readonly<{
-    source: "committed_fixture" | "signed_replay";
-    digest: HmacRef;
-  }>;
+}>;
+export type AuthorizedCycleIDecisionFixtureManifest = Readonly<{
+  version: typeof CYCLE_I_DECISION_FIXTURE_MANIFEST_VERSION; populationDigest: HmacRef;
+  population: readonly Readonly<{ caseId: string; applicability: "applicable" | "not_applicable"; reason: string | null }>[];
+  fixtures: readonly CycleIDecisionFixture[];
 }>;
 
-const hmac = z.string().regex(/^hmac:[a-f0-9]{64}$/);
+const hmac = z.string().regex(/^hmac:[a-f0-9]{64}$/), sha = z.string().regex(/^[a-f0-9]{64}$/);
 const caseId = z.string().regex(/^[a-z][a-z0-9-]*-\d{4}$/);
-const outcomeTypes = Object.keys(DENTAL_OUTCOME_SCHEMA) as [
-  DentalOutcomeType,
-  ...DentalOutcomeType[],
-];
-const fixtureSchema = z.object({
-  caseId,
-  snapshotDigest: hmac,
-  reads: z.unknown(),
-  executionReceipt: z.object({
-    outcomeType: z.enum(outcomeTypes),
-    evidenceDigest: hmac,
-  }).strict().nullable(),
-  approval: z.object({
-    source: z.enum(["committed_fixture", "signed_replay"]),
-    digest: hmac,
-  }).strict(),
-}).strict();
+const outcomeTypes = Object.keys(DENTAL_OUTCOME_SCHEMA) as [DentalOutcomeType, ...DentalOutcomeType[]];
+const receiptSchema = z.object({ caseId, snapshotDigest: hmac,
+  effect: z.object({ action: z.enum(["book_slot", "confirm_appointment"]), payloadHash: sha }).strict(),
+  outcomeType: z.enum(outcomeTypes), sourceEvidenceDigest: hmac, receiptDigest: hmac }).strict();
+const fixtureSchema = z.object({ caseId, snapshotDigest: hmac, reads: z.unknown(), executionReceipt: receiptSchema.nullable() }).strict();
 const manifestSchema = z.object({
-  version: z.literal(CYCLE_I_DECISION_FIXTURE_MANIFEST_VERSION),
+  version: z.literal(CYCLE_I_DECISION_FIXTURE_MANIFEST_VERSION), populationDigest: hmac,
+  population: z.array(z.object({ caseId, applicability: z.enum(["applicable", "not_applicable"]), reason: z.string().min(1).nullable() }).strict()).length(17),
   fixtures: z.array(fixtureSchema),
 }).strict();
 
-function canonicalJson(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalJson);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, nested]) => [key, canonicalJson(nested)]),
-    );
-  }
-  return value;
-}
+function canonicalJson(value: unknown): unknown { if (Array.isArray(value)) return value.map(canonicalJson); if (value !== null && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([key, nested]) => [key, canonicalJson(nested)])); return value; }
+function freeze<T>(value: T): T { if (Array.isArray(value)) value.forEach(freeze); else if (value !== null && typeof value === "object") Object.values(value as Record<string, unknown>).forEach(freeze); return Object.freeze(value); }
+function digest(value: unknown, domain: string): HmacRef { return `hmac:${createHmac("sha256", domain).update(typeof value === "string" ? value : JSON.stringify(canonicalJson(value))).digest("hex")}`; }
+export function digestCycleIDecisionSnapshot(reads: CapturedV2TurnReads): HmacRef { return digest(reads, "cycle-i-decision-snapshot.v1"); }
+export function digestCycleIDecisionReceipt(input: Readonly<{ caseId: string; snapshotDigest: HmacRef; effect: Readonly<{ action: "book_slot" | "confirm_appointment"; payloadHash: string }>; outcomeType: DentalOutcomeType; sourceEvidenceDigest: HmacRef }>): HmacRef { return digest(input, "cycle-i-decision-receipt.v2"); }
+export function digestCycleIDecisionManifestContent(raw: string): HmacRef { return digest(raw, "cycle-i-decision-manifest-content.v2"); }
 
-function freeze<T>(value: T): T {
-  if (Array.isArray(value)) value.forEach(freeze);
-  else if (value !== null && typeof value === "object") {
-    Object.values(value as Record<string, unknown>).forEach(freeze);
-  }
-  return Object.freeze(value);
-}
-
-export function digestCycleIDecisionSnapshot(reads: CapturedV2TurnReads): HmacRef {
-  const canonical = JSON.stringify(canonicalJson(reads));
-  return `hmac:${createHmac("sha256", "cycle-i-decision-snapshot.v1")
-    .update(canonical)
-    .digest("hex")}`;
-}
-
-export function loadCycleIDecisionFixtureManifest(
-  path: string,
-): readonly CycleIDecisionFixture[] {
-  const parsed = manifestSchema.parse(JSON.parse(readFileSync(path, "utf8")));
-  const seen = new Set<string>();
-  const fixtures = parsed.fixtures.map((input) => {
-    if (seen.has(input.caseId)) {
-      throw new Error(`duplicate Cycle I decision fixture: ${input.caseId}`);
+export function loadAuthorizedCycleIDecisionFixtureManifest(input: Readonly<{ path: string; authority: AuthorizedCycleIRunManifest; expectedCaseIds: readonly string[] }>): AuthorizedCycleIDecisionFixtureManifest {
+  if (!isRegisteredAuthorizedCycleIRunManifest(input.authority)) throw new Error("Decision fixtures require a registered Cycle I authority");
+  const approved = input.authority.decisionManifest;
+  if (approved === null || approved.path !== input.path) throw new Error("Decision fixture manifest is absent from the authorized run manifest");
+  const raw = readFileSync(input.path, "utf8");
+  if (digestCycleIDecisionManifestContent(raw) !== approved.digest) throw new Error("Decision fixture manifest content digest mismatch");
+  const parsed = manifestSchema.parse(JSON.parse(raw));
+  if (parsed.populationDigest !== input.authority.populationDigest || parsed.populationDigest !== approved.populationDigest) throw new Error("Decision fixture population digest mismatch");
+  const expected = [...input.expectedCaseIds].sort(), declared = parsed.population.map((entry) => entry.caseId).sort();
+  if (new Set(declared).size !== 17 || JSON.stringify(declared) !== JSON.stringify(expected)) throw new Error("Decision fixture applicability must predeclare the exact frozen population");
+  for (const entry of parsed.population) if ((entry.applicability === "applicable") !== (entry.reason === null)) throw new Error(`invalid Decision applicability declaration: ${entry.caseId}`);
+  const applicable = new Set(parsed.population.filter((entry) => entry.applicability === "applicable").map((entry) => entry.caseId));
+  const fixtureIds = parsed.fixtures.map((entry) => entry.caseId);
+  if (new Set(fixtureIds).size !== fixtureIds.length || JSON.stringify([...fixtureIds].sort()) !== JSON.stringify([...applicable].sort())) throw new Error("Decision fixtures must exactly cover the predeclared applicable population");
+  const fixtures = parsed.fixtures.map((fixture) => {
+    const reads = parseCapturedV2TurnReads(fixture.reads);
+    if (digestCycleIDecisionSnapshot(reads) !== fixture.snapshotDigest) throw new Error(`Cycle I decision fixture snapshot digest mismatch: ${fixture.caseId}`);
+    const receipt = fixture.executionReceipt;
+    if (receipt !== null) {
+      const material = { caseId: receipt.caseId, snapshotDigest: receipt.snapshotDigest, effect: receipt.effect, outcomeType: receipt.outcomeType, sourceEvidenceDigest: receipt.sourceEvidenceDigest };
+      if (receipt.caseId !== fixture.caseId || receipt.snapshotDigest !== fixture.snapshotDigest || digestCycleIDecisionReceipt(material as Parameters<typeof digestCycleIDecisionReceipt>[0]) !== receipt.receiptDigest) throw new Error(`Cycle I decision receipt binding mismatch: ${fixture.caseId}`);
     }
-    seen.add(input.caseId);
-    const reads = parseCapturedV2TurnReads(input.reads);
-    const digest = digestCycleIDecisionSnapshot(reads);
-    if (digest !== input.snapshotDigest) {
-      throw new Error(`Cycle I decision fixture snapshot digest mismatch: ${input.caseId}`);
-    }
-    return freeze({
-      caseId: input.caseId,
-      snapshotDigest: input.snapshotDigest as HmacRef,
-      reads,
-      executionReceipt: input.executionReceipt === null
-        ? null
-        : {
-            outcomeType: input.executionReceipt.outcomeType,
-            evidenceDigest: input.executionReceipt.evidenceDigest as HmacRef,
-          },
-      approval: {
-        source: input.approval.source,
-        digest: input.approval.digest as HmacRef,
-      },
-    });
+    return freeze({ caseId: fixture.caseId, snapshotDigest: fixture.snapshotDigest as HmacRef, reads, executionReceipt: receipt as CycleIDecisionFixture["executionReceipt"] });
   });
-  return freeze(fixtures);
+  return freeze({ version: parsed.version, populationDigest: parsed.populationDigest as HmacRef, population: parsed.population, fixtures });
 }

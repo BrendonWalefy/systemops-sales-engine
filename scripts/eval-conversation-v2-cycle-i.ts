@@ -1,4 +1,3 @@
-import OpenAI from "openai";
 import { createHmac } from "node:crypto";
 import {
   existsSync,
@@ -8,15 +7,13 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
-import { z } from "zod";
 import { loadCorpus } from "@/application/corpus/corpus-index";
 import { loadCycleFAcceptanceManifest } from "@/application/corpus/cycle-f-acceptance";
 import {
   buildCycleIGateEvidence,
-  parseCycleIComparisonRun,
+  parseProductiveCycleIComparisonRun,
   runCycleICorpusComparison,
   type CycleIComparisonRun,
-  type CycleIUnderstandingArm,
 } from "@/application/conversation-v2/corpus-comparison-runner";
 import {
   buildCycleIGateReport,
@@ -24,41 +21,19 @@ import {
 } from "@/application/conversation-v2/gate-report";
 import {
   buildBlindHumanReviewSheet,
+  scoreHumanReview,
 } from "@/application/conversation-v2/human-review";
 import {
   pairApprovedEvalRecords,
   type HmacRef,
-  type ModelCallSummary,
 } from "@/application/conversation-v2/comparison-record";
-import { IntentClassifier } from "@/core/intelligence/IntentClassifier";
-import type { Message } from "@/domain/entities/conversation";
-import { DentalUnderstandingProvider } from "@/infrastructure/adapters/ai/DentalUnderstandingProvider";
-import { OpenAIDentalUnderstandingModel } from "@/infrastructure/adapters/ai/OpenAIDentalUnderstandingModel";
-
-const RUN_MANIFEST_VERSION = "conversation-v2-cycle-i-run-manifest.v1" as const;
-const hmac = z.string().regex(/^hmac:[a-f0-9]{64}$/);
-const runManifestSchema = z.object({
-  version: z.literal(RUN_MANIFEST_VERSION),
-  implementationBaseCommit: z.string().regex(/^[a-f0-9]{7,64}$/),
-  corpusRoot: z.string().min(1),
-  manifestPath: z.string().min(1),
-  d0Path: z.string().min(1),
-  decisionFixtureManifestPath: z.string().min(1).nullable(),
-  runs: z.literal(6),
-  v1ModelId: z.string().min(1).max(128),
-  v2ModelId: z.string().min(1).max(128),
-  configDigest: hmac,
-  judge: z.literal("experimental_non_gating"),
-  evidence: z.object({
-    hEntailment: hmac,
-    shadowNoEffects: hmac,
-    cycleFAxes: hmac,
-    rollback: hmac,
-    observability: hmac,
-  }).strict(),
-  fullTurnEvidence: z.null(),
-}).strict();
-type RunManifest = z.infer<typeof runManifestSchema>;
+import {
+  parseAuthorizedCycleIRunManifest,
+  parseCycleIRunManifestSnapshot,
+  type CycleIRunManifestSnapshot,
+} from "@/application/conversation-v2/run-manifest-authority";
+import { createProductiveCycleIUnderstandingArms } from "@/application/conversation-v2/productive-understanding-arms";
+import { loadAuthorizedCycleIFullTurnEvidence } from "@/application/conversation-v2/approved-cycle-i-artifacts";
 type CliEnvironment = Readonly<Record<string, string | undefined>>;
 
 function freeze<T>(value: T): T {
@@ -83,8 +58,8 @@ function argument(argv: readonly string[], name: string): string | null {
   return value;
 }
 
-function loadRunManifest(path: string): RunManifest {
-  return freeze(runManifestSchema.parse(JSON.parse(readFileSync(path, "utf8"))));
+function loadRunManifest(path: string): CycleIRunManifestSnapshot {
+  return parseCycleIRunManifestSnapshot(JSON.parse(readFileSync(path, "utf8")));
 }
 
 function writeJson(path: string, value: unknown): void {
@@ -92,7 +67,7 @@ function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function fixedClocks(manifest: RunManifest): Readonly<Record<string, string>> {
+function fixedClocks(manifest: CycleIRunManifestSnapshot): Readonly<Record<string, string>> {
   const corpus = loadCorpus(manifest.corpusRoot);
   const population = loadCycleFAcceptanceManifest(
     manifest.manifestPath,
@@ -105,140 +80,15 @@ function fixedClocks(manifest: RunManifest): Readonly<Record<string, string>> {
   ])));
 }
 
-function tenantConfig(path: string): Readonly<{
-  services: readonly Readonly<{ name: string }>[];
-}> {
-  return z.object({
-    services: z.array(z.object({ name: z.string().min(1) }).passthrough()),
-  }).passthrough().parse(JSON.parse(readFileSync(path, "utf8")));
-}
-
-function messages(
-  caseId: string,
-  fixedNow: string,
-  history: readonly Readonly<{
-    author: "lead" | "agent" | "operator";
-    body: string;
-  }>[],
-): Message[] {
-  return history.map((entry, index) => ({
-    id: `${caseId}-history-${index}`,
-    conversationId: caseId,
-    author: entry.author === "lead" ? "lead" : "clinic_user",
-    body: entry.body,
-    sentAt: new Date(fixedNow),
-    externalId: null,
-  })) as Message[];
-}
-
-function modelSummary(modelId: string, latencyMs: number): ModelCallSummary {
-  return freeze({
-    modelId,
-    calls: 1,
-    inputTokens: null,
-    outputTokens: null,
-    latencyMs: Math.max(0, Math.round(latencyMs)),
-    estimatedCostMinor: null,
-  });
-}
-
-function createUnderstandingArms(
-  manifest: RunManifest,
-  apiKey: string,
-): Readonly<{
-  v1: CycleIUnderstandingArm;
-  v2: CycleIUnderstandingArm;
-}> {
-  const corpus = loadCorpus(manifest.corpusRoot);
-  const byId = new Map(corpus.cases.map((entry) => [entry.caseId, entry]));
-  const classifier = new IntentClassifier();
-  const v2Provider = new DentalUnderstandingProvider(
-    new OpenAIDentalUnderstandingModel(new OpenAI({ apiKey }), manifest.v2ModelId),
-  );
-  return freeze({
-    v1: freeze({
-      async runCase(input) {
-        const corpusCase = byId.get(input.caseId);
-        if (!corpusCase) throw new Error("case absent from frozen corpus");
-        const config = tenantConfig(
-          `${manifest.corpusRoot}/tenant-configs/${corpusCase.input.tenantConfigRef}.json`,
-        );
-        const startedAt = performance.now();
-        const result = await classifier.classify(
-          input.leadMessage,
-          messages(input.caseId, input.fixedNow, input.history),
-          false,
-          config.services.map((service) => ({ name: service.name, aliases: [] })),
-        );
-        return freeze({
-          request: result.intent,
-          model: modelSummary(manifest.v1ModelId, performance.now() - startedAt),
-        });
-      },
-    }),
-    v2: freeze({
-      async runCase(input) {
-        const corpusCase = byId.get(input.caseId);
-        if (!corpusCase) throw new Error("case absent from frozen corpus");
-        const config = tenantConfig(
-          `${manifest.corpusRoot}/tenant-configs/${corpusCase.input.tenantConfigRef}.json`,
-        );
-        const startedAt = performance.now();
-        const result = await v2Provider.understand({
-          leadMessage: input.leadMessage,
-          history: input.history.map((entry) => ({
-            author: entry.author === "lead" ? "lead" as const : "agent" as const,
-            body: entry.body,
-          })),
-          state: null,
-          catalog: config.services.map((service, index) => ({
-            id: `fixture-service-${index}`,
-            displayName: service.name,
-            aliases: [],
-          })),
-        });
-        return freeze({
-          request: result.request,
-          model: modelSummary(manifest.v2ModelId, performance.now() - startedAt),
-        });
-      },
-    }),
-  });
-}
-
-function reportWithoutRun(manifest: RunManifest) {
-  const corpus = loadCorpus(manifest.corpusRoot);
-  const population = loadCycleFAcceptanceManifest(
-    manifest.manifestPath,
-    manifest.corpusRoot,
-  );
-  const populationDigest = digest(population, "cycle-i-population.v1");
-  const datasetDigest = digest(corpus.cases, "cycle-i-corpus.v1");
-  const evidence = (evidenceDigest: HmacRef, denominator: number) => ({
-    evidenceDigest,
-    populationDigest,
-    datasetDigest,
-    configDigest: manifest.configDigest as HmacRef,
-    denominator,
-  });
+function reportWithoutRun(manifest: CycleIRunManifestSnapshot) {
+  const populationDigest = manifest.populationDigest;
+  const datasetDigest = manifest.corpusDigest;
   return buildCycleIGateReport({
     reportDigest: digest("cycle-i-no-measurement", "cycle-i-gate-report.v1"),
     populationDigest,
     datasetDigest,
     configDigest: manifest.configDigest,
-    measurements: {
-      h_entailment: { ...evidence(manifest.evidence.hEntailment as HmacRef, 1), passed: true },
-      shadow_no_effects: {
-        ...evidence(manifest.evidence.shadowNoEffects as HmacRef, 1),
-        sideEffects: 0,
-        contamination: 0,
-      },
-      rollback: { ...evidence(manifest.evidence.rollback as HmacRef, 1), passed: true },
-      observability: {
-        ...evidence(manifest.evidence.observability as HmacRef, 1),
-        passed: true,
-      },
-    },
+    measurements: {},
   });
 }
 
@@ -274,19 +124,24 @@ export async function runCycleICli(
       throw new Error("OPENAI_API_KEY absent; no Cycle I observations were created");
     }
     const configuredV1Model = env.OPENAI_CLASSIFIER_MODEL?.trim() || "gpt-4o-mini";
-    if (configuredV1Model !== manifest.v1ModelId) {
+    if (configuredV1Model !== manifest.v1.modelId) {
       throw new Error("V1 model differs from the frozen Cycle I run manifest");
     }
-    const arms = createUnderstandingArms(manifest, apiKey);
+    const authority = parseAuthorizedCycleIRunManifest(
+      JSON.parse(readFileSync(runManifestPath, "utf8")),
+    );
+    const arms = createProductiveCycleIUnderstandingArms({ manifest: authority, apiKey });
     const result = await runCycleICorpusComparison({
-      corpusRoot: manifest.corpusRoot,
-      manifestPath: manifest.manifestPath,
-      d0Path: manifest.d0Path,
-      decisionFixtureManifestPath: manifest.decisionFixtureManifestPath,
+      corpusRoot: authority.corpusRoot,
+      manifestPath: authority.manifestPath,
+      d0Path: authority.d0Path,
+      decisionFixtureManifestPath: authority.decisionManifest?.path ?? null,
       v1Understanding: arms.v1,
       v2Understanding: arms.v2,
-      runs: manifest.runs,
-      fixedClockByCase: fixedClocks(manifest),
+      runs: authority.runs,
+      fixedClockByCase: fixedClocks(authority),
+      comparabilityPath: authority.comparabilityPath,
+      authority,
     });
     writeJson(outputPath, result);
     return result.status === "complete" ? 0 : 2;
@@ -297,7 +152,8 @@ export async function runCycleICli(
     if (!runPath || !existsSync(runPath)) {
       throw new Error("a complete Cycle I run is required to build the human sheet");
     }
-    const run = parseCycleIComparisonRun(JSON.parse(readFileSync(runPath, "utf8")));
+    const authority = parseAuthorizedCycleIRunManifest(JSON.parse(readFileSync(runManifestPath, "utf8")));
+    const run = parseProductiveCycleIComparisonRun(JSON.parse(readFileSync(runPath, "utf8")), authority);
     if (run.status !== "complete" || run.prose.approvedEvalRecords.length === 0) {
       throw new Error("approved V1/V2 prose pairs are unavailable; no human sheet was created");
     }
@@ -312,18 +168,30 @@ export async function runCycleICli(
     if (!runPath || !existsSync(runPath)) {
       report = reportWithoutRun(manifest);
     } else {
-      const run: CycleIComparisonRun = parseCycleIComparisonRun(
-        JSON.parse(readFileSync(runPath, "utf8")),
-      );
+      const authority = parseAuthorizedCycleIRunManifest(JSON.parse(readFileSync(runManifestPath, "utf8")));
+      const run: CycleIComparisonRun = parseProductiveCycleIComparisonRun(JSON.parse(readFileSync(runPath, "utf8")), authority);
+      const humanPaths = ["--human-sheet", "--calibration", "--reviewer-a", "--reviewer-b"].map((name) => argument(argv, name));
+      if (humanPaths.some(Boolean) && !humanPaths.every(Boolean)) throw new Error("human review requires sheet, calibration, and two reviewer files");
+      const pairs = pairApprovedEvalRecords(run.prose.approvedEvalRecords);
+      const humanReview = humanPaths.every(Boolean) ? scoreHumanReview({
+        sheet: JSON.parse(readFileSync(humanPaths[0]!, "utf8")), pairs, runDigest: run.runDigest,
+        calibrationManifest: JSON.parse(readFileSync(humanPaths[1]!, "utf8")),
+        reviewerA: JSON.parse(readFileSync(humanPaths[2]!, "utf8")),
+        reviewerB: JSON.parse(readFileSync(humanPaths[3]!, "utf8")),
+      }) : null;
+      const replayKey = env.REPLAY_APPROVAL_PUBLIC_KEY?.trim() ?? "";
+      if (authority.fullTurnEvidence !== null && !replayKey) throw new Error("REPLAY_APPROVAL_PUBLIC_KEY is required for configured full-turn evidence");
+      const fullTurn = authority.fullTurnEvidence === null ? null : loadAuthorizedCycleIFullTurnEvidence({ authority, replayApprovalPublicKey: replayKey });
+      const authorizedEvidence = Object.fromEntries(Object.entries(authority.evidence).filter((entry): entry is [string, HmacRef] => entry[1] !== null));
       report = buildCycleIGateEvidence({
         reportDigest: digest(run.runDigest, "cycle-i-gate-report.v1"),
         populationDigest: run.protocol.populationDigest,
         datasetDigest: run.protocol.corpusDigest,
-        configDigest: manifest.configDigest as HmacRef,
+        configDigest: authority.configDigest as HmacRef,
         run,
-        evidence: manifest.evidence as Record<string, HmacRef>,
-        humanReview: null,
-        approvedFullTurnReplay: null,
+        evidence: authorizedEvidence,
+        humanReview,
+        approvedFullTurnReplay: fullTurn,
         verification: null,
         adversarialReview: null,
       });

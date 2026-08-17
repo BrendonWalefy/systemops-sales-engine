@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { isRegisteredCycleIGateReport } from "@/application/conversation-v2/gate-report";
 import {
   buildCycleIGateEvidence,
   runCycleICorpusComparison,
@@ -32,9 +31,9 @@ async function completeRun() {
 }
 
 describe("Cycle I gate evidence", () => {
-  it("passes only evidenced deterministic gates and leaves human/full-turn evidence blocking", async () => {
+  it("rejects a structurally valid run produced with unregistered injected arms", async () => {
     const run = await completeRun();
-    const report = buildCycleIGateEvidence({
+    expect(() => buildCycleIGateEvidence({
       reportDigest: ref("1"),
       populationDigest: run.protocol.populationDigest,
       datasetDigest: run.protocol.corpusDigest,
@@ -51,21 +50,10 @@ describe("Cycle I gate evidence", () => {
       approvedFullTurnReplay: null,
       verification: null,
       adversarialReview: null,
-    });
-
-    expect(report.criteria.h_entailment.status).toBe("pass");
-    expect(report.criteria.shadow_no_effects.status).toBe("pass");
-    expect(report.criteria.protocol_integrity.status).toBe("pass");
-    expect(report.criteria.critical_regressions.status).toBe("pass");
-    expect(report.criteria.qualitative.status).toBe("pending_human_review");
-    expect(report.criteria.full_turn_cost.status).toBe("not_measurable");
-    expect(report.criteria.full_turn_p95.status).toBe("not_measurable");
-    expect(report.judge).toBe("experimental_non_gating");
-    expect(report.decision).toBe("NO_GO");
-    expect(isRegisteredCycleIGateReport(report)).toBe(false);
+    })).toThrow(/registered|authorized|productive/i);
   });
 
-  it("does not promote an infrastructure-error run or absent Decision fixtures to PASS", async () => {
+  it("rejects an unregistered infrastructure-error run before evaluating absent evidence", async () => {
     const failingArm: CycleIUnderstandingArm = Object.freeze({ async runCase() { throw new Error("provider down"); } });
     const corpus = loadCorpus("evals/corpus");
     const manifest = loadCycleFAcceptanceManifest("evals/understanding/cycle-f-dental.json");
@@ -82,20 +70,15 @@ describe("Cycle I gate evidence", () => {
         manifest.cases.map(({ caseId }) => [caseId, byId.get(caseId)!.source.capturedAt]),
       )),
     });
-    const report = buildCycleIGateEvidence({
+    expect(() => buildCycleIGateEvidence({
       reportDigest: ref("1"), populationDigest: run.protocol.populationDigest,
       datasetDigest: run.protocol.corpusDigest, configDigest: ref("4"), run,
       evidence: {}, humanReview: null, approvedFullTurnReplay: null,
       verification: null, adversarialReview: null,
-    });
-
-    expect(report.criteria.protocol_integrity.status).toBe("not_measurable");
-    expect(report.criteria.supported_understanding.status).toBe("not_measurable");
-    expect(report.criteria.supported_decision.status).toBe("not_measurable");
-    expect(report.decision).toBe("NO_GO");
+    })).toThrow(/registered|authorized|productive/i);
   });
 
-  it("passes supported Decision only when every approved fixture matches without a critical regression", async () => {
+  it("does not accept injected Decision measurements on an unregistered run", async () => {
     const run = await completeRun();
     const measuredRun = {
       ...run,
@@ -108,14 +91,12 @@ describe("Cycle I gate evidence", () => {
         approvedEvalRecords: [],
       },
     };
-    const report = buildCycleIGateEvidence({
+    expect(() => buildCycleIGateEvidence({
       reportDigest: ref("1"), populationDigest: run.protocol.populationDigest,
       datasetDigest: run.protocol.corpusDigest, configDigest: ref("4"),
       run: measuredRun, evidence: {}, humanReview: null,
       approvedFullTurnReplay: null, verification: null, adversarialReview: null,
-    });
-
-    expect(report.criteria.supported_decision.status).toBe("pass");
+    })).toThrow(/registered|authorized|productive/i);
   });
 
   it("keeps the offline runner free of DB, repository, calendar, and booking imports", () => {
@@ -123,6 +104,7 @@ describe("Cycle I gate evidence", () => {
       "scripts/eval-conversation-v2-cycle-i.ts",
       "src/application/conversation-v2/corpus-comparison-runner.ts",
       "src/application/conversation-v2/decision-fixture-manifest.ts",
+      "src/application/conversation-v2/productive-understanding-arms.ts",
     ].map((path) => readFileSync(path, "utf8")).join("\n");
 
     expect(source).toMatch(/IntentClassifier/);

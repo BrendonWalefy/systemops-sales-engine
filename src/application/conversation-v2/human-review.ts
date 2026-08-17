@@ -15,6 +15,7 @@ const sheetSchema = z.object({ version: z.literal("conversation-v2-human-review.
 const reviewerSchema = z.object({ reviewerRef: hmac, calibrationDigest: hmac, pairs: z.array(z.object({ run, caseId: id, ratings: z.tuple([ratingSchema, ratingSchema]) }).strict()) }).strict();
 const calibrationSchema = z.object({ version: z.literal("conversation-v2-reviewer-calibration.v1"), rubricDigest: z.literal(APPROVED_REVIEWER_RUBRIC_DIGEST), manifestDigest: hmac, reviewers: z.array(z.object({ reviewerRef: hmac, calibrationDigest: hmac, evidenceDigest: hmac, rates: z.object({ factuallyCorrect: z.number().min(0.8).max(1), addressedWhatTheLeadRaised: z.number().min(0.8).max(1), advancedTheJourney: z.number().min(0.8).max(1), wouldRepeatToday: z.number().min(0.8).max(1) }).strict() }).strict()).min(2) }).strict();
 const dimensions = ["factuallyCorrect", "addressedWhatTheLeadRaised", "advancedTheJourney", "wouldRepeatToday"] as const;
+const registeredScores = new WeakSet<object>();
 function freeze<T>(value: T): T { if (Array.isArray(value)) value.forEach(freeze); else if (value && typeof value === "object") Object.values(value as Record<string, unknown>).forEach(freeze); return Object.freeze(value); }
 function key(pair: { run: number; caseId: string }) { return `${pair.run}:${pair.caseId}`; }
 export function parseApprovedReviewerCalibrationManifest(input: unknown): ApprovedReviewerCalibrationManifest { const parsed = calibrationSchema.parse(input); if (new Set(parsed.reviewers.map((item) => item.reviewerRef)).size !== parsed.reviewers.length) throw new Error("duplicate calibrated reviewer"); return freeze(parsed) as ApprovedReviewerCalibrationManifest; }
@@ -37,5 +38,11 @@ export function scoreHumanReview(input: { sheet: unknown; pairs: readonly Approv
   const calibration = parseApprovedReviewerCalibrationManifest(input.calibrationManifest); const a = scoreReviewer(input.reviewerA, expected, input.pairs, calibration, input.runDigest), b = scoreReviewer(input.reviewerB, expected, input.pairs, calibration, input.runDigest); if (a.reviewerRef === b.reviewerRef) throw new Error("human reviewers must be distinct");
   const score: Record<keyof HumanReviewRating, { v1: number; v2: number; ties: number; disagreements: number }> = { factuallyCorrect: { v1: 0, v2: 0, ties: 0, disagreements: 0 }, addressedWhatTheLeadRaised: { v1: 0, v2: 0, ties: 0, disagreements: 0 }, advancedTheJourney: { v1: 0, v2: 0, ties: 0, disagreements: 0 }, wouldRepeatToday: { v1: 0, v2: 0, ties: 0, disagreements: 0 } };
   for (let i = 0; i < a.pairs.length; i += 1) for (const dimension of dimensions) { const left = a.pairs[i]!, right = b.pairs[i]!; score[dimension].v1 += Number(left.v1[dimension]) + Number(right.v1[dimension]); score[dimension].v2 += Number(left.v2[dimension]) + Number(right.v2[dimension]); score[dimension].ties += Number(left.v1[dimension] === left.v2[dimension]) + Number(right.v1[dimension] === right.v2[dimension]); score[dimension].disagreements += Number(left.v1[dimension] !== right.v1[dimension] || left.v2[dimension] !== right.v2[dimension]); }
-  return freeze({ reviewers: [a, b], dimensions: score });
+  const result = freeze({ reviewers: [a, b], dimensions: score });
+  registeredScores.add(result);
+  return result;
+}
+
+export function isRegisteredHumanReviewScore(input: HumanReviewScore | null): input is HumanReviewScore {
+  return input !== null && registeredScores.has(input);
 }

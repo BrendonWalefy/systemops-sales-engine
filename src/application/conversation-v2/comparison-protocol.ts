@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { HmacRef } from "@/application/conversation-v2/comparison-record";
 
 export type ProtocolCase = Readonly<{ caseId: string; stratum: "stable_primary" | "d0_sensitivity"; critical: boolean }>;
-export type ProtocolObservation = Readonly<{ run: 1 | 2 | 3 | 4 | 5 | 6; caseId: string; arm: "v1" | "v2"; stratum: "stable_primary" | "d0_sensitivity"; status: "observed" | "infrastructure_error"; payloadDigest: HmacRef; corpusDigest: HmacRef; d0Digest: HmacRef; populationDigest: HmacRef }>;
+export type ProtocolObservation = Readonly<{ run: 1 | 2 | 3 | 4 | 5 | 6; caseId: string; arm: "v1" | "v2"; stratum: "stable_primary" | "d0_sensitivity"; status: "observed" | "infrastructure_error" | "not_measurable"; payloadDigest: HmacRef; corpusDigest: HmacRef; d0Digest: HmacRef; populationDigest: HmacRef }>;
 type ProtocolOrder = Readonly<{ run: 1 | 2 | 3 | 4 | 5 | 6; caseId: string; arm: "v1" | "v2" }>;
 export type CycleIProtocol = Readonly<{ runs: 6; corpusDigest: HmacRef; d0Digest: HmacRef; populationDigest: HmacRef; cases: readonly ProtocolCase[]; order: readonly ProtocolOrder[] }>;
 
@@ -11,7 +11,7 @@ const run = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.l
 const id = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*-[0-9]{4}$/);
 const manifestSchema = z.object({ version: z.literal("cycle-f-dental.v1"), population: z.literal("cycle-f-supported-dental-corpus"), cases: z.array(z.object({ caseId: id, requiredAxes: z.array(z.enum(["request", "dialogueMove", "entities.service"])).min(1), critical: z.boolean() }).strict()), exclusions: z.array(z.object({ requests: z.array(z.string().min(1)).min(1), reason: z.string().min(1) }).strict()).min(1) }).strict();
 const d0Schema = z.object({ unstableAcrossRuns: z.array(id) }).passthrough();
-const observationSchema = z.object({ run, caseId: id, arm: z.enum(["v1", "v2"]), stratum: z.enum(["stable_primary", "d0_sensitivity"]), status: z.enum(["observed", "infrastructure_error"]), payloadDigest: hmac, corpusDigest: hmac, d0Digest: hmac, populationDigest: hmac }).strict();
+const observationSchema = z.object({ run, caseId: id, arm: z.enum(["v1", "v2"]), stratum: z.enum(["stable_primary", "d0_sensitivity"]), status: z.enum(["observed", "infrastructure_error", "not_measurable"]), payloadDigest: hmac, corpusDigest: hmac, d0Digest: hmac, populationDigest: hmac }).strict();
 function freeze<T>(value: T): T { if (Array.isArray(value)) value.forEach(freeze); else if (value && typeof value === "object") Object.values(value as Record<string, unknown>).forEach(freeze); return Object.freeze(value); }
 
 export function createCycleIProtocol(input: { manifest: unknown; d0: unknown; corpusDigest: string; d0Digest: string; populationDigest: string; runs?: number }): CycleIProtocol {

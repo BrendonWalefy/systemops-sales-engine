@@ -612,6 +612,16 @@ Rollback operacional imediato: atualizar `organizations.conversation_engine` par
 
 ### Task 6: Runner do corpus, resultados reproduzíveis, folha humana e avaliação dos gates
 
+> **Amendment after independent Task 6 review:** productive evidence is accepted only from the
+> canonical parsed runner snapshot bound to a configured-authority-signed run manifest; serialized
+> runs additionally require a measurement-run signature. The manifest binds commit/tree,
+> corpus/population/D0/comparability, tenant fixtures, models, prompt/adapter sources and optional
+> Decision/prose/full-turn artifacts. Decision uses a predeclared 17-case applicability manifest
+> with effect-bound receipts. `scheduling-0003` and `burst-0002` lack structured pending-slot state
+> and remain explicit `not_measurable`, outside the accuracy denominator but inside the 204-row
+> protocol denominator. Approved prose + two calibrated reviewers and approved replay + isolated
+> Lab are real parser paths; absent evidence remains blocking and is never synthesized.
+
 **Files:**
 - Create: `scripts/eval-conversation-v2-cycle-i.ts`
 - Create: `src/application/conversation-v2/corpus-comparison-runner.ts`
@@ -636,11 +646,21 @@ export type CycleIDecisionFixture = Readonly<{
   caseId: string;
   snapshotDigest: HmacRef;
   reads: CapturedV2TurnReads;
-  executionReceipt: Readonly<{ outcomeType: DentalOutcomeType; evidenceDigest: HmacRef }> | null;
-  approval: Readonly<{ source: "committed_fixture" | "signed_replay"; digest: HmacRef }>;
+  executionReceipt: Readonly<{
+    caseId: string;
+    snapshotDigest: HmacRef;
+    effect: Readonly<{ action: "book_slot" | "confirm_appointment"; payloadHash: string }>;
+    outcomeType: DentalOutcomeType;
+    sourceEvidenceDigest: HmacRef;
+    receiptDigest: HmacRef;
+  }> | null;
 }>;
 
-export function loadCycleIDecisionFixtureManifest(path: string): readonly CycleIDecisionFixture[];
+export function loadAuthorizedCycleIDecisionFixtureManifest(input: {
+  path: string;
+  authority: AuthorizedCycleIRunManifest;
+  expectedCaseIds: readonly string[];
+}): AuthorizedCycleIDecisionFixtureManifest;
 
 export async function runCycleICorpusComparison(input: {
   corpusRoot: string;
@@ -655,8 +675,8 @@ export async function runCycleICorpusComparison(input: {
 ```
 
 O runner mede Understanding com a mensagem/histórico idênticos do corpus. Decision/ActionResult e
-prosa são uma camada separada: só rodam para casos presentes no manifest de fixtures cujo snapshot
-e approval passam o parser. Ausência do manifest ou de receipt exigido produz
+prosa são uma camada separada: só rodam para casos predeclarados no manifest de fixtures cujo
+conteúdo, snapshot, applicability e receipt passam o parser autorizado. Ausência do manifest ou de receipt exigido produz
 `supported_decision: not_measurable`; não cria `ApprovedEvalRecord` sintético.
 
 CLI fechado:
@@ -671,7 +691,7 @@ npm run eval:conversation-v2:cycle-i -- --mode evaluate-gates --run evals/cycle-
 
 - [ ] **Step 1: escrever RED do runner**
 
-Com arms de Understanding fake, provar 17 casos×6×2 = 204 observations, ordem intercalada, mesma mensagem/histórico/fixed clock, stable primary e D0 sensitivity separados, infrastructure error preservado, zero drop, denominadores iguais e output determinístico sem timestamp wall-clock. Separadamente, testar manifest de Decision ausente, snapshot digest divergente, fixture sem approval e write sem execution receipt; todos ficam `not_measurable` sem fabricar output.
+Com arms de Understanding fake, provar 17 casos×6×2 = 204 observations, ordem intercalada, mesma mensagem/histórico/fixed clock, stable primary e D0 sensitivity separados, infrastructure error preservado, zero drop, denominadores iguais e output determinístico sem timestamp wall-clock. Separadamente, testar manifest de Decision ausente, sem autoridade, parcial, com snapshot digest divergente e write sem receipt content-bound; todos ficam `not_measurable` sem fabricar output.
 
 - [ ] **Step 2: escrever RED dos gates de evidência**
 
@@ -688,7 +708,7 @@ Expected: FAIL por runner/CLI ausentes.
 V1 Understanding arm chama o `IntentClassifier` real e usa `v1Understanding` somente para traduzir
 o intent produzido; o adapter existente não é tratado como executor de V1. V2 Understanding arm
 usa `DentalUnderstandingProvider` sobre o mesmo input. Decision/ActionResult usa o pipeline real
-somente quando `loadCycleIDecisionFixtureManifest` entrega reads/receipt aprovados; V1 Decision
+somente quando `loadAuthorizedCycleIDecisionFixtureManifest` entrega reads/receipt aprovados; V1 Decision
 fica `not_measurable` salvo quando a seam observacional emite outcome concreto. Não criar
 `mapToAction`/decider paralelo nem `ApprovedEvalRecord` sintético. Medir chamadas/model/tokens/
 latência dos boundaries reais disponíveis e marcar component metrics como diagnósticas.

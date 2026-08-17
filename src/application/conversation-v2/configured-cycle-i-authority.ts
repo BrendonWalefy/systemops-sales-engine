@@ -5,6 +5,10 @@ export const CYCLE_I_GATE_REPORT_AUTHORITY_DOMAIN =
   "systemops.conversation-v2.cycle-i.gate-report.v1" as const;
 export const CYCLE_I_ACTIVATION_APPROVAL_AUTHORITY_DOMAIN =
   "systemops.conversation-v2.cycle-i.activation-approval.v1" as const;
+export const CYCLE_I_RUN_MANIFEST_AUTHORITY_DOMAIN =
+  "systemops.conversation-v2.cycle-i.run-manifest.v2" as const;
+export const CYCLE_I_MEASUREMENT_RUN_AUTHORITY_DOMAIN =
+  "systemops.conversation-v2.cycle-i.measurement-run.v1" as const;
 
 export type Ed25519SignatureRef = `ed25519:${string}`;
 
@@ -166,5 +170,29 @@ export function verifyConfiguredCycleIApprovalAuthority(
     payload,
     signature,
     authorityRoot().activationApprovalPublicKey,
+  );
+}
+
+export function verifyConfiguredCycleIRunManifestAuthority(
+  payload: string,
+  signature: Ed25519SignatureRef,
+): boolean {
+  return verifyConfiguredAuthority(
+    CYCLE_I_RUN_MANIFEST_AUTHORITY_DOMAIN,
+    payload,
+    signature,
+    authorityRoot().gateReportPublicKey,
+  );
+}
+
+export function verifyConfiguredCycleIMeasurementRunAuthority(
+  payload: string,
+  signature: Ed25519SignatureRef,
+): boolean {
+  return verifyConfiguredAuthority(
+    CYCLE_I_MEASUREMENT_RUN_AUTHORITY_DOMAIN,
+    payload,
+    signature,
+    authorityRoot().gateReportPublicKey,
   );
 }

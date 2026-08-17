@@ -1,0 +1,22 @@
+{
+  "version": "conversation-v2-understanding-comparability.v1",
+  "cases": [
+    { "caseId": "injection-0001", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "media-0005", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "objection-0001", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "price-0001", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "price-0002", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "price-0005", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "price-0006", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "price-0007", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "price-0008", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "price-0009", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "price-0010", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "audio-0002", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "first-contact-0005", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "availability-0001", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "scheduling-0001", "status": "comparable", "hasPendingSlotOffer": false },
+    { "caseId": "scheduling-0003", "status": "not_comparable", "reason": "structured_pending_state_absent" },
+    { "caseId": "burst-0002", "status": "not_comparable", "reason": "structured_pending_state_absent" }
+  ]
+}
