@@ -21,8 +21,8 @@ import {
   DENTAL_OUTCOME_SCHEMA,
   type DentalPolicy,
 } from "@/domain-packs/dental/capabilities";
-import { createDentalPack } from "@/domain-packs/dental";
-import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
+import { dentalPack } from "@/domain-packs/dental";
+import { DENTAL_REQUESTS, type DentalRequest } from "@/domain-packs/dental/vocabulary";
 
 const style = {
   tone: "neutral",
@@ -46,39 +46,44 @@ const gateInput = {
 };
 
 const journeyModeMatrix = [
-  { journey: "price", mode: "happy", disposition: "supported", evidence: "price-runtime" },
-  { journey: "price", mode: "boundary", disposition: "supported", evidence: "missing-capture-runtime" },
+  { journey: "price", mode: "happy", disposition: "supported", exerciseId: "price/happy" },
+  { journey: "price", mode: "boundary", disposition: "supported", exerciseId: "price/boundary" },
   { journey: "price", mode: "failure", disposition: "not_applicable", reason: "price has no write effect" },
   { journey: "price", mode: "adversarial", disposition: "not_applicable", reason: "cross-subject behavior belongs to multi-intent" },
   { journey: "price", mode: "recovery", disposition: "not_applicable", reason: "recovery behavior belongs to escalation" },
-  { journey: "availability", mode: "happy", disposition: "unsupported/deferred", evidence: "v1-promotion-runtime", reason: "V1 slot-search key is not losslessly representable by V2" },
+  { journey: "availability", mode: "happy", disposition: "unsupported/deferred", exerciseId: "availability/happy", reason: "V1 slot-search key is not losslessly representable by V2" },
   { journey: "availability", mode: "boundary", disposition: "not_applicable", reason: "productive happy path already fails closed at shared-read boundary" },
   { journey: "availability", mode: "failure", disposition: "not_applicable", reason: "no availability write is admitted in shadow" },
   { journey: "availability", mode: "adversarial", disposition: "not_applicable", reason: "cross-subject behavior belongs to multi-intent" },
   { journey: "availability", mode: "recovery", disposition: "not_applicable", reason: "no availability recovery capability is in scope" },
   { journey: "booking_intent", mode: "happy", disposition: "not_applicable", reason: "shadow cannot execute a booking" },
-  { journey: "booking_intent", mode: "boundary", disposition: "supported", evidence: "write-interception-runtime" },
+  { journey: "booking_intent", mode: "boundary", disposition: "supported", exerciseId: "booking_intent/boundary" },
   { journey: "booking_intent", mode: "failure", disposition: "not_applicable", reason: "write failure is an offline capability contract" },
   { journey: "booking_intent", mode: "adversarial", disposition: "not_applicable", reason: "cross-subject behavior belongs to multi-intent" },
   { journey: "booking_intent", mode: "recovery", disposition: "not_applicable", reason: "no booking recovery executes in shadow" },
   { journey: "write_failure", mode: "happy", disposition: "not_applicable", reason: "success writes are prohibited in shadow" },
   { journey: "write_failure", mode: "boundary", disposition: "not_applicable", reason: "write boundary is covered by booking intent" },
-  { journey: "write_failure", mode: "failure", disposition: "supported_offline", evidence: "capability-runtime" },
+  { journey: "write_failure", mode: "failure", disposition: "supported_offline", exerciseId: "write_failure/failure" },
   { journey: "write_failure", mode: "adversarial", disposition: "not_applicable", reason: "no cross-subject write is admitted" },
   { journey: "write_failure", mode: "recovery", disposition: "not_applicable", reason: "failure remains failure; no recovery claim is authorized" },
   { journey: "escalation", mode: "happy", disposition: "not_applicable", reason: "escalation is a recovery outcome" },
   { journey: "escalation", mode: "boundary", disposition: "not_applicable", reason: "handoff completion is outside the core contract" },
   { journey: "escalation", mode: "failure", disposition: "not_applicable", reason: "no handoff write exists in the Domain Pack" },
   { journey: "escalation", mode: "adversarial", disposition: "not_applicable", reason: "cross-subject behavior belongs to multi-intent" },
-  { journey: "escalation", mode: "recovery", disposition: "supported", evidence: "escalation-runtime" },
+  { journey: "escalation", mode: "recovery", disposition: "supported", exerciseId: "escalation/recovery" },
   { journey: "multi_intent", mode: "happy", disposition: "not_applicable", reason: "single-subject happy paths are covered separately" },
   { journey: "multi_intent", mode: "boundary", disposition: "not_applicable", reason: "capture boundary is covered by price" },
   { journey: "multi_intent", mode: "failure", disposition: "not_applicable", reason: "multi-intent test contains no write" },
-  { journey: "multi_intent", mode: "adversarial", disposition: "supported", evidence: "composer-runtime" },
+  { journey: "multi_intent", mode: "adversarial", disposition: "supported", exerciseId: "multi_intent/adversarial" },
   { journey: "multi_intent", mode: "recovery", disposition: "not_applicable", reason: "no multi-intent recovery policy is defined" },
 ] as const;
 
-const deferredRequests = ["media", "objection", "discount", "follow_up"] as const;
+const deferredJourneyTaxonomy = [
+  { journey: "media", disposition: "not_representable", evidence: "absent_from_vocabulary_and_journey_registry" },
+  { journey: "objection", disposition: "not_representable", evidence: "absent_from_vocabulary_and_journey_registry" },
+  { journey: "discount", disposition: "not_representable", evidence: "absent_from_vocabulary_and_journey_registry" },
+  { journey: "follow_up", disposition: "not_representable", evidence: "absent_from_vocabulary_and_journey_registry" },
+] as const;
 
 function understanding(
   request: DentalRequest,
@@ -178,6 +183,16 @@ function promotedAvailabilityReads() {
 }
 
 describe("Cycle I supported journey matrix", () => {
+  const executableCellRegistry = {
+    "price/happy": exercisePriceHappy,
+    "price/boundary": exercisePriceBoundary,
+    "availability/happy": exerciseAvailabilityHappy,
+    "booking_intent/boundary": exerciseBookingIntentBoundary,
+    "write_failure/failure": exerciseWriteFailure,
+    "escalation/recovery": exerciseEscalationRecovery,
+    "multi_intent/adversarial": exerciseMultiIntentAdversarial,
+  } as const;
+
   it("declara explicitamente cada célula journey×mode como exercida ou não aplicável com motivo", () => {
     const expectedCells = [
       "price/happy", "price/boundary", "price/failure", "price/adversarial", "price/recovery",
@@ -191,10 +206,21 @@ describe("Cycle I supported journey matrix", () => {
     expect(journeyModeMatrix.filter((cell) => cell.disposition === "not_applicable")
       .every((cell) => "reason" in cell && cell.reason.length > 0)).toBe(true);
     expect(journeyModeMatrix.filter((cell) => cell.disposition !== "not_applicable")
-      .every((cell) => "evidence" in cell && cell.evidence.endsWith("runtime"))).toBe(true);
+      .every((cell) => "exerciseId" in cell && cell.exerciseId in executableCellRegistry)).toBe(true);
+    expect(Object.keys(executableCellRegistry).sort()).toEqual(
+      journeyModeMatrix
+        .filter((cell) => cell.disposition !== "not_applicable")
+        .map((cell) => `${cell.journey}/${cell.mode}`)
+        .sort(),
+    );
   });
 
-  it("price/happy verbaliza somente preço e subject capturados", async () => {
+  it.each(Object.entries(executableCellRegistry))(
+    "%s executa a fronteira produtiva real",
+    async (_cell, exercise) => exercise(),
+  );
+
+  async function exercisePriceHappy() {
     const runner = new V2ShadowRunner({
       understand: async () => understanding("price-of-service", {
         entities: { service: "limpeza" },
@@ -227,9 +253,9 @@ describe("Cycle I supported journey matrix", () => {
     });
     expect(result.response.text).toContain("R$ 290,00");
     expect(result.response.text).not.toContain("service-private");
-  });
+  }
 
-  it("availability/happy produtivo fica unsupported/deferred quando o slot search V1 não é lossless", async () => {
+  async function exerciseAvailabilityHappy() {
     const promotion = promotedAvailabilityReads();
     expect(promotion.status).toBe("ready");
     if (promotion.status !== "ready") throw new Error("expected ready shared-read promotion");
@@ -245,9 +271,9 @@ describe("Cycle I supported journey matrix", () => {
       status: "unsupported",
       reason: "shared_read_unavailable",
     });
-  });
+  }
 
-  it("booking_intent/boundary para antes do write e registra só intenção HMAC", async () => {
+  async function exerciseBookingIntentBoundary() {
     const runner = new V2ShadowRunner({
       understand: async () => understanding("confirm-slot", {
         dialogueMove: "answers_pending",
@@ -275,9 +301,9 @@ describe("Cycle I supported journey matrix", () => {
     expect(JSON.stringify(result.intendedEffects)).not.toMatch(/slot-private|offer-private|offer-snapshot/);
     expect("actionResults" in result).toBe(false);
     expect("response" in result).toBe(false);
-  });
+  }
 
-  it("write_failure/failure não converte falha em booking concluído", async () => {
+  async function exerciseWriteFailure() {
     const bookSlot = vi.fn().mockResolvedValue({
       success: false,
       reason: "slot_taken",
@@ -316,9 +342,9 @@ describe("Cycle I supported journey matrix", () => {
       facts: [],
     });
     expect(result.evidence).toEqual([{ source: "write", reference: "failed-write" }]);
-  });
+  }
 
-  it("escalation/recovery pede ação humana sem alegar handoff concluído", async () => {
+  async function exerciseEscalationRecovery() {
     const result = await runTurnPipeline({
       gateInput,
       state: { phase: "active", pendingStepId: null, completedStepIds: [] },
@@ -343,9 +369,9 @@ describe("Cycle I supported journey matrix", () => {
     ]);
     expect(result.response.text).toBe("É necessário atendimento humano.");
     expect(result.response.text).not.toMatch(/transferido|encaminhado|handoff concluído/i);
-  });
+  }
 
-  it("multi_intent/adversarial preserva subject e rejeita cross-link", async () => {
+  async function exerciseMultiIntentAdversarial() {
     const cleaning = { type: "service", id: "service-cleaning", displayName: "Limpeza" };
     const implant = { type: "service", id: "service-implant", displayName: "Implante" };
     const slot = { type: "slot", id: "slot-private", displayName: "sexta às 10h" };
@@ -407,9 +433,9 @@ describe("Cycle I supported journey matrix", () => {
     expect(response.response.text).toContain('Para "Limpeza", valor: R$ 290,00.');
     expect(response.response.text).toContain('Para "Implante", tenho estas opções: "sexta às 10h".');
     expect(response.response.text).not.toMatch(/service-cleaning|service-implant|slot-private|captured-read/);
-  });
+  }
 
-  it("falha fechado quando uma leitura obrigatória não foi capturada", async () => {
+  async function exercisePriceBoundary() {
     const understand = vi.fn(async () => understanding("price-of-service", {
       entities: { service: "limpeza" },
     }));
@@ -418,34 +444,23 @@ describe("Cycle I supported journey matrix", () => {
       gateInput: { status: "unavailable", reason: "not_read_by_v1" },
     }))).resolves.toEqual({ status: "unsupported", reason: "shared_read_unavailable" });
     expect(understand).not.toHaveBeenCalled();
-  });
+  }
 });
 
 describe("Cycle I deferred journey boundary", () => {
-  it.each(deferredRequests)("mantém %s unsupported/deferred pelo Domain Pack e runner reais", async (request) => {
-    const pack = createDentalPack({
-      catalogRead: { resolveService: vi.fn() },
-      schedulingRead: {
-        listSlots: vi.fn(),
-        resolveOfferedSlot: vi.fn(),
-        resolvePendingAppointment: vi.fn(),
-      },
-      schedulingWrite: { bookSlot: vi.fn(), confirmAppointment: vi.fn() },
-    });
-    expect(pack.capabilities.map(({ id }) => id)).toEqual([
-      "dental-catalog",
-      "dental-scheduling",
-      "dental-escalation",
+  it.each(deferredJourneyTaxonomy)(
+    "$journey é deferred porque não é representável no vocabulário canônico",
+    ({ journey, disposition, evidence }) => {
+      expect(disposition).toBe("not_representable");
+      expect(evidence).toBe("absent_from_vocabulary_and_journey_registry");
+      expect((DENTAL_REQUESTS as readonly string[])).not.toContain(journey);
+      expect(dentalPack.journeys.map(({ id }) => id)).not.toContain(journey);
+    },
+  );
+
+  it("mantém a taxonomia deferred fechada e sem fabricar um sentinel produtivo", () => {
+    expect(deferredJourneyTaxonomy.map(({ journey }) => journey)).toEqual([
+      "media", "objection", "discount", "follow_up",
     ]);
-    expect(pack.journeys.map(({ id }) => id)).toEqual(["price", "availability", "scheduling"]);
-    const runner = new V2ShadowRunner({
-      understand: async () => understanding(request as DentalRequest),
-      hmacKey: "matrix-key",
-      style,
-    });
-    await expect(runner.run(capturedReads())).resolves.toEqual({
-      status: "unsupported",
-      reason: "unsupported_request",
-    });
   });
 });

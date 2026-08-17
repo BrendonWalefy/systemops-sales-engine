@@ -67,29 +67,41 @@ function transitiveLocalFiles(entries: readonly string[]): readonly string[] {
   return [...visited];
 }
 
+const forbiddenRuntimePackages = /^(?:openai|@anthropic-ai\/sdk|@google\/generative-ai|@ai-sdk\/|@neondatabase\/serverless|drizzle-orm|postgres)(?:\/|$)/;
+const forbiddenCapabilitySymbols = /\b(?:OpenAI|Anthropic|GoogleGenerativeAI|neon|drizzle|BookingService|DATABASE_URL|calendarId)\b/;
+
+function forbiddenRuntimeReferences(files: readonly string[]): string[] {
+  return files.flatMap((file) => {
+    const source = readFileSync(file, "utf8");
+    const references = moduleSpecifiers(file)
+      .filter((specifier) => specifier === "<dynamic-nonliteral>" || forbiddenRuntimePackages.test(specifier))
+      .map((specifier) => `${file} -> ${specifier}`);
+    if (forbiddenCapabilitySymbols.test(source)) references.push(`${file} -> forbidden capability symbol`);
+    return references;
+  });
+}
+
 describe("Cycle I final runtime boundaries", () => {
   it("mantém o core V2 sem V1, Domain Pack, provider, DB, calendário, config ou comparação", () => {
     const roots = sourceFiles("src/conversation-core");
     const forbiddenPath = /(?:^|\/)(?:src\/core|src\/domain-packs|src\/infrastructure|src\/application\/conversation-v2|src\/application\/config)(?:\/|$)|calendar|comparison/i;
     const graph = transitiveLocalFiles(roots);
     const offenders = graph.filter((file) => !roots.includes(file) && forbiddenPath.test(file));
-    const forbiddenPackages = /^(?:openai|@anthropic-ai\/sdk|drizzle-orm|postgres)(?:\/|$)/;
-    offenders.push(...graph.flatMap((file) => moduleSpecifiers(file)
-      .filter((specifier) => specifier === "<dynamic-nonliteral>" || forbiddenPackages.test(specifier))
-      .map((specifier) => `${file} -> ${specifier}`)));
+    offenders.push(...forbiddenRuntimeReferences(graph));
 
     expect(offenders).toEqual([]);
   });
 
   it("mantém o Dental Pack declarativo e independente de OpenAI/provider", () => {
-    const provider = /^(?:openai|@anthropic-ai\/sdk|@google\/generative-ai)(?:\/|$)|(?:^|\/)(?:providers|infrastructure|application)(?:\/|$)/;
+    const provider = /(?:^|\/)(?:providers|infrastructure|application)(?:\/|$)/;
     const roots = sourceFiles("src/domain-packs/dental");
     const graph = transitiveLocalFiles(roots);
     const offenders = graph
       .filter((file) => !roots.includes(file) && /src\/(?:infrastructure|application)\//.test(file));
     offenders.push(...graph.flatMap((file) => moduleSpecifiers(file)
-      .filter((specifier) => specifier === "<dynamic-nonliteral>" || provider.test(specifier))
+      .filter((specifier) => provider.test(specifier))
       .map((specifier) => `${file} -> ${specifier}`)));
+    offenders.push(...forbiddenRuntimeReferences(graph));
 
     expect(offenders).toEqual([]);
   });
