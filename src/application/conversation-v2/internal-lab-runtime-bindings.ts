@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
-import { sanitizeRuntimeConfig } from "@/application/config/runtime-config-fingerprint";
+import {
+  RUNTIME_CONFIG_SECRET_KEYS,
+  sanitizeRuntimeConfig,
+} from "@/application/config/runtime-config-fingerprint";
 import { stableSerialize } from "@/application/replay/fingerprint-replay-config";
 import type { ChannelConfigSnapshot } from "@/application/ports/channel-config-snapshot";
 
@@ -12,6 +15,7 @@ export type InternalLabRuntimeArtifact = Readonly<{
   editorial: unknown;
   modules: readonly unknown[];
   treatments: readonly Record<string, unknown>[];
+  channelCredentialDigests?: Readonly<Record<string, string>>;
 }>;
 
 export type InternalLabRuntimeBindings = Readonly<{
@@ -68,6 +72,13 @@ export function computeInternalLabRuntimeBindings(
   const channel = Object.fromEntries(channelKeys.map((key) => {
     const raw = input.clinic[key];
     if (!channelSecretKeys.has(key)) return [key, clinic[key] ?? null];
+    const protectedDigest = input.channelCredentialDigests?.[key];
+    if (protectedDigest !== undefined) {
+      if (!/^sha256:[a-f0-9]{64}$/.test(protectedDigest) || raw !== true) {
+        throw new Error("invalid protected Internal Lab channel credential binding");
+      }
+      return [key, protectedDigest];
+    }
     if (typeof raw !== "string" || raw.length === 0) return [key, null];
     return [key, digest(`channel-credential:${key}`, raw)];
   }));
@@ -90,6 +101,38 @@ export function computeInternalLabRuntimeBindings(
       modules,
       treatments,
     }),
+  });
+}
+
+/**
+ * Converte o artifact resolvido em um arquivo operacional sem credenciais. A
+ * presença continua participando de tenant/config digests, enquanto o channel
+ * binding conserva exatamente o digest domain-separated calculado do valor em
+ * memória. O signer aceita esse formato; os bytes da credencial não saem daqui.
+ */
+export function protectInternalLabRuntimeArtifactForFile(
+  input: InternalLabRuntimeArtifact,
+): InternalLabRuntimeArtifact {
+  const clinic = { ...input.clinic };
+  const channelCredentialDigests: Record<string, string> = {};
+  for (const key of RUNTIME_CONFIG_SECRET_KEYS) {
+    if (!Object.hasOwn(input.clinic, key)) continue;
+    const raw = input.clinic[key];
+    const present = raw !== null && raw !== undefined && String(raw).trim().length > 0;
+    clinic[key] = present ? true : null;
+    if (channelSecretKeys.has(key) && present) {
+      const protectedDigest = input.channelCredentialDigests?.[key];
+      if (raw === true && protectedDigest) {
+        channelCredentialDigests[key] = protectedDigest;
+      } else if (typeof raw === "string") {
+        channelCredentialDigests[key] = digest(`channel-credential:${key}`, raw);
+      }
+    }
+  }
+  return Object.freeze({
+    ...input,
+    clinic: Object.freeze(clinic),
+    channelCredentialDigests: Object.freeze(channelCredentialDigests),
   });
 }
 

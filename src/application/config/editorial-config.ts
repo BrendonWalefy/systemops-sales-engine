@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/infrastructure/db/client";
 import { playbookVersions, treatments } from "@/infrastructure/db/schema";
@@ -375,7 +375,8 @@ export async function resolveActiveEditorialConfig(
         quantityPrices: treatments.quantityPrices,
       })
       .from(treatments)
-      .where(eq(treatments.clinicId, clinicId)),
+      .where(eq(treatments.clinicId, clinicId))
+      .orderBy(asc(treatments.name)),
     getActivePriceCampaignsByTreatment(clinicId),
   ]);
 
