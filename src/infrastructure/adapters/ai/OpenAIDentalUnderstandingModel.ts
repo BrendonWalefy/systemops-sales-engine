@@ -1,3 +1,4 @@
+import { APIUserAbortError } from "openai";
 import { DENTAL_REQUESTS } from "@/domain-packs/dental/vocabulary";
 import type { DentalUnderstandingModel, DentalUnderstandingModelRequest } from "@/infrastructure/adapters/ai/DentalUnderstandingProvider";
 
@@ -80,9 +81,17 @@ export class OpenAIDentalUnderstandingModel implements DentalUnderstandingModel 
         json_schema: { name: "dental_understanding_v1", strict: true, schema: responseSchema },
       },
     };
-    const response = await (options?.signal
-      ? this.client.chat.completions.create(request, { signal: options.signal })
-      : this.client.chat.completions.create(request));
+    let response: Awaited<ReturnType<OpenAIClientBoundary["chat"]["completions"]["create"]>>;
+    try {
+      response = await (options?.signal
+        ? this.client.chat.completions.create(request, { signal: options.signal })
+        : this.client.chat.completions.create(request));
+    } catch (error) {
+      if (options?.signal?.aborted && error instanceof APIUserAbortError) {
+        throw options.signal.reason;
+      }
+      throw error;
+    }
     const content = response.choices[0]?.message.content;
     if (!content) throw new Error("OpenAI returned no dental understanding output");
     return JSON.parse(content);

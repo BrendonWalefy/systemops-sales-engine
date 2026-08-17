@@ -682,7 +682,7 @@ describe("Cycle I post-sender shadow batch", () => {
           signal?.addEventListener("abort", () => {
             clearTimeout(timer);
             settled = true;
-            reject(new Error("aborted"));
+            reject(signal.reason);
           }, { once: true });
         })),
       },
@@ -709,6 +709,7 @@ describe("Cycle I post-sender shadow batch", () => {
         settled: 2,
         completed: 1,
         failed: 1,
+        abortRequested: 1,
         cooperativelyAborted: 1,
         activeAtReturn: 0,
       },
@@ -718,6 +719,51 @@ describe("Cycle I post-sender shadow batch", () => {
     expect(Object.isFrozen(summary.drain)).toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 120));
     expect(settled).toBe(true);
+  });
+
+  it("drains a provider that ignores abort without claiming cooperative cancellation", async () => {
+    const turn = capturedTurn({ turnId: "turn-provider-ignored-abort", clinicId: "clinic-a", ready: true });
+    let providerSettled = false;
+    const input = deps({
+      deadlineMs: 5,
+      now: () => Date.now(),
+      evaluator: {
+        evaluate: vi.fn(() => new Promise((resolve) => {
+          setTimeout(() => {
+            providerSettled = true;
+            resolve({
+              result: { status: "unsupported", reason: "unsupported_request" },
+              understandingRequest: null,
+              model: null,
+            });
+          }, 25);
+        })),
+      },
+    });
+
+    const summary = await runRegisteredBatch({ turns: [turn], ...input });
+
+    expect(providerSettled).toBe(true);
+    expect(summary).toMatchObject({
+      attempted: 1,
+      evaluationErrors: 1,
+      persisted: 0,
+      deadlineReached: true,
+      deadline: {
+        admissionClosed: true,
+        overrun: true,
+      },
+      drain: {
+        admitted: 2,
+        settled: 2,
+        completed: 1,
+        failed: 1,
+        abortRequested: 1,
+        cooperativelyAborted: 0,
+        activeAtReturn: 0,
+      },
+    });
+    expect(summary.deadline.overrunMs).toBeGreaterThan(0);
   });
 
   it.each(["policy", "sink"] as const)(
@@ -835,6 +881,76 @@ describe("Cycle I post-sender shadow batch", () => {
       },
     });
     expect(summary.deadline.overrunMs).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ["non-finite", Number.NaN],
+    ["backward", 5],
+  ] as const)(
+    "preserves proven overrun when the return clock becomes %s",
+    async (_label, malformedSample) => {
+      const turn = capturedTurn({
+        turnId: `turn-proven-overrun-${_label}`,
+        clinicId: "clinic-a",
+        ready: true,
+      });
+      const ticks = [0, 0, 0, 0, 0, 0, 0, 6, malformedSample];
+      const sink = { append: vi.fn().mockResolvedValue(undefined) };
+      const input = deps({ deadlineMs: 5, now: () => ticks.shift() ?? malformedSample, sink });
+
+      const summary = await runRegisteredBatch({ turns: [turn], ...input });
+
+      expect(sink.append).toHaveBeenCalledTimes(1);
+      expect(summary).toMatchObject({
+        persisted: 1,
+        deadlineReached: true,
+        deadline: {
+          deadlineAt: 5,
+          admissionClosed: true,
+          admissionClosedAt: 5,
+          returnedAt: null,
+          overrun: true,
+          clockStatus: "malformed",
+        },
+        drain: { activeAtReturn: 0 },
+      });
+      expect(summary.deadline.overrunMs).toBeGreaterThanOrEqual(1);
+    },
+  );
+
+  it("keeps the comparison sink uncalled when admission closes after evaluation", async () => {
+    const turn = capturedTurn({ turnId: "turn-sink-not-admitted", clinicId: "clinic-a", ready: true });
+    let current = 0;
+    const sink = { append: vi.fn().mockResolvedValue(undefined) };
+    const input = deps({
+      deadlineMs: 5,
+      now: () => current,
+      evaluator: {
+        evaluate: vi.fn(async () => {
+          current = 5;
+          return {
+            result: { status: "unsupported" as const, reason: "unsupported_request" as const },
+            understandingRequest: null,
+            model: null,
+          };
+        }),
+      },
+      sink,
+    });
+
+    const summary = await runRegisteredBatch({ turns: [turn], ...input });
+
+    expect(sink.append).not.toHaveBeenCalled();
+    expect(summary).toMatchObject({
+      attempted: 1,
+      persisted: 0,
+      deadlineReached: true,
+      drain: {
+        admitted: 2,
+        settled: 2,
+        activeAtReturn: 0,
+      },
+    });
   });
 
   it("checks the remaining budget before invoking a dependency thunk", async () => {

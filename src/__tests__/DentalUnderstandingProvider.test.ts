@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { APIUserAbortError } from "openai";
 import { DentalUnderstandingProvider } from "@/infrastructure/adapters/ai/DentalUnderstandingProvider";
 import { OpenAIDentalUnderstandingModel } from "@/infrastructure/adapters/ai/OpenAIDentalUnderstandingModel";
 
@@ -75,5 +76,24 @@ describe("provider dental de Understanding", () => {
       expect.objectContaining({ model: "gpt-test" }),
       { signal: controller.signal },
     );
+  });
+
+  it("normaliza o abort tipado do SDK para o reason exato do signal", async () => {
+    const create = vi.fn().mockRejectedValue(new APIUserAbortError());
+    const reason = new Error("shadow admission deadline reached");
+    const controller = new AbortController();
+    controller.abort(reason);
+    const model = new OpenAIDentalUnderstandingModel(
+      { chat: { completions: { create } } },
+      "gpt-test",
+    );
+
+    const run = model.generate({
+      modelId: "gpt-test", promptVersion: "dental-understanding.v1",
+      schemaVersion: "understanding.v1", systemPrompt: "system", leadMessage: "quero marcar",
+      history: [], state: null, catalog: [],
+    }, { signal: controller.signal });
+
+    await expect(run).rejects.toBe(reason);
   });
 });

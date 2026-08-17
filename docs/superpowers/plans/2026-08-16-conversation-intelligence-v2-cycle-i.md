@@ -532,10 +532,15 @@ cast/objeto forjado. O token prova ordering da tentativa do lote; não afirma en
 
 `ShadowBatchSummary` é frozen e registra: instante de deadline de admissão, se/quando a admissão
 fechou, instante de retorno, overrun medido e contagem fechada das operações admitidas,
-concluídas, falhas, aborts cooperativos e operações ainda ativas (que deve ser zero). Esses fatos
-não contêm IDs crus ou PII. Relógio não finito ou regressivo fecha admissão/falha conservadoramente
-e jamais permite summary que aparente compliance. O summary é criado somente depois do drain;
-portanto nenhuma escrita pode ser despachada depois dele.
+concluídas, falhas, pedidos de abort, cancelamentos cooperativos confirmados e operações ainda
+ativas (que deve ser zero). Fechamento causado por T registra `admissionClosedAt = deadlineAt`.
+Esses fatos não contêm IDs crus ou PII. A maior amostra válida do relógio é preservada como
+evidência mínima de overrun; uma amostra posterior não finita ou regressiva fecha admissão/falha
+conservadoramente e jamais apaga overrun provado. O summary é criado somente depois do drain;
+portanto nenhuma escrita pode ser despachada depois dele. Exception, resultado malformado ou
+captured read ausente só vira comparison record quando a própria escrita no sink foi admitida
+antes de T; se a admissão fecha antes do sink, existe apenas no summary em memória e zero append
+é iniciado.
 
 Schema: enum PostgreSQL `conversation_engine`; coluna `organizations.conversation_engine NOT NULL DEFAULT 'v1'`; tabela `conversation_v2_comparisons` com `turn_ref` PK HMAC, `organization_id` FK cascade, `record` JSONB, `occurred_at`, `expires_at`, `created_at`, índices tenant/time e expiry. Retenção: 30 dias. Nenhum texto/PII tem coluna própria.
 
@@ -561,7 +566,7 @@ Expected: FAIL por adapters ausentes.
 
 - [ ] **Step 5: escrever RED do batch e composition root**
 
-Testar que o batch rejeita ausência/cast de `SenderDrainAttempted`, só começa com token criado após uma promise-sentinel do sender, e aceita `completed` ou `failed_handled` sem confundir tentativa com entrega. Cobrir lote vazio e processamento V1 concorrente; o batch é awaited, respeita `maxTurns` e a deadline de admissão, e uma falha V2/sink não altera summary V1. Provar por thunks que nenhuma policy read, avaliação, sink write ou operação relevante começa em/depois de `deadlineAt`; provider cancelável recebe abort; cada operação admitida é observada e drenada antes do retorno; zero Promise fica órfã; sink/DB write não começa depois do fechamento da admissão nem depois da criação do summary; operação DB não cancelável admitida pode terminar após T, mas incrementa overrun em vez de strict compliance; relógio malformado não oculta overrun. Nunca roda para `observe`, `disabled`, `v1` ou `v2_internal`; resolve policy uma vez por `clinicId`/turn sem cache cross-tenant. Teste estático confirma que route não reutiliza `shadowModeEnabled` como selector e não contém lógica de domínio.
+Testar que o batch rejeita ausência/cast de `SenderDrainAttempted`, só começa com token criado após uma promise-sentinel do sender, e aceita `completed` ou `failed_handled` sem confundir tentativa com entrega. Cobrir lote vazio e processamento V1 concorrente; o batch é awaited, respeita `maxTurns` e a deadline de admissão, e uma falha V2/sink não altera summary V1. Provar por thunks que nenhuma policy read, avaliação, sink write ou operação relevante começa em/depois de `deadlineAt`; provider cancelável recebe pedido de abort, mas só incrementa cancelamento cooperativo quando o adapter confirma o erro tipado; cada operação admitida é observada e drenada antes do retorno; zero Promise fica órfã; sink/DB write não começa depois do fechamento da admissão nem depois da criação do summary; fechamento antes do sink produz zero append e mantém o resultado somente no summary; operação DB não cancelável admitida pode terminar após T, mas incrementa overrun em vez de strict compliance; uma amostra válida além de T continua provando overrun mesmo se a amostra de retorno for `NaN` ou regressiva. Nunca roda para `observe`, `disabled`, `v1` ou `v2_internal`; resolve policy uma vez por `clinicId`/turn sem cache cross-tenant. Teste estático confirma que route não reutiliza `shadowModeEnabled` como selector e não contém lógica de domínio.
 
 - [ ] **Step 6: implementar adapters e wiring mínimo**
 
@@ -571,8 +576,9 @@ trata o resultado, cria `SenderDrainAttempted` e somente então chama
 deterministic composer, collector, policy reader e comparison sink; ausência de
 `OPENAI_API_KEY` torna shadow `error` sem afetar V1. Não adicionar chamada a V2 dentro do core V1
 nem fire-and-forget. Implementar admission controller único: precheck imediatamente antes de cada
-thunk; `AbortSignal` apenas no provider; toda Promise iniciada registrada e awaited; summary
-somente após o drain, com overrun e fatos de admissão congelados. Não usar `Promise.race`.
+thunk; `AbortSignal` apenas no provider, separando pedido de abort de acknowledgement cooperativo;
+toda Promise iniciada registrada e awaited; summary somente após o drain, com overrun e fatos de
+admissão congelados. Não usar `Promise.race`.
 
 - [ ] **Step 7: confirmar GREEN, schema e purge**
 

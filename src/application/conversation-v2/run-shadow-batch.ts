@@ -82,6 +82,7 @@ export type ShadowOperationDrainSummary = Readonly<{
   settled: number;
   completed: number;
   failed: number;
+  abortRequested: number;
   cooperativelyAborted: number;
   activeAtReturn: number;
 }>;
@@ -366,6 +367,7 @@ type AdmissionState = {
     admitted: number;
     completed: number;
     failed: number;
+    abortRequested: number;
     cooperativelyAborted: number;
     active: number;
   };
@@ -415,7 +417,7 @@ function observeAdmission(state: AdmissionState): Readonly<{ remainingMs: number
   const wallRemainingMs = state.deadlineAt - sample;
   const monotonicRemainingMs = state.deadlineMs - monotonicElapsedMs(state);
   if (wallRemainingMs <= 0 || monotonicRemainingMs <= 0) {
-    closeAdmission(state, wallRemainingMs <= 0 ? sample : state.deadlineAt);
+    closeAdmission(state, state.deadlineAt);
     return null;
   }
   return Object.freeze({ remainingMs: Math.min(wallRemainingMs, monotonicRemainingMs) });
@@ -461,6 +463,7 @@ async function settleAbortableDependency<T>(
   const timeout = setTimeout(
     () => {
       closeAdmission(state, state.deadlineAt);
+      state.operations.abortRequested += 1;
       controller.abort(new ShadowDeadlineError("shadow dependency admission deadline reached"));
     },
     remainingMs,
@@ -473,7 +476,9 @@ async function settleAbortableDependency<T>(
   } catch (error) {
     state.operations.failed += 1;
     if (controller.signal.aborted) {
-      state.operations.cooperativelyAborted += 1;
+      if (error === controller.signal.reason) {
+        state.operations.cooperativelyAborted += 1;
+      }
       throw new ShadowDeadlineError("shadow dependency deadline reached");
     }
     throw error;
@@ -493,16 +498,9 @@ function finalizeAdmission(state: AdmissionState): Readonly<{
     (returnedAt !== null && returnedAt >= state.deadlineAt)
     || elapsedMs >= state.deadlineMs
   ) {
-    closeAdmission(
-      state,
-      returnedAt !== null && returnedAt >= state.deadlineAt
-        ? returnedAt
-        : state.deadlineAt,
-    );
+    closeAdmission(state, state.deadlineAt);
   }
-  const wallOverrunMs = returnedAt === null
-    ? 0
-    : Math.max(0, returnedAt - state.deadlineAt);
+  const wallOverrunMs = Math.max(0, state.lastClockSample - state.deadlineAt);
   const overrunMs = Math.max(
     wallOverrunMs,
     Math.max(0, elapsedMs - state.deadlineMs),
@@ -522,6 +520,7 @@ function finalizeAdmission(state: AdmissionState): Readonly<{
     settled: state.operations.completed + state.operations.failed,
     completed: state.operations.completed,
     failed: state.operations.failed,
+    abortRequested: state.operations.abortRequested,
     cooperativelyAborted: state.operations.cooperativelyAborted,
     activeAtReturn: state.operations.active,
   });
@@ -675,6 +674,7 @@ export async function runConversationV2ShadowBatch(input: {
       admitted: 0,
       completed: 0,
       failed: 0,
+      abortRequested: 0,
       cooperativelyAborted: 0,
       active: 0,
     },

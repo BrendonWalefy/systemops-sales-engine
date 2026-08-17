@@ -622,14 +622,21 @@ prospectiva do blocker arquitetural restante da Task 5:
   explícita. Não existe Promise órfã, fire-and-forget nem `Promise.race` que devolva enquanto
   trabalho iniciado permanece vivo;
 - cancelamento é cooperativo e só é alegado onde a primitiva o comprova. O provider/OpenAI
-  recebe `AbortSignal`; aborto do fetch não é evidência de cancelamento server-side no Neon;
+  recebe `AbortSignal`; o summary separa pedido de abort de cancelamento confirmado por erro
+  tipado do provider. Aborto do fetch não é evidência de cancelamento server-side no Neon;
 - para Drizzle/Neon, o runtime verifica a admissão imediatamente antes de iniciar cada operação
   e, depois do início, aguarda seu settlement. Nenhuma mutação nova começa com admissão fechada
   nem pode ser despachada depois da criação do summary;
+- exception, resultado malformado ou captured read ausente só pode virar comparison record se a
+  escrita no sink for admitida antes de `deadlineAt`. Se a admissão fechar antes do sink, o
+  resultado existe apenas no summary frozen em memória e zero append/DB record é iniciado;
 - o retorno pode ocorrer depois de T enquanto operações já admitidas são drenadas. Esse estado é
-  **overrun**, nunca conformidade com deadline estrito;
+  **overrun**, nunca conformidade com deadline estrito. Fechamento causado por T registra
+  `admissionClosedAt = deadlineAt`;
 - o summary expõe, sem IDs crus ou PII, o overrun medido, se a admissão fechou e os fatos de drain
-  das operações admitidas. Relógio malformado não pode converter overrun em sucesso aparente;
+  das operações admitidas. A maior amostra válida do relógio permanece como evidência mínima de
+  overrun; amostra posterior malformada/regressiva não pode apagá-la nem converter overrun em
+  sucesso aparente;
 - strict return-by-T com zero órfão e zero commit pós-retorno requer outra fronteira de execução
   e propriedade de cancelamento. Essa evolução fica futura; nenhum worker, fila ou redesign é
   introduzido nesta emenda.
