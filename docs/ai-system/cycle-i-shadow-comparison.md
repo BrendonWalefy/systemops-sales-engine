@@ -12,6 +12,8 @@ Hardening da revisão Task 7 — rodada 1: `5e3f2c64`
 
 Hardening da revisão Task 7 — rodada 2: `68cfff52`, `57dc0577`, `3cb0810c`
 
+Hardening da revisão Task 7 — rodada 3: `6c62468c`, `1115aab5`, `e0293372`
+
 ## Estado terminal
 
 O Ciclo I entregou os instrumentos, as fronteiras de shadow e o selector reversível, mas não
@@ -319,7 +321,7 @@ abort ou drain.
 - regressões Task 5/shadow: 10 arquivos/196 testes verdes;
 - regressões Task 4/V1: 6 arquivos/74 testes verdes;
 - agenda: 4 arquivos/86 testes verdes;
-- auditoria PII executada diretamente, sem dotenv: 41 arquivos, zero finding bloqueante;
+- auditoria PII canônica: 41 arquivos, zero finding bloqueante;
 - `db:check`, typecheck e `git diff --check`: verdes;
 - `npm run verify`, executado com worktree clean depois do commit documental: Drizzle meta OK,
   lint com zero erro e um warning legado em V1, typecheck verde, 358 arquivos/3.144 testes
@@ -328,6 +330,9 @@ abort ou drain.
 - terceira rodada antes do verify final: suíte focal exata 24 arquivos/275 testes; regressões
   Task 5/shadow 12 arquivos/211 testes; agenda 4 arquivos/86 testes; PII clean em 41 arquivos;
   `db:check`, typecheck e diffs de whitespace/V1/schema verdes;
+- primeiro `npm run verify` clean após o commit documental da terceira rodada: Drizzle meta OK,
+  lint sem erro e com o único warning legado V1, typecheck verde, 358 arquivos/3.184 testes
+  verdes e 11 skips;
 - `git diff 99a852aa -- src/core src/conversation-core`: somente o split genérico de pipeline e
   a seam observacional V1 previamente revisados; a Task 7 não alterou esses diretórios.
 
