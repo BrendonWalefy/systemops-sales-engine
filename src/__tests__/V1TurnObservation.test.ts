@@ -68,10 +68,14 @@ const gateFacts = (turnId: string) => [
 ];
 
 function readyV2Reads(turn: CapturedV1Turn) {
-  const promotion = buildCapturedV2TurnReads(turn);
+  const promotion = buildCapturedV2TurnReads(sharedProjection(turn));
   expect(promotion.status).toBe("ready");
   if (promotion.status !== "ready") throw new Error("expected ready V2 reads");
   return promotion.reads;
+}
+
+function sharedProjection(turn: CapturedV1Turn): CapturedV1TurnSharedProjection {
+  return { turnId: turn.turnId, sharedReads: turn.sharedReads };
 }
 
 describe("V1 turn observation seam", () => {
@@ -245,7 +249,7 @@ describe("V1 turn observation seam", () => {
     unavailablePolicy.record(terminal("policy-unavailable"));
     const policyTurn = unavailablePolicy.complete("policy-unavailable");
     expect(policyTurn).not.toBeNull();
-    expect(buildCapturedV2TurnReads(policyTurn!)).toEqual({
+    expect(buildCapturedV2TurnReads(sharedProjection(policyTurn!))).toEqual({
       status: "shared_read_unavailable",
       unavailableReads: [{ field: "policy", reason: "not_read_by_v1" }],
     });
@@ -260,7 +264,7 @@ describe("V1 turn observation seam", () => {
     unavailableSteps.record(terminal("steps-unavailable"));
     const stepsTurn = unavailableSteps.complete("steps-unavailable");
     expect(stepsTurn).not.toBeNull();
-    expect(buildCapturedV2TurnReads(stepsTurn!)).toEqual({
+    expect(buildCapturedV2TurnReads(sharedProjection(stepsTurn!))).toEqual({
       status: "shared_read_unavailable",
       unavailableReads: [{ field: "state.completedStepIds", reason: "not_read_by_v1" }],
     });
@@ -294,7 +298,7 @@ describe("V1 turn observation seam", () => {
       reason: "not_read_by_v1",
     });
     expect(collector.drain()).toEqual([captured]);
-    expect(buildCapturedV2TurnReads(captured!)).toEqual({
+    expect(buildCapturedV2TurnReads(sharedProjection(captured!))).toEqual({
       status: "shared_read_unavailable",
       unavailableReads: [
         { field: "state.completedStepIds", reason: "not_read_by_v1" },
@@ -320,7 +324,7 @@ describe("V1 turn observation seam", () => {
       collector.record(terminal(turnId));
       const captured = collector.complete(turnId);
       expect(captured).not.toBeNull();
-      return buildCapturedV2TurnReads(captured!);
+      return buildCapturedV2TurnReads(sharedProjection(captured!));
     };
 
     const exact = promote("pending-exact", {
@@ -387,9 +391,141 @@ describe("V1 turn observation seam", () => {
       reads: { pendingAppointmentResolutions: [] },
     });
 
+    const queryMismatch = promote("pending-query-mismatch", {
+      kind: "pending_appointment_resolution",
+      turnId: "pending-query-mismatch",
+      pendingStepId: "pending-query-mismatch:offer",
+      result: {
+        kind: "query_mismatch",
+        evidenceRef: "v1-pending-appointment:pending-query-mismatch:query-mismatch",
+      },
+    } as V1TurnObservationEvent);
+    expect(queryMismatch).toMatchObject({
+      status: "ready",
+      reads: { pendingAppointmentResolutions: [] },
+    });
+
     expect(promote("pending-unobserved")).toMatchObject({
       status: "ready",
       reads: { pendingAppointmentResolutions: [] },
+    });
+  });
+
+  it("rejeita projection forjada antes de copiar reason sensível ou controlArm", () => {
+    const collector = new V1ObservationCollector();
+    collector.record(turnInput("forged-reason"));
+    collector.record(turnContext("forged-reason"));
+    collector.record(tenantSnapshot("forged-reason"));
+    collector.record(terminal("forged-reason"));
+    const captured = collector.complete("forged-reason")!;
+    const forged = {
+      turnId: captured.turnId,
+      sharedReads: {
+        ...captured.sharedReads,
+        context: {
+          ...captured.sharedReads.context,
+          completedStepIds: {
+            status: "unavailable",
+            reason: {
+              pii: "patient-secret",
+              controlArm: captured.controlArm,
+            },
+          },
+        },
+      },
+    } as unknown as CapturedV1TurnSharedProjection;
+
+    let thrown: unknown;
+    try {
+      buildCapturedV2TurnReads(forged);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect(String(thrown)).toContain("invalid captured V1 shared projection");
+    expect(String(thrown)).not.toContain("patient-secret");
+    expect(String(thrown)).not.toContain("controlArm");
+  });
+
+  it("rejeita Proxy e accessor root ou nested sem executar leitura", () => {
+    const collector = new V1ObservationCollector();
+    collector.record(turnInput("projection-traps"));
+    collector.record(turnContext("projection-traps"));
+    collector.record(tenantSnapshot("projection-traps"));
+    collector.record(terminal("projection-traps"));
+    const captured = collector.complete("projection-traps")!;
+    const projection = sharedProjection(captured);
+    let reads = 0;
+
+    const rootProxy = new Proxy(projection, {
+      get(target, property, receiver) {
+        reads += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const nestedProxy = {
+      turnId: captured.turnId,
+      sharedReads: new Proxy(captured.sharedReads, {
+        get(target, property, receiver) {
+          reads += 1;
+          return Reflect.get(target, property, receiver);
+        },
+      }),
+    } as CapturedV1TurnSharedProjection;
+    const rootAccessor = { turnId: captured.turnId } as Record<string, unknown>;
+    Object.defineProperty(rootAccessor, "sharedReads", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return captured.sharedReads;
+      },
+    });
+    const nestedAccessorReads = { ...captured.sharedReads } as Record<string, unknown>;
+    Object.defineProperty(nestedAccessorReads, "context", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return captured.sharedReads.context;
+      },
+    });
+    const nestedAccessor = {
+      turnId: captured.turnId,
+      sharedReads: nestedAccessorReads,
+    } as unknown as CapturedV1TurnSharedProjection;
+
+    for (const unsafe of [rootProxy, nestedProxy, rootAccessor, nestedAccessor]) {
+      expect(() => buildCapturedV2TurnReads(
+        unsafe as CapturedV1TurnSharedProjection,
+      )).toThrow("invalid captured V1 shared projection");
+    }
+    expect(reads).toBe(0);
+  });
+
+  it("aceita somente o shared snapshot registrado com o turnId correspondente", () => {
+    const collector = new V1ObservationCollector();
+    collector.record(turnInput("registered-projection"));
+    collector.record(turnContext("registered-projection"));
+    collector.record(tenantSnapshot("registered-projection"));
+    collector.record(terminal("registered-projection"));
+    const captured = collector.complete("registered-projection")!;
+
+    expect(() => buildCapturedV2TurnReads({
+      turnId: "another-turn",
+      sharedReads: captured.sharedReads,
+    })).toThrow("invalid captured V1 shared projection");
+
+    expect(() => buildCapturedV2TurnReads({
+      turnId: captured.turnId,
+      sharedReads: { ...captured.sharedReads },
+    })).toThrow("invalid captured V1 shared projection");
+
+    expect(() => buildCapturedV2TurnReads(
+      captured as unknown as CapturedV1TurnSharedProjection,
+    )).toThrow("invalid captured V1 shared projection");
+
+    expect(buildCapturedV2TurnReads(sharedProjection(captured))).toMatchObject({
+      status: "ready",
     });
   });
 
@@ -579,9 +715,9 @@ describe("V1 turn observation seam", () => {
     expectTypeOf<Parameters<typeof buildCapturedV2TurnReads>[0]>()
       .toEqualTypeOf<CapturedV1TurnSharedProjection>();
     expectTypeOf<CapturedV1Turn>()
-      .toMatchTypeOf<CapturedV1TurnSharedProjection>();
-    expectTypeOf<keyof CapturedV1TurnSharedProjection>()
-      .toEqualTypeOf<"turnId" | "sharedReads">();
+      .not.toMatchTypeOf<CapturedV1TurnSharedProjection>();
+    expectTypeOf<CapturedV1TurnSharedProjection>()
+      .toMatchTypeOf<Readonly<{ turnId: string; sharedReads: unknown }>>();
     expectTypeOf<ReturnType<typeof buildCapturedV2TurnReads>>()
       .toEqualTypeOf<CapturedV2TurnReadsPromotion>();
   });

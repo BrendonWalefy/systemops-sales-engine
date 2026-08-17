@@ -1,3 +1,4 @@
+import { isProxy } from "node:util/types";
 import {
   snapshotV1TurnObservation,
   type V1TurnObservationEvent,
@@ -39,6 +40,7 @@ export type CapturedV1Turn = Readonly<{
 export type CapturedV1TurnSharedProjection = Readonly<{
   turnId: string;
   sharedReads: CapturedV1SharedReads;
+  controlArm?: never;
 }>;
 
 export type CapturedV2TurnReadsPromotion =
@@ -65,6 +67,9 @@ type TurnAccumulator = {
   responsePlans: EventOf<"v1_response_plan">[];
   terminal?: EventOf<"turn_terminal">;
 };
+
+const registeredSharedSnapshots = new WeakMap<object, string>();
+const INVALID_SHARED_PROJECTION = "invalid captured V1 shared projection";
 
 function deepFreeze(value: unknown, seen = new WeakSet<object>()): void {
   if (typeof value !== "object" || value === null || seen.has(value)) return;
@@ -178,6 +183,7 @@ export class V1ObservationCollector implements V1TurnObservationSink {
       },
     };
     deepFreeze(captured);
+    registeredSharedSnapshots.set(captured.sharedReads, captured.turnId);
     this.completed.push(captured);
     return captured;
   }
@@ -187,6 +193,56 @@ export class V1ObservationCollector implements V1TurnObservationSink {
     this.completed = [];
     return drained;
   }
+}
+
+function readRegisteredSharedProjection(
+  input: CapturedV1TurnSharedProjection,
+): CapturedV1SharedReads {
+  if (
+    typeof input !== "object"
+    || input === null
+    || isProxy(input)
+    || Array.isArray(input)
+    || Object.getPrototypeOf(input) !== Object.prototype
+  ) {
+    throw new Error(INVALID_SHARED_PROJECTION);
+  }
+
+  const keys = Reflect.ownKeys(input);
+  if (
+    keys.length !== 2
+    || !keys.includes("turnId")
+    || !keys.includes("sharedReads")
+  ) {
+    throw new Error(INVALID_SHARED_PROJECTION);
+  }
+
+  const turnIdDescriptor = Object.getOwnPropertyDescriptor(input, "turnId");
+  const sharedReadsDescriptor = Object.getOwnPropertyDescriptor(input, "sharedReads");
+  if (
+    !turnIdDescriptor
+    || !("value" in turnIdDescriptor)
+    || !turnIdDescriptor.enumerable
+    || !sharedReadsDescriptor
+    || !("value" in sharedReadsDescriptor)
+    || !sharedReadsDescriptor.enumerable
+  ) {
+    throw new Error(INVALID_SHARED_PROJECTION);
+  }
+
+  const turnId = turnIdDescriptor.value;
+  const sharedReads = sharedReadsDescriptor.value;
+  if (
+    typeof turnId !== "string"
+    || turnId.length === 0
+    || typeof sharedReads !== "object"
+    || sharedReads === null
+    || registeredSharedSnapshots.get(sharedReads) !== turnId
+  ) {
+    throw new Error(INVALID_SHARED_PROJECTION);
+  }
+
+  return sharedReads as CapturedV1SharedReads;
 }
 
 function gateInput(
@@ -218,7 +274,7 @@ function gateInput(
 export function buildCapturedV2TurnReads(
   turn: CapturedV1TurnSharedProjection,
 ): CapturedV2TurnReadsPromotion {
-  const reads = turn.sharedReads;
+  const reads = readRegisteredSharedProjection(turn);
   const completedStepIds = reads.context.completedStepIds;
   const policy = reads.tenantSnapshot.policy;
   if (completedStepIds.status === "unavailable" || policy.status === "unavailable") {
@@ -229,13 +285,13 @@ export function buildCapturedV2TurnReads(
     if (completedStepIds.status === "unavailable") {
       unavailableReads.push({
         field: "state.completedStepIds",
-        reason: completedStepIds.reason,
+        reason: "not_read_by_v1",
       });
     }
     if (policy.status === "unavailable") {
       unavailableReads.push({
         field: "policy",
-        reason: policy.reason,
+        reason: "not_read_by_v1",
       });
     }
     const unavailable: CapturedV2TurnReadsPromotion = {
