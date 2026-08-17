@@ -280,9 +280,11 @@ no escopo, será necessária boundary externa imutável/assinada de build ou CI.
   como falhas do sink, e identities/effects criados permaneciam mutáveis. O RED confirmou os três.
   O GREEN reutiliza exclusivamente o canonicalizer/schema genéricos antes do summary, separa
   `recordValidationErrors` de `sinkErrors` e congela as estruturas criadas, sem alterar o core.
-- A re-review independente final da Task 7 ainda é posterior a este checkpoint. Até artifact
-  content-bound e assinado existir, `adversarial_review` permanece corretamente `not_measurable`
-  no gate report.
+- A re-review independente final do hardening em `f694db96` encontrou zero Critical, zero
+  Important e zero Minor e concluiu `SPEC PASS / QUALITY PASS`. A Task 7 recebe GO de fechamento
+  técnico. Isso não fabrica authority artifact: até evidência content-bound e assinada existir,
+  `adversarial_review` permanece corretamente `not_measurable` no gate report e a ativação
+  continua `NO-GO INTERNAL V2`.
 
 ## Gate report
 
@@ -362,11 +364,15 @@ O teste agora preserva a prova de zero start em/depois de T e exige que `overrun
   como gate verde;
 - `git diff 99a852aa -- src/core src/conversation-core`: somente o split genérico de pipeline e
   a seam observacional V1 previamente revisados; a Task 7 não alterou esses diretórios.
+- hardening final em `f694db96`: suíte focal Cycle I/Task 7 `294/294`, boundary focal
+  `150/150`, agenda `86/86` e `npm run verify` com 358 arquivos/3.203 testes verdes e 11 skips;
+  re-review independente com zero finding e `SPEC PASS / QUALITY PASS`.
 
 A primeira, a segunda e a terceira revisões independentes da Task 7 encontraram os gaps acima.
-A re-review da rodada 3 confirmou o último Important de provenance; a re-review final da correção
-ocorre depois deste checkpoint. Os resultados locais não alteram
-retroativamente o gate report
-unsigned nem fabricam observações V1×V2.
+A re-review da rodada 3 confirmou o Important de provenance; a rodada seguinte encontrou o
+último Important e dois Minor na boundary do evaluator. Todos foram corrigidos e a re-review final
+em `f694db96` passou sem finding. Esse GO fecha tecnicamente a Task 7, mas os resultados locais não
+alteram retroativamente o gate report unsigned nem fabricam observações V1×V2 ou autoridade de
+ativação.
 
 NO-GO INTERNAL V2
