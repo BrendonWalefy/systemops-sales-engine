@@ -19,6 +19,11 @@ export type CycleIBuildAttestation = Readonly<{
   tree: string;
   treeDigest: HmacRef;
   sourceDigest: HmacRef;
+  runtime: Readonly<{
+    nodeVersion: string;
+    platform: NodeJS.Platform;
+    arch: string;
+  }>;
   clean: true;
   readonly [buildAttestationBrand]: true;
 }>;
@@ -32,6 +37,7 @@ const implementationSourceScope = Object.freeze([
   "package.json",
   "package-lock.json",
   "tsconfig.json",
+  "scripts/eval-conversation-v2-cycle-i-bootstrap.ts",
   "scripts/eval-conversation-v2-cycle-i.ts",
   "src",
 ]);
@@ -177,6 +183,11 @@ export function createGitCycleIBuildAttestation(): CycleIBuildAttestation {
     tree,
     treeDigest: digestTree(tree),
     sourceDigest: computeCycleIImplementationSourceDigest(),
+    runtime: Object.freeze({
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+    }),
     clean: true as const,
   }) as CycleIBuildAttestation;
   registered.add(attestation);

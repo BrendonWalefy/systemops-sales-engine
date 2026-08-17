@@ -37,7 +37,10 @@ import {
   loadAuthorizedCycleIFullTurnEvidence,
   loadAuthorizedCycleIGateArtifacts,
 } from "@/application/conversation-v2/approved-cycle-i-artifacts";
-import { createGitCycleIBuildAttestation } from "@/infrastructure/conversation-v2/git-cycle-i-build-attestation";
+import {
+  isRegisteredCycleIBuildAttestation,
+  type CycleIBuildAttestation,
+} from "@/infrastructure/conversation-v2/git-cycle-i-build-attestation";
 type CliEnvironment = Readonly<Record<string, string | undefined>>;
 
 function freeze<T>(value: T): T {
@@ -114,6 +117,7 @@ function finalizeReport(report: CycleIGateReport): CycleIGateReport {
 export async function runCycleICli(
   argv: readonly string[] = process.argv.slice(2),
   env: CliEnvironment = process.env,
+  preflightBuildAttestation?: CycleIBuildAttestation,
 ): Promise<number> {
   const mode = argument(argv, "--mode");
   const outputPath = argument(argv, "--out");
@@ -127,6 +131,11 @@ export async function runCycleICli(
     if (!apiKey) {
       throw new Error("OPENAI_API_KEY absent; no Cycle I observations were created");
     }
+    if (!isRegisteredCycleIBuildAttestation(preflightBuildAttestation)) {
+      throw new Error(
+        "Cycle I productive measurement requires the registered trusted bootstrap preflight",
+      );
+    }
     const configuredV1Model = env.OPENAI_CLASSIFIER_MODEL?.trim() || "gpt-4o-mini";
     if (configuredV1Model !== manifest.v1.modelId) {
       throw new Error("V1 model differs from the frozen Cycle I run manifest");
@@ -134,7 +143,6 @@ export async function runCycleICli(
     const authority = parseAuthorizedCycleIRunManifest(
       JSON.parse(readFileSync(runManifestPath, "utf8")),
     );
-    const buildAttestation = createGitCycleIBuildAttestation();
     const arms = createProductiveCycleIUnderstandingArms({ manifest: authority, apiKey });
     const result = await runCycleICorpusComparison({
       corpusRoot: authority.corpusRoot,
@@ -147,7 +155,7 @@ export async function runCycleICli(
       fixedClockByCase: fixedClocks(authority),
       comparabilityPath: authority.comparabilityPath,
       authority,
-      buildAttestation,
+      buildAttestation: preflightBuildAttestation,
     });
     writeJson(outputPath, result);
     return result.status === "complete" ? 0 : 2;

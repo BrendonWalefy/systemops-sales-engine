@@ -36,10 +36,11 @@ describe("Cycle I productive run authority", () => {
     process.env[reviewEnv] = pem(review.publicKey);
     const authority = await import("@/application/conversation-v2/run-manifest-authority");
     const unsigned = {
-      version: "conversation-v2-cycle-i-run-manifest.v3",
+      version: "conversation-v2-cycle-i-run-manifest.v4",
       implementationCommit: "359fcf4b",
       implementationTreeDigest: `hmac:${"1".repeat(64)}`,
       implementationSourceDigest: `hmac:${"f".repeat(64)}`,
+      runtime: { nodeVersion: process.version, platform: process.platform, arch: process.arch },
       corpusRoot: "evals/corpus",
       manifestPath: "evals/understanding/cycle-f-dental.json",
       d0Path: "evals/corpus/measurement-stability-d0.json",

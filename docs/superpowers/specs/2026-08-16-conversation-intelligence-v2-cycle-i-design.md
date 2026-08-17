@@ -283,12 +283,32 @@ quality threshold changed. Productive authority therefore additionally binds
 repository root over the closed implementation scope (`src/**`, the Cycle-I CLI, package manifest,
 lockfile and TypeScript config). Canonical entries bind normalized relative path, file mode, size
 and SHA-256 of the bytes. Symlinks, root escapes, duplicate paths, hard-linked aliases,
-non-regular files and files changing during capture fail closed. This source digest—not Git
-status—is the primary proof of executed implementation bytes and must match the signed run
-manifest before any arm call. Commit/tree/status remain additional traceability and defense; the
+non-regular files and files changing during capture fail closed. Within the trusted execution
+substrate defined below, this source digest—not Git status—is the admission snapshot of the
+implementation bytes and must match the signed run manifest before any arm call. It is not a proof
+against a compromised host or code already executed before the snapshot. Commit/tree/status remain additional traceability and defense; the
 Git worktree and config overrides are closed constants rather than caller or local-config
 authority. Metadata and generated gate artifacts are deliberately outside the implementation
 scope to avoid an autorreferential digest and remain separately content-bound.
+
+### Task 6 trusted execution substrate (pre-result clarification)
+
+The adversarial-input model starts after a trusted bootstrap. The OS/filesystem, Node executable,
+`tsx`, package manager, dependencies installed from the committed lockfile, the minimal bootstrap
+and absence of concurrent host mutation are the trusted execution substrate. Corpus/config/model
+inputs, manifests, results and evidence artifacts remain adversarial. This boundary was recorded
+on 2026-08-17 with zero real observations, unsigned `NO_GO` artifacts and no threshold,
+denominator or gate change. The signed manifest binds the package-lock source snapshot plus Node
+version/platform/architecture for reproducibility; it does not claim to prove npm installation,
+Node binary or host integrity.
+
+The canonical productive command loads only the trusted bootstrap and attestation adapter first.
+It captures the registered admission snapshot before dynamically importing dotenv, the CLI,
+runner, providers or application graph. Calling the productive CLI directly without that exact
+registered preflight fails closed before provider construction or calls. If anti-host or
+supply-chain guarantees are later required, Task 6 evidence must be produced by an external
+immutable/signed build or CI execution boundary; in-process self-attestation and hashing all of
+`node_modules` are explicitly not represented as that guarantee.
 
 Decision evidence uses `conversation-v2-decision-fixtures.v2`. The signed run manifest binds the
 fixture file digest and its frozen population digest. The file predeclares applicability for all

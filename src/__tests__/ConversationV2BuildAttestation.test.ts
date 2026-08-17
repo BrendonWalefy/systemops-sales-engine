@@ -25,6 +25,11 @@ describe("Cycle I build attestation", () => {
       commit,
       tree,
       sourceDigest: expect.stringMatching(/^hmac:[a-f0-9]{64}$/),
+      runtime: {
+        nodeVersion: process.version,
+        platform: process.platform,
+        arch: process.arch,
+      },
     });
     expect(isRegisteredCycleIBuildAttestation(attestation)).toBe(true);
     expect(Object.isFrozen(attestation)).toBe(true);

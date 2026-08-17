@@ -94,6 +94,7 @@ export type CycleIComparisonRun = Readonly<{
     implementationCommit: string;
     implementationTreeDigest: HmacRef;
     implementationSourceDigest: HmacRef;
+    runtime: Readonly<{ nodeVersion: string; platform: string; arch: string }>;
     runManifestDigest: HmacRef;
     configDigest: HmacRef;
     v1ModelId: string;
@@ -208,6 +209,9 @@ const comparisonRunSchema = z.object({
   binding: z.object({
     implementationCommit: z.string().regex(/^[a-f0-9]{7,64}$/),
     implementationTreeDigest: hmacSchema, implementationSourceDigest: hmacSchema,
+    runtime: z.object({
+      nodeVersion: z.string().min(1), platform: z.string().min(1), arch: z.string().min(1),
+    }).strict(),
     runManifestDigest: hmacSchema,
     configDigest: hmacSchema, v1ModelId: z.string().min(1), v2ModelId: z.string().min(1),
     v1PromptDigest: hmacSchema, v2PromptDigest: hmacSchema,
@@ -557,8 +561,11 @@ export async function runCycleICorpusComparison(input: Readonly<{
       input.buildAttestation.commit !== input.authority.implementationCommit
       || input.buildAttestation.treeDigest !== input.authority.implementationTreeDigest
       || input.buildAttestation.sourceDigest !== input.authority.implementationSourceDigest
+      || input.buildAttestation.runtime.nodeVersion !== input.authority.runtime.nodeVersion
+      || input.buildAttestation.runtime.platform !== input.authority.runtime.platform
+      || input.buildAttestation.runtime.arch !== input.authority.runtime.arch
     ) throw new Error(
-      "Cycle I actual Git HEAD/tree or implementation source bytes do not match its authorized manifest",
+      "Cycle I actual Git HEAD/tree, implementation source bytes, or runtime do not match its authorized manifest",
     );
   }
   const productive = input.authority !== undefined
@@ -754,6 +761,7 @@ export async function runCycleICorpusComparison(input: Readonly<{
       implementationCommit: input.authority!.implementationCommit,
       implementationTreeDigest: input.authority!.implementationTreeDigest,
       implementationSourceDigest: input.authority!.implementationSourceDigest,
+      runtime: input.authority!.runtime,
       runManifestDigest: input.authority!.manifestDigest,
       configDigest: input.authority!.configDigest,
       v1ModelId: input.authority!.v1.modelId,
@@ -912,6 +920,9 @@ export function parseProductiveCycleIComparisonRun(
     || binding.implementationCommit !== authority.implementationCommit
     || binding.implementationTreeDigest !== authority.implementationTreeDigest
     || binding.implementationSourceDigest !== authority.implementationSourceDigest
+    || binding.runtime.nodeVersion !== authority.runtime.nodeVersion
+    || binding.runtime.platform !== authority.runtime.platform
+    || binding.runtime.arch !== authority.runtime.arch
     || binding.runManifestDigest !== authority.manifestDigest
     || binding.configDigest !== authority.configDigest
     || binding.v1ModelId !== authority.v1.modelId

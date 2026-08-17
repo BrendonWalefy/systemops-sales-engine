@@ -631,6 +631,16 @@ Rollback operacional imediato: atualizar `organizations.conversation_engine` par
 > fail closed. Git commit/tree are retained only as additional traceability. The source digest must
 > match before any productive arm call; generated metadata is excluded to avoid self-reference.
 
+> **Trusted-bootstrap clarification (2026-08-17, pre-result):** this source digest is an admission
+> snapshot inside a trusted execution substrate, not anti-host or supply-chain attestation. The
+> trusted substrate is OS/filesystem, Node, `tsx`, package-manager installation from the committed
+> lockfile, minimal bootstrap and no concurrent host mutation. The signed manifest also binds Node
+> version/platform/architecture. The canonical bootstrap snapshots before dynamically importing
+> dotenv/CLI/runner/providers; direct productive entry without its registered preflight fails
+> closed. An external immutable/signed build or CI boundary is a future prerequisite if host or
+> installed-dependency compromise enters scope. This clarification occurred at zero observations,
+> unsigned `NO_GO`, and changes no threshold, denominator or gate.
+
 > **Amendment after independent Task 6 review:** productive evidence is accepted only from the
 > canonical parsed runner snapshot bound to a configured-authority-signed run manifest; serialized
 > runs additionally require a measurement-run signature. The manifest binds commit/tree,

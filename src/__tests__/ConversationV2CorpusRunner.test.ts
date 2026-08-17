@@ -198,7 +198,19 @@ describe("Cycle I corpus comparison runner", () => {
       "--mode", "measure", "--out", resultPath,
       "--run-manifest", runManifestPath,
     ], {})).rejects.toThrow(/OPENAI_API_KEY/i);
+    await expect(runCycleICli([
+      "--mode", "measure", "--out", resultPath,
+      "--run-manifest", runManifestPath,
+    ], { OPENAI_API_KEY: "test-only-not-a-secret" })).rejects.toThrow(/preflight|bootstrap/i);
     expect(existsSync(resultPath)).toBe(false);
+
+    const bootstrap = readFileSync(
+      "scripts/eval-conversation-v2-cycle-i-bootstrap.ts",
+      "utf8",
+    );
+    expect(bootstrap.indexOf("createGitCycleIBuildAttestation()"))
+      .toBeLessThan(bootstrap.indexOf("import(\"./eval-conversation-v2-cycle-i\")"));
+    expect(bootstrap).not.toMatch(/@\/application|OpenAI|DentalUnderstandingProvider|IntentClassifier/);
 
     await runCycleICli([
       "--mode", "evaluate-gates", "--run", resultPath,
