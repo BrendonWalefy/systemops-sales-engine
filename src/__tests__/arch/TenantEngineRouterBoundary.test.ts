@@ -26,4 +26,16 @@ describe("TenantEngineRouter architectural boundary", () => {
       .map(({ path }) => path);
     expect(offenders).toEqual([]);
   });
+
+  it("keeps the Internal Lab approval rule behind one canonical application import", () => {
+    const directApprovalConsumers = sourceFiles("src/application")
+      .map((path) => ({ path: relative(".", path), source: readFileSync(path, "utf8") }))
+      .filter(({ source }) => /from\s+["']@\/application\/conversation-v2\/internal-lab-approval["']/.test(source))
+      .map(({ path }) => path)
+      .sort();
+
+    expect(directApprovalConsumers).toEqual([
+      "src/application/conversation-v2/internal-lab-authorization.ts",
+    ]);
+  });
 });

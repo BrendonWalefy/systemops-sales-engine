@@ -7,10 +7,9 @@ import type {
 import type { InternalLabEligibilityReader } from "@/application/ports/internal-lab-eligibility-reader";
 import { canonicalizeConversationEnginePolicy } from "@/application/conversation-v2/engine-selection";
 import {
-  isRegisteredInternalLabApproval,
-  type RegisteredInternalLabApproval,
-} from "@/application/conversation-v2/internal-lab-approval";
-import type { CycleIRuntimeBuildIdentity } from "@/application/conversation-v2/configured-cycle-i-authority";
+  isInternalLabAuthorized,
+  type InternalLabAuthorizationBindings,
+} from "@/application/conversation-v2/internal-lab-authorization";
 import {
   recordDecisionTrace,
   type DecisionTraceSink,
@@ -71,16 +70,9 @@ type RouterDependencies = Readonly<{
   v2Handler: ConversationHandler;
   policyReader: ConversationEnginePolicyReader;
   eligibilityReader: InternalLabEligibilityReader;
-  approval: RegisteredInternalLabApproval | null;
-  runtimeIdentity: CycleIRuntimeBuildIdentity | null;
-  expectedClinicId: string;
-  expectedTenantDigest: string;
-  expectedChannelDigest: string;
-  expectedConfigDigest: string;
-  now(): Date;
   shadowSelections: V2ShadowSelectionRegistry;
   decisionTraceSink?: DecisionTraceSink;
-}>;
+}> & InternalLabAuthorizationBindings;
 
 export class TenantEngineRouter implements ConversationHandler {
   constructor(private readonly deps: RouterDependencies) {
@@ -145,37 +137,12 @@ export class TenantEngineRouter implements ConversationHandler {
     try {
       const facts = await this.deps.eligibilityReader
         .getInternalLabEligibilityFacts(input.clinicId);
-      if (!facts
-        || facts.clinicId !== this.deps.expectedClinicId
-        || !facts.isTest
-        || facts.isDemo
-        || facts.operationalStatus !== "test"
-        || !facts.autoReplyEnabled
-        || facts.shadowModeEnabled
-        || !this.isInternalLabApprovalAuthorized()) {
+      if (!isInternalLabAuthorized(facts, this.deps)) {
         return { route: "v1", shadow: false, reason: "internal_lab_not_eligible" };
       }
     } catch {
       return { route: "v1", shadow: false, reason: "internal_lab_not_eligible" };
     }
     return { route: "v2", shadow: false, reason: "internal_lab_authorized" };
-  }
-
-  private isInternalLabApprovalAuthorized(): boolean {
-    if (!this.deps.runtimeIdentity) return false;
-    const expected = {
-      runtimeIdentity: this.deps.runtimeIdentity,
-      tenantDigest: this.deps.expectedTenantDigest,
-      channelDigest: this.deps.expectedChannelDigest,
-      configDigest: this.deps.expectedConfigDigest,
-      now: this.deps.now(),
-    } as const;
-    return isRegisteredInternalLabApproval(this.deps.approval, {
-      ...expected,
-      decision: "INTERNAL_LAB_SMOKE_AUTHORIZED",
-    }) || isRegisteredInternalLabApproval(this.deps.approval, {
-      ...expected,
-      decision: "INTERNAL_LAB_READY",
-    });
   }
 }
