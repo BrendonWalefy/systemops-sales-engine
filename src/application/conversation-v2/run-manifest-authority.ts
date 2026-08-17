@@ -11,6 +11,12 @@ import {
 export { CYCLE_I_RUN_MANIFEST_AUTHORITY_DOMAIN };
 export const CYCLE_I_RUN_MANIFEST_VERSION =
   "conversation-v2-cycle-i-run-manifest.v2" as const;
+export const CYCLE_I_GATE_ARTIFACT_KINDS = [
+  "h_entailment", "shadow_no_effects", "cycle_f_axes", "rollback",
+  "observability", "verification", "adversarial_review",
+] as const;
+export type CycleIGateArtifactKind = typeof CYCLE_I_GATE_ARTIFACT_KINDS[number];
+export type CycleIArtifactRef = Readonly<{ path: string; digest: HmacRef }>;
 
 export type CycleIRunManifestSnapshot = Readonly<{
   version: typeof CYCLE_I_RUN_MANIFEST_VERSION;
@@ -30,11 +36,11 @@ export type CycleIRunManifestSnapshot = Readonly<{
   v2: Readonly<{ modelId: string; adapterId: "dental-understanding-provider.v1"; promptDigest: HmacRef }>;
   decisionManifest: Readonly<{ path: string; digest: HmacRef; populationDigest: HmacRef }> | null;
   proseManifest: Readonly<{ path: string; digest: HmacRef }> | null;
-  fullTurnEvidence: Readonly<{ path: string; digest: HmacRef }> | null;
+  fullTurnEvidence: Readonly<{ path: string; digest: HmacRef; replayApprovalKeyId: string }> | null;
   configDigest: HmacRef;
   manifestDigest: HmacRef;
   judge: "experimental_non_gating";
-  evidence: Readonly<Record<"hEntailment" | "shadowNoEffects" | "cycleFAxes" | "rollback" | "observability", HmacRef | null>>;
+  evidence: Readonly<Record<CycleIGateArtifactKind, CycleIArtifactRef | null>>;
   authoritySignature: Ed25519SignatureRef | null;
 }>;
 export type AuthorizedCycleIRunManifest = CycleIRunManifestSnapshot & Readonly<{
@@ -58,12 +64,17 @@ const schema = z.object({
   v2: model("dental-understanding-provider.v1"),
   decisionManifest: z.object({ path: z.string().min(1), digest: hmac, populationDigest: hmac }).strict().nullable(),
   proseManifest: z.object({ path: z.string().min(1), digest: hmac }).strict().nullable(),
-  fullTurnEvidence: z.object({ path: z.string().min(1), digest: hmac }).strict().nullable(),
+  fullTurnEvidence: z.object({ path: z.string().min(1), digest: hmac, replayApprovalKeyId: z.string().regex(/^[a-f0-9]{24}$/) }).strict().nullable(),
   configDigest: hmac, manifestDigest: hmac,
   judge: z.literal("experimental_non_gating"),
   evidence: z.object({
-    hEntailment: hmac.nullable(), shadowNoEffects: hmac.nullable(),
-    cycleFAxes: hmac.nullable(), rollback: hmac.nullable(), observability: hmac.nullable(),
+    h_entailment: z.object({ path: z.string().min(1), digest: hmac }).strict().nullable(),
+    shadow_no_effects: z.object({ path: z.string().min(1), digest: hmac }).strict().nullable(),
+    cycle_f_axes: z.object({ path: z.string().min(1), digest: hmac }).strict().nullable(),
+    rollback: z.object({ path: z.string().min(1), digest: hmac }).strict().nullable(),
+    observability: z.object({ path: z.string().min(1), digest: hmac }).strict().nullable(),
+    verification: z.object({ path: z.string().min(1), digest: hmac }).strict().nullable(),
+    adversarial_review: z.object({ path: z.string().min(1), digest: hmac }).strict().nullable(),
   }).strict(),
   authoritySignature: signature.nullable(),
 }).strict();

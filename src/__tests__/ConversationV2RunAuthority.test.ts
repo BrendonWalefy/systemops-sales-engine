@@ -6,8 +6,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const gateEnv = "CONVERSATION_V2_GATE_REPORT_AUTHORITY_PUBLIC_KEY";
 const approvalEnv = "CONVERSATION_V2_ACTIVATION_APPROVAL_AUTHORITY_PUBLIC_KEY";
+const reviewEnv = "CONVERSATION_V2_REVIEW_AUTHORITY_PUBLIC_KEY";
 const originalGate = process.env[gateEnv];
 const originalApproval = process.env[approvalEnv];
+const originalReview = process.env[reviewEnv];
 
 function pem(key: ReturnType<typeof generateKeyPairSync>["publicKey"]): string {
   return key.export({ type: "spki", format: "pem" }).toString();
@@ -18,6 +20,8 @@ afterEach(() => {
   else process.env[gateEnv] = originalGate;
   if (originalApproval === undefined) delete process.env[approvalEnv];
   else process.env[approvalEnv] = originalApproval;
+  if (originalReview === undefined) delete process.env[reviewEnv];
+  else process.env[reviewEnv] = originalReview;
   vi.resetModules();
 });
 
@@ -26,8 +30,10 @@ describe("Cycle I productive run authority", () => {
     vi.resetModules();
     const gate = generateKeyPairSync("ed25519");
     const approval = generateKeyPairSync("ed25519");
+    const review = generateKeyPairSync("ed25519");
     process.env[gateEnv] = pem(gate.publicKey);
     process.env[approvalEnv] = pem(approval.publicKey);
+    process.env[reviewEnv] = pem(review.publicKey);
     const authority = await import("@/application/conversation-v2/run-manifest-authority");
     const unsigned = {
       version: "conversation-v2-cycle-i-run-manifest.v2",
@@ -50,7 +56,7 @@ describe("Cycle I productive run authority", () => {
       fullTurnEvidence: null,
       configDigest: `hmac:${"7".repeat(64)}`,
       judge: "experimental_non_gating",
-      evidence: { hEntailment: null, shadowNoEffects: null, cycleFAxes: null, rollback: null, observability: null },
+      evidence: { h_entailment: null, shadow_no_effects: null, cycle_f_axes: null, rollback: null, observability: null, verification: null, adversarial_review: null },
     } as const;
     const configDigest = authority.digestCycleIRunConfig(unsigned);
     const manifestDigest = authority.digestCycleIRunManifest({ ...unsigned, configDigest });

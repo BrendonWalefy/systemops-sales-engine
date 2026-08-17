@@ -139,6 +139,34 @@ describe("Cycle I corpus comparison runner", () => {
     expect(v2Calls).toEqual([]);
   });
 
+  it("rejects 17/0, 14/3, 16/1, or wrong-ID comparability before either arm is called", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "cycle-i-comparability-"));
+    const caseIds = loadCycleFAcceptanceManifest(manifestPath, corpusRoot).cases.map((entry) => entry.caseId);
+    const variants = [
+      new Set<string>(),
+      new Set(["scheduling-0003", "burst-0002", "price-0001"]),
+      new Set(["scheduling-0003"]),
+      new Set(["scheduling-0003", "price-0001"]),
+    ];
+    for (const [index, nonComparable] of variants.entries()) {
+      const comparabilityPath = join(directory, `comparability-${index}.json`);
+      writeFileSync(comparabilityPath, `${JSON.stringify({
+        version: "conversation-v2-understanding-comparability.v1",
+        cases: caseIds.map((caseId) => nonComparable.has(caseId)
+          ? { caseId, status: "not_comparable", reason: "structured_pending_state_absent" }
+          : { caseId, status: "comparable", hasPendingSlotOffer: false }),
+      })}\n`, "utf8");
+      const v1Calls: Parameters<typeof arm>[0] = [], v2Calls: Parameters<typeof arm>[0] = [];
+      await expect(runCycleICorpusComparison({
+        corpusRoot, manifestPath, d0Path, decisionFixtureManifestPath: null,
+        v1Understanding: arm(v1Calls), v2Understanding: arm(v2Calls), runs: 6,
+        fixedClockByCase: fixedClockByCase(), comparabilityPath,
+      })).rejects.toThrow(/15|comparab|scheduling-0003|burst-0002/i);
+      expect(v1Calls).toEqual([]);
+      expect(v2Calls).toEqual([]);
+    }
+  });
+
   it("preserves every scheduled infrastructure error without dropping or borrowing an arm", async () => {
     const result = await baseRun(arm([]), arm([], "injection-0001"));
 
@@ -193,10 +221,8 @@ describe("Cycle I corpus comparison runner", () => {
     manifestWithFakeEvidence.manifestDigest = digestCycleIRunManifest(manifestWithFakeEvidence);
     const fakeEvidenceManifestPath = join(directory, "unsigned-fake-evidence-manifest.json");
     writeFileSync(fakeEvidenceManifestPath, `${JSON.stringify(manifestWithFakeEvidence)}\n`, "utf8");
-    await runCycleICli(["--mode", "evaluate-gates", "--out", reportPath, "--run-manifest", fakeEvidenceManifestPath], {});
-    const unsignedFakeReport = JSON.parse(readFileSync(reportPath, "utf8"));
-    expect(unsignedFakeReport.criteria.h_entailment.status).toBe("not_measurable");
-    expect(unsignedFakeReport.criteria.rollback.status).toBe("not_measurable");
+    await expect(runCycleICli(["--mode", "evaluate-gates", "--out", reportPath, "--run-manifest", fakeEvidenceManifestPath], {}))
+      .rejects.toThrow(/evidence|unrecognized|invalid/i);
 
     const completeRunPath = join(directory, "complete-without-prose.json");
     const humanSheetPath = join(directory, "human-review-sheet.json");

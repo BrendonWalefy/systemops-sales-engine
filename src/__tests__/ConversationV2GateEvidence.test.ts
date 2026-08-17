@@ -39,17 +39,9 @@ describe("Cycle I gate evidence", () => {
       datasetDigest: run.protocol.corpusDigest,
       configDigest: ref("4"),
       run,
-      evidence: {
-        hEntailment: ref("5"),
-        shadowNoEffects: ref("6"),
-        cycleFAxes: ref("7"),
-        rollback: ref("8"),
-        observability: ref("9"),
-      },
+      gateArtifacts: {} as never,
       humanReview: null,
       approvedFullTurnReplay: null,
-      verification: null,
-      adversarialReview: null,
     })).toThrow(/registered|authorized|productive/i);
   });
 
@@ -73,8 +65,7 @@ describe("Cycle I gate evidence", () => {
     expect(() => buildCycleIGateEvidence({
       reportDigest: ref("1"), populationDigest: run.protocol.populationDigest,
       datasetDigest: run.protocol.corpusDigest, configDigest: ref("4"), run,
-      evidence: {}, humanReview: null, approvedFullTurnReplay: null,
-      verification: null, adversarialReview: null,
+      gateArtifacts: {} as never, humanReview: null, approvedFullTurnReplay: null,
     })).toThrow(/registered|authorized|productive/i);
   });
 
@@ -94,8 +85,8 @@ describe("Cycle I gate evidence", () => {
     expect(() => buildCycleIGateEvidence({
       reportDigest: ref("1"), populationDigest: run.protocol.populationDigest,
       datasetDigest: run.protocol.corpusDigest, configDigest: ref("4"),
-      run: measuredRun, evidence: {}, humanReview: null,
-      approvedFullTurnReplay: null, verification: null, adversarialReview: null,
+      run: measuredRun, gateArtifacts: {} as never, humanReview: null,
+      approvedFullTurnReplay: null,
     })).toThrow(/registered|authorized|productive/i);
   });
 

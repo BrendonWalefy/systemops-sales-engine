@@ -17,6 +17,7 @@ import type {
   HmacRef,
   ModelCallSummary,
 } from "@/application/conversation-v2/comparison-record";
+import { pairApprovedEvalRecords } from "@/application/conversation-v2/comparison-record";
 import {
   buildCycleIGateReport,
   type CycleIGateReport,
@@ -34,9 +35,19 @@ import {
   type AuthorizedCycleIRunManifest,
 } from "@/application/conversation-v2/run-manifest-authority";
 import { isRegisteredProductiveCycleIArms } from "@/application/conversation-v2/productive-understanding-arms";
-import { loadAuthorizedCycleIProseRecords, isRegisteredApprovedFullTurnEvidence, type ApprovedFullTurnEvidence } from "@/application/conversation-v2/approved-cycle-i-artifacts";
+import {
+  loadAuthorizedCycleIProseRecords,
+  isRegisteredApprovedFullTurnEvidence,
+  isRegisteredAuthorizedCycleIGateArtifacts,
+  type ApprovedFullTurnEvidence,
+  type AuthorizedCycleIGateArtifacts,
+} from "@/application/conversation-v2/approved-cycle-i-artifacts";
 import { isRegisteredHumanReviewScore, type HumanReviewScore } from "@/application/conversation-v2/human-review";
 import { verifyConfiguredCycleIMeasurementRunAuthority, type Ed25519SignatureRef } from "@/application/conversation-v2/configured-cycle-i-authority";
+import {
+  isRegisteredCycleIBuildAttestation,
+  type CycleIBuildAttestation,
+} from "@/infrastructure/conversation-v2/git-cycle-i-build-attestation";
 
 export const CYCLE_I_COMPARISON_RUN_VERSION =
   "conversation-v2-cycle-i-run.v1" as const;
@@ -246,7 +257,7 @@ const WRITE_EXPECTATIONS = new Set([
   "scheduling_failed",
 ]);
 const parsedRuns = new WeakSet<object>();
-const productiveRuns = new WeakSet<object>();
+const productiveRuns = new WeakMap<object, AuthorizedCycleIRunManifest>();
 const comparabilitySchema = z.object({
   version: z.literal("conversation-v2-understanding-comparability.v1"),
   cases: z.array(z.discriminatedUnion("status", [
@@ -262,6 +273,10 @@ const comparabilitySchema = z.object({
     }).strict(),
   ])),
 }).strict();
+const CANONICAL_NON_COMPARABLE_CASES = Object.freeze({
+  "burst-0002": "structured_pending_state_absent",
+  "scheduling-0003": "structured_pending_state_absent",
+} as const);
 
 const RECEIPT_OUTCOMES_BY_EFFECT = {
   book_slot: new Set<DentalOutcomeType>([
@@ -511,6 +526,7 @@ export async function runCycleICorpusComparison(input: Readonly<{
   fixedClockByCase: Readonly<Record<string, string>>;
   comparabilityPath?: string;
   authority?: AuthorizedCycleIRunManifest;
+  buildAttestation?: CycleIBuildAttestation;
 }>): Promise<CycleIComparisonRun> {
   if (input.runs !== 6) throw new Error("Cycle I requires exactly N = 6 runs");
   const fixedClocks = snapshotPlainClocks(input.fixedClockByCase);
@@ -528,8 +544,19 @@ export async function runCycleICorpusComparison(input: Readonly<{
     populationDigest,
     runs: input.runs,
   });
+  if (input.authority !== undefined) {
+    if (!isRegisteredAuthorizedCycleIRunManifest(input.authority)) {
+      throw new Error("Cycle I productive run requires a registered run authority");
+    }
+    if (!isRegisteredCycleIBuildAttestation(input.buildAttestation)) {
+      throw new Error("Cycle I productive run requires a registered Git build attestation");
+    }
+    if (
+      input.buildAttestation.commit !== input.authority.implementationCommit
+      || input.buildAttestation.treeDigest !== input.authority.implementationTreeDigest
+    ) throw new Error("Cycle I actual Git HEAD/tree does not match its authorized manifest");
+  }
   const productive = input.authority !== undefined
-    && isRegisteredAuthorizedCycleIRunManifest(input.authority)
     && isRegisteredProductiveCycleIArms(
       input.v1Understanding,
       input.v2Understanding,
@@ -566,6 +593,18 @@ export async function runCycleICorpusComparison(input: Readonly<{
     || new Set(comparability.cases.map((entry) => entry.caseId)).size !== protocol.cases.length
     || protocol.cases.some((entry) => !comparableById.has(entry.caseId))
   ) throw new Error("comparability fixture must cover the exact frozen population");
+  const nonComparable = comparability.cases
+    .filter((entry) => entry.status === "not_comparable")
+    .map((entry) => [entry.caseId, entry.reason] as const)
+    .sort(([left], [right]) => left.localeCompare(right));
+  if (
+    comparability.cases.filter((entry) => entry.status === "comparable").length !== 15
+    || JSON.stringify(nonComparable) !== JSON.stringify(Object.entries(CANONICAL_NON_COMPARABLE_CASES))
+  ) {
+    throw new Error(
+      "comparability fixture must preserve the canonical 15 comparable / 2 structured-state-unavailable matrix",
+    );
+  }
   const turnInputs = new Map(protocol.cases.map(({ caseId }) => {
     const corpusCase = byId.get(caseId);
     const comparison = comparableById.get(caseId);
@@ -688,11 +727,17 @@ export async function runCycleICorpusComparison(input: Readonly<{
     protocol.cases.map((entry) => ({ ...byId.get(entry.caseId)!, critical: entry.critical })),
     productive ? input.authority! : null,
   );
+  const expectedProseInputDigests = Object.fromEntries(
+    comparability.cases
+      .filter((entry) => entry.status === "comparable")
+      .map((entry) => [
+        entry.caseId,
+        observations.find((observation) => observation.caseId === entry.caseId)!.inputDigest,
+      ]),
+  ) as Readonly<Record<string, HmacRef>>;
   const proseRecords = productive ? loadAuthorizedCycleIProseRecords({
     authority: input.authority!,
-    expectedCaseIds: comparability.cases
-      .filter((entry) => entry.status === "comparable")
-      .map((entry) => entry.caseId),
+    expectedInputDigests: expectedProseInputDigests,
   }) : freeze([]) as readonly ApprovedEvalRecord[];
   const prose = proseRecords.length === 0
     ? freeze({ status: "not_measurable" as const, approvedEvalRecords: freeze([]) as readonly ApprovedEvalRecord[] })
@@ -735,7 +780,7 @@ export async function runCycleICorpusComparison(input: Readonly<{
     prose: withoutDigest.prose,
   });
   const parsed = parseCycleIComparisonRun(JSON.parse(JSON.stringify(candidate)));
-  if (productive) productiveRuns.add(parsed);
+  if (productive) productiveRuns.set(parsed, input.authority!);
   return parsed;
 }
 
@@ -747,6 +792,23 @@ export function parseCycleIComparisonRun(input: unknown): CycleIComparisonRun {
   if (parsed.observations.length !== 204) {
     throw new Error("Cycle I comparison run dropped a scheduled observation");
   }
+  const observedByArm = {
+    v1: parsed.observations.filter((entry) => entry.arm === "v1" && entry.status === "observed").length,
+    v2: parsed.observations.filter((entry) => entry.arm === "v2" && entry.status === "observed").length,
+  };
+  const notMeasurable = parsed.observations.filter((entry) => entry.status === "not_measurable");
+  const expectedNotMeasurable = Object.keys(CANONICAL_NON_COMPARABLE_CASES)
+    .flatMap((caseId) => [1, 2, 3, 4, 5, 6].flatMap((run) => ["v1", "v2"].map((arm) => `${run}:${caseId}:${arm}`)))
+    .sort();
+  const actualNotMeasurable = notMeasurable.map((entry) => `${entry.run}:${entry.caseId}:${entry.arm}`).sort();
+  if (
+    JSON.stringify(actualNotMeasurable) !== JSON.stringify(expectedNotMeasurable)
+    || notMeasurable.some((entry) =>
+      entry.errorCode !== "structured_state_unavailable"
+      || entry.producedRequest !== null
+      || entry.correct !== null
+      || entry.model !== null)
+  ) throw new Error("Cycle I comparison run does not preserve the canonical 24 not-measurable positions");
   if (parsed.binding) {
     for (const observation of parsed.observations) {
       if (observation.status !== "observed") continue;
@@ -785,6 +847,9 @@ export function parseCycleIComparisonRun(input: unknown): CycleIComparisonRun {
   const expectedStatus = parsed.observations.some(
     (entry) => entry.status === "infrastructure_error",
   ) ? "infrastructure_error" : "complete";
+  if (expectedStatus === "complete" && (observedByArm.v1 !== 90 || observedByArm.v2 !== 90)) {
+    throw new Error("Cycle I complete run requires exactly 90 observed positions per arm");
+  }
   if (
     parsed.status !== expectedStatus
     || parsed.protocolIntegrity.status !== expectedStatus
@@ -854,7 +919,7 @@ export function parseProductiveCycleIComparisonRun(
     || run.protocol.populationDigest !== authority.populationDigest
     || run.protocol.d0Digest !== authority.d0Digest
   ) throw new Error("Cycle I productive run does not match its authorized manifest");
-  productiveRuns.add(run);
+  productiveRuns.set(run, authority);
   return run;
 }
 
@@ -873,32 +938,37 @@ type GateEvidenceInput = Readonly<{
   datasetDigest: HmacRef;
   configDigest: HmacRef;
   run: CycleIComparisonRun;
-  evidence: Readonly<Partial<{
-    hEntailment: HmacRef;
-    shadowNoEffects: HmacRef;
-    cycleFAxes: HmacRef;
-    rollback: HmacRef;
-    observability: HmacRef;
-  }>>;
+  gateArtifacts: AuthorizedCycleIGateArtifacts;
   humanReview: HumanReviewScore | null;
   approvedFullTurnReplay: ApprovedFullTurnEvidence | null;
-  verification: HmacRef | null;
-  adversarialReview: HmacRef | null;
 }>;
 
 export function buildCycleIGateEvidence(input: GateEvidenceInput): CycleIGateReport {
-  if (!parsedRuns.has(input.run) || !productiveRuns.has(input.run)) {
+  const authority = productiveRuns.get(input.run);
+  if (!parsedRuns.has(input.run) || !authority) {
     throw new Error("Cycle I gate evidence requires a registered productive run");
+  }
+  if (!isRegisteredAuthorizedCycleIGateArtifacts(input.gateArtifacts, authority)) {
+    throw new Error("Cycle I gate evidence requires artifacts registered to the productive run authority");
   }
   if (
     input.run.protocol.populationDigest !== input.populationDigest
     || input.run.protocol.corpusDigest !== input.datasetDigest
     || input.run.binding?.configDigest !== input.configDigest
   ) throw new Error("Cycle I gate context does not match the registered productive run");
-  if (input.humanReview !== null && !isRegisteredHumanReviewScore(input.humanReview)) {
+  if (input.humanReview !== null && !isRegisteredHumanReviewScore(input.humanReview, authority, input.run.runDigest)) {
     throw new Error("Cycle I qualitative evidence requires a registered calibrated human review");
   }
-  if (input.approvedFullTurnReplay !== null && !isRegisteredApprovedFullTurnEvidence(input.approvedFullTurnReplay)) {
+  if (input.humanReview !== null) {
+    if (input.run.prose.status !== "ready") throw new Error("human review requires approved run prose");
+    const expected = pairApprovedEvalRecords(input.run.prose.approvedEvalRecords)
+      .map((pair) => `${pair.run}:${pair.caseId}`).sort();
+    if (expected.length !== 90 || input.humanReview.reviewers.some((reviewer) => {
+      const actual = reviewer.pairs.map((pair) => `${pair.run}:${pair.caseId}`).sort();
+      return JSON.stringify(actual) !== JSON.stringify(expected);
+    })) throw new Error("human review does not cover the exact approved 90-pair run prose");
+  }
+  if (input.approvedFullTurnReplay !== null && !isRegisteredApprovedFullTurnEvidence(input.approvedFullTurnReplay, authority)) {
     throw new Error("Cycle I full-turn evidence requires an approved replay/Lab parser result");
   }
   const context = {
@@ -913,14 +983,14 @@ export function buildCycleIGateEvidence(input: GateEvidenceInput): CycleIGateRep
   });
   const complete = input.run.status === "complete";
   const measurements: Record<string, unknown> = {};
-  if (input.evidence.hEntailment) {
-    measurements.h_entailment = { ...measured(input.evidence.hEntailment, 1), passed: true };
+  const artifacts = input.gateArtifacts;
+  if (artifacts.h_entailment) {
+    measurements.h_entailment = { ...measured(artifacts.h_entailment.evidenceDigest, 1), ...artifacts.h_entailment.result };
   }
-  if (input.evidence.shadowNoEffects) {
+  if (artifacts.shadow_no_effects) {
     measurements.shadow_no_effects = {
-      ...measured(input.evidence.shadowNoEffects, 1),
-      sideEffects: 0,
-      contamination: 0,
+      ...measured(artifacts.shadow_no_effects.evidenceDigest, 1),
+      ...artifacts.shadow_no_effects.result,
     };
   }
   if (complete) {
@@ -930,12 +1000,12 @@ export function buildCycleIGateEvidence(input: GateEvidenceInput): CycleIGateRep
     };
     const primary = input.run.analysis.stablePrimary;
     const sensitivity = input.run.analysis.d0Sensitivity;
-    if (input.evidence.cycleFAxes) {
+    if (artifacts.cycle_f_axes && "passed" in artifacts.cycle_f_axes.result) {
       measurements.supported_understanding = {
-        ...measured(input.evidence.cycleFAxes, 90),
+        ...measured(artifacts.cycle_f_axes.evidenceDigest, 90),
         v1Correct: primary.v1Correct + sensitivity.v1Correct,
         v2Correct: primary.v2Correct + sensitivity.v2Correct,
-        cycleFAxesPassed: true,
+        cycleFAxesPassed: artifacts.cycle_f_axes.result.passed,
         criticalRegressionCount:
           primary.criticalRegressionCount + sensitivity.criticalRegressionCount,
       };
@@ -986,19 +1056,19 @@ export function buildCycleIGateEvidence(input: GateEvidenceInput): CycleIGateRep
     measurements.full_turn_cost = { ...measured(input.approvedFullTurnReplay.evidenceDigest as HmacRef, 1), v1MeanMinor: input.approvedFullTurnReplay.v1MeanMinor, v2MeanMinor: input.approvedFullTurnReplay.v2MeanMinor };
     measurements.full_turn_p95 = { ...measured(input.approvedFullTurnReplay.evidenceDigest as HmacRef, 1), v1P95Ms: input.approvedFullTurnReplay.v1P95Ms, v2P95Ms: input.approvedFullTurnReplay.v2P95Ms };
   }
-  if (input.evidence.rollback) {
-    measurements.rollback = { ...measured(input.evidence.rollback, 1), passed: true };
+  if (artifacts.rollback) {
+    measurements.rollback = { ...measured(artifacts.rollback.evidenceDigest, 1), ...artifacts.rollback.result };
   }
-  if (input.evidence.observability) {
-    measurements.observability = { ...measured(input.evidence.observability, 1), passed: true };
+  if (artifacts.observability) {
+    measurements.observability = { ...measured(artifacts.observability.evidenceDigest, 1), ...artifacts.observability.result };
   }
-  if (input.verification) {
-    measurements.verification = { ...measured(input.verification, 1), passed: true };
+  if (artifacts.verification) {
+    measurements.verification = { ...measured(artifacts.verification.evidenceDigest, 1), ...artifacts.verification.result };
   }
-  if (input.adversarialReview) {
+  if (artifacts.adversarial_review) {
     measurements.adversarial_review = {
-      ...measured(input.adversarialReview, 1),
-      passed: true,
+      ...measured(artifacts.adversarial_review.evidenceDigest, 1),
+      ...artifacts.adversarial_review.result,
     };
   }
   return buildCycleIGateReport({

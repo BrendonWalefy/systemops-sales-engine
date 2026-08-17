@@ -1,5 +1,7 @@
 import { createPublicKey, verify, type KeyObject } from "node:crypto";
 import type { HmacRef } from "@/application/conversation-v2/comparison-record";
+import { replayApprovalKeyId, verifyReplayDatasetApproval } from "@/application/replay/replay-dataset-approval";
+import type { ReplayDatasetV2 } from "@/application/replay/contracts";
 
 export const CYCLE_I_GATE_REPORT_AUTHORITY_DOMAIN =
   "systemops.conversation-v2.cycle-i.gate-report.v1" as const;
@@ -9,6 +11,10 @@ export const CYCLE_I_RUN_MANIFEST_AUTHORITY_DOMAIN =
   "systemops.conversation-v2.cycle-i.run-manifest.v2" as const;
 export const CYCLE_I_MEASUREMENT_RUN_AUTHORITY_DOMAIN =
   "systemops.conversation-v2.cycle-i.measurement-run.v1" as const;
+export const CYCLE_I_REVIEW_CALIBRATION_AUTHORITY_DOMAIN =
+  "systemops.conversation-v2.cycle-i.review-calibration.v1" as const;
+export const CYCLE_I_REVIEW_RATING_AUTHORITY_DOMAIN =
+  "systemops.conversation-v2.cycle-i.review-rating.v1" as const;
 
 export type Ed25519SignatureRef = `ed25519:${string}`;
 
@@ -28,6 +34,7 @@ type ConfiguredAuthorityRoot = Readonly<{
 }>;
 
 let configuredRoot: ConfiguredAuthorityRoot | null | undefined;
+let configuredReviewRoot: KeyObject | null | undefined;
 const runtimeBuildIdentities = new WeakSet<object>();
 const commitPattern = /^[a-f0-9]{7,64}$/;
 const hmacPattern = /^hmac:[a-f0-9]{64}$/;
@@ -81,6 +88,25 @@ function authorityRoot(): ConfiguredAuthorityRoot {
     return configuredRoot;
   } catch (error) {
     configuredRoot = null;
+    throw error;
+  }
+}
+
+function reviewAuthorityRoot(): KeyObject {
+  if (configuredReviewRoot === null) throw new Error("Cycle I review authority root is unavailable");
+  if (configuredReviewRoot) return configuredReviewRoot;
+  try {
+    const key = readEd25519PublicKey("CONVERSATION_V2_REVIEW_AUTHORITY_PUBLIC_KEY");
+    const root = authorityRoot();
+    const der = key.export({ type: "spki", format: "der" });
+    if (
+      der.equals(root.gateReportPublicKey.export({ type: "spki", format: "der" }))
+      || der.equals(root.activationApprovalPublicKey.export({ type: "spki", format: "der" }))
+    ) throw new Error("Cycle I review authority must be distinct from gate and activation authorities");
+    configuredReviewRoot = key;
+    return key;
+  } catch (error) {
+    configuredReviewRoot = null;
     throw error;
   }
 }
@@ -194,5 +220,43 @@ export function verifyConfiguredCycleIMeasurementRunAuthority(
     payload,
     signature,
     authorityRoot().gateReportPublicKey,
+  );
+}
+
+export function verifyConfiguredCycleIReviewCalibrationAuthority(
+  payload: string,
+  signature: Ed25519SignatureRef,
+): boolean {
+  return verifyConfiguredAuthority(
+    CYCLE_I_REVIEW_CALIBRATION_AUTHORITY_DOMAIN,
+    payload,
+    signature,
+    reviewAuthorityRoot(),
+  );
+}
+
+export function verifyConfiguredCycleIReviewRatingAuthority(
+  payload: string,
+  signature: Ed25519SignatureRef,
+): boolean {
+  return verifyConfiguredAuthority(
+    CYCLE_I_REVIEW_RATING_AUTHORITY_DOMAIN,
+    payload,
+    signature,
+    reviewAuthorityRoot(),
+  );
+}
+
+export function verifyConfiguredCycleIReplayDatasetAuthority(
+  dataset: ReplayDatasetV2,
+  expectedKeyId: string,
+): void {
+  const key = readEd25519PublicKey("CONVERSATION_V2_REPLAY_APPROVAL_PUBLIC_KEY");
+  if (replayApprovalKeyId(key) !== expectedKeyId) {
+    throw new Error("configured replay approval root does not match the signed run manifest");
+  }
+  verifyReplayDatasetApproval(
+    dataset,
+    key.export({ type: "spki", format: "pem" }),
   );
 }

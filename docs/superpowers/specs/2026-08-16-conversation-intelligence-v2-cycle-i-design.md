@@ -252,6 +252,14 @@ denominators. Safety metrics always include both strata and are blocking.
 
 ### Task 6 authority and comparability hardening (post-review)
 
+This amendment was approved on 2026-08-17 before any real V1×V2 Cycle I result existed: the
+committed measurement state still had zero observations, no result artifact, and an unsigned
+`NO_GO` report. It does not change any threshold retrospectively. The protocol population remains
+exactly 17 cases and 204 scheduled positions. Until structured pending-slot state exists, exactly
+15 cases are comparable (90 observed positions per arm / 180 total) and exactly
+`scheduling-0003` and `burst-0002` contribute the remaining 24 explicit `not_measurable`
+positions with reason `structured_pending_state_absent`.
+
 The productive comparison is not authorized by structural JSON, HMAC-shaped strings or a caller
 supplied model label. A configured Ed25519 public root verifies a frozen run manifest that binds
 the implementation commit/tree, exact corpus/population/D0/comparability digests, tenant-fixture
@@ -260,6 +268,10 @@ The public root is process configuration and is distinct from the activation-app
 not accepted as a function argument. A serialized measurement run requires its own signature over
 the complete canonical run before it can be re-registered for gate evaluation. The in-process
 runner may register only the snapshot it parsed after executing the registered real V1/V2 arms.
+Before either productive arm is invoked, a closed Git adapter snapshots the actual repository
+`HEAD`, its tree object and cleanliness. The immutable registered attestation must match the signed
+manifest's commit and tree digest; caller/env claims and a dirty tree are rejected with zero model
+calls.
 
 Decision evidence uses `conversation-v2-decision-fixtures.v2`. The signed run manifest binds the
 fixture file digest and its frozen population digest. The file predeclares applicability for all
@@ -277,10 +289,17 @@ accuracy/critical-regression PASS denominators (90 per arm / 180 observations). 
 in the 204-row protocol-integrity denominator. This state is never inferred from prose.
 
 Approved prose is a separately content-bound artifact covering exactly the same 90 V1/V2 pairs.
+Every prose record's `snapshotDigest` must equal the corresponding comparison-run `inputDigest`.
 Qualitative scoring becomes reachable only through its parser plus a complete calibration manifest
-and two distinct calibrated reviewers. Full-turn cost/p95 becomes reachable only through a
+and two distinct calibrated reviewers. Calibration and rating records are signed under a
+domain-separated, separately configured review authority and bind the run manifest, run digest,
+reviewer and calibration. Full-turn cost/p95 becomes reachable only through a
 content-bound artifact, a cryptographically approved `replay-dataset.v2`, and an isolated Lab
-record with automation disabled. Without those artifacts the gates stay `not_measurable` (or
+record with automation disabled. The replay approval root is resolved from closed configuration;
+its key ID is bound by the signed run manifest and is never accepted as a function argument.
+Deterministic H/shadow/Cycle-F/rollback/observability/verification/adversarial-review results are
+also parsed from content-digested artifacts named by the signed manifest; raw HMAC references
+cannot create PASS. Without those artifacts the gates stay `not_measurable` (or
 `pending_human_review` only after approved prose exists); no synthetic ratings or replay are made.
 
 ### Frozen applicability matrix

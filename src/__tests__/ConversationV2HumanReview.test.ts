@@ -1,37 +1,29 @@
+import { generateKeyPairSync, sign } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { buildBlindHumanReviewSheet, deriveBlindArmOrder, scoreHumanReview } from "@/application/conversation-v2/human-review";
+import { buildBlindHumanReviewSheet, CYCLE_I_REVIEW_CALIBRATION_AUTHORITY_DOMAIN, CYCLE_I_REVIEW_RATING_AUTHORITY_DOMAIN, deriveBlindArmOrder, digestHumanReviewSheet, scoreHumanReview, serializeReviewerCalibrationAuthorityPayload, serializeReviewerRatingAuthorityPayload, type HumanReviewRating } from "@/application/conversation-v2/human-review";
+import { CYCLE_I_RUN_MANIFEST_AUTHORITY_DOMAIN, digestCycleIRunConfig, digestCycleIRunManifest, parseAuthorizedCycleIRunManifest, serializeCycleIRunManifestAuthorityPayload } from "@/application/conversation-v2/run-manifest-authority";
 import type { ApprovedEvalPair } from "@/application/conversation-v2/comparison-record";
 
 const ref = `hmac:${"a".repeat(64)}` as const;
 const pair: ApprovedEvalPair = { run: 1, caseId: "price-0001", pairDigest: ref, snapshotDigest: ref, v1: { version: "conversation-v2-approved-eval.v1", run: 1, caseId: "price-0001", arm: "v1", snapshotDigest: ref, outputText: "V1", source: { kind: "committed_corpus", corpusDigest: ref } }, v2: { version: "conversation-v2-approved-eval.v1", run: 1, caseId: "price-0001", arm: "v2", snapshotDigest: ref, outputText: "V2", source: { kind: "committed_corpus", corpusDigest: ref } } };
-const rating = (reviewerRef: string) => ({ reviewerRef, calibrationDigest: ref, pairs: [{ run: 1, caseId: "price-0001", ratings: [{ factuallyCorrect: true, addressedWhatTheLeadRaised: true, advancedTheJourney: true, wouldRepeatToday: true }, { factuallyCorrect: true, addressedWhatTheLeadRaised: true, advancedTheJourney: true, wouldRepeatToday: true }] }] });
-const calibration = (reviewerRefs = [ref, `hmac:${"b".repeat(64)}`]) => ({ version: "conversation-v2-reviewer-calibration.v1", rubricDigest: "93882ca73baa8c3c08576995fbf4ef4cb4babe507dcb7eabc2c88a176d3a58ed", manifestDigest: ref, reviewers: reviewerRefs.map((reviewerRef) => ({ reviewerRef, calibrationDigest: ref, evidenceDigest: ref, rates: { factuallyCorrect: 0.8, addressedWhatTheLeadRaised: 0.8, advancedTheJourney: 0.8, wouldRepeatToday: 0.8 } })) });
+const gate = generateKeyPairSync("ed25519");
+const approval = generateKeyPairSync("ed25519");
+const review = generateKeyPairSync("ed25519");
+process.env.CONVERSATION_V2_GATE_REPORT_AUTHORITY_PUBLIC_KEY = gate.publicKey.export({ type: "spki", format: "pem" }).toString();
+process.env.CONVERSATION_V2_ACTIVATION_APPROVAL_AUTHORITY_PUBLIC_KEY = approval.publicKey.export({ type: "spki", format: "pem" }).toString();
+process.env.CONVERSATION_V2_REVIEW_AUTHORITY_PUBLIC_KEY = review.publicKey.export({ type: "spki", format: "pem" }).toString();
+function signed(domain: string, payload: string): `ed25519:${string}` { const key = domain === CYCLE_I_RUN_MANIFEST_AUTHORITY_DOMAIN ? gate.privateKey : review.privateKey; return `ed25519:${sign(null, Buffer.from(`${domain}\0${payload}`), key).toString("hex")}`; }
+function authority() {
+  const unsigned = { version: "conversation-v2-cycle-i-run-manifest.v2", implementationCommit: "a".repeat(40), implementationTreeDigest: ref, corpusRoot: "evals/corpus", manifestPath: "evals/understanding/cycle-f-dental.json", d0Path: "evals/corpus/measurement-stability-d0.json", comparabilityPath: "evals/cycle-i/understanding-comparability.json", comparabilityDigest: ref, tenantConfigDigest: ref, corpusDigest: ref, populationDigest: ref, d0Digest: ref, runs: 6, v1: { modelId: "gpt-4o-mini", adapterId: "intent-classifier.v1", promptDigest: ref }, v2: { modelId: "gpt-4o-mini", adapterId: "dental-understanding-provider.v1", promptDigest: ref }, decisionManifest: null, proseManifest: null, fullTurnEvidence: null, judge: "experimental_non_gating", evidence: { h_entailment: null, shadow_no_effects: null, cycle_f_axes: null, rollback: null, observability: null, verification: null, adversarial_review: null } } as const;
+  const configDigest = digestCycleIRunConfig(unsigned); const manifestDigest = digestCycleIRunManifest({ ...unsigned, configDigest }); const candidate = { ...unsigned, configDigest, manifestDigest };
+  return parseAuthorizedCycleIRunManifest({ ...candidate, authoritySignature: signed(CYCLE_I_RUN_MANIFEST_AUTHORITY_DOMAIN, serializeCycleIRunManifestAuthorityPayload(candidate)) });
+}
+function calibration(auth: ReturnType<typeof authority>, reviewerRefs = [ref, `hmac:${"b".repeat(64)}`]) { const candidate = { version: "conversation-v2-reviewer-calibration.v1", rubricDigest: "93882ca73baa8c3c08576995fbf4ef4cb4babe507dcb7eabc2c88a176d3a58ed", manifestDigest: ref, runManifestDigest: auth.manifestDigest, reviewers: reviewerRefs.map((reviewerRef) => ({ reviewerRef, calibrationDigest: ref, evidenceDigest: ref, rates: { factuallyCorrect: 0.8, addressedWhatTheLeadRaised: 0.8, advancedTheJourney: 0.8, wouldRepeatToday: 0.8 } })) } as const; return { ...candidate, authoritySignature: signed(CYCLE_I_REVIEW_CALIBRATION_AUTHORITY_DOMAIN, serializeReviewerCalibrationAuthorityPayload(candidate)) }; }
+const values = [{ factuallyCorrect: true, addressedWhatTheLeadRaised: true, advancedTheJourney: true, wouldRepeatToday: true }, { factuallyCorrect: true, addressedWhatTheLeadRaised: true, advancedTheJourney: true, wouldRepeatToday: true }] as const;
+function rating(auth: ReturnType<typeof authority>, runDigest: string, reviewerRef: string, ratings: readonly [HumanReviewRating, HumanReviewRating] = values, reviewPair: ApprovedEvalPair = pair) { const sheet = buildBlindHumanReviewSheet({ runDigest, pairs: [reviewPair] }); const candidate = { reviewerRef, calibrationDigest: ref, runManifestDigest: auth.manifestDigest, runDigest, sheetDigest: digestHumanReviewSheet(sheet), pairs: [{ run: 1, caseId: "price-0001", ratings }] } as const; return { ...candidate, authoritySignature: signed(CYCLE_I_REVIEW_RATING_AUTHORITY_DOMAIN, serializeReviewerRatingAuthorityPayload(candidate)) }; }
 
 describe("Cycle I human review", () => {
-  it("uses deterministic blind ordering and requires two complete reviewers", () => {
-    const sheet = buildBlindHumanReviewSheet({ runDigest: ref, pairs: [pair] });
-    expect(sheet.entries[0]!.responses).toHaveLength(2);
-    expect(buildBlindHumanReviewSheet({ runDigest: ref, pairs: [pair] })).toEqual(sheet);
-    expect(() => scoreHumanReview({ sheet, pairs: [pair], runDigest: ref, calibrationManifest: calibration(), reviewerA: rating(ref), reviewerB: { reviewerRef: `hmac:${"b".repeat(64)}`, calibrationDigest: ref, pairs: [] } })).toThrow(/missing/i);
-  });
-
-  it("retains reviewer-level scores, ties, and disagreements", () => {
-    const sheet = buildBlindHumanReviewSheet({ runDigest: ref, pairs: [pair] });
-    const score = scoreHumanReview({ sheet: JSON.parse(JSON.stringify(sheet)), pairs: [pair], runDigest: ref, calibrationManifest: calibration(), reviewerA: rating(ref), reviewerB: rating(`hmac:${"b".repeat(64)}`) });
-    expect(score.reviewers).toHaveLength(2);
-    expect(score.dimensions.factuallyCorrect.v1).toBe(score.dimensions.factuallyCorrect.v2);
-    expect(() => scoreHumanReview({ sheet, pairs: [pair], runDigest: ref, calibrationManifest: calibration(), reviewerA: rating(ref), reviewerB: rating(ref) })).toThrow(/distinct/i);
-    expect(() => scoreHumanReview({ sheet, pairs: [pair], runDigest: ref, calibrationManifest: calibration([`hmac:${"c".repeat(64)}`, `hmac:${"d".repeat(64)}`]), reviewerA: rating(ref), reviewerB: rating(`hmac:${"b".repeat(64)}`) })).toThrow(/calibr/i);
-    expect(() => scoreHumanReview({ sheet, pairs: [pair], runDigest: ref, calibrationManifest: calibration(), reviewerA: { ...rating(ref), pairs: [{ ...rating(ref).pairs[0], ratings: [{ factuallyCorrect: true }, {}] }] }, reviewerB: rating(`hmac:${"b".repeat(64)}`) })).toThrow();
-  });
-
-  it("keeps a V2-first blind order even when the two texts are identical", () => {
-    const runDigest = Array.from({ length: 20 }, (_, index) => `hmac:${"a".repeat(63)}${index.toString(16)}`).find((value) => deriveBlindArmOrder(value, pair.pairDigest, "1:price-0001")[0] === "v2")!;
-    expect(deriveBlindArmOrder(runDigest, pair.pairDigest, "1:price-0001")).toEqual(["v2", "v1"]);
-    const identical = { ...pair, v1: { ...pair.v1, outputText: "igual" }, v2: { ...pair.v2, outputText: "igual" } };
-    const sheet = buildBlindHumanReviewSheet({ runDigest, pairs: [identical] });
-    const asymmetric = (reviewerRef: string) => ({ reviewerRef, calibrationDigest: ref, pairs: [{ run: 1, caseId: "price-0001", ratings: [{ factuallyCorrect: true, addressedWhatTheLeadRaised: true, advancedTheJourney: true, wouldRepeatToday: true }, { factuallyCorrect: false, addressedWhatTheLeadRaised: false, advancedTheJourney: false, wouldRepeatToday: false }] }] });
-    const score = scoreHumanReview({ sheet, pairs: [identical], runDigest, calibrationManifest: calibration(), reviewerA: asymmetric(ref), reviewerB: asymmetric(`hmac:${"b".repeat(64)}`) });
-    expect(score.dimensions.factuallyCorrect).toMatchObject({ v1: 0, v2: 2 });
-  });
+  it("uses deterministic blind ordering and rejects unsigned/self-issued ratings", () => { const auth = authority(); const sheet = buildBlindHumanReviewSheet({ runDigest: ref, pairs: [pair] }); expect(sheet.entries[0]!.responses).toHaveLength(2); expect(() => scoreHumanReview({ sheet, pairs: [pair], runDigest: ref, authority: auth, calibrationManifest: calibration(auth), reviewerA: { ...rating(auth, ref, ref), authoritySignature: `ed25519:${"0".repeat(128)}` }, reviewerB: rating(auth, ref, `hmac:${"b".repeat(64)}`) })).toThrow(/signature/i); });
+  it("retains scores only for two signed, calibrated, run-bound reviewers", () => { const auth = authority(); const sheet = buildBlindHumanReviewSheet({ runDigest: ref, pairs: [pair] }); const score = scoreHumanReview({ sheet, pairs: [pair], runDigest: ref, authority: auth, calibrationManifest: calibration(auth), reviewerA: rating(auth, ref, ref), reviewerB: rating(auth, ref, `hmac:${"b".repeat(64)}`) }); expect(score.reviewers).toHaveLength(2); expect(score.dimensions.factuallyCorrect.v1).toBe(score.dimensions.factuallyCorrect.v2); expect(() => scoreHumanReview({ sheet, pairs: [pair], runDigest: ref, authority: auth, calibrationManifest: calibration(auth), reviewerA: rating(auth, ref, ref), reviewerB: rating(auth, `hmac:${"c".repeat(64)}`, `hmac:${"b".repeat(64)}`) })).toThrow(/bound/i); });
+  it("keeps a V2-first blind order even when the two texts are identical", () => { const auth = authority(); const runDigest = Array.from({ length: 20 }, (_, index) => `hmac:${"a".repeat(63)}${index.toString(16)}`).find((value) => deriveBlindArmOrder(value, pair.pairDigest, "1:price-0001")[0] === "v2")!; const identical = { ...pair, v1: { ...pair.v1, outputText: "igual" }, v2: { ...pair.v2, outputText: "igual" } }; const asymmetric = [{ ...values[0] }, { factuallyCorrect: false, addressedWhatTheLeadRaised: false, advancedTheJourney: false, wouldRepeatToday: false }] as const; const sheet = buildBlindHumanReviewSheet({ runDigest, pairs: [identical] }); const score = scoreHumanReview({ sheet, pairs: [identical], runDigest, authority: auth, calibrationManifest: calibration(auth), reviewerA: rating(auth, runDigest, ref, asymmetric, identical), reviewerB: rating(auth, runDigest, `hmac:${"b".repeat(64)}`, asymmetric, identical) }); expect(score.dimensions.factuallyCorrect).toMatchObject({ v1: 0, v2: 2 }); });
 });

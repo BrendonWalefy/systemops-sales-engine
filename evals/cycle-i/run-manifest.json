@@ -18,8 +18,8 @@
   "proseManifest": null,
   "fullTurnEvidence": null,
   "configDigest": "hmac:9a41730447c16cf386c5c12ee42ad2132debd7ab7f8fcf51d40f8a9770296479",
-  "manifestDigest": "hmac:56db48ef6c4dc4afedbf9f2411f984ab0ffc96f6ca4579f61063e7af371ddea9",
+  "manifestDigest": "hmac:f91d2fdd6ceb01d1d8e4963fb7b3826695ff1b8da889cb33a11ad682829d4799",
   "judge": "experimental_non_gating",
-  "evidence": { "hEntailment": null, "shadowNoEffects": null, "cycleFAxes": null, "rollback": null, "observability": null },
+  "evidence": { "h_entailment": null, "shadow_no_effects": null, "cycle_f_axes": null, "rollback": null, "observability": null, "verification": null, "adversarial_review": null },
   "authoritySignature": null
 }

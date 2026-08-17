@@ -33,7 +33,11 @@ import {
   type CycleIRunManifestSnapshot,
 } from "@/application/conversation-v2/run-manifest-authority";
 import { createProductiveCycleIUnderstandingArms } from "@/application/conversation-v2/productive-understanding-arms";
-import { loadAuthorizedCycleIFullTurnEvidence } from "@/application/conversation-v2/approved-cycle-i-artifacts";
+import {
+  loadAuthorizedCycleIFullTurnEvidence,
+  loadAuthorizedCycleIGateArtifacts,
+} from "@/application/conversation-v2/approved-cycle-i-artifacts";
+import { createGitCycleIBuildAttestation } from "@/infrastructure/conversation-v2/git-cycle-i-build-attestation";
 type CliEnvironment = Readonly<Record<string, string | undefined>>;
 
 function freeze<T>(value: T): T {
@@ -130,6 +134,7 @@ export async function runCycleICli(
     const authority = parseAuthorizedCycleIRunManifest(
       JSON.parse(readFileSync(runManifestPath, "utf8")),
     );
+    const buildAttestation = createGitCycleIBuildAttestation(process.cwd());
     const arms = createProductiveCycleIUnderstandingArms({ manifest: authority, apiKey });
     const result = await runCycleICorpusComparison({
       corpusRoot: authority.corpusRoot,
@@ -142,6 +147,7 @@ export async function runCycleICli(
       fixedClockByCase: fixedClocks(authority),
       comparabilityPath: authority.comparabilityPath,
       authority,
+      buildAttestation,
     });
     writeJson(outputPath, result);
     return result.status === "complete" ? 0 : 2;
@@ -174,26 +180,22 @@ export async function runCycleICli(
       if (humanPaths.some(Boolean) && !humanPaths.every(Boolean)) throw new Error("human review requires sheet, calibration, and two reviewer files");
       const pairs = pairApprovedEvalRecords(run.prose.approvedEvalRecords);
       const humanReview = humanPaths.every(Boolean) ? scoreHumanReview({
-        sheet: JSON.parse(readFileSync(humanPaths[0]!, "utf8")), pairs, runDigest: run.runDigest,
+        sheet: JSON.parse(readFileSync(humanPaths[0]!, "utf8")), pairs, runDigest: run.runDigest, authority,
         calibrationManifest: JSON.parse(readFileSync(humanPaths[1]!, "utf8")),
         reviewerA: JSON.parse(readFileSync(humanPaths[2]!, "utf8")),
         reviewerB: JSON.parse(readFileSync(humanPaths[3]!, "utf8")),
       }) : null;
-      const replayKey = env.REPLAY_APPROVAL_PUBLIC_KEY?.trim() ?? "";
-      if (authority.fullTurnEvidence !== null && !replayKey) throw new Error("REPLAY_APPROVAL_PUBLIC_KEY is required for configured full-turn evidence");
-      const fullTurn = authority.fullTurnEvidence === null ? null : loadAuthorizedCycleIFullTurnEvidence({ authority, replayApprovalPublicKey: replayKey });
-      const authorizedEvidence = Object.fromEntries(Object.entries(authority.evidence).filter((entry): entry is [string, HmacRef] => entry[1] !== null));
+      const fullTurn = authority.fullTurnEvidence === null ? null : loadAuthorizedCycleIFullTurnEvidence({ authority });
+      const gateArtifacts = loadAuthorizedCycleIGateArtifacts(authority);
       report = buildCycleIGateEvidence({
         reportDigest: digest(run.runDigest, "cycle-i-gate-report.v1"),
         populationDigest: run.protocol.populationDigest,
         datasetDigest: run.protocol.corpusDigest,
         configDigest: authority.configDigest as HmacRef,
         run,
-        evidence: authorizedEvidence,
+        gateArtifacts,
         humanReview,
         approvedFullTurnReplay: fullTurn,
-        verification: null,
-        adversarialReview: null,
       });
     }
     writeJson(outputPath, finalizeReport(report));

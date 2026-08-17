@@ -612,6 +612,15 @@ Rollback operacional imediato: atualizar `organizations.conversation_engine` par
 
 ### Task 6: Runner do corpus, resultados reproduzíveis, folha humana e avaliação dos gates
 
+> **Superseding pre-result amendment (2026-08-17):** before any real Cycle I V1×V2 result existed
+> (zero observations, unsigned `NO_GO`; thresholds unchanged), the exact population was clarified
+> as 17 cases/204 protocol positions with 15 comparable cases, 90 observed positions per arm and
+> 180 total. The 24 positions for exactly `scheduling-0003` and `burst-0002` remain explicit
+> `not_measurable` with `structured_pending_state_absent` until structured pending-slot state
+> exists. Productive admission additionally requires actual clean Git HEAD/tree attestation, and
+> all gate/human/replay evidence must come from registered, content-bound authority parsers rather
+> than HMAC-shaped caller inputs.
+
 > **Amendment after independent Task 6 review:** productive evidence is accepted only from the
 > canonical parsed runner snapshot bound to a configured-authority-signed run manifest; serialized
 > runs additionally require a measurement-run signature. The manifest binds commit/tree,
