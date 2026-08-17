@@ -103,6 +103,12 @@ O Dental Pack mantém uma única tabela frozen de provenance; os tipos e o guard
 derivados dos mesmos literais e carregam também os requisitos canônicos de subject/evidence.
 O produtor pareia cada Decision preparada com o ActionResult concreto, incluindo owner; arrays
 estruturais redundantes têm mesma cardinalidade/ordem e duplicatas inválidas falham fechado.
+Como o retorno do evaluator é uma boundary não confiável, o lote re-canonicaliza o conjunto
+completo de ActionResults pelo canonicalizer genérico e pelo `DENTAL_OUTCOME_SCHEMA` antes de
+reduzir subject/evidence/options ao summary de provenance. Combinações sem subject, evidência
+obrigatória, evidência de write ou options exigidas falham antes do sink. Esses casos contam em
+`recordValidationErrors`; `sinkErrors` só conta append realmente admitido e rejeitado. Identidades
+e intended effects criados pelo domínio são snapshots frozen, inclusive o payload aninhado.
 `intendedEffects` é não vazio e 1:1 somente em `simulation_not_executed`, cuja identidade tipada
 preserva capability, Decision `execute` e action concreta; nos demais estados deve ser vazio.
 Antes do Zod, a boundary cria uma cópia plain-data única a partir de descriptors e rejeita
@@ -269,6 +275,11 @@ no escopo, será necessária boundary externa imutável/assinada de build ou CI.
   serialização e multi-owner. O GREEN introduziu a única fonte de provenance no Dental Pack,
   fez a application boundary consumi-la e passou a rejeitar owner/action/decision/outcome
   incompatíveis antes do sink. `conversation-core` não recebeu literal dental.
+- A re-review seguinte encontrou um Important residual e dois Minor: ActionResults do evaluator
+  ainda perdiam subject/evidence/options antes de nova canonicalização, erros locais eram contados
+  como falhas do sink, e identities/effects criados permaneciam mutáveis. O RED confirmou os três.
+  O GREEN reutiliza exclusivamente o canonicalizer/schema genéricos antes do summary, separa
+  `recordValidationErrors` de `sinkErrors` e congela as estruturas criadas, sem alterar o core.
 - A re-review independente final da Task 7 ainda é posterior a este checkpoint. Até artifact
   content-bound e assinado existir, `adversarial_review` permanece corretamente `not_measurable`
   no gate report.

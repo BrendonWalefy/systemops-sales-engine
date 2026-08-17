@@ -187,15 +187,15 @@ export function dentalDecisionProvenanceIdentity(input: Readonly<{
     ruleMatchesDecision(candidate, input.capabilityId, input.decision));
   if (!rule) return null;
   return rule.decisionKind === "execute"
-    ? {
+    ? Object.freeze({
         capabilityId: rule.capabilityId,
         decisionKind: "execute",
         action: rule.action,
-      }
-    : {
+      })
+    : Object.freeze({
         capabilityId: rule.capabilityId,
         decisionKind: rule.decisionKind,
-      } as DentalDecisionProvenanceIdentity;
+      }) as DentalDecisionProvenanceIdentity;
 }
 
 function hasExactStringKeys(

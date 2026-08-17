@@ -378,6 +378,15 @@ with intended effects. Forged, widened, cross-capability, cross-action and cross
 fail closed. This amendment closes the last independent Task 7 finding before any `.v2`
 observation, persistence or tenant/channel activation and does not reinterpret stored data.
 
+**Task 7 final re-review amendment — untrusted evaluator output:** the producer must call the
+generic `canonicalizeActionResults(DENTAL_OUTCOME_SCHEMA, ...)` on evaluator ActionResults before
+deriving provenance summaries. The registered schema remains the only source of subject,
+evidence and options requirements; the application must not duplicate those tables. Invalid
+records produce zero append and increment `recordValidationErrors`; `sinkErrors` counts only a
+real admitted append rejected by the sink. Provenance identities and intended-effect payloads are
+copied/frozen at creation. This clarification was also recorded before any `.v2` observation or
+activation.
+
 `HmacRef` valida exatamente `^hmac:[a-f0-9]{64}$`. `modelId` não aceita texto arbitrário:
 `parseLiveComparisonRecord` exige membership no `allowedModelIds` congelado pelo run manifest;
 provider payload/id nunca tem campo no schema. Todos os demais strings live usam enum fechado,

@@ -205,7 +205,10 @@ atual também não captura o artifact final enviado pela V1, live records marcam
 No braço V2, o Dental Pack é o dono da provenance capability → Decision → action concreta →
 outcome → classe/requisitos. Uma única definição frozen sustenta tipos e validação runtime; a
 application boundary pareia Decision preparada e ActionResult antes de persistir e conserva a
-action concreta no shadow. O `conversation-core` continua genérico e sem literais dentais.
+action concreta no shadow. Como o evaluator é uma porta não confiável, ActionResults são novamente
+canonicalizados pelo schema registrado antes da redução ao summary; erro local de validação não é
+contado como falha do sink e produz zero append. O `conversation-core` continua genérico e sem
+literais dentais.
 
 O deadline do lote é de admissão. Depois de T nenhuma operação começa; trabalho já admitido é
 drenado e eventual overrun é medido. Isso não é uma garantia de retorno estrito até T.

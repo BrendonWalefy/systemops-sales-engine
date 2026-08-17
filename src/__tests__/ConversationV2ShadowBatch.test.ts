@@ -475,9 +475,242 @@ describe("Cycle I post-sender shadow batch", () => {
 
     await expect(runRegisteredBatch({ turns: [turn], ...input })).resolves.toMatchObject({
       persisted: 0,
-      sinkErrors: 1,
+      recordValidationErrors: 1,
+      sinkErrors: 0,
     });
     expect(input.sink.append).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      label: "appointment_created without a subject",
+      decision: {
+        capabilityId: "dental-scheduling",
+        decision: { kind: "execute" as const, action: { type: "book-slot", parameters: { slotId: "slot-1" } }, nextBestStep: null },
+      },
+      actionResult: {
+        type: "appointment_created" as const,
+        semanticClass: "effect_completed" as const,
+        origin: { capabilityId: "dental-scheduling" },
+        subject: null,
+        evidence: [{ source: "write" as const, reference: "write-1" }],
+        facts: [],
+      },
+    },
+    {
+      label: "appointment_created without write evidence",
+      decision: {
+        capabilityId: "dental-scheduling",
+        decision: { kind: "execute" as const, action: { type: "book-slot", parameters: { slotId: "slot-1" } }, nextBestStep: null },
+      },
+      actionResult: {
+        type: "appointment_created" as const,
+        semanticClass: "effect_completed" as const,
+        origin: { capabilityId: "dental-scheduling" },
+        subject: { type: "appointment", id: "appointment-1", displayName: "Agendamento" },
+        evidence: [],
+        facts: [],
+      },
+    },
+    {
+      label: "appointment_created with only read evidence",
+      decision: {
+        capabilityId: "dental-scheduling",
+        decision: { kind: "execute" as const, action: { type: "book-slot", parameters: { slotId: "slot-1" } }, nextBestStep: null },
+      },
+      actionResult: {
+        type: "appointment_created" as const,
+        semanticClass: "effect_completed" as const,
+        origin: { capabilityId: "dental-scheduling" },
+        subject: { type: "appointment", id: "appointment-1", displayName: "Agendamento" },
+        evidence: [{ source: "read" as const, reference: "read-1" }],
+        facts: [],
+      },
+    },
+    {
+      label: "catalog_answered without a subject",
+      decision: {
+        capabilityId: "dental-catalog",
+        decision: { kind: "answer" as const, facts: [], nextBestStep: null },
+      },
+      actionResult: {
+        type: "catalog_answered" as const,
+        semanticClass: "information_authorized" as const,
+        origin: { capabilityId: "dental-catalog" },
+        subject: null,
+        evidence: [{ source: "read" as const, reference: "catalog-1" }],
+        facts: [],
+      },
+    },
+    {
+      label: "catalog_answered without evidence",
+      decision: {
+        capabilityId: "dental-catalog",
+        decision: { kind: "answer" as const, facts: [], nextBestStep: null },
+      },
+      actionResult: {
+        type: "catalog_answered" as const,
+        semanticClass: "information_authorized" as const,
+        origin: { capabilityId: "dental-catalog" },
+        subject: { type: "service", id: "service-1", displayName: "Limpeza" },
+        evidence: [],
+        facts: [],
+      },
+    },
+    {
+      label: "escalation_required with a forbidden subject",
+      decision: {
+        capabilityId: "dental-escalation",
+        decision: { kind: "escalate" as const, reason: "human_required" },
+      },
+      actionResult: {
+        type: "escalation_required" as const,
+        semanticClass: "human_action_required" as const,
+        origin: { capabilityId: "dental-escalation" },
+        subject: { type: "service", id: "service-1", displayName: "Limpeza" },
+        evidence: [],
+        facts: [],
+      },
+    },
+    {
+      label: "slots_found without options",
+      decision: {
+        capabilityId: "dental-scheduling",
+        decision: {
+          kind: "offer" as const,
+          subject: { type: "service", id: "service-1", displayName: "Limpeza" },
+          options: [],
+          nextBestStep: null,
+        },
+      },
+      actionResult: {
+        type: "slots_found" as const,
+        semanticClass: "options_found" as const,
+        origin: { capabilityId: "dental-scheduling" },
+        subject: { type: "service", id: "service-1", displayName: "Limpeza" },
+        evidence: [{ source: "read" as const, reference: "slots-1" }],
+        facts: [],
+      },
+    },
+  ])("re-canonicalizes an evaluator result and rejects $label before sink admission", async ({ label, decision, actionResult }) => {
+    const turn = capturedTurn({ turnId: `turn-invalid-result-${label}`, clinicId: "clinic-a", ready: true });
+    const input = deps({
+      evaluator: {
+        evaluate: vi.fn(async () => ({
+          result: {
+            status: "evaluated" as const,
+            decisions: [decision],
+            actionResults: [actionResult],
+            response: { text: "Resposta forjada.", parts: [] },
+          },
+          understandingRequest: "price-of-service" as const,
+          model: null,
+        })),
+      },
+    });
+
+    await expect(runRegisteredBatch({ turns: [turn], ...input })).resolves.toMatchObject({
+      persisted: 0,
+      recordValidationErrors: 1,
+      sinkErrors: 0,
+    });
+    expect(input.sink.append).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      label: "appointment_created",
+      decision: {
+        capabilityId: "dental-scheduling",
+        decision: { kind: "execute" as const, action: { type: "book-slot", parameters: { slotId: "slot-1" } }, nextBestStep: null },
+      },
+      actionResult: {
+        type: "appointment_created" as const,
+        semanticClass: "effect_completed" as const,
+        origin: { capabilityId: "dental-scheduling" },
+        subject: { type: "appointment", id: "appointment-1", displayName: "Agendamento" },
+        evidence: [{ source: "write" as const, reference: "write-1" }],
+        facts: [],
+      },
+    },
+    {
+      label: "catalog_answered",
+      decision: {
+        capabilityId: "dental-catalog",
+        decision: { kind: "answer" as const, facts: [], nextBestStep: null },
+      },
+      actionResult: {
+        type: "catalog_answered" as const,
+        semanticClass: "information_authorized" as const,
+        origin: { capabilityId: "dental-catalog" },
+        subject: { type: "service", id: "service-1", displayName: "Limpeza" },
+        evidence: [{ source: "read" as const, reference: "catalog-1" }],
+        facts: [],
+      },
+    },
+    {
+      label: "escalation_required",
+      decision: {
+        capabilityId: "dental-escalation",
+        decision: { kind: "escalate" as const, reason: "human_required" },
+      },
+      actionResult: {
+        type: "escalation_required" as const,
+        semanticClass: "human_action_required" as const,
+        origin: { capabilityId: "dental-escalation" },
+        subject: null,
+        evidence: [],
+        facts: [],
+      },
+    },
+    {
+      label: "slots_found",
+      decision: {
+        capabilityId: "dental-scheduling",
+        decision: {
+          kind: "offer" as const,
+          subject: { type: "service", id: "service-1", displayName: "Limpeza" },
+          options: [],
+          nextBestStep: null,
+        },
+      },
+      actionResult: {
+        type: "slots_found" as const,
+        semanticClass: "options_found" as const,
+        origin: { capabilityId: "dental-scheduling" },
+        subject: { type: "service", id: "service-1", displayName: "Limpeza" },
+        evidence: [{ source: "read" as const, reference: "slots-1" }],
+        facts: [],
+        options: [{
+          id: "slot-1",
+          subject: { type: "slot", id: "slot-1", displayName: "17/08 15:00" },
+          facts: [],
+        }],
+      },
+    },
+  ])("accepts a schema-valid evaluator result for $label", async ({ label, decision, actionResult }) => {
+    const turn = capturedTurn({ turnId: `turn-valid-result-${label}`, clinicId: "clinic-a", ready: true });
+    const input = deps({
+      evaluator: {
+        evaluate: vi.fn(async () => ({
+          result: {
+            status: "evaluated" as const,
+            decisions: [decision],
+            actionResults: [actionResult],
+            response: { text: "Resposta validada.", parts: [] },
+          },
+          understandingRequest: "price-of-service" as const,
+          model: null,
+        })),
+      },
+    });
+
+    await expect(runRegisteredBatch({ turns: [turn], ...input })).resolves.toMatchObject({
+      persisted: 1,
+      recordValidationErrors: 0,
+      sinkErrors: 0,
+    });
+    expect(input.sink.append).toHaveBeenCalledTimes(1);
   });
 
   it("resolves policy once per tenant/turn without cross-tenant cache", async () => {
@@ -1412,7 +1645,13 @@ describe("Cycle I post-sender shadow batch", () => {
       turns,
       ...deps({ policyReader, evaluator, sink }),
     }, "failed_handled");
-    expect(result).toMatchObject({ received: 3, policyErrors: 1, evaluationErrors: 1, sinkErrors: 1 });
+    expect(result).toMatchObject({
+      received: 3,
+      policyErrors: 1,
+      evaluationErrors: 1,
+      recordValidationErrors: 0,
+      sinkErrors: 1,
+    });
     expect(policyReader.getConversationEnginePolicy).toHaveBeenCalledTimes(3);
   });
 });

@@ -45,6 +45,15 @@ describe("V2 shadow runner", () => {
     }]);
     expect(JSON.stringify(result.intendedEffects)).not.toContain("slot-secret");
     expect(result.intendedEffects[0]!.payloadHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(Object.isFrozen(result.executeDecisions[0])).toBe(true);
+    expect(Object.isFrozen(result.intendedEffects[0])).toBe(true);
+    expect(Object.isFrozen(result.intendedEffects[0]!.payload)).toBe(true);
+    expect(() => {
+      (result.executeDecisions[0] as { action: string }).action = "confirm_appointment";
+    }).toThrow();
+    expect(() => {
+      (result.intendedEffects[0]!.payload as { slotRefHash: string }).slotRefHash = "forged";
+    }).toThrow();
   });
 
   it("conclui decisões somente-leitura sem write", async () => {
@@ -81,6 +90,8 @@ describe("V2 shadow runner", () => {
     });
     expect(effect).toEqual(expect.objectContaining({ action: "confirm_appointment" }));
     expect(JSON.stringify(effect)).not.toContain("appt-secret");
+    expect(Object.isFrozen(effect)).toBe(true);
+    expect(Object.isFrozen(effect?.payload)).toBe(true);
   });
 
   it("mapeia read não capturado do runner para shared_read_unavailable", async () => {

@@ -35,8 +35,10 @@ import {
 } from "@/application/conversation-v2/v1-observation-collector";
 import type { V2ShadowResult } from "@/application/conversation-v2/v2-shadow-runner";
 import type { CapturedV2TurnReads } from "@/application/conversation-v2/captured-turn-reads";
+import { canonicalizeActionResults } from "@/conversation-core/authorized-response-plan";
 import {
   dentalOutcomeStructuralSummary,
+  DENTAL_OUTCOME_SCHEMA,
   type DentalExecuteDecisionIdentity,
   type DentalRequest,
 } from "@/domain-packs/dental";
@@ -103,6 +105,7 @@ export type ShadowBatchSummary = Readonly<{
   skipped: number;
   policyErrors: number;
   evaluationErrors: number;
+  recordValidationErrors: number;
   sinkErrors: number;
   maxTurnsReached: boolean;
   deadlineReached: boolean;
@@ -309,7 +312,11 @@ function v2Summary(
       errorCode: null,
     };
   }
-  if (result.decisions.length !== result.actionResults.length) {
+  const actionResults = canonicalizeActionResults(
+    DENTAL_OUTCOME_SCHEMA,
+    result.actionResults,
+  );
+  if (result.decisions.length !== actionResults.length) {
     throw new Error("prepared decision and action result count mismatch");
   }
   return {
@@ -317,7 +324,7 @@ function v2Summary(
     status: "observed",
     capabilityIds: result.decisions.map(({ capabilityId }) => comparisonCapabilityId(capabilityId)),
     decisionKinds: result.decisions.map(({ decision }) => decision.kind),
-    outcomes: result.actionResults.map((outcome, index) => {
+    outcomes: actionResults.map((outcome, index) => {
       const decision = result.decisions[index];
       if (!decision) throw new Error("action result is missing its prepared decision identity");
       const capabilityId = comparisonCapabilityId(decision.capabilityId);
@@ -755,6 +762,7 @@ export async function runConversationV2ShadowBatch(input: {
     skipped: 0,
     policyErrors: 0,
     evaluationErrors: 0,
+    recordValidationErrors: 0,
     sinkErrors: 0,
     maxTurnsReached: false,
     deadlineReached: false,
@@ -873,12 +881,23 @@ export async function runConversationV2ShadowBatch(input: {
       }
     }
 
+    let record: LiveComparisonRecord;
     try {
-      const record = buildRecord({
+      record = buildRecord({
         turn,
         evaluation,
         ...recordConfig,
       });
+    } catch {
+      summary.recordValidationErrors += 1;
+      if (!observeAdmission(admission)) {
+        summary.deadlineReached = true;
+        summary.skipped += turns.length - index - 1;
+        break;
+      }
+      continue;
+    }
+    try {
       await settleStartedDependency(
         admission,
         "comparison_write",

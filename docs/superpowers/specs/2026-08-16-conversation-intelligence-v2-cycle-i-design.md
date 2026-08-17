@@ -254,6 +254,15 @@ with its exact ActionResult, and preserves concrete action identity in simulatio
 round-trips. This closes an impossible-tuple gap; it does not migrate or reinterpret persisted
 records because none exist.
 
+The evaluator return is still an untrusted application-port value. Before provenance fields are
+reduced into a comparison summary, the application boundary therefore re-canonicalizes the full
+ActionResult set with the generic `canonicalizeActionResults` function and the registered Dental
+outcome schema. Subject, evidence and option requirements are enforced from that schema before
+those details are omitted from the live record. A failure here increments
+`recordValidationErrors` and admits zero comparison write; `sinkErrors` is reserved for a sink
+append that was actually admitted and rejected. Domain-created provenance identities and intended
+effects, including nested payloads, are immutable snapshots rather than mutable aliases.
+
 Live records do not contain response text, raw lead input, raw history, prompts, names, phones,
 emails, URLs, provider payloads, opaque database identifiers or raw evidence references. The
 separate `conversation-v2-approved-eval.v1` permits sanitized text only for the committed corpus

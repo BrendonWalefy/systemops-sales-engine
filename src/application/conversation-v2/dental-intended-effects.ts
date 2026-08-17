@@ -26,13 +26,25 @@ export function recordDentalIntendedEffect(input: {
     const slotId = action.parameters.slotId;
     if (typeof slotId !== "string") return null;
     const slotRefHash = hmac(input.hmacKey, `dental-shadow:slot:${slotId}`);
-    return { kind: "would_have_executed", capabilityId: identity.capabilityId, action: "book_slot", payload: { slotRefHash }, payloadHash: hmac(input.hmacKey, `dental-shadow:book_slot:${slotRefHash}`) };
+    return Object.freeze({
+      kind: "would_have_executed",
+      capabilityId: identity.capabilityId,
+      action: "book_slot",
+      payload: Object.freeze({ slotRefHash }),
+      payloadHash: hmac(input.hmacKey, `dental-shadow:book_slot:${slotRefHash}`),
+    });
   }
   if (identity.action === "confirm_appointment" && action.type === "confirm-appointment") {
     const appointmentId = action.parameters.appointmentId;
     if (typeof appointmentId !== "string") return null;
     const appointmentRefHash = hmac(input.hmacKey, `dental-shadow:appointment:${appointmentId}`);
-    return { kind: "would_have_executed", capabilityId: identity.capabilityId, action: "confirm_appointment", payload: { appointmentRefHash }, payloadHash: hmac(input.hmacKey, `dental-shadow:confirm_appointment:${appointmentRefHash}`) };
+    return Object.freeze({
+      kind: "would_have_executed",
+      capabilityId: identity.capabilityId,
+      action: "confirm_appointment",
+      payload: Object.freeze({ appointmentRefHash }),
+      payloadHash: hmac(input.hmacKey, `dental-shadow:confirm_appointment:${appointmentRefHash}`),
+    });
   }
   return null;
 }
