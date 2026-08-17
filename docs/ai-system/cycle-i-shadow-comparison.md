@@ -300,8 +300,7 @@ o GREEN ampliado fechou todos os estados e traps em 35 testes.
 - `npm run verify`, executado com worktree clean depois do commit documental: Drizzle meta OK,
   lint com zero erro e um warning legado em V1, typecheck verde, 358 arquivos/3.144 testes
   verdes e 11 skips no checkpoint inicial; após o primeiro hardening, 358 arquivos/3.150 testes
-  verdes e 11 skips. A contagem final da segunda rodada está registrada no commit documental de
-  verificação posterior;
+  verdes e 11 skips; após a segunda rodada, 358 arquivos/3.179 testes verdes e 11 skips;
 - `git diff 99a852aa -- src/core src/conversation-core`: somente o split genérico de pipeline e
   a seam observacional V1 previamente revisados; a Task 7 não alterou esses diretórios.
 
