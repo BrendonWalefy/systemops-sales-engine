@@ -120,6 +120,41 @@ export class InMemoryDemoStore
     );
   }
 
+  async findMessageByExternalId(externalId: string): Promise<Message | null> {
+    return Array.from(this.messages.values()).flat().find(
+      (message) => message.externalId === externalId,
+    ) ?? null;
+  }
+
+  async findRecentLeadMessageByIdentityAndContent(input: {
+    clinicId: string;
+    phone: string | null;
+    whatsappLid: string | null;
+    fallbackPhone: string;
+    body: string;
+    sentAtOrAfter: Date;
+  }): Promise<Message | null> {
+    for (const conversation of this.conversations.values()) {
+      if (conversation.clinicId !== input.clinicId) continue;
+      const lead = this.leads.get(conversation.leadId);
+      if (!lead) continue;
+      const identityMatches = Boolean(
+        (input.phone && lead.phone === input.phone)
+        || (input.whatsappLid
+          && (lead.whatsappLid === input.whatsappLid || lead.phone === input.whatsappLid))
+        || (!input.phone && !input.whatsappLid && lead.phone === input.fallbackPhone),
+      );
+      if (!identityMatches) continue;
+      const match = (this.messages.get(conversation.id) ?? []).find(
+        (message) => message.author === "lead"
+          && message.body === input.body
+          && message.sentAt >= input.sentAtOrAfter,
+      );
+      if (match) return match;
+    }
+    return null;
+  }
+
   async findActiveByLeadId(leadId: string): Promise<Appointment | null> {
     return (
       Array.from(this.appointments.values()).find(

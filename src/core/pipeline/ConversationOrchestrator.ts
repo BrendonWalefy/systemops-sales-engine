@@ -6,7 +6,6 @@
 import { createHash, randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { organizations, conversations as conversationsTable, leads as leadsTable, messages as messagesTable, appointments as appointmentsTable, treatmentGapReports, mediaAssets, humanReviewRequests, slotReservations } from "@/infrastructure/db/schema";
-import { resolveSegmentVocab } from "@/application/onboarding/segment-vocab";
 import { eq, and, or, count, gt, gte, lt, inArray } from "drizzle-orm";
 import {
   buildContactIdentifiersFromWebhook,
@@ -65,7 +64,6 @@ import {
 } from "@/core/intelligence/objection-triage";
 import {
   composeWarrantySection,
-  resolveActiveEditorialConfig,
   type WarrantyPolicy,
 } from "@/application/config/editorial-config";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
@@ -114,6 +112,16 @@ import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue
 import { DrizzleHumanReviewRequestRepository } from "@/infrastructure/repositories/drizzle-human-review-request-repository";
 import { DrizzleConversationTurnLeaseStore } from "@/infrastructure/repositories/drizzle-conversation-turn-lease-store";
 import { ConversationTurnCoordinator } from "@/core/pipeline/ConversationTurnCoordinator";
+import {
+  LiveTurnLifecycle,
+  LiveTurnSetupError,
+  type LiveTurnContext,
+} from "@/application/conversation/live-turn-lifecycle";
+import type { ConversationHandleInput } from "@/application/ports/conversation-handler";
+import {
+  DrizzleLiveConversationContextReader,
+  buildOrganization,
+} from "@/infrastructure/repositories/drizzle-live-conversation-context-reader";
 import { buildForwardedMediaFileName } from "@/application/conversations/forwarded-media-file-name";
 import {
   buildHumanReviewButtons,
@@ -2755,65 +2763,6 @@ export function temperatureFromIntent(intent: IntentType): "hot" | "warm" | "col
 }
 
 
-type ClinicRow = typeof organizations.$inferSelect;
-
-// Maps DB row (clinic_id column stays as-is per ADR-001 Layer 1) to domain type Organization
-function buildOrganization(row: ClinicRow): Organization {
-  return {
-    id: row.id,
-    name: row.name,
-    specialty: row.specialty,
-    plan: row.plan,
-    segment: row.segment,
-    city: row.city,
-    address: row.address ?? null,
-    addressComplement: row.addressComplement ?? null,
-    mapsUrl: row.mapsUrl ?? null,
-    locationMessage: row.locationMessage ?? null,
-    timezone: row.timezone,
-    greetingMessage: row.greetingMessage ?? null,
-    menuItems: (row.menuItems as MenuItem[] | null) ?? null,
-    businessHours: row.businessHours,
-    googleCalendarId: row.googleCalendarId,
-    calendarMode: row.calendarMode,
-    receptionistPhone: row.receptionistPhone ?? null,
-    takeoverTtlHours: row.takeoverTtlHours,
-    postAppointmentBufferMinutes: row.postAppointmentBufferMinutes,
-    defaultAppointmentDurationMinutes: row.defaultAppointmentDurationMinutes,
-    installmentRates: (row.installmentRates as { n: number; rate: number; active: boolean }[] | null) ?? null,
-    rateLimitPerHour: row.rateLimitPerHour,
-    unclearThreshold: row.unclearThreshold,
-    staleConversationHours: row.staleConversationHours,
-    conversationRestartHours: row.conversationRestartHours,
-    slotOfferTtlMinutes: row.slotOfferTtlMinutes,
-    maxSlotsToOffer: row.maxSlotsToOffer,
-    slotLookaheadDays: row.slotLookaheadDays,
-    offerSlotsAfterPriceEnabled: row.offerSlotsAfterPriceEnabled,
-    outsideHoursExceptionEnabled: row.outsideHoursExceptionEnabled,
-    depositEnabled: row.depositEnabled,
-    depositAmountCents: row.depositAmountCents ?? null,
-    depositPixKey: row.depositPixKey ?? null,
-    depositPixKeyType: row.depositPixKeyType ?? null,
-    depositRecipientName: row.depositRecipientName ?? null,
-    depositTtlHours: row.depositTtlHours,
-    depositNotes: row.depositNotes ?? null,
-    depositConfirmationNotes: row.depositConfirmationNotes ?? null,
-    mediaTakeoverTtlHours: row.mediaTakeoverTtlHours ?? null,
-    rapidThrottleMs: row.rapidThrottleMs,
-    messageDebounceMs: row.messageDebounceMs ?? null,
-    aiContextWindowMessages: row.aiContextWindowMessages ?? null,
-    pipelineQaDefaultMaxTurns: row.pipelineQaDefaultMaxTurns ?? null,
-    serviceNoun: row.serviceNoun,
-    bookingNoun: row.bookingNoun,
-    contactNoun: row.contactNoun,
-    agentRole: row.agentRole,
-    businessDescriptor: row.businessDescriptor ?? null,
-    businessNoun: resolveSegmentVocab(row.segment).businessNoun,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-}
-
 /**
  * Baixa a mídia do CDN do Z-API e rehospeda no Vercel Blob para persistência longa.
  * Fire-and-forget: falhas são logadas mas não propagadas.
@@ -3032,6 +2981,11 @@ export type ConversationAuxiliaryExternalEffect =
     }
   | { kind: "operator_whatsapp_buttons" };
 
+type V1ConversationHandleInput = Omit<ConversationHandleInput, "automationMode"> & {
+  automationMode?: ConversationHandleInput["automationMode"];
+  replayOfMessageDbId?: string;
+};
+
 export class ConversationOrchestrator {
   private readonly decisionTraceSink: DecisionTraceSink;
   private readonly responsePlanner: ConversationResponsePlanner;
@@ -3041,6 +2995,8 @@ export class ConversationOrchestrator {
     effect: ConversationAuxiliaryExternalEffect,
   ) => void;
   private readonly turnCoordinator: ConversationTurnCoordinator;
+  private readonly liveContextReader: DrizzleLiveConversationContextReader;
+  private readonly liveTurnLifecycle: LiveTurnLifecycle;
   private stateMachine = new ConversationStateMachine();
   private reservationService = new SlotReservationService();
   private intentClassifier = new IntentClassifier();
@@ -3084,6 +3040,26 @@ export class ConversationOrchestrator {
         },
       },
     );
+    this.liveContextReader = new DrizzleLiveConversationContextReader();
+    this.liveTurnLifecycle = new LiveTurnLifecycle({
+      registerIncomingMessage: new RegisterIncomingMessage({
+        leadRepository: this.leadRepo,
+        conversationRepository: this.conversationRepo,
+        usageCostTracker: new DefaultUsageCostTracker({
+          usageCostRepository: this.usageCostRepo,
+          idGenerator: randomUUID,
+          now: () => runtimeNow(),
+        }),
+        followUpRepository: new DrizzleFollowUpRepository(),
+        idGenerator: randomUUID,
+        now: () => runtimeNow(),
+      }),
+      conversationRepository: this.conversationRepo,
+      contextReader: this.liveContextReader,
+      turnCoordinator: this.turnCoordinator,
+      stateReader: this.stateMachine,
+      now: () => runtimeNow(),
+    });
   }
 
   private async executeResponsePlan(input: {
@@ -3325,28 +3301,9 @@ export class ConversationOrchestrator {
     return false;
   }
 
-  async handle(params: {
-    clinicId: string;
-    phone: string;
-    whatsappLid?: string | null;
-    messageText: string;
-    messageId: string;
-    turnId?: string;
-    senderName?: string;
-    senderPhoto?: string | null;
-    timestamp: Date;
-    replyEnabled?: boolean;
-    // Shadow seguro: registra inbound e encerra antes de qualquer decisão/efeito
-    // da IA. A resposta hipotética é calculada pelo replay em sandbox.
-    observationOnly?: boolean;
-    mediaUrl?: string;
-    mediaType?: "image" | "video" | "audio" | "document";
-    turnObservationSink?: V1TurnObservationSink;
-    // Reprocessa uma mensagem de lead JÁ REGISTRADA como se tivesse acabado de
-    // chegar (ação guiada do operador: "entrar no trilho do pipeline"). Pula
-    // dedup, registro e debounce — a mensagem não é nova; só a resposta é.
-    replayOfMessageDbId?: string;
-  }): Promise<{ replied: boolean; reason?: string }> {
+  async handle(
+    params: V1ConversationHandleInput,
+  ): Promise<{ replied: boolean; reason?: string }> {
     const { clinicId, phone, messageId, senderName, senderPhoto, timestamp } = params;
     const turnId = params.turnId ?? messageId;
     const turnStartedAt = runtimeNow();
@@ -3380,64 +3337,82 @@ export class ConversationOrchestrator {
       chatLid: params.whatsappLid,
     });
     const channelAddress = resolveWhatsAppChannelAddress(contactIdentifiers) ?? phone;
+    type ActiveModules = Awaited<ReturnType<typeof getClinicModules>>;
+    type PreparedTenantConfiguration = Readonly<{
+      organizationRow: ReturnType<DrizzleLiveConversationContextReader["getOrganizationRow"]>;
+      activeModules: ActiveModules;
+      runtimeConfigFingerprint: ReturnType<typeof fingerprintRuntimeConfig>;
+    }>;
+    const prepareTenantConfiguration = async (
+      clinic: Organization,
+      editorial: Awaited<ReturnType<DrizzleLiveConversationContextReader["resolveEditorialConfig"]>>,
+      preloadedModules?: ActiveModules,
+    ): Promise<PreparedTenantConfiguration> => {
+      const organizationRow = this.liveContextReader.getOrganizationRow(clinic);
+      const activeModules = preloadedModules ?? await getClinicModules(clinicId);
+      const runtimeConfigFingerprint = fingerprintRuntimeConfig({
+        clinic: organizationRow as Record<string, unknown>,
+        editorial,
+        modules: activeModules,
+      });
+      await recordDecisionTrace(this.decisionTraceSink, {
+        turnId,
+        stage: "tenant.config_loaded",
+        occurredAt: runtimeNow().toISOString(),
+        clinicId,
+        metadata: {
+          clinicConfigUpdatedAt: organizationRow.updatedAt.toISOString(),
+          playbookVersionId: editorial?.versionId ?? null,
+          timezone: clinic.timezone,
+          segment: clinic.segment ?? "unknown",
+          hasActiveEditorial: editorial !== null,
+          activeModuleCount: activeModules.length,
+          procedureCount: editorial?.procedures.length ?? 0,
+          mediaAssetCount: editorial?.mediaLibrary.length ?? 0,
+          configFingerprint: runtimeConfigFingerprint.fingerprint,
+          configFingerprintSchema: RUNTIME_CONFIG_FINGERPRINT_SCHEMA,
+          configFieldCount: runtimeConfigFingerprint.fieldCount,
+        },
+      });
+      return Object.freeze({ organizationRow, activeModules, runtimeConfigFingerprint });
+    };
 
-    // ── 1. Deduplicação por ID: retorna se já processamos esta mensagem ──
-    // (replay reprocessa deliberadamente uma mensagem existente — dedup não se aplica)
+    let liveContext: LiveTurnContext | null = null;
+    let preparedLiveTenant: PreparedTenantConfiguration | null = null;
     if (!isReplay) {
-      const alreadyProcessed = await db
-        .select({ id: messagesTable.id })
-        .from(messagesTable)
-        .where(eq(messagesTable.externalId, messageId))
-        .limit(1);
-
-      if (alreadyProcessed.length > 0) {
-        recordV1TurnObservation(params.turnObservationSink, {
-          kind: "turn_gate_fact",
+      let beginResult;
+      try {
+        beginResult = await this.liveTurnLifecycle.begin({
+          clinicId,
+          phone,
+          whatsappLid: params.whatsappLid,
+          messageText,
+          messageId,
           turnId,
-          field: "duplicate",
-          value: true,
-          source: "v1_dedupe",
+          senderName,
+          senderPhoto,
+          timestamp,
+          replyEnabled,
+          observationOnly: params.observationOnly,
+          mediaUrl: params.mediaUrl,
+          mediaType: params.mediaType,
+          turnObservationSink: params.turnObservationSink,
+          automationMode: params.automationMode
+            ?? (params.observationOnly ? "observe" : replyEnabled ? "live" : "disabled"),
+        }, {
+          beforeRegister: async ({ clinic, editorial }) => {
+            preparedLiveTenant = await prepareTenantConfiguration(clinic, editorial);
+          },
         });
-        return { replied: false, reason: "duplicate_provider_message" };
+      } catch (error) {
+        if (error instanceof LiveTurnSetupError && error.reason === "clinic_not_found") {
+          console.error(`[Orchestrator] Clinic not found: ${clinicId}`);
+          return { replied: false, reason: "clinic_not_found" };
+        }
+        throw error;
       }
 
-      // ── 1.5. Dedup por conteúdo — Z-API pode entregar o mesmo webhook com IDs distintos ──
-      // Janela de 2min baseada no wall-clock (não no timestamp da mensagem): retries tardios do
-      // Z-API chegam com timestamp novo, o que fazia a janela de 5s original expirar. 2min cobre
-      // o intervalo de retry sem bloquear mensagens legítimas repetidas além desse prazo.
-      const twoMinutesAgo = new Date(runtimeNow().getTime() - 2 * 60 * 1000);
-      const identityMatch = contactIdentifiers.phone
-        ? contactIdentifiers.whatsappLid
-          ? or(
-              eq(leadsTable.phone, contactIdentifiers.phone),
-              eq(leadsTable.whatsappLid, contactIdentifiers.whatsappLid),
-              eq(leadsTable.phone, contactIdentifiers.whatsappLid),
-            )
-          : eq(leadsTable.phone, contactIdentifiers.phone)
-        : contactIdentifiers.whatsappLid
-          ? or(
-              eq(leadsTable.whatsappLid, contactIdentifiers.whatsappLid),
-              eq(leadsTable.phone, contactIdentifiers.whatsappLid),
-            )
-          : eq(leadsTable.phone, phone);
-
-      const [contentDupe] = await db
-        .select({ id: messagesTable.id })
-        .from(messagesTable)
-        .innerJoin(conversationsTable, eq(conversationsTable.id, messagesTable.conversationId))
-        .innerJoin(leadsTable, eq(leadsTable.id, conversationsTable.leadId))
-        .where(
-          and(
-            eq(leadsTable.clinicId, clinicId),
-            identityMatch,
-            eq(messagesTable.author, "lead"),
-            eq(messagesTable.body, messageText),
-            gte(messagesTable.sentAt, twoMinutesAgo),
-          ),
-        )
-        .limit(1);
-
-      if (contentDupe) {
+      if (beginResult.outcome === "duplicate") {
         recordV1TurnObservation(params.turnObservationSink, {
           kind: "turn_gate_fact",
           turnId,
@@ -3445,8 +3420,15 @@ export class ConversationOrchestrator {
           value: true,
           source: "v1_dedupe",
         });
-        console.log(`[Orchestrator] Webhook duplicado por conteúdo para ${channelAddress} — ignorado`);
-        return { replied: false, reason: "duplicate_content" };
+        if (beginResult.reason === "recent_content") {
+          console.log(`[Orchestrator] Webhook duplicado por conteúdo para ${channelAddress} — ignorado`);
+        }
+        return {
+          replied: false,
+          reason: beginResult.reason === "external_id"
+            ? "duplicate_provider_message"
+            : "duplicate_content",
+        };
       }
       recordV1TurnObservation(params.turnObservationSink, {
         kind: "turn_gate_fact",
@@ -3455,54 +3437,41 @@ export class ConversationOrchestrator {
         value: false,
         source: "v1_dedupe",
       });
+      if (beginResult.outcome === "busy") {
+        console.warn(`[Orchestrator] Claim não adquirido — mensagem ${messageId} ignorada`);
+        return { replied: false, reason: "conversation_claim_timeout" };
+      }
+      liveContext = beginResult.context;
     }
 
+    let releaseTurnLease: (() => Promise<void>) | null = liveContext?.releaseLease ?? null;
+    const runTurn = async (): Promise<{ replied: boolean; reason?: string }> => {
     // ── 2. Busca clínica ──
-    const clinicRows = await db
-      .select()
-      .from(organizations)
-      .where(eq(organizations.id, clinicId))
-      .limit(1);
-
-    if (clinicRows.length === 0) {
-      console.error(`[Orchestrator] Clinic not found: ${clinicId}`);
-      return { replied: false, reason: "clinic_not_found" };
+    let clinic: Organization;
+    let editorial: Awaited<ReturnType<DrizzleLiveConversationContextReader["resolveEditorialConfig"]>>;
+    let preparedTenant: PreparedTenantConfiguration;
+    if (liveContext && preparedLiveTenant) {
+      clinic = liveContext.clinic;
+      editorial = liveContext.editorial;
+      preparedTenant = preparedLiveTenant;
+    } else {
+      const replayClinic = await this.liveContextReader.findOrganization(clinicId);
+      if (!replayClinic) {
+        console.error(`[Orchestrator] Clinic not found: ${clinicId}`);
+        return { replied: false, reason: "clinic_not_found" };
+      }
+      clinic = replayClinic;
+      const resolved = await Promise.all([
+        this.liveContextReader.resolveEditorialConfig(clinicId),
+        getClinicModules(clinicId),
+      ]);
+      editorial = resolved[0];
+      preparedTenant = await prepareTenantConfiguration(clinic, editorial, resolved[1]);
     }
-
-    const clinic = buildOrganization(clinicRows[0]);
+    const { organizationRow, activeModules, runtimeConfigFingerprint } = preparedTenant;
     const timezone = new ClinicTimezone(clinic.timezone);
     const businessHours = parseBusinessHours(clinic.businessHours);
-
-    // FONTE ÚNICA EDITORIAL + módulos carregados em paralelo para evitar waterfall.
-    const [editorial, activeModules] = await Promise.all([
-      resolveActiveEditorialConfig(clinicId),
-      getClinicModules(clinicId),
-    ]);
-    const runtimeConfigFingerprint = fingerprintRuntimeConfig({
-      clinic: clinicRows[0] as Record<string, unknown>,
-      editorial,
-      modules: activeModules,
-    });
-    await recordDecisionTrace(this.decisionTraceSink, {
-      turnId,
-      stage: "tenant.config_loaded",
-      occurredAt: runtimeNow().toISOString(),
-      clinicId,
-      metadata: {
-        clinicConfigUpdatedAt: clinicRows[0].updatedAt.toISOString(),
-        playbookVersionId: editorial?.versionId ?? null,
-        timezone: clinic.timezone,
-        segment: clinic.segment ?? "unknown",
-        hasActiveEditorial: editorial !== null,
-        activeModuleCount: activeModules.length,
-        procedureCount: editorial?.procedures.length ?? 0,
-        mediaAssetCount: editorial?.mediaLibrary.length ?? 0,
-        configFingerprint: runtimeConfigFingerprint.fingerprint,
-        configFingerprintSchema: RUNTIME_CONFIG_FINGERPRINT_SCHEMA,
-        configFieldCount: runtimeConfigFingerprint.fieldCount,
-      },
-    });
-    const channelConfig = resolveChannelConfig(clinicRows[0]);
+    const channelConfig = resolveChannelConfig(organizationRow);
 
     // Derivados de módulos — usados em todo o método no lugar dos campos legados
     const elevenLabsMod = activeModules.find((m) => m.key === "voice_elevenlabs");
@@ -3553,13 +3522,13 @@ export class ConversationOrchestrator {
     const clinicExperience: ConversationExperience = conciergeModule ? "concierge" : "menu_first";
     const conciergeConfig = (conciergeModule?.config ?? undefined) as ConciergeModeConfig | undefined;
 
-    // ── 3. Registra lead, conversa e mensagem ──
+    // ── 3. O lifecycle live já registrou lead, conversa e mensagem. ──
+    // Replay permanece no caminho V1 original e deliberadamente não registra inbound.
     const usageCostTracker = new DefaultUsageCostTracker({
       usageCostRepository: this.usageCostRepo,
       idGenerator: randomUUID,
       now: () => runtimeNow(),
     });
-
     let lead: Lead;
     let conversation: Conversation;
     let incomingMessage: Message;
@@ -3575,40 +3544,15 @@ export class ConversationOrchestrator {
       }
       ({ lead, conversation, incomingMessage } = replayContext);
       messageText = incomingMessage.body;
+    } else if (liveContext) {
+      ({ lead, conversation, inboundMessage: incomingMessage } = liveContext);
     } else {
-      const registerUseCase = new RegisterIncomingMessage({
-        leadRepository: this.leadRepo,
-        conversationRepository: this.conversationRepo,
-        usageCostTracker,
-        followUpRepository: new DrizzleFollowUpRepository(),
-        idGenerator: randomUUID,
-        now: () => runtimeNow(),
-      });
-
-      ({ lead, conversation, message: incomingMessage } = await registerUseCase.execute({
-        clinicId,
-        message: {
-          externalMessageId: messageId,
-          externalContactId: channelAddress,
-          phone,
-          whatsappLid: params.whatsappLid ?? null,
-          name: senderName ?? null,
-          senderPhoto: senderPhoto ?? null,
-          email: null,
-          campaignId: null,
-          channel: "whatsapp",
-          externalThreadId: channelAddress,
-          body: messageText,
-          mediaUrl: params.mediaUrl ?? null,
-          mediaType: params.mediaType ?? null,
-          receivedAt: timestamp,
-        },
-      }));
+      throw new Error("live turn context missing");
     }
 
-    const outboundAddress =
-      resolveWhatsAppChannelAddress({ phone: lead.phone, whatsappLid: lead.whatsappLid }) ??
-      channelAddress;
+    const outboundAddress = liveContext?.outboundAddress
+      ?? resolveWhatsAppChannelAddress({ phone: lead.phone, whatsappLid: lead.whatsappLid })
+      ?? channelAddress;
 
     // ── 3.1. Enriquecimento de foto (fire-and-forget) ──
     // Z-API não envia senderPhoto no webhook — buscamos sob demanda via /profile-picture
@@ -3631,10 +3575,18 @@ export class ConversationOrchestrator {
     // processam em paralelo e as respostas saem intercaladas/duplicadas (o check
     // de debounce sozinho tem janela TOCTOU). CAS via UPDATE condicional — único
     // statement, atômico no Postgres mesmo com o driver neon-http.
-    const claimed = await this.turnCoordinator.acquire(conversation.id);
-    if (!claimed) {
-      console.warn(`[Orchestrator] Claim não adquirido para ${conversation.id} — mensagem ${messageId} ignorada`);
-      return { replied: false, reason: "conversation_claim_timeout" };
+    if (isReplay) {
+      const claimed = await this.turnCoordinator.acquire(conversation.id);
+      if (!claimed) {
+        console.warn(`[Orchestrator] Claim não adquirido para ${conversation.id} — mensagem ${messageId} ignorada`);
+        return { replied: false, reason: "conversation_claim_timeout" };
+      }
+      let replayLeaseReleased = false;
+      releaseTurnLease = async () => {
+        if (replayLeaseReleased) return;
+        replayLeaseReleased = true;
+        await this.turnCoordinator.release(conversation.id);
+      };
     }
 
     // ── 3.3. Batching / Debounce de burst de mensagens ──
@@ -3650,12 +3602,9 @@ export class ConversationOrchestrator {
         console.log(
           `[Orchestrator] Batching/Debounce: Mensagem mais recente detectada para conv=${conversation.id}. Abortando msg=${incomingMessage.id}`
         );
-        await this.turnCoordinator.release(conversation.id);
         return { replied: false, reason: "superseded_by_newer_message" };
       }
     }
-
-    try {
 
     if (params.observationOnly) {
       if (
@@ -4398,7 +4347,18 @@ export class ConversationOrchestrator {
     }
 
     // ── 7. Carrega histórico de mensagens ──
-    const allMessages = await this.conversationRepo.listMessages(conversation.id);
+    const stateAsOf = isReplay ? undefined : incomingMessage.sentAt;
+    const turnSnapshot = liveContext
+      ? await this.liveTurnLifecycle.loadSnapshot(liveContext, { stateAsOf })
+      : await (async () => {
+          const [history, currentState, lastResetBoundary] = await Promise.all([
+            this.conversationRepo.listMessages(conversation.id),
+            this.stateMachine.getCurrentState(conversation.id, stateAsOf),
+            this.stateMachine.getLastResetBoundary(conversation.id),
+          ]);
+          return { history, currentState, lastResetBoundary };
+        })();
+    const allMessages = [...turnSnapshot.history];
 
     // Ninguém respondeu ainda. Governa a APRESENTAÇÃO: saudação rica, nome da
     // clínica dito uma vez. Continua verdadeiro mesmo com várias mensagens do
@@ -4417,11 +4377,8 @@ export class ConversationOrchestrator {
     const leadMessageCount = allMessages.filter((m) => m.author === "lead").length;
     const isConversationOpening = isFirstMessage && leadMessageCount <= 1;
     const lastAgentMessage = [...allMessages].reverse().find((m) => m.author === "agent");
-    const stateAsOf = isReplay ? undefined : incomingMessage.sentAt;
-    const [currentConversationState, lastResetBoundary] = await Promise.all([
-      this.stateMachine.getCurrentState(conversation.id, stateAsOf),
-      this.stateMachine.getLastResetBoundary(conversation.id),
-    ]);
+    const currentConversationState = turnSnapshot.currentState;
+    const lastResetBoundary = turnSnapshot.lastResetBoundary;
     await recordDecisionTrace(this.decisionTraceSink, {
       turnId,
       stage: "state.loaded",
@@ -8074,8 +8031,25 @@ export class ConversationOrchestrator {
       return { replied: false, reason: "technical_error_handoff" };
     }
 
+    };
+
+    try {
+      const result = await runTurn();
+      if (liveContext) {
+        await this.liveTurnLifecycle.complete({
+          context: liveContext,
+          replied: result.replied,
+          reason: result.reason,
+        });
+      }
+      return result;
+    } catch (error) {
+      if (liveContext) {
+        await this.liveTurnLifecycle.fail({ context: liveContext, error });
+      }
+      throw error;
     } finally {
-      await this.turnCoordinator.release(conversation.id);
+      await releaseTurnLease?.();
     }
   }
 

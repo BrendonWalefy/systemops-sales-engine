@@ -112,6 +112,16 @@ class RacyConversationRepository implements ConversationRepository {
     return null;
   }
 
+  async findMessageByExternalId(externalId: string): Promise<Message | null> {
+    return [...this.messages.values()].flat().find(
+      (message) => message.externalId === externalId,
+    ) ?? null;
+  }
+
+  async findRecentLeadMessageByIdentityAndContent(): Promise<Message | null> {
+    return null;
+  }
+
   async saveConversation(conversation: Conversation): Promise<void> {
     const existingId = this.leadIndex.get(conversation.leadId);
 
@@ -185,6 +195,16 @@ class SimpleConversationRepository implements ConversationRepository {
         (conversation) => conversation.leadId === leadId,
       ) ?? null
     );
+  }
+
+  async findMessageByExternalId(externalId: string): Promise<Message | null> {
+    return [...this.messages.values()].flat().find(
+      (message) => message.externalId === externalId,
+    ) ?? null;
+  }
+
+  async findRecentLeadMessageByIdentityAndContent(): Promise<Message | null> {
+    return null;
   }
 
   async saveConversation(conversation: Conversation): Promise<void> {

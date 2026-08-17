@@ -1,9 +1,9 @@
-import { eq, asc, desc } from "drizzle-orm";
+import { and, asc, desc, eq, gte, or } from "drizzle-orm";
 import type { Conversation, Message } from "@/domain/entities/conversation";
 import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
 import { db } from "@/infrastructure/db/client";
 import { isPostgresErrorCode } from "@/infrastructure/db/is-postgres-error-code";
-import { conversations, messages } from "@/infrastructure/db/schema";
+import { conversations, leads, messages } from "@/infrastructure/db/schema";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export class DrizzleConversationRepository implements ConversationRepository {
@@ -12,6 +12,55 @@ export class DrizzleConversationRepository implements ConversationRepository {
       where: eq(conversations.leadId, leadId),
     });
     return row ? mapConversationRow(row) : null;
+  }
+
+  async findMessageByExternalId(externalId: string): Promise<Message | null> {
+    const [row] = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.externalId, externalId))
+      .limit(1);
+    return row ? mapMessageRow(row) : null;
+  }
+
+  async findRecentLeadMessageByIdentityAndContent(input: {
+    clinicId: string;
+    phone: string | null;
+    whatsappLid: string | null;
+    fallbackPhone: string;
+    body: string;
+    sentAtOrAfter: Date;
+  }): Promise<Message | null> {
+    const identityMatch = input.phone
+      ? input.whatsappLid
+        ? or(
+            eq(leads.phone, input.phone),
+            eq(leads.whatsappLid, input.whatsappLid),
+            eq(leads.phone, input.whatsappLid),
+          )
+        : eq(leads.phone, input.phone)
+      : input.whatsappLid
+        ? or(
+            eq(leads.whatsappLid, input.whatsappLid),
+            eq(leads.phone, input.whatsappLid),
+          )
+        : eq(leads.phone, input.fallbackPhone);
+    const [row] = await db
+      .select({ message: messages })
+      .from(messages)
+      .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+      .innerJoin(leads, eq(leads.id, conversations.leadId))
+      .where(
+        and(
+          eq(leads.clinicId, input.clinicId),
+          identityMatch,
+          eq(messages.author, "lead"),
+          eq(messages.body, input.body),
+          gte(messages.sentAt, input.sentAtOrAfter),
+        ),
+      )
+      .limit(1);
+    return row ? mapMessageRow(row.message) : null;
   }
 
   async saveConversation(conversation: Conversation): Promise<void> {
