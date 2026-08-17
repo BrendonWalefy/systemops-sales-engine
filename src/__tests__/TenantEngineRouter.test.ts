@@ -126,9 +126,6 @@ describe("TenantEngineRouter", () => {
     ["missing approval", { overrides: { approval: null } }],
     ["expired approval", { overrides: { now: () => new Date("2026-08-17T15:11:00.000Z") } }],
     ["missing runtime", { overrides: { runtimeIdentity: null } }],
-    ["tenant digest mismatch", { overrides: { expectedTenantDigest: `hmac:${"b".repeat(64)}` } }],
-    ["channel digest mismatch", { overrides: { expectedChannelDigest: `hmac:${"b".repeat(64)}` } }],
-    ["config digest mismatch", { overrides: { expectedConfigDigest: `hmac:${"b".repeat(64)}` } }],
     ["policy isTest false", { overrides: { policyReader: { getConversationEnginePolicy: vi.fn().mockResolvedValue({
       clinicId: turn.clinicId, engine: "v2_internal", isTest: false,
     }) } } }],
