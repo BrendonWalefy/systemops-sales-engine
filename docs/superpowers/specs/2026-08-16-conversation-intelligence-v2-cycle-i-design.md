@@ -207,7 +207,8 @@ count as success-response evidence.
 
 ## Comparison record and privacy
 
-There are two closed schemas. `conversation-v2-live-comparison.v1` is parsed at runtime and frozen
+There are two closed schemas. `conversation-v2-live-comparison.v2` is canonicalized from exact
+plain data, parsed at runtime and frozen
 before a dedicated application sink receives it. It includes:
 
 - keyed-HMAC turn/conversation/input references; raw `turnId` is in-memory correlation only;
@@ -217,6 +218,19 @@ before a dedicated application sink receives it. It includes:
 - authorized-plan and FinalText structural summaries, character count and keyed digest, never text;
 - intended effects, latency, provider-call count, model IDs, tokens and estimable cost;
 - errors, fallback source, `no_safe_response`, unsupported reason and divergence codes.
+
+The `.v2` live schema is an exact discriminated union. `comparisonStatus = comparable` requires
+an observed V1 arm with an HMAC final digest and character count. `not_measurable` requires the
+exact V1 `unavailable/final_response_unavailable` arm and an empty divergence list. V2 has no
+`unavailable` variant. Unsupported/error/simulation variants cannot carry outcomes, semantic
+classes or final-response material; unsupported also cannot attribute a model call. The parser
+rejects proxies, accessors, symbol keys and non-plain prototypes before schema evaluation, then
+validates and freezes the one canonical snapshot.
+
+`conversation-v2-live-comparison.v1` was a pre-activation prototype. Zero live observations were
+captured or persisted and zero tenant/channel was activated under that contract. It is therefore
+rejected, not silently reinterpreted or migrated. This `.v2` decision was made during Task 7
+hardening, before any V1×V2 result existed.
 
 Live records do not contain response text, raw lead input, raw history, prompts, names, phones,
 emails, URLs, provider payloads, opaque database identifiers or raw evidence references. The

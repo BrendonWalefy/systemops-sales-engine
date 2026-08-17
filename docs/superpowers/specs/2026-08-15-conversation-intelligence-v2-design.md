@@ -606,6 +606,13 @@ V1×V2 do Ciclo I:
 - o judge atual continua `experimental_non_gating`. GO qualitativo exige instrumento previamente
   calibrado ou revisão humana estruturada com a rubrica congelada;
 - custo e p95 comparam o turno completo, nunca usam o custo zero do estágio H como proxy.
+- o wire contract live vigente é `conversation-v2-live-comparison.v2`. A versão `.v1` foi um
+  protótipo pré-ativação: não houve observação real, persistência nem ativação com ela, portanto
+  não existe migração de dado produtivo. O parser a rejeita em vez de reinterpretá-la. A `.v2`
+  usa uniões discriminadas exatas por `comparisonStatus` e por status de cada braço: V2 nunca é
+  `unavailable`; V1 sem artifact final é exatamente `unavailable/final_response_unavailable` e
+  torna a comparação `not_measurable`, sem divergência. Estados sem observação não podem carregar
+  outcomes, classes semânticas, texto final ou atribuições incompatíveis.
 
 O desenho operacional, schema de persistência, critérios de privacidade, rollback e gates desta
 decisão estão em

@@ -261,7 +261,7 @@ git commit -m "feat(conversation-v2): add side-effect-free shadow execution"
 **Interfaces:**
 
 ```ts
-export const LIVE_COMPARISON_VERSION = "conversation-v2-live-comparison.v1" as const;
+export const LIVE_COMPARISON_VERSION = "conversation-v2-live-comparison.v2" as const;
 export const APPROVED_EVAL_VERSION = "conversation-v2-approved-eval.v1" as const;
 
 export type HmacRef = `hmac:${string}`;
@@ -338,6 +338,15 @@ export const CYCLE_I_GATE_REPORT_VERSION = "conversation-v2-cycle-i-gate.v1" as 
 export function buildCycleIGateReport(input: CycleIGateInputs): CycleIGateReport;
 export function parseCycleIGateReport(input: unknown): CycleIGateReport;
 ```
+
+**Task 7 hardening amendment (2026-08-17, pre-activation):** the broad illustrative
+`EngineStructuralSummary` above is superseded at the runtime boundary by exact discriminated
+unions per arm and status. `comparable` requires an observed final V1 artifact;
+`not_measurable` requires exact V1 `unavailable/final_response_unavailable` and zero divergence.
+V2 never accepts `unavailable`; unsupported/error/simulation cannot carry outcome or final
+semantics inconsistent with their status. The parser canonicalizes exact plain data before Zod.
+The `.v1` wire value was never observed, persisted or activated and is rejected rather than
+silently migrated. No V1×V2 result existed when this version was changed.
 
 `HmacRef` valida exatamente `^hmac:[a-f0-9]{64}$`. `modelId` não aceita texto arbitrário:
 `parseLiveComparisonRecord` exige membership no `allowedModelIds` congelado pelo run manifest;
