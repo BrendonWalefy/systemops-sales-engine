@@ -12,10 +12,6 @@ import {
 } from "@/application/conversation-v2/gate-report";
 import type { HmacRef } from "@/application/conversation-v2/comparison-record";
 import {
-  CONVERSATION_ENGINES,
-  resolveConversationEngine,
-} from "@/application/conversation-v2/engine-selection";
-import {
   CYCLE_I_ACTIVATION_APPROVAL_AUTHORITY_DOMAIN,
   CYCLE_I_GATE_REPORT_AUTHORITY_DOMAIN,
   createConfiguredCycleIRuntimeBuildIdentity,
@@ -171,49 +167,6 @@ describe("Cycle I internal activation approval", () => {
     );
     expect(isRegisteredInternalV2ActivationApproval(approval, runtimeIdentity)).toBe(true);
     expect(Object.isFrozen(approval)).toBe(true);
-    expect(resolveConversationEngine({
-      automationMode: "live",
-      policy: { clinicId: "clinic-1", engine: "v2_internal", isTest: true },
-      approval,
-      runtimeIdentity,
-    })).toEqual({ route: "v1", shadow: false, reason: "v2_internal_runtime_unavailable" });
-  });
-
-  it("uses the registered approval in the full automation×engine×isTest matrix", () => {
-    const parsed = parsePassingReport();
-    const authority = approvalAuthority(parsed);
-    const runtimeIdentity = runtimeIdentityFor(parsed);
-    const approval = parseInternalV2ActivationApproval(
-      parsed, runtimeIdentity, authority.approvalRecord,
-    );
-
-    for (const automationMode of ["disabled", "observe", "live"] as const) {
-      for (const engine of CONVERSATION_ENGINES) {
-        for (const isTest of [false, true]) {
-          const result = resolveConversationEngine({
-            automationMode,
-            policy: { clinicId: "clinic-1", engine, isTest },
-            approval,
-            runtimeIdentity,
-          });
-          if (automationMode !== "live") {
-            expect(result).toEqual({ route: "v1", shadow: false, reason: "automation_not_live" });
-          } else if (engine === "v1") {
-            expect(result).toEqual({ route: "v1", shadow: false, reason: "configured_v1" });
-          } else if (engine === "v1_with_v2_shadow") {
-            expect(result).toEqual({ route: "v1", shadow: true, reason: "configured_shadow" });
-          } else {
-            expect(result).toEqual({
-              route: "v1",
-              shadow: false,
-              reason: isTest
-                ? "v2_internal_runtime_unavailable"
-                : "activation_gate_missing",
-            });
-          }
-        }
-      }
-    }
   });
 
   it("binds an approval to the current registered runtime build identity", () => {
@@ -228,12 +181,7 @@ describe("Cycle I internal activation approval", () => {
       runtimeB,
       authority.approvalRecord,
     )).toThrow(/configDigest|runtime|mismatch/i);
-    expect(resolveConversationEngine({
-      automationMode: "live",
-      policy: { clinicId: "clinic-1", engine: "v2_internal", isTest: true },
-      approval,
-      runtimeIdentity: runtimeB,
-    })).toEqual({ route: "v1", shadow: false, reason: "activation_gate_missing" });
+    expect(isRegisteredInternalV2ActivationApproval(approval, runtimeB)).toBe(false);
     runtimeIdentityFor(parsed);
   });
 

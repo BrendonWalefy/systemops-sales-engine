@@ -28,6 +28,7 @@ import {
   type ShadowBatchSummary,
 } from "@/application/conversation-v2/run-shadow-batch";
 import { createConversationV2Runtime } from "@/infrastructure/conversation-v2/create-conversation-v2-runtime";
+import { V2ShadowSelectionRegistry } from "@/application/conversation-v2/tenant-engine-router";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -119,11 +120,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             const summary = await runConversationV2ShadowBatch({
               senderBarrier,
               turns,
-              policyReader: conversationV2Runtime.policyReader,
+              selectedTurns: new V2ShadowSelectionRegistry().consumeAll(),
               evaluator: conversationV2Runtime.evaluator,
               sink: conversationV2Runtime.sink,
-              approval: conversationV2Runtime.approval,
-              runtimeIdentity: conversationV2Runtime.runtimeIdentity,
               maxTurns: conversationV2Runtime.maxTurns,
               deadlineMs: conversationV2Runtime.deadlineMs,
               now: conversationV2Runtime.now,

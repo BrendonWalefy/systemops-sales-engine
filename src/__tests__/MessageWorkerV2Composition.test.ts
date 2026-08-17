@@ -7,6 +7,7 @@ import {
   runAfterSenderDrainAttempt,
   runConversationV2ShadowBatch,
 } from "@/application/conversation-v2/run-shadow-batch";
+import { V2ShadowSelectionRegistry } from "@/application/conversation-v2/tenant-engine-router";
 
 const openAiCreate = vi.hoisted(() => vi.fn());
 vi.mock("openai", async (importOriginal) => {
@@ -203,6 +204,8 @@ describe("Cycle I message worker composition", () => {
     });
     for (const event of readyEvents("turn-post-provider-unsupported")) observation.record(event);
     const turns = runtime.drainCapturedTurns();
+    const selectedTurns = new V2ShadowSelectionRegistry();
+    selectedTurns.register({ turnId: "turn-post-provider-unsupported", clinicId: "clinic-a" });
 
     await runAfterSenderDrainAttempt({
       turns,
@@ -212,11 +215,9 @@ describe("Cycle I message worker composition", () => {
       afterAttempt: (senderBarrier, captured) => runConversationV2ShadowBatch({
         senderBarrier,
         turns: captured,
-        policyReader: runtime.policyReader,
+        selectedTurns: selectedTurns.consumeAll(),
         evaluator: runtime.evaluator,
         sink: runtime.sink,
-        approval: runtime.approval,
-        runtimeIdentity: runtime.runtimeIdentity,
         maxTurns: runtime.maxTurns,
         deadlineMs: runtime.deadlineMs,
         now: runtime.now,

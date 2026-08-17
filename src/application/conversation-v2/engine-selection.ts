@@ -1,10 +1,4 @@
 import { isProxy } from "node:util/types";
-import type { ClinicAutomationMode } from "@/application/automation/clinic-automation-policy";
-import {
-  isRegisteredInternalV2ActivationApproval,
-  type InternalV2ActivationApproval,
-} from "@/application/conversation-v2/activation-approval";
-import type { CycleIRuntimeBuildIdentity } from "@/application/conversation-v2/configured-cycle-i-authority";
 
 export const CONVERSATION_ENGINES = [
   "v1",
@@ -57,44 +51,4 @@ export function canonicalizeConversationEnginePolicy(
     engine: source.engine as ConversationEngine,
     isTest: source.isTest,
   });
-}
-
-export type EffectiveConversationEngine =
-  | Readonly<{
-      route: "v1";
-      shadow: false;
-      reason:
-        | "configured_v1"
-        | "automation_not_live"
-        | "v2_internal_runtime_unavailable"
-        | "activation_gate_missing";
-    }>
-  | Readonly<{ route: "v1"; shadow: true; reason: "configured_shadow" }>;
-
-export function resolveConversationEngine(input: {
-  automationMode: ClinicAutomationMode;
-  policy: ConversationEnginePolicy;
-  approval: InternalV2ActivationApproval | null;
-  runtimeIdentity: CycleIRuntimeBuildIdentity | null;
-}): EffectiveConversationEngine {
-  if (input.automationMode !== "live") {
-    return { route: "v1", shadow: false, reason: "automation_not_live" };
-  }
-  if (input.policy.engine === "v1") {
-    return { route: "v1", shadow: false, reason: "configured_v1" };
-  }
-  if (input.policy.engine === "v1_with_v2_shadow") {
-    return { route: "v1", shadow: true, reason: "configured_shadow" };
-  }
-  if (
-    !input.policy.isTest
-    || !isRegisteredInternalV2ActivationApproval(input.approval, input.runtimeIdentity)
-  ) {
-    return { route: "v1", shadow: false, reason: "activation_gate_missing" };
-  }
-  return {
-    route: "v1",
-    shadow: false,
-    reason: "v2_internal_runtime_unavailable",
-  };
 }

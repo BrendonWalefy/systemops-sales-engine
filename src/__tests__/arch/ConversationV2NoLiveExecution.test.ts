@@ -3,13 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { parseCapturedV2TurnReads } from "@/application/conversation-v2/captured-turn-reads";
 import {
   canonicalizeConversationEnginePolicy,
-  resolveConversationEngine,
 } from "@/application/conversation-v2/engine-selection";
 import {
   runAfterSenderDrainAttempt,
 } from "@/application/conversation-v2/run-shadow-batch";
 import { V2ShadowRunner } from "@/application/conversation-v2/v2-shadow-runner";
-import type { InternalV2ActivationApproval } from "@/application/conversation-v2/activation-approval";
 import { keyedRef } from "@/application/conversation-v2/comparison-record";
 import { UNDERSTANDING_VERSION } from "@/conversation-core/understanding/schema";
 
@@ -56,23 +54,7 @@ function bookingReads(gateInput: unknown = {
   });
 }
 
-describe("Cycle I no-live-execution gate", () => {
-  it("nunca seleciona execução V2 live, mesmo com policy interna e approval forjada", () => {
-    const result = resolveConversationEngine({
-      automationMode: "live",
-      policy: { clinicId: "tenant-a", engine: "v2_internal", isTest: true },
-      approval: {} as InternalV2ActivationApproval,
-      runtimeIdentity: null,
-    });
-
-    expect(result).toEqual({
-      route: "v1",
-      shadow: false,
-      reason: "activation_gate_missing",
-    });
-    expect(JSON.stringify(result)).not.toContain('"route":"v2"');
-  });
-
+describe("Conversation V2 isolated execution boundary", () => {
   it("isola policy por tenant e rollback para v1 desliga shadow sem revert", () => {
     expect(() => canonicalizeConversationEnginePolicy({
       clinicId: "tenant-b",
@@ -80,23 +62,14 @@ describe("Cycle I no-live-execution gate", () => {
       isTest: true,
     }, "tenant-a")).toThrow(/invalid conversation engine policy/);
 
-    expect(resolveConversationEngine({
-      automationMode: "live",
-      policy: { clinicId: "tenant-a", engine: "v1", isTest: true },
-      approval: null,
-      runtimeIdentity: null,
-    })).toEqual({ route: "v1", shadow: false, reason: "configured_v1" });
+    expect(canonicalizeConversationEnginePolicy({
+      clinicId: "tenant-a", engine: "v1", isTest: true,
+    }, "tenant-a")).toEqual({ clinicId: "tenant-a", engine: "v1", isTest: true });
   });
 
-  it("não expõe writer, BookingService, outbox ou canal no path v2_internal", () => {
-    const source = [
-      "src/application/conversation-v2/engine-selection.ts",
-      "src/infrastructure/conversation-v2/create-conversation-v2-runtime.ts",
-      "src/app/api/cron/message-worker/route.ts",
-    ].map((file) => readFileSync(file, "utf8")).join("\n");
-
-    expect(source).not.toMatch(/route:\s*["']v2["']|BookingService|CalendarGateway|ChannelAdapter|enqueueOutboundMessage|outbound_messages/);
-    expect(readFileSync("src/app/api/cron/message-worker/route.ts", "utf8")).not.toContain("v2_internal");
+  it("mantém o router livre de writers, booking, outbox e channel adapters", () => {
+    const source = readFileSync("src/application/conversation-v2/tenant-engine-router.ts", "utf8");
+    expect(source).not.toMatch(/BookingService|CalendarGateway|ChannelAdapter|enqueueOutboundMessage|outbound_messages|infrastructure\//);
   });
 
   it("shadow intercepta write antes de Capability.execute e não produz texto de sucesso", async () => {

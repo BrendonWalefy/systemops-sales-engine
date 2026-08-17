@@ -1,4 +1,5 @@
 import type { ClinicAutomationPolicyReader } from "@/application/ports/clinic-automation-policy-reader";
+import type { ConversationHandler } from "@/application/ports/conversation-handler";
 import type { InboundEventStore } from "@/application/ports/inbound-event-store";
 import type { JobRecord } from "@/application/ports/job-queue";
 import {
@@ -12,29 +13,7 @@ import {
   recordDecisionTrace,
   type DecisionTraceSink,
 } from "@/core/observability/DecisionTrace";
-import {
-  recordV1TurnObservation,
-  type V1TurnObservationSink,
-} from "@/core/observability/V1TurnObservation";
-
-type ConversationHandler = {
-  handle(input: {
-    clinicId: string;
-    phone: string;
-    whatsappLid?: string | null;
-    messageText: string;
-    messageId: string;
-    senderName?: string;
-    senderPhoto?: string | null;
-    timestamp: Date;
-    turnId?: string;
-    replyEnabled?: boolean;
-    observationOnly?: boolean;
-    mediaUrl?: string;
-    mediaType?: "image" | "video" | "audio" | "document";
-    turnObservationSink?: V1TurnObservationSink;
-  }): Promise<{ replied: boolean; reason?: string }>;
-};
+import { recordV1TurnObservation, type V1TurnObservationSink } from "@/core/observability/V1TurnObservation";
 
 export type JobResult = {
   outcome: "processed" | "ignored";
@@ -196,6 +175,7 @@ export class ProcessMessageJobHandler {
         observationOnly: automationMode === "observe",
         mediaUrl: content.mediaUrl,
         mediaType: content.mediaType,
+        automationMode,
         ...(turnObservationSink ? { turnObservationSink } : {}),
       });
       await this.deps.inboundEventStore.markInboundEventProcessed(event.id);

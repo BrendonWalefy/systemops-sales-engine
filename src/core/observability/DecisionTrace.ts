@@ -13,6 +13,7 @@ export const DECISION_TRACE_SCHEMA_VERSION = "decision-trace.v1" as const;
 export const DECISION_TRACE_STAGES = [
   "ingress.received",
   "ingress.content_resolved",
+  "engine.selected",
   "orchestrator.started",
   "tenant.config_loaded",
   "state.loaded",
@@ -42,6 +43,7 @@ export type DecisionTraceStage = typeof DECISION_TRACE_STAGES[number];
 const DECISION_TRACE_STAGE_ALLOWLIST = new Set<string>(DECISION_TRACE_STAGES);
 
 export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
+  "engine.selected": ["route", "shadow", "reason"],
   // Camada de keyword (Ciclo D). Só nome de predicado, booleanos e nomes de
   // intent — a allowlist é o que garante que a instrumentação não vire uma
   // porta lateral para o texto do lead entrar no trace.

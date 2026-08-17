@@ -1,12 +1,6 @@
 import { isProxy } from "node:util/types";
-import type { ConversationEnginePolicyReader } from "@/application/ports/conversation-engine-policy-reader";
 import type { ConversationV2ComparisonSink } from "@/application/ports/conversation-v2-comparison-sink";
 import type { ClinicAutomationMode } from "@/application/automation/clinic-automation-policy";
-import type { InternalV2ActivationApproval } from "@/application/conversation-v2/activation-approval";
-import {
-  isRegisteredCycleIRuntimeBuildIdentity,
-  type CycleIRuntimeBuildIdentity,
-} from "@/application/conversation-v2/configured-cycle-i-authority";
 import {
   canonicalizeComparisonRecordConfig,
 } from "@/application/conversation-v2/comparison-record-config";
@@ -22,11 +16,9 @@ import {
   type V2EngineStructuralSummary,
 } from "@/application/conversation-v2/comparison-record";
 import {
-  canonicalizeConversationEnginePolicy,
-  resolveConversationEngine,
-  type ConversationEngine,
-  type EffectiveConversationEngine,
-} from "@/application/conversation-v2/engine-selection";
+  consumeRegisteredV2ShadowSelections,
+  type V2ShadowSelection,
+} from "@/application/conversation-v2/tenant-engine-router";
 import {
   buildCapturedV2TurnReads,
   isRegisteredCapturedV1Turn,
@@ -65,14 +57,10 @@ export type ShadowEvaluator = Readonly<{
   evaluate(reads: CapturedV2TurnReads, signal: AbortSignal): Promise<ShadowEvaluation>;
 }>;
 
-export type ShadowEngineSelection = Readonly<{
+export type ShadowSelectionSummary = Readonly<{
   turnRef: HmacRef;
   clinicRef: HmacRef;
   automationMode: ClinicAutomationMode;
-  configuredEngine: ConversationEngine | null;
-  effectiveRoute: "v1";
-  shadow: boolean;
-  reason: EffectiveConversationEngine["reason"] | "policy_unavailable";
 }>;
 
 export type ShadowAdmissionDeadlineSummary = Readonly<{
@@ -103,7 +91,6 @@ export type ShadowBatchSummary = Readonly<{
   persisted: number;
   unsupported: number;
   skipped: number;
-  policyErrors: number;
   evaluationErrors: number;
   recordValidationErrors: number;
   sinkErrors: number;
@@ -111,7 +98,7 @@ export type ShadowBatchSummary = Readonly<{
   deadlineReached: boolean;
   deadline: ShadowAdmissionDeadlineSummary;
   drain: ShadowOperationDrainSummary;
-  selections: readonly ShadowEngineSelection[];
+  selections: readonly ShadowSelectionSummary[];
 }>;
 
 const barriers = new WeakSet<object>();
@@ -397,7 +384,7 @@ class ShadowClockError extends Error {}
 const MAX_SHADOW_BATCH_TURNS = 1_000;
 const MAX_SHADOW_BATCH_DEADLINE_MS = 60_000;
 
-type ShadowOperationKind = "policy_read" | "provider_call" | "comparison_write";
+type ShadowOperationKind = "provider_call" | "comparison_write";
 
 type AdmissionState = {
   now: () => number;
@@ -644,11 +631,9 @@ function captureDependencyMethod<T extends (...args: never[]) => unknown>(
 export async function runConversationV2ShadowBatch(input: {
   senderBarrier: SenderDrainAttempted;
   turns: readonly ShadowBatchTurn[];
-  policyReader: ConversationEnginePolicyReader;
+  selectedTurns: readonly V2ShadowSelection[];
   evaluator: ShadowEvaluator;
   sink: ConversationV2ComparisonSink;
-  approval: InternalV2ActivationApproval | null;
-  runtimeIdentity: CycleIRuntimeBuildIdentity | null;
   maxTurns: number;
   deadlineMs: number;
   now(): number;
@@ -662,11 +647,9 @@ export async function runConversationV2ShadowBatch(input: {
   const source = readDataRecord(input, [
     "senderBarrier",
     "turns",
-    "policyReader",
+    "selectedTurns",
     "evaluator",
     "sink",
-    "approval",
-    "runtimeIdentity",
     "maxTurns",
     "deadlineMs",
     "now",
@@ -722,19 +705,18 @@ export async function runConversationV2ShadowBatch(input: {
       active: 0,
     },
   };
-  const policyRead = captureDependencyMethod<
-    (clinicId: string) => Promise<unknown>
-  >(source.policyReader, "getConversationEnginePolicy");
   const evaluate = captureDependencyMethod<
     (reads: CapturedV2TurnReads, signal: AbortSignal) => Promise<ShadowEvaluation>
   >(source.evaluator, "evaluate");
   const append = captureDependencyMethod<
     (appendInput: Readonly<{ clinicId: string; record: LiveComparisonRecord }>) => Promise<void>
   >(source.sink, "append");
-  const runtimeIdentity = source.runtimeIdentity as CycleIRuntimeBuildIdentity | null;
-  if (runtimeIdentity !== null && !isRegisteredCycleIRuntimeBuildIdentity(runtimeIdentity)) {
-    throw new Error("shadow batch runtime identity is not registered");
+  if (source.selectedTurns === undefined) {
+    throw new Error("registered V2 shadow selections are required");
   }
+  const selectedTurns = consumeRegisteredV2ShadowSelections(
+    source.selectedTurns as readonly V2ShadowSelection[],
+  );
   const senderBarrier = source.senderBarrier as SenderDrainAttempted;
   const turns = barrierBatches.get(senderBarrier);
   const barrierRegistered = barriers.has(senderBarrier);
@@ -746,6 +728,20 @@ export async function runConversationV2ShadowBatch(input: {
     || !barrierRegistered
   ) throw new Error("sender barrier is not registered for this batch snapshot");
   consumeBatchTurns(turns);
+  const turnBySelectionKey = new Map<string, ShadowBatchTurn>(
+    turns.map((turn) => [`${turn.clinicId}\0${turn.turn.turnId}`, turn] as const),
+  );
+  const selectedKeys = new Set<string>();
+  for (const selection of selectedTurns) {
+    const key = `${selection.clinicId}\0${selection.turnId}`;
+    if (selectedKeys.has(key)) throw new Error("duplicate registered shadow selection");
+    const turn = turnBySelectionKey.get(key);
+    if (!turn) throw new Error("registered shadow selection does not match the captured batch");
+    if (turn.automationMode !== "live") {
+      throw new Error("registered shadow selection is not a live turn");
+    }
+    selectedKeys.add(key);
+  }
   const recordConfig = Object.freeze({
     hmacKey: canonicalRecordConfig.hmacKey,
     commit: canonicalRecordConfig.commit,
@@ -760,29 +756,19 @@ export async function runConversationV2ShadowBatch(input: {
     persisted: 0,
     unsupported: 0,
     skipped: 0,
-    policyErrors: 0,
     evaluationErrors: 0,
     recordValidationErrors: 0,
     sinkErrors: 0,
     maxTurnsReached: false,
     deadlineReached: false,
   };
-  const selections: ShadowEngineSelection[] = [];
+  const selections: ShadowSelectionSummary[] = [];
 
-  const recordSelection = (
-    turn: ShadowBatchTurn,
-    selection: Readonly<{
-      configuredEngine: ConversationEngine | null;
-      effectiveRoute: "v1";
-      shadow: boolean;
-      reason: EffectiveConversationEngine["reason"] | "policy_unavailable";
-    }>,
-  ): void => {
+  const recordSelection = (turn: ShadowBatchTurn): void => {
     selections.push(Object.freeze({
       turnRef: keyedRef(turn.turn.turnId, recordConfig.hmacKey),
       clinicRef: keyedRef(turn.clinicId, recordConfig.hmacKey),
       automationMode: turn.automationMode,
-      ...selection,
     }));
   };
 
@@ -799,61 +785,11 @@ export async function runConversationV2ShadowBatch(input: {
       break;
     }
 
-    if (turn.automationMode !== "live") {
-      recordSelection(turn, {
-        configuredEngine: null,
-        effectiveRoute: "v1",
-        shadow: false,
-        reason: "automation_not_live",
-      });
+    if (!selectedKeys.has(`${turn.clinicId}\0${turn.turn.turnId}`)) {
       summary.skipped += 1;
       continue;
     }
-
-    let selected = false;
-    try {
-      const rawPolicy = await settleStartedDependency(
-        admission,
-        "policy_read",
-        () => policyRead(turn.clinicId),
-      );
-      const policy = canonicalizeConversationEnginePolicy(rawPolicy, turn.clinicId);
-      const effective = resolveConversationEngine({
-        automationMode: turn.automationMode,
-        policy,
-        approval: source.approval as InternalV2ActivationApproval | null,
-        runtimeIdentity,
-      });
-      recordSelection(turn, {
-        configuredEngine: policy.engine,
-        effectiveRoute: effective.route,
-        shadow: effective.shadow,
-        reason: effective.reason,
-      });
-      selected = effective.shadow;
-    } catch (error) {
-      if (error instanceof ShadowDeadlineError) {
-        summary.deadlineReached = true;
-        summary.skipped += turns.length - index;
-        break;
-      }
-      summary.policyErrors += 1;
-      recordSelection(turn, {
-        configuredEngine: null,
-        effectiveRoute: "v1",
-        shadow: false,
-        reason: "policy_unavailable",
-      });
-    }
-    if (!observeAdmission(admission)) {
-      summary.deadlineReached = true;
-      summary.skipped += turns.length - index;
-      break;
-    }
-    if (!selected) {
-      summary.skipped += 1;
-      continue;
-    }
+    recordSelection(turn);
     summary.selected += 1;
 
     let evaluation: ShadowEvaluation;

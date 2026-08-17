@@ -93,6 +93,7 @@ describe("ProcessMessageJobHandler", () => {
         messageId: "message-1",
         turnId: "event-1",
         replyEnabled: true,
+        automationMode: "live",
       }),
     );
     expect(conversationHandler.handle.mock.calls[0]![0]).not.toHaveProperty("turnObservationSink");

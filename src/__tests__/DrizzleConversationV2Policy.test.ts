@@ -8,6 +8,7 @@ vi.mock("@/infrastructure/db/client", () => ({ db: dbMock }));
 vi.mock("@/app/api/cron/_auth", () => ({ requireCronAuthorization: () => null }));
 
 import { DrizzleConversationEnginePolicyReader } from "@/infrastructure/repositories/drizzle-conversation-engine-policy-reader";
+import { DrizzleClinicAutomationPolicyReader } from "@/infrastructure/repositories/drizzle-clinic-automation-policy-reader";
 import { DrizzleConversationV2ComparisonSink } from "@/infrastructure/repositories/drizzle-conversation-v2-comparison-sink";
 import {
   conversationEngineEnum,
@@ -103,6 +104,27 @@ describe("Cycle I Drizzle engine policy and sanitized comparison persistence", (
       isTest: false,
     });
     expect(dbMock.select).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns the exact automation eligibility facts without exposing engine policy", async () => {
+    dbMock.select.mockReturnValueOnce(selectRows([{
+      isTest: true,
+      isDemo: false,
+      operationalStatus: "test",
+      autoReplyEnabled: true,
+      shadowModeEnabled: false,
+    }]));
+    const reader = new DrizzleClinicAutomationPolicyReader();
+
+    await expect(reader.getInternalLabEligibilityFacts("systemops-lab")).resolves.toEqual({
+      clinicId: "systemops-lab",
+      isTest: true,
+      isDemo: false,
+      operationalStatus: "test",
+      autoReplyEnabled: true,
+      shadowModeEnabled: false,
+    });
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
   });
 
   it("parses the closed live record before insert and writes a 30-day expiry", async () => {
