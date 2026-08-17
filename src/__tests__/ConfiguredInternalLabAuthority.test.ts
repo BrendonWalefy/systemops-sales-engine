@@ -25,7 +25,8 @@ const targetEnvs = [
   "CONVERSATION_V2_INTERNAL_LAB_CHANNEL_DIGEST",
   "CONVERSATION_V2_INTERNAL_LAB_CONFIG_DIGEST",
 ] as const;
-const trackedEnvs = [internalEnv, ...cycleRootEnvs, ...targetEnvs] as const;
+const deploymentEnvs = ["VERCEL_GIT_COMMIT_SHA", "GIT_COMMIT_SHA"] as const;
+const trackedEnvs = [internalEnv, ...cycleRootEnvs, ...targetEnvs, ...deploymentEnvs] as const;
 const originals = Object.fromEntries(trackedEnvs.map((name) => [name, process.env[name]]));
 
 function pem(key: ReturnType<typeof generateKeyPairSync>["publicKey"]): string {
@@ -77,6 +78,37 @@ afterEach(() => {
 });
 
 describe("configured Internal Lab authority", () => {
+  it("registers only the exact Vercel deployment commit and current runtime tuple", async () => {
+    process.env.VERCEL_GIT_COMMIT_SHA = "a".repeat(40);
+    delete process.env.GIT_COMMIT_SHA;
+    const authority = await import(
+      "@/infrastructure/conversation-v2/configured-internal-lab-authority"
+    );
+
+    const identity = authority.loadConfiguredInternalLabDeploymentIdentity();
+    expect(identity).toMatchObject({
+      commit: "a".repeat(40),
+      runtime: { nodeVersion: process.version, platform: process.platform, arch: process.arch },
+    });
+    expect(authority.isRegisteredInternalLabDeploymentIdentity(identity)).toBe(true);
+    expect(authority.isRegisteredInternalLabDeploymentIdentity({ ...identity })).toBe(false);
+  });
+
+  it("fails closed for missing or conflicting Vercel deployment commit", async () => {
+    delete process.env.VERCEL_GIT_COMMIT_SHA;
+    delete process.env.GIT_COMMIT_SHA;
+    let authority = await import(
+      "@/infrastructure/conversation-v2/configured-internal-lab-authority"
+    );
+    expect(() => authority.loadConfiguredInternalLabDeploymentIdentity()).toThrow(/Vercel|commit/i);
+
+    vi.resetModules();
+    process.env.VERCEL_GIT_COMMIT_SHA = "a".repeat(40);
+    process.env.GIT_COMMIT_SHA = "b".repeat(40);
+    authority = await import("@/infrastructure/conversation-v2/configured-internal-lab-authority");
+    expect(() => authority.loadConfiguredInternalLabDeploymentIdentity()).toThrow(/conflict|commit/i);
+  });
+
   it("fails closed without its dedicated deployment public key", async () => {
     delete process.env[internalEnv];
     const authority = await import(

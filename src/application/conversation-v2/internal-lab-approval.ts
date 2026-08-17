@@ -9,7 +9,9 @@ import {
   INTERNAL_LAB_APPROVAL_AUTHORITY_DOMAIN,
   assertConfiguredInternalLabAuthorityBindings,
   isRegisteredConfiguredInternalLabAuthority,
+  isRegisteredInternalLabDeploymentIdentity,
   type ConfiguredInternalLabAuthority,
+  type ConfiguredInternalLabDeploymentIdentity,
 } from "@/infrastructure/conversation-v2/configured-internal-lab-authority";
 import {
   isRegisteredCycleIBuildAttestation,
@@ -156,6 +158,10 @@ const approvals = new WeakSet<object>();
 const approvalBuildBindings = new WeakMap<object, Readonly<{
   runtimeIdentity: CycleIRuntimeBuildIdentity;
   buildAttestation: CycleIBuildAttestation;
+}>>();
+const approvalDeploymentBindings = new WeakMap<object, Readonly<{
+  runtimeIdentity: CycleIRuntimeBuildIdentity;
+  deploymentIdentity: ConfiguredInternalLabDeploymentIdentity;
 }>>();
 
 function snapshotPlainRecord(
@@ -373,6 +379,80 @@ export function parseAndRegisterInternalLabApproval(input: {
   return approval;
 }
 
+export function parseAndRegisterDeployedInternalLabApproval(input: {
+  serializedApproval: string;
+  authority: ConfiguredInternalLabAuthority;
+  runtimeIdentity: CycleIRuntimeBuildIdentity;
+  deploymentIdentity: ConfiguredInternalLabDeploymentIdentity;
+  expectedTenantDigest: string;
+  expectedChannelDigest: string;
+  expectedConfigDigest: string;
+  now: Date;
+}): RegisteredInternalLabApproval {
+  if (!isRegisteredConfiguredInternalLabAuthority(input.authority)) {
+    throw new Error("Internal Lab approval authority is not registered by the configured loader");
+  }
+  if (!isRegisteredCycleIRuntimeBuildIdentity(input.runtimeIdentity)) {
+    throw new Error("Internal Lab runtime build identity is not registered");
+  }
+  if (!isRegisteredInternalLabDeploymentIdentity(input.deploymentIdentity)) {
+    throw new Error("Internal Lab deployment identity is not registered");
+  }
+  if (typeof input.serializedApproval !== "string") {
+    throw new Error("Internal Lab approval must be serialized JSON");
+  }
+  assertConfiguredInternalLabAuthorityBindings(input.authority, {
+    tenantDigest: input.expectedTenantDigest,
+    channelDigest: input.expectedChannelDigest,
+    configDigest: input.expectedConfigDigest,
+  });
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(input.serializedApproval);
+  } catch {
+    throw new Error("Internal Lab approval JSON is invalid");
+  }
+  const record = snapshotPlainRecord(decoded, approvalKeys, "invalid Internal Lab approval artifact");
+  const claims = parseClaims(record.claims);
+  const signature = signatureSchema.parse(record.signature);
+  const canonicalPayload = Buffer.from(JSON.stringify(canonicalClaimsObject(claims)));
+  if (!input.authority.verifyCanonicalPayload(
+    canonicalPayload,
+    Buffer.from(signature.slice("ed25519:".length), "hex"),
+  )) throw new Error("Internal Lab approval signature is invalid");
+
+  assertDecisionRequirements(claims, input.now);
+  assertConfiguredInternalLabAuthorityBindings(input.authority, {
+    serializedApproval: input.serializedApproval,
+    tenantDigest: input.expectedTenantDigest,
+    channelDigest: input.expectedChannelDigest,
+    configDigest: input.expectedConfigDigest,
+  });
+  if (
+    input.runtimeIdentity.commit !== input.deploymentIdentity.commit
+    || claims.commitSha !== input.deploymentIdentity.commit
+  ) throw new Error("Internal Lab deployed commit mismatch");
+  const exactBindings = {
+    runtimeDigest: computeInternalLabRuntimeDigest(input.deploymentIdentity.runtime),
+    cycleIGateDigest: input.runtimeIdentity.reportDigest,
+    tenantDigest: input.expectedTenantDigest,
+    channelDigest: input.expectedChannelDigest,
+    configDigest: input.expectedConfigDigest,
+  } as const;
+  for (const [field, expected] of Object.entries(exactBindings)) {
+    if (claims[field as keyof typeof exactBindings] !== expected) {
+      throw new Error(`Internal Lab deployed approval ${field} mismatch`);
+    }
+  }
+  const approval = Object.freeze({ claims: freezeClaims(claims), signature }) as RegisteredInternalLabApproval;
+  approvals.add(approval);
+  approvalDeploymentBindings.set(approval, Object.freeze({
+    runtimeIdentity: input.runtimeIdentity,
+    deploymentIdentity: input.deploymentIdentity,
+  }));
+  return approval;
+}
+
 export function isRegisteredInternalLabApproval(
   approval: unknown,
   expected: {
@@ -392,11 +472,14 @@ export function isRegisteredInternalLabApproval(
   ) return false;
 
   const buildBinding = approvalBuildBindings.get(approval);
-  if (
-    !buildBinding
-    || buildBinding.runtimeIdentity !== expected.runtimeIdentity
-    || !isRegisteredCycleIBuildAttestation(buildBinding.buildAttestation)
-  ) return false;
+  const deploymentBinding = approvalDeploymentBindings.get(approval);
+  const validLocalBuild = !!buildBinding
+    && buildBinding.runtimeIdentity === expected.runtimeIdentity
+    && isRegisteredCycleIBuildAttestation(buildBinding.buildAttestation);
+  const validDeployment = !!deploymentBinding
+    && deploymentBinding.runtimeIdentity === expected.runtimeIdentity
+    && isRegisteredInternalLabDeploymentIdentity(deploymentBinding.deploymentIdentity);
+  if (!validLocalBuild && !validDeployment) return false;
 
   const registered = approval as RegisteredInternalLabApproval;
   if (

@@ -8,7 +8,17 @@ export type ConfiguredInternalLabAuthority = Readonly<{
   verifyCanonicalPayload(payload: Uint8Array, signature: Uint8Array): boolean;
 }>;
 
+export type ConfiguredInternalLabDeploymentIdentity = Readonly<{
+  commit: string;
+  runtime: Readonly<{
+    nodeVersion: string;
+    platform: NodeJS.Platform;
+    arch: string;
+  }>;
+}>;
+
 const configuredAuthorities = new WeakSet<object>();
+const configuredDeploymentIdentities = new WeakSet<object>();
 type ConfiguredInternalLabBindings = Readonly<{
   serializedApproval: string | null;
   tenantDigest: string;
@@ -165,4 +175,33 @@ export function isRegisteredConfiguredInternalLabAuthority(
   return typeof authority === "object"
     && authority !== null
     && configuredAuthorities.has(authority);
+}
+
+export function loadConfiguredInternalLabDeploymentIdentity(): ConfiguredInternalLabDeploymentIdentity {
+  const vercelCommit = process.env.VERCEL_GIT_COMMIT_SHA;
+  const legacyCommit = process.env.GIT_COMMIT_SHA;
+  if (vercelCommit && legacyCommit && vercelCommit !== legacyCommit) {
+    throw new Error("Internal Lab deployment commit configuration conflicts");
+  }
+  if (typeof vercelCommit !== "string" || !/^[a-f0-9]{40,64}$/.test(vercelCommit)) {
+    throw new Error("Internal Lab exact Vercel deployment commit is not configured");
+  }
+  const identity = Object.freeze({
+    commit: vercelCommit,
+    runtime: Object.freeze({
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+    }),
+  }) satisfies ConfiguredInternalLabDeploymentIdentity;
+  configuredDeploymentIdentities.add(identity);
+  return identity;
+}
+
+export function isRegisteredInternalLabDeploymentIdentity(
+  identity: unknown,
+): identity is ConfiguredInternalLabDeploymentIdentity {
+  return typeof identity === "object"
+    && identity !== null
+    && configuredDeploymentIdentities.has(identity);
 }
