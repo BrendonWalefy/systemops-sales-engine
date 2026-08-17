@@ -82,11 +82,13 @@ function createEvaluator(input: {
         });
       }
       let understandingRequest: ShadowEvaluation["understandingRequest"] = null;
+      let providerCalled = false;
       const startedAt = Date.now();
       const runner = new V2ShadowRunner({
         hmacKey: input.hmacKey,
         style,
         understand: async (captured) => {
+          providerCalled = true;
           const understanding = await provider.understand({
             leadMessage: captured.leadMessage,
             history: captured.history,
@@ -107,14 +109,16 @@ function createEvaluator(input: {
       return Object.freeze({
         result,
         understandingRequest,
-        model: Object.freeze({
-          modelId: input.modelId,
-          calls: 1,
-          inputTokens: null,
-          outputTokens: null,
-          latencyMs: Math.max(0, Date.now() - startedAt),
-          estimatedCostMinor: null,
-        }),
+        model: providerCalled
+          ? Object.freeze({
+              modelId: input.modelId,
+              calls: 1,
+              inputTokens: null,
+              outputTokens: null,
+              latencyMs: Math.max(0, Date.now() - startedAt),
+              estimatedCostMinor: null,
+            })
+          : null,
       });
     },
   });

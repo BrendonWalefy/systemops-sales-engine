@@ -18,6 +18,7 @@ function live(overrides: Record<string, unknown> = {}) {
     configDigest: ref("3"), datasetDigest: null,
     v1: { status: "observed", understandingRequest: "price-of-service", capabilityIds: ["dental-catalog"], decisionKinds: ["answer"], outcomeTypes: ["catalog_answered"], semanticClasses: ["information_authorized"], finalTextCharacters: 12, finalTextDigest: ref("4"), fallbackSource: null, errorCode: null, model: { modelId: "gpt-5.4-mini", calls: 1, inputTokens: 4, outputTokens: 2, latencyMs: 11, estimatedCostMinor: 1 } },
     v2: { status: "simulation_not_executed", understandingRequest: "book-appointment", capabilityIds: ["dental-scheduling"], decisionKinds: ["execute"], outcomeTypes: [], semanticClasses: [], finalTextCharacters: null, finalTextDigest: null, fallbackSource: null, errorCode: null, model: null },
+    comparisonStatus: "comparable", comparisonReason: null,
     intendedEffects: [], divergenceCodes: [], ...overrides,
   };
 }
@@ -56,6 +57,37 @@ describe("Cycle I comparison records", () => {
   it("derives keyed references deterministically without sharing keys", () => {
     expect(keyedRef("turn", "one")).toBe(keyedRef("turn", "one"));
     expect(keyedRef("turn", "one")).not.toBe(keyedRef("turn", "two"));
+  });
+
+  it("keeps an arm without final response authority explicitly unobserved and closes divergence", () => {
+    const unavailableV1 = {
+      status: "unavailable",
+      understandingRequest: null,
+      capabilityIds: [],
+      decisionKinds: [],
+      outcomeTypes: [],
+      semanticClasses: [],
+      finalTextCharacters: null,
+      finalTextDigest: null,
+      fallbackSource: null,
+      errorCode: "final_response_unavailable",
+      model: null,
+    };
+    const parsed = parseLiveComparisonRecord(live({
+      v1: unavailableV1,
+      comparisonStatus: "not_measurable",
+      comparisonReason: "v1_final_response_unavailable",
+    }), new Set(["gpt-5.4-mini"]));
+
+    expect(parsed.v1).toEqual(unavailableV1);
+    expect(parsed.comparisonStatus).toBe("not_measurable");
+    expect(parsed.divergenceCodes).toEqual([]);
+    expect(() => parseLiveComparisonRecord(live({
+      v1: unavailableV1,
+      comparisonStatus: "not_measurable",
+      comparisonReason: "v1_final_response_unavailable",
+      divergenceCodes: ["outcome_mismatch"],
+    }), new Set(["gpt-5.4-mini"]))).toThrow(/divergence|measurable/i);
   });
 
   it("only permits evaluation text from an approved corpus or signed replay", () => {

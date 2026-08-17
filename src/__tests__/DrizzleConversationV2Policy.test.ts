@@ -42,8 +42,10 @@ function liveRecord(overrides: Record<string, unknown> = {}) {
     commit: "e86201ad",
     configDigest: ref("3"),
     datasetDigest: null,
-    v1: { ...emptyEngine, status: "observed", errorCode: null },
+    v1: { ...emptyEngine, status: "unavailable", errorCode: "final_response_unavailable" },
     v2: emptyEngine,
+    comparisonStatus: "not_measurable",
+    comparisonReason: "v1_final_response_unavailable",
     intendedEffects: [],
     divergenceCodes: [],
     ...overrides,
@@ -179,8 +181,8 @@ describe("Cycle I Drizzle engine policy and sanitized comparison persistence", (
     const record = liveRecord();
     const attackerRecord = {
       ...record,
-      v1: {
-        ...record.v1,
+      v2: {
+        ...record.v2,
         model: {
           modelId: "attacker-model", calls: 1, inputTokens: null,
           outputTokens: null, latencyMs: 1, estimatedCostMinor: null,

@@ -254,8 +254,8 @@ const emptyEngineSummary = Object.freeze({
 function v1Summary(): EngineStructuralSummary {
   return {
     ...emptyEngineSummary,
-    status: "observed",
-    errorCode: null,
+    status: "unavailable",
+    errorCode: "final_response_unavailable",
   };
 }
 
@@ -340,6 +340,8 @@ function buildRecord(input: {
     datasetDigest: input.datasetDigest,
     v1: v1Summary(),
     v2: v2Summary(input.evaluation, input.hmacKey),
+    comparisonStatus: "not_measurable",
+    comparisonReason: "v1_final_response_unavailable",
     intendedEffects,
     divergenceCodes: [],
   }, input.allowedModelIds);

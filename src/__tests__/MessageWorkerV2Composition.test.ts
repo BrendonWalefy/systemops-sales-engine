@@ -109,6 +109,45 @@ describe("Cycle I message worker composition", () => {
     });
   });
 
+  it.each([
+    ["duplicate", {
+      gateInput: { status: "captured", value: { automationEnabled: true, duplicate: true, humanControlled: false, optedOut: false } },
+      catalog: { status: "captured", value: [] },
+    }],
+    ["shared read unavailable", {
+      gateInput: { status: "captured", value: { automationEnabled: true, duplicate: false, humanControlled: false, optedOut: false } },
+      catalog: { status: "unavailable", reason: "not_read_by_v1" },
+    }],
+  ] as const)("counts no model call when %s stops before the provider callback", async (_case, override) => {
+    const runtime = createConversationV2Runtime({
+      env: {
+        OPENAI_API_KEY: "configured-but-must-not-be-used",
+        CONVERSATION_V2_COMPARISON_HMAC_KEY: "x".repeat(32),
+        VERCEL_GIT_COMMIT_SHA: "e86201adb3b7eb6665629f5e73cbb5964acdc745",
+      },
+      collector: new V1ObservationCollector(),
+    });
+    const sink = runtime.createTurnObservationSink({
+      turnId: `turn-${_case}`,
+      clinicId: "clinic-a",
+      automationMode: "live",
+    });
+    for (const event of readyEvents(`turn-${_case}`)) sink.record(event);
+    const turn = runtime.drainCapturedTurns()[0]!;
+    if (turn.promotion.status !== "ready") throw new Error("expected ready turn");
+    const reads = {
+      ...turn.promotion.reads,
+      gateInput: override.gateInput,
+      catalog: override.catalog,
+    } as typeof turn.promotion.reads;
+
+    const result = await runtime.evaluator.evaluate(reads, new AbortController().signal);
+
+    expect(result.model).toBeNull();
+    expect(result.understandingRequest).toBeNull();
+    expect(result.result).toMatchObject({ status: "unsupported" });
+  });
+
   it("keeps route composition thin, post-sender, and independent from legacy shadowModeEnabled", () => {
     const source = readFileSync("src/app/api/cron/message-worker/route.ts", "utf8");
     expect(source).toContain("createConversationV2Runtime");

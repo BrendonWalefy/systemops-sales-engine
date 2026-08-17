@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
@@ -39,25 +39,57 @@ function moduleSpecifiers(file: string): string[] {
   return imports;
 }
 
+function resolveLocalModule(from: string, specifier: string): string | null {
+  const base = specifier.startsWith("@/")
+    ? join("src", specifier.slice(2))
+    : specifier.startsWith(".")
+      ? resolve(dirname(from), specifier)
+      : null;
+  if (!base) return null;
+  for (const candidate of [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts")]) {
+    if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+  }
+  return null;
+}
+
+function transitiveLocalFiles(entries: readonly string[]): readonly string[] {
+  const pending = [...entries];
+  const visited = new Set<string>();
+  while (pending.length > 0) {
+    const file = pending.shift()!;
+    if (visited.has(file)) continue;
+    visited.add(file);
+    for (const specifier of moduleSpecifiers(file)) {
+      const dependency = resolveLocalModule(file, specifier);
+      if (dependency && !visited.has(dependency)) pending.push(dependency);
+    }
+  }
+  return [...visited];
+}
+
 describe("Cycle I final runtime boundaries", () => {
   it("mantém o core V2 sem V1, Domain Pack, provider, DB, calendário, config ou comparação", () => {
-    const forbidden = /(?:^|\/)(?:core|domain-packs|infrastructure|providers|repositories)(?:\/|$)|application\/conversation-v2|application\/config|(?:^|\/)comparison(?:\/|$)|^(?:openai|@anthropic-ai\/sdk|drizzle-orm|postgres)(?:\/|$)|calendar/i;
-    const offenders = sourceFiles("src/conversation-core").flatMap((file) =>
-      moduleSpecifiers(file)
-        .filter((specifier) => specifier === "<dynamic-nonliteral>" || forbidden.test(specifier))
-        .map((specifier) => `${file} -> ${specifier}`),
-    );
+    const roots = sourceFiles("src/conversation-core");
+    const forbiddenPath = /(?:^|\/)(?:src\/core|src\/domain-packs|src\/infrastructure|src\/application\/conversation-v2|src\/application\/config)(?:\/|$)|calendar|comparison/i;
+    const graph = transitiveLocalFiles(roots);
+    const offenders = graph.filter((file) => !roots.includes(file) && forbiddenPath.test(file));
+    const forbiddenPackages = /^(?:openai|@anthropic-ai\/sdk|drizzle-orm|postgres)(?:\/|$)/;
+    offenders.push(...graph.flatMap((file) => moduleSpecifiers(file)
+      .filter((specifier) => specifier === "<dynamic-nonliteral>" || forbiddenPackages.test(specifier))
+      .map((specifier) => `${file} -> ${specifier}`)));
 
     expect(offenders).toEqual([]);
   });
 
   it("mantém o Dental Pack declarativo e independente de OpenAI/provider", () => {
     const provider = /^(?:openai|@anthropic-ai\/sdk|@google\/generative-ai)(?:\/|$)|(?:^|\/)(?:providers|infrastructure|application)(?:\/|$)/;
-    const offenders = sourceFiles("src/domain-packs/dental").flatMap((file) =>
-      moduleSpecifiers(file)
-        .filter((specifier) => specifier === "<dynamic-nonliteral>" || provider.test(specifier))
-        .map((specifier) => `${file} -> ${specifier}`),
-    );
+    const roots = sourceFiles("src/domain-packs/dental");
+    const graph = transitiveLocalFiles(roots);
+    const offenders = graph
+      .filter((file) => !roots.includes(file) && /src\/(?:infrastructure|application)\//.test(file));
+    offenders.push(...graph.flatMap((file) => moduleSpecifiers(file)
+      .filter((specifier) => specifier === "<dynamic-nonliteral>" || provider.test(specifier))
+      .map((specifier) => `${file} -> ${specifier}`)));
 
     expect(offenders).toEqual([]);
   });
@@ -71,11 +103,11 @@ describe("Cycle I final runtime boundaries", () => {
       "src/application/conversation-v2/productive-understanding-arms.ts",
     ];
     const forbidden = /(?:^|\/)(?:db|repositories|calendar|channels)(?:\/|$)|BookingService|outbox/i;
-    const offenders = runnerFiles.flatMap((file) =>
-      moduleSpecifiers(file)
-        .filter((specifier) => specifier === "<dynamic-nonliteral>" || forbidden.test(specifier))
-        .map((specifier) => `${file} -> ${specifier}`),
-    );
+    const graph = transitiveLocalFiles(runnerFiles);
+    const offenders = graph.filter((file) => forbidden.test(file));
+    offenders.push(...graph.flatMap((file) => moduleSpecifiers(file)
+      .filter((specifier) => specifier === "<dynamic-nonliteral>" || forbidden.test(specifier))
+      .map((specifier) => `${file} -> ${specifier}`)));
 
     expect(offenders).toEqual([]);
   });

@@ -343,7 +343,7 @@ describe("Cycle I post-sender shadow batch", () => {
     expect(JSON.stringify(persisted)).not.toContain("turn-secret");
   });
 
-  it("does not mislabel greeting or multi-compose V1 plans as the final outbound text", async () => {
+  it("does not mark a V1 arm observed or derive divergence without final outbound authority", async () => {
     const turn = capturedTurn({
       turnId: "turn-multi-compose",
       clinicId: "clinic-a",
@@ -358,14 +358,40 @@ describe("Cycle I post-sender shadow batch", () => {
         ...recordConfig,
         allowedModelIds: ["deterministic-fallback", "gpt-4o-mini"],
       },
+      evaluator: {
+        evaluate: vi.fn(async () => ({
+          result: {
+            status: "evaluated" as const,
+            actionResults: [{
+              type: "escalation_required" as const,
+              semanticClass: "human_action_required" as const,
+              origin: { capabilityId: "dental-escalation" },
+              subject: null,
+              evidence: [],
+              facts: [],
+            }],
+            response: { text: "É necessário atendimento humano.", parts: [] },
+          },
+          understandingRequest: "price-of-service" as const,
+          model: null,
+        })),
+      },
     });
 
     await expect(runRegisteredBatch({ turns: [turn], ...input })).resolves.toMatchObject({ persisted: 1 });
-    expect(input.sink.append.mock.calls[0]![0].record.v1).toMatchObject({
-      status: "observed",
+    const record = input.sink.append.mock.calls[0]![0].record;
+    expect(record.v1).toMatchObject({
+      status: "unavailable",
       finalTextCharacters: null,
       finalTextDigest: null,
       model: null,
+      errorCode: "final_response_unavailable",
+    });
+    expect(record.v2).toMatchObject({ status: "observed", outcomeTypes: ["escalation_required"] });
+    expect(record).toMatchObject({
+      comparisonStatus: "not_measurable",
+      comparisonReason: "v1_final_response_unavailable",
+      divergenceCodes: [],
     });
   });
 

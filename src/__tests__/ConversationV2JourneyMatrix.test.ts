@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { parseCapturedV2TurnReads } from "@/application/conversation-v2/captured-turn-reads";
+import {
+  buildCapturedV2TurnReads,
+  V1ObservationCollector,
+} from "@/application/conversation-v2/v1-observation-collector";
 import { V2ShadowRunner } from "@/application/conversation-v2/v2-shadow-runner";
 import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
@@ -41,21 +45,40 @@ const gateInput = {
   optedOut: false,
 };
 
-const supportedMatrix = [
-  { journey: "price", mode: "happy" },
-  { journey: "availability", mode: "happy" },
-  { journey: "booking_intent", mode: "boundary" },
-  { journey: "write_failure", mode: "failure" },
-  { journey: "escalation", mode: "recovery" },
-  { journey: "multi_intent", mode: "adversarial" },
+const journeyModeMatrix = [
+  { journey: "price", mode: "happy", disposition: "supported", evidence: "price-runtime" },
+  { journey: "price", mode: "boundary", disposition: "supported", evidence: "missing-capture-runtime" },
+  { journey: "price", mode: "failure", disposition: "not_applicable", reason: "price has no write effect" },
+  { journey: "price", mode: "adversarial", disposition: "not_applicable", reason: "cross-subject behavior belongs to multi-intent" },
+  { journey: "price", mode: "recovery", disposition: "not_applicable", reason: "recovery behavior belongs to escalation" },
+  { journey: "availability", mode: "happy", disposition: "unsupported/deferred", evidence: "v1-promotion-runtime", reason: "V1 slot-search key is not losslessly representable by V2" },
+  { journey: "availability", mode: "boundary", disposition: "not_applicable", reason: "productive happy path already fails closed at shared-read boundary" },
+  { journey: "availability", mode: "failure", disposition: "not_applicable", reason: "no availability write is admitted in shadow" },
+  { journey: "availability", mode: "adversarial", disposition: "not_applicable", reason: "cross-subject behavior belongs to multi-intent" },
+  { journey: "availability", mode: "recovery", disposition: "not_applicable", reason: "no availability recovery capability is in scope" },
+  { journey: "booking_intent", mode: "happy", disposition: "not_applicable", reason: "shadow cannot execute a booking" },
+  { journey: "booking_intent", mode: "boundary", disposition: "supported", evidence: "write-interception-runtime" },
+  { journey: "booking_intent", mode: "failure", disposition: "not_applicable", reason: "write failure is an offline capability contract" },
+  { journey: "booking_intent", mode: "adversarial", disposition: "not_applicable", reason: "cross-subject behavior belongs to multi-intent" },
+  { journey: "booking_intent", mode: "recovery", disposition: "not_applicable", reason: "no booking recovery executes in shadow" },
+  { journey: "write_failure", mode: "happy", disposition: "not_applicable", reason: "success writes are prohibited in shadow" },
+  { journey: "write_failure", mode: "boundary", disposition: "not_applicable", reason: "write boundary is covered by booking intent" },
+  { journey: "write_failure", mode: "failure", disposition: "supported_offline", evidence: "capability-runtime" },
+  { journey: "write_failure", mode: "adversarial", disposition: "not_applicable", reason: "no cross-subject write is admitted" },
+  { journey: "write_failure", mode: "recovery", disposition: "not_applicable", reason: "failure remains failure; no recovery claim is authorized" },
+  { journey: "escalation", mode: "happy", disposition: "not_applicable", reason: "escalation is a recovery outcome" },
+  { journey: "escalation", mode: "boundary", disposition: "not_applicable", reason: "handoff completion is outside the core contract" },
+  { journey: "escalation", mode: "failure", disposition: "not_applicable", reason: "no handoff write exists in the Domain Pack" },
+  { journey: "escalation", mode: "adversarial", disposition: "not_applicable", reason: "cross-subject behavior belongs to multi-intent" },
+  { journey: "escalation", mode: "recovery", disposition: "supported", evidence: "escalation-runtime" },
+  { journey: "multi_intent", mode: "happy", disposition: "not_applicable", reason: "single-subject happy paths are covered separately" },
+  { journey: "multi_intent", mode: "boundary", disposition: "not_applicable", reason: "capture boundary is covered by price" },
+  { journey: "multi_intent", mode: "failure", disposition: "not_applicable", reason: "multi-intent test contains no write" },
+  { journey: "multi_intent", mode: "adversarial", disposition: "supported", evidence: "composer-runtime" },
+  { journey: "multi_intent", mode: "recovery", disposition: "not_applicable", reason: "no multi-intent recovery policy is defined" },
 ] as const;
 
-const deferredMatrix = [
-  { journey: "media", status: "unsupported/deferred" },
-  { journey: "objection", status: "unsupported/deferred" },
-  { journey: "discount", status: "unsupported/deferred" },
-  { journey: "follow_up", status: "unsupported/deferred" },
-] as const;
+const deferredRequests = ["media", "objection", "discount", "follow_up"] as const;
 
 function understanding(
   request: DentalRequest,
@@ -92,19 +115,83 @@ function capturedReads(overrides: Record<string, unknown> = {}) {
   });
 }
 
+function promotedAvailabilityReads() {
+  const turnId = "availability-real-v1-turn";
+  const collector = new V1ObservationCollector();
+  collector.record({
+    kind: "turn_input",
+    turnId,
+    now: "2026-08-16T12:00:00.000Z",
+    leadMessage: "Quero horários amanhã para limpeza",
+  });
+  for (const fact of [
+    ["automationEnabled", true, "job_automation"],
+    ["duplicate", false, "v1_dedupe"],
+    ["humanControlled", false, "v1_human_control"],
+    ["optedOut", false, "v1_opt_out"],
+  ] as const) {
+    collector.record({
+      kind: "turn_gate_fact",
+      turnId,
+      field: fact[0],
+      value: fact[1],
+      source: fact[2],
+    });
+  }
+  collector.record({
+    kind: "turn_context",
+    turnId,
+    phase: "active",
+    pendingStepId: null,
+    completedStepIds: { status: "captured", value: [] },
+    history: [],
+  });
+  collector.record({
+    kind: "tenant_snapshot",
+    turnId,
+    configFingerprint: "availability-config",
+    policy: { status: "captured", value: policy },
+    catalog: [{ id: "service-private", name: "Limpeza", priceCents: null, priceDisclosable: false }],
+  });
+  collector.record({
+    kind: "slot_search",
+    turnId,
+    query: {
+      service: "limpeza",
+      date: "amanhã",
+      period: null,
+      preferredTime: null,
+      minimumLeadTimeHours: 2,
+      now: "2026-08-16T12:00:00.000Z",
+      durationMinutes: 30,
+      windowStart: "2026-08-16T14:00:00.000Z",
+      windowEnd: "2026-08-30T14:00:00.000Z",
+      allowedStartWindows: null,
+    },
+    service: { id: "service-private", name: "Limpeza" },
+    slots: [{ id: "slot-private", label: "amanhã às 15h", evidenceRef: "calendar-snapshot" }],
+  });
+  collector.record({ kind: "turn_terminal", turnId, replied: true, reason: null });
+  const turn = collector.complete(turnId);
+  if (!turn) throw new Error("expected captured V1 availability turn");
+  return buildCapturedV2TurnReads({ turnId, sharedReads: turn.sharedReads });
+}
+
 describe("Cycle I supported journey matrix", () => {
-  it("declara todas as jornadas críticas e todas as classes de cenário", () => {
-    expect(supportedMatrix.map(({ journey }) => journey)).toEqual([
-      "price",
-      "availability",
-      "booking_intent",
-      "write_failure",
-      "escalation",
-      "multi_intent",
-    ]);
-    expect(new Set(supportedMatrix.map(({ mode }) => mode))).toEqual(
-      new Set(["happy", "boundary", "failure", "adversarial", "recovery"]),
-    );
+  it("declara explicitamente cada célula journey×mode como exercida ou não aplicável com motivo", () => {
+    const expectedCells = [
+      "price/happy", "price/boundary", "price/failure", "price/adversarial", "price/recovery",
+      "availability/happy", "availability/boundary", "availability/failure", "availability/adversarial", "availability/recovery",
+      "booking_intent/happy", "booking_intent/boundary", "booking_intent/failure", "booking_intent/adversarial", "booking_intent/recovery",
+      "write_failure/happy", "write_failure/boundary", "write_failure/failure", "write_failure/adversarial", "write_failure/recovery",
+      "escalation/happy", "escalation/boundary", "escalation/failure", "escalation/adversarial", "escalation/recovery",
+      "multi_intent/happy", "multi_intent/boundary", "multi_intent/failure", "multi_intent/adversarial", "multi_intent/recovery",
+    ];
+    expect(journeyModeMatrix.map(({ journey, mode }) => `${journey}/${mode}`)).toEqual(expectedCells);
+    expect(journeyModeMatrix.filter((cell) => cell.disposition === "not_applicable")
+      .every((cell) => "reason" in cell && cell.reason.length > 0)).toBe(true);
+    expect(journeyModeMatrix.filter((cell) => cell.disposition !== "not_applicable")
+      .every((cell) => "evidence" in cell && cell.evidence.endsWith("runtime"))).toBe(true);
   });
 
   it("price/happy verbaliza somente preço e subject capturados", async () => {
@@ -142,7 +229,11 @@ describe("Cycle I supported journey matrix", () => {
     expect(result.response.text).not.toContain("service-private");
   });
 
-  it("availability/happy oferece apenas os slots capturados", async () => {
+  it("availability/happy produtivo fica unsupported/deferred quando o slot search V1 não é lossless", async () => {
+    const promotion = promotedAvailabilityReads();
+    expect(promotion.status).toBe("ready");
+    if (promotion.status !== "ready") throw new Error("expected ready shared-read promotion");
+    expect(promotion.reads.slotSearches).toEqual([]);
     const runner = new V2ShadowRunner({
       understand: async () => understanding("book-appointment", {
         entities: { service: "limpeza", date: "amanhã" },
@@ -150,27 +241,10 @@ describe("Cycle I supported journey matrix", () => {
       hmacKey: "matrix-key",
       style,
     });
-    const result = await runner.run(capturedReads({
-      slotSearches: [{
-        input: {
-          service: "limpeza",
-          date: "amanhã",
-          period: null,
-          minimumLeadTimeHours: 2,
-          now: "2026-08-16T12:00:00.000Z",
-        },
-        result: {
-          service: { id: "service-private", name: "Limpeza" },
-          slots: [{ id: "slot-private", label: "amanhã às 15h", evidenceRef: "calendar-snapshot" }],
-        },
-      }],
-    }));
-
-    expect(result.status).toBe("evaluated");
-    if (result.status !== "evaluated") throw new Error("availability journey was not evaluated");
-    expect(result.actionResults.map(({ type }) => type)).toEqual(["slots_found"]);
-    expect(result.response.text).toContain("amanhã às 15h");
-    expect(result.response.text).not.toMatch(/service-private|slot-private|calendar-snapshot/);
+    await expect(runner.run(promotion.reads)).resolves.toEqual({
+      status: "unsupported",
+      reason: "shared_read_unavailable",
+    });
   });
 
   it("booking_intent/boundary para antes do write e registra só intenção HMAC", async () => {
@@ -348,7 +422,7 @@ describe("Cycle I supported journey matrix", () => {
 });
 
 describe("Cycle I deferred journey boundary", () => {
-  it("mantém capabilities fora do recorte explicitamente unsupported/deferred", () => {
+  it.each(deferredRequests)("mantém %s unsupported/deferred pelo Domain Pack e runner reais", async (request) => {
     const pack = createDentalPack({
       catalogRead: { resolveService: vi.fn() },
       schedulingRead: {
@@ -358,12 +432,20 @@ describe("Cycle I deferred journey boundary", () => {
       },
       schedulingWrite: { bookSlot: vi.fn(), confirmAppointment: vi.fn() },
     });
-    expect(deferredMatrix.every(({ status }) => status === "unsupported/deferred")).toBe(true);
     expect(pack.capabilities.map(({ id }) => id)).toEqual([
       "dental-catalog",
       "dental-scheduling",
       "dental-escalation",
     ]);
     expect(pack.journeys.map(({ id }) => id)).toEqual(["price", "availability", "scheduling"]);
+    const runner = new V2ShadowRunner({
+      understand: async () => understanding(request as DentalRequest),
+      hmacKey: "matrix-key",
+      style,
+    });
+    await expect(runner.run(capturedReads())).resolves.toEqual({
+      status: "unsupported",
+      reason: "unsupported_request",
+    });
   });
 });
