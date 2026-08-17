@@ -382,28 +382,25 @@ function closeAdmission(state: AdmissionState, occurredAt: number): void {
   if (state.admissionClosedAt === null) state.admissionClosedAt = occurredAt;
 }
 
+function malformedClockClosureAt(state: AdmissionState): number {
+  return state.lastClockSample >= state.deadlineAt
+    || monotonicElapsedMs(state) >= state.deadlineMs
+    ? state.deadlineAt
+    : state.lastClockSample;
+}
+
 function sampleRuntimeClock(state: AdmissionState): number | null {
   let sample: number;
   try {
     sample = state.now();
   } catch {
     state.clockStatus = "malformed";
-    closeAdmission(
-      state,
-      monotonicElapsedMs(state) >= state.deadlineMs
-        ? state.deadlineAt
-        : state.lastClockSample,
-    );
+    closeAdmission(state, malformedClockClosureAt(state));
     return null;
   }
   if (!Number.isFinite(sample) || sample < state.lastClockSample) {
     state.clockStatus = "malformed";
-    closeAdmission(
-      state,
-      monotonicElapsedMs(state) >= state.deadlineMs
-        ? state.deadlineAt
-        : state.lastClockSample,
-    );
+    closeAdmission(state, malformedClockClosureAt(state));
     return null;
   }
   state.lastClockSample = sample;

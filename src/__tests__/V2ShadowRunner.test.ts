@@ -67,6 +67,25 @@ describe("V2 shadow runner", () => {
     await expect(runner.run(reads())).resolves.toEqual({ status: "unsupported", reason: "shared_read_unavailable" });
   });
 
+  it("keeps an ordinary provider error as a result when an unrelated cancellation reason exists", async () => {
+    const cancellationReason = new Error("deadline cancellation");
+    const providerError = new TypeError("provider unavailable");
+    const controller = new AbortController();
+    const runner = new V2ShadowRunner({
+      understand: async () => {
+        controller.abort(cancellationReason);
+        throw providerError;
+      },
+      hmacKey: "test-key",
+      style,
+    });
+
+    await expect(runner.run(reads(), { signal: controller.signal })).resolves.toEqual({
+      status: "error",
+      errorName: "TypeError",
+    });
+  });
+
   it("não executa capability nem composer quando encontra um execute desconhecido", async () => {
     const execute = vi.fn();
     const capability: Capability<DentalRequest, DentalPolicy, DentalClaimPayload, typeof dentalPackModule.DENTAL_OUTCOME_SCHEMA> = {

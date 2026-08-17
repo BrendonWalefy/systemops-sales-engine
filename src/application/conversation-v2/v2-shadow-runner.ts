@@ -26,7 +26,10 @@ export class V2ShadowRunner {
     style: ComposerStyle;
   }) {}
 
-  async run(reads: CapturedV2TurnReads): Promise<V2ShadowResult> {
+  async run(
+    reads: CapturedV2TurnReads,
+    options: Readonly<{ signal?: AbortSignal }> = {},
+  ): Promise<V2ShadowResult> {
     if (reads.gateInput.status !== "captured") return { status: "unsupported", reason: "shared_read_unavailable" };
     try {
       const adapters = createDentalCapturedReadAdapters(reads);
@@ -58,6 +61,7 @@ export class V2ShadowRunner {
       if (completed.status !== "delivered") return { status: "unsupported", reason: "unsupported_request" };
       return { status: "evaluated", actionResults: completed.actionResults, response: completed.response };
     } catch (error) {
+      if (options.signal?.aborted && error === options.signal.reason) throw error;
       if (error instanceof CapturedReadUnavailableError) return { status: "unsupported", reason: "shared_read_unavailable" };
       return { status: "error", errorName: error instanceof Error ? error.name : "Error" };
     }

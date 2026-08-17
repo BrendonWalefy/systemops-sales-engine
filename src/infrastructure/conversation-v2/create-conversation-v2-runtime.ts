@@ -103,7 +103,7 @@ function createEvaluator(input: {
           return understanding;
         },
       });
-      const result = await runner.run(reads);
+      const result = await runner.run(reads, { signal });
       return Object.freeze({
         result,
         understandingRequest,

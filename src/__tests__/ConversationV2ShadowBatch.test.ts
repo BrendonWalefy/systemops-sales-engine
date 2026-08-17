@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { APIUserAbortError } from "openai";
 import {
   createShadowTurnCaptureRegistry,
   runAfterSenderDrainAttempt,
@@ -6,8 +7,11 @@ import {
   type ShadowBatchTurn,
 } from "@/application/conversation-v2/run-shadow-batch";
 import { V1ObservationCollector } from "@/application/conversation-v2/v1-observation-collector";
+import { V2ShadowRunner } from "@/application/conversation-v2/v2-shadow-runner";
 import type { ClinicAutomationMode } from "@/application/automation/clinic-automation-policy";
 import type { V1TurnObservationEvent } from "@/core/observability/V1TurnObservation";
+import { DentalUnderstandingProvider } from "@/infrastructure/adapters/ai/DentalUnderstandingProvider";
+import { OpenAIDentalUnderstandingModel } from "@/infrastructure/adapters/ai/OpenAIDentalUnderstandingModel";
 
 const recordConfig = {
   hmacKey: "cycle-i-test-key-with-at-least-32-characters",
@@ -766,6 +770,67 @@ describe("Cycle I post-sender shadow batch", () => {
     expect(summary.deadline.overrunMs).toBeGreaterThan(0);
   });
 
+  it("preserves the productive OpenAI cancellation acknowledgement through runner and batch", async () => {
+    const turn = capturedTurn({ turnId: "turn-productive-abort-ack", clinicId: "clinic-a", ready: true });
+    let providerAcknowledgedAbort = false;
+    const create = vi.fn((_request: unknown, options?: Readonly<{ signal?: AbortSignal }>) => (
+      new Promise<never>((_resolve, reject) => {
+        options?.signal?.addEventListener("abort", () => {
+          providerAcknowledgedAbort = true;
+          reject(new APIUserAbortError());
+        }, { once: true });
+      })
+    ));
+    const provider = new DentalUnderstandingProvider(
+      new OpenAIDentalUnderstandingModel({ chat: { completions: { create } } }, "gpt-test"),
+    );
+    const input = deps({
+      deadlineMs: 5,
+      now: () => Date.now(),
+      evaluator: {
+        evaluate: vi.fn(async (reads, signal: AbortSignal) => {
+          const runner = new V2ShadowRunner({
+            hmacKey: recordConfig.hmacKey,
+            style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
+            understand: async (captured) => provider.understand({
+              leadMessage: captured.leadMessage,
+              history: captured.history,
+              state: captured.state,
+              catalog: captured.catalog.status === "captured"
+                ? captured.catalog.value.map((service) => ({
+                    id: service.id,
+                    displayName: service.name,
+                    aliases: [],
+                  }))
+                : [],
+            }, { signal }),
+          });
+          const result = await runner.run(reads, { signal });
+          return { result, understandingRequest: null, model: null };
+        }),
+      },
+    });
+
+    const summary = await runRegisteredBatch({ turns: [turn], ...input });
+
+    expect(providerAcknowledgedAbort).toBe(true);
+    expect(summary).toMatchObject({
+      attempted: 1,
+      evaluationErrors: 1,
+      persisted: 0,
+      deadlineReached: true,
+      drain: {
+        admitted: 2,
+        settled: 2,
+        completed: 1,
+        failed: 1,
+        abortRequested: 1,
+        cooperativelyAborted: 1,
+        activeAtReturn: 0,
+      },
+    });
+  });
+
   it.each(["policy", "sink"] as const)(
     "does not return while an already-started %s dependency is unsettled",
     async (dependency) => {
@@ -915,6 +980,40 @@ describe("Cycle I post-sender shadow batch", () => {
         drain: { activeAtReturn: 0 },
       });
       expect(summary.deadline.overrunMs).toBeGreaterThanOrEqual(1);
+    },
+  );
+
+  it.each([
+    ["empty", "non-finite", Number.NaN],
+    ["empty", "backward", 5],
+    ["maxTurns-zero", "non-finite", Number.NaN],
+    ["maxTurns-zero", "backward", 5],
+  ] as const)(
+    "anchors deadline closure at T for a %s batch with a %s return clock",
+    async (batchKind, _clockKind, malformedSample) => {
+      const ticks = [0, 6, malformedSample];
+      const turns = batchKind === "empty"
+        ? []
+        : [capturedTurn({ turnId: `turn-${batchKind}-${_clockKind}`, clinicId: "clinic-a", ready: true })];
+      const input = deps({
+        deadlineMs: 5,
+        maxTurns: batchKind === "maxTurns-zero" ? 0 : 10,
+        now: () => ticks.shift() ?? malformedSample,
+      });
+
+      const summary = await runRegisteredBatch({ turns, ...input });
+
+      expect(summary.deadline).toMatchObject({
+        deadlineAt: 5,
+        admissionClosed: true,
+        admissionClosedAt: 5,
+        returnedAt: null,
+        overrun: true,
+        clockStatus: "malformed",
+      });
+      expect(summary.deadline.overrunMs).toBeGreaterThanOrEqual(1);
+      expect(summary.drain).toMatchObject({ admitted: 0, settled: 0, activeAtReturn: 0 });
+      expect(input.evaluator.evaluate).not.toHaveBeenCalled();
     },
   );
 
