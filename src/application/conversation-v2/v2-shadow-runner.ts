@@ -6,11 +6,17 @@ import type { ComposerStyle, CoreResponse } from "@/conversation-core/composer/c
 import type { ActionResult } from "@/conversation-core/decision";
 import { completeTurnPipeline, prepareTurnPipeline, type PreparedDecision } from "@/conversation-core/turn-pipeline";
 import type { Understanding } from "@/conversation-core/understanding/schema";
-import { createDentalPack, DENTAL_OUTCOME_SCHEMA, type DentalRequest } from "@/domain-packs/dental";
+import {
+  createDentalPack,
+  dentalDecisionProvenanceIdentity,
+  DENTAL_OUTCOME_SCHEMA,
+  type DentalExecuteDecisionIdentity,
+  type DentalRequest,
+} from "@/domain-packs/dental";
 
 export type V2ShadowResult =
   | Readonly<{ status: "evaluated"; decisions: readonly PreparedDecision[]; actionResults: readonly ActionResult<typeof DENTAL_OUTCOME_SCHEMA>[]; response: CoreResponse }>
-  | Readonly<{ status: "simulation_not_executed"; decisions: readonly PreparedDecision[]; intendedEffects: readonly IntendedEffect[] }>
+  | Readonly<{ status: "simulation_not_executed"; executeDecisions: readonly DentalExecuteDecisionIdentity[]; intendedEffects: readonly IntendedEffect[] }>
   | Readonly<{ status: "unsupported"; reason: "unknown_effect" | "shared_read_unavailable" | "unsupported_request" }>
   | Readonly<{ status: "error"; errorName: string }>;
 
@@ -44,14 +50,24 @@ export class V2ShadowRunner {
       });
       if (preparation.status !== "prepared") return { status: "unsupported", reason: "unsupported_request" };
       const intendedEffects: IntendedEffect[] = [];
+      const executeDecisions: DentalExecuteDecisionIdentity[] = [];
       for (const prepared of preparation.prepared.decisions) {
         if (prepared.decision.kind !== "execute") continue;
+        const identity = dentalDecisionProvenanceIdentity(prepared);
+        if (!identity || identity.decisionKind !== "execute") {
+          return { status: "unsupported", reason: "unknown_effect" };
+        }
         const intended = recordDentalIntendedEffect({ capabilityId: prepared.capabilityId, decision: prepared.decision, hmacKey: this.deps.hmacKey });
         if (!intended) return { status: "unsupported", reason: "unknown_effect" };
+        executeDecisions.push(identity);
         intendedEffects.push(intended);
       }
       if (intendedEffects.length > 0) {
-        return { status: "simulation_not_executed", decisions: preparation.prepared.decisions, intendedEffects: Object.freeze(intendedEffects) };
+        return {
+          status: "simulation_not_executed",
+          executeDecisions: Object.freeze(executeDecisions),
+          intendedEffects: Object.freeze(intendedEffects),
+        };
       }
       const completed = await completeTurnPipeline({
         prepared: preparation.prepared,

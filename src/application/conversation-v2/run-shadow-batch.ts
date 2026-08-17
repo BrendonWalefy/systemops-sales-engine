@@ -35,7 +35,11 @@ import {
 } from "@/application/conversation-v2/v1-observation-collector";
 import type { V2ShadowResult } from "@/application/conversation-v2/v2-shadow-runner";
 import type { CapturedV2TurnReads } from "@/application/conversation-v2/captured-turn-reads";
-import type { DentalRequest } from "@/domain-packs/dental";
+import {
+  dentalOutcomeStructuralSummary,
+  type DentalExecuteDecisionIdentity,
+  type DentalRequest,
+} from "@/domain-packs/dental";
 
 export type SenderDrainAttempted = Readonly<{
   outcome: "completed" | "failed_handled";
@@ -262,6 +266,14 @@ function comparisonCapabilityId(value: string): ComparisonCapabilityId {
   throw new Error("unknown comparison capability identity");
 }
 
+function nonEmptyExecuteDecisions(
+  decisions: readonly DentalExecuteDecisionIdentity[],
+): readonly [DentalExecuteDecisionIdentity, ...DentalExecuteDecisionIdentity[]] {
+  const [first, ...remaining] = decisions;
+  if (!first) throw new Error("simulation requires an execute decision identity");
+  return Object.freeze([first, ...remaining]);
+}
+
 function v1Summary(): V1EngineStructuralSummary {
   return {
     ...emptyEngineSummary,
@@ -287,31 +299,33 @@ function v2Summary(
     return { ...base, status: "unsupported", errorCode: result.reason };
   }
   if (result.status === "simulation_not_executed") {
-    const executeDecisions = result.decisions.filter(
-      ({ decision }) => decision.kind === "execute",
-    );
+    const executeDecisions = nonEmptyExecuteDecisions(result.executeDecisions);
     return {
       ...base,
       status: "simulation_not_executed",
       capabilityIds: executeDecisions.map(({ capabilityId }) => comparisonCapabilityId(capabilityId)),
       decisionKinds: executeDecisions.map(() => "execute" as const),
+      executeDecisions,
       errorCode: null,
     };
+  }
+  if (result.decisions.length !== result.actionResults.length) {
+    throw new Error("prepared decision and action result count mismatch");
   }
   return {
     ...base,
     status: "observed",
     capabilityIds: result.decisions.map(({ capabilityId }) => comparisonCapabilityId(capabilityId)),
     decisionKinds: result.decisions.map(({ decision }) => decision.kind),
-    outcomes: result.actionResults.map(({ origin, type, semanticClass }, index) => {
+    outcomes: result.actionResults.map((outcome, index) => {
       const decision = result.decisions[index];
       if (!decision) throw new Error("action result is missing its prepared decision identity");
-      return {
-        capabilityId: comparisonCapabilityId(origin.capabilityId),
-        decisionKind: decision.decision.kind,
-        type,
-        semanticClass,
-      };
+      const capabilityId = comparisonCapabilityId(decision.capabilityId);
+      return dentalOutcomeStructuralSummary({
+        capabilityId,
+        decision: decision.decision,
+        outcome,
+      });
     }),
     finalTextCharacters: result.response.text.length,
     finalTextDigest: keyedRef(result.response.text, hmacKey),

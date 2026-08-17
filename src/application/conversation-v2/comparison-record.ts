@@ -1,12 +1,15 @@
 import { createHmac } from "node:crypto";
 import { isProxy } from "node:util/types";
 import { z } from "zod";
-import type { Decision, OutcomeSemanticClass } from "@/conversation-core/decision";
+import type { Decision } from "@/conversation-core/decision";
 import type { IntendedEffect } from "@/application/conversation-v2/dental-intended-effects";
 import {
-  DENTAL_OUTCOME_SCHEMA,
-  type DentalOutcomeType,
-} from "@/domain-packs/dental/capabilities";
+  isDentalExecuteDecisionIdentity,
+  isDentalOutcomeStructuralSummary,
+  type DentalCapabilityId,
+  type DentalExecuteDecisionIdentity,
+  type DentalOutcomeStructuralSummary,
+} from "@/domain-packs/dental/outcome-provenance";
 import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
 
 export const LIVE_COMPARISON_VERSION = "conversation-v2-live-comparison.v2" as const;
@@ -14,19 +17,14 @@ export const APPROVED_EVAL_VERSION = "conversation-v2-approved-eval.v1" as const
 
 export type HmacRef = `hmac:${string}`;
 export type ModelCallSummary = Readonly<{ modelId: string; calls: number; inputTokens: number | null; outputTokens: number | null; latencyMs: number; estimatedCostMinor: number | null }>;
-export type ComparisonCapabilityId = "dental-catalog" | "dental-scheduling" | "dental-escalation";
-export type OutcomeStructuralSummary = Readonly<{
-  capabilityId: ComparisonCapabilityId;
-  decisionKind: Decision["kind"];
-  type: DentalOutcomeType;
-  semanticClass: OutcomeSemanticClass;
-}>;
+export type ComparisonCapabilityId = DentalCapabilityId;
+export type OutcomeStructuralSummary = DentalOutcomeStructuralSummary;
 type ObservedEngineSummary = Readonly<{ status: "observed"; understandingRequest: DentalRequest | null; capabilityIds: readonly ComparisonCapabilityId[]; decisionKinds: readonly Decision["kind"][]; outcomes: readonly OutcomeStructuralSummary[]; finalTextCharacters: number; finalTextDigest: HmacRef; fallbackSource: "draft" | "repair" | "fallback" | null; errorCode: null; model: ModelCallSummary | null }>;
 type UnavailableV1EngineSummary = Readonly<{ status: "unavailable"; understandingRequest: null; capabilityIds: readonly never[]; decisionKinds: readonly never[]; outcomes: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: "final_response_unavailable"; model: null }>;
 type UnsupportedV2EngineSummary = Readonly<{ status: "unsupported"; understandingRequest: DentalRequest | null; capabilityIds: readonly never[]; decisionKinds: readonly never[]; outcomes: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: "shared_read_unavailable" | "unknown_effect" | "unsupported_request"; model: ModelCallSummary | null }>;
 type ErrorV2EngineSummary = Readonly<{ status: "error"; understandingRequest: DentalRequest | null; capabilityIds: readonly never[]; decisionKinds: readonly never[]; outcomes: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: "provider_error"; model: ModelCallSummary | null }>;
 type NoSafeResponseV2EngineSummary = Readonly<{ status: "no_safe_response"; understandingRequest: DentalRequest | null; capabilityIds: readonly ComparisonCapabilityId[]; decisionKinds: readonly Decision["kind"][]; outcomes: readonly OutcomeStructuralSummary[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: "draft" | "repair" | "fallback" | null; errorCode: null; model: ModelCallSummary | null }>;
-type SimulationV2EngineSummary = Readonly<{ status: "simulation_not_executed"; understandingRequest: DentalRequest | null; capabilityIds: readonly ComparisonCapabilityId[]; decisionKinds: readonly "execute"[]; outcomes: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: null; model: ModelCallSummary | null }>;
+type SimulationV2EngineSummary = Readonly<{ status: "simulation_not_executed"; understandingRequest: DentalRequest | null; capabilityIds: readonly ComparisonCapabilityId[]; decisionKinds: readonly "execute"[]; executeDecisions: readonly [DentalExecuteDecisionIdentity, ...DentalExecuteDecisionIdentity[]]; outcomes: readonly never[]; finalTextCharacters: null; finalTextDigest: null; fallbackSource: null; errorCode: null; model: ModelCallSummary | null }>;
 export type V1EngineStructuralSummary = ObservedEngineSummary | UnavailableV1EngineSummary;
 export type V2EngineStructuralSummary = ObservedEngineSummary | UnsupportedV2EngineSummary | ErrorV2EngineSummary | NoSafeResponseV2EngineSummary | SimulationV2EngineSummary;
 export type EngineStructuralSummary = V1EngineStructuralSummary | V2EngineStructuralSummary;
@@ -56,28 +54,16 @@ const nullableNonNegativeInteger = nonNegativeInteger.nullable();
 const requests = ["price-of-service", "service-availability", "book-appointment", "confirm-slot", "confirm-appointment"] as const;
 const capabilityIds = ["dental-catalog", "dental-scheduling", "dental-escalation"] as const;
 const decisionKinds = ["answer", "ask", "offer", "execute", "escalate", "close", "suppress"] as const;
-const outcomeTypes = ["catalog_answered", "slots_found", "appointment_created", "appointment_confirmed", "appointment_create_failed", "appointment_confirmation_failed", "scheduling_failed", "escalation_required", "clarification_required"] as const;
-const semanticClasses = ["information_authorized", "options_found", "effect_completed", "effect_failed", "human_action_required", "clarification_required"] as const;
 
 const modelSchema = z.object({ modelId: z.string().min(1).max(128), calls: z.number().int().min(1), inputTokens: nullableNonNegativeInteger, outputTokens: nullableNonNegativeInteger, latencyMs: nonNegativeInteger, estimatedCostMinor: nullableNonNegativeInteger }).strict();
 const emptyArray = z.array(z.never()).length(0);
 const requestSchema = z.enum(requests).nullable();
 const capabilityIdArray = z.array(z.enum(capabilityIds));
 const decisionKindArray = z.array(z.enum(decisionKinds));
-const outcomeSummarySchema = z.object({
-  capabilityId: z.enum(capabilityIds),
-  decisionKind: z.enum(decisionKinds),
-  type: z.enum(outcomeTypes),
-  semanticClass: z.enum(semanticClasses),
-}).strict().superRefine((outcome, context) => {
-  if (DENTAL_OUTCOME_SCHEMA[outcome.type].semanticClass !== outcome.semanticClass) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["semanticClass"],
-      message: "outcome semantic class does not match the canonical outcome schema",
-    });
-  }
-});
+const outcomeSummarySchema = z.custom<DentalOutcomeStructuralSummary>(
+  isDentalOutcomeStructuralSummary,
+  "invalid dental outcome provenance",
+);
 const outcomeSummaryArray = z.array(outcomeSummarySchema).min(1).superRefine((outcomes, context) => {
   const seen = new Set<string>();
   for (const [index, outcome] of outcomes.entries()) {
@@ -130,6 +116,10 @@ const noSafeResponseV2EngineSchema = z.object({
 const simulationV2EngineSchema = z.object({
   status: z.literal("simulation_not_executed"), understandingRequest: requestSchema,
   capabilityIds: capabilityIdArray.min(1), decisionKinds: z.array(z.literal("execute")).min(1),
+  executeDecisions: z.array(z.custom<DentalExecuteDecisionIdentity>(
+    isDentalExecuteDecisionIdentity,
+    "invalid dental execute decision provenance",
+  )).min(1),
   outcomes: emptyArray,
   finalTextCharacters: z.null(), finalTextDigest: z.null(), fallbackSource: z.null(),
   errorCode: z.null(), model: modelSchema.nullable(),
@@ -188,14 +178,23 @@ const liveSchema = z.discriminatedUnion("comparisonStatus", [
     }
   }
   if (record.v2.status === "simulation_not_executed") {
+    const simulation = record.v2;
     if (
       record.intendedEffects.length === 0
-      || record.intendedEffects.length !== record.v2.capabilityIds.length
-      || record.v2.decisionKinds.length !== record.v2.capabilityIds.length
+      || record.intendedEffects.length !== simulation.capabilityIds.length
+      || simulation.decisionKinds.length !== simulation.capabilityIds.length
+      || simulation.executeDecisions.length !== simulation.capabilityIds.length
       || record.intendedEffects.some(
-        (effect, index) => effect.capabilityId !== record.v2.capabilityIds[index],
+        (effect, index) => {
+          const decision = simulation.executeDecisions[index];
+          return effect.capabilityId !== simulation.capabilityIds[index]
+            || !decision
+            || decision.capabilityId !== simulation.capabilityIds[index]
+            || decision.decisionKind !== simulation.decisionKinds[index]
+            || effect.action !== decision.action;
+        },
       )
-      || new Set(record.v2.capabilityIds).size !== record.v2.capabilityIds.length
+      || new Set(simulation.capabilityIds).size !== simulation.capabilityIds.length
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -333,12 +332,26 @@ function requireNonEmptyEffects(
   return Object.freeze([first, ...remaining]);
 }
 
+function requireNonEmptyExecuteDecisions(
+  decisions: readonly DentalExecuteDecisionIdentity[],
+): readonly [DentalExecuteDecisionIdentity, ...DentalExecuteDecisionIdentity[]] {
+  const [first, ...remaining] = decisions;
+  if (!first) throw new Error("simulation requires an execute decision identity");
+  return Object.freeze([first, ...remaining]);
+}
+
 export function parseLiveComparisonRecord(input: unknown, allowedModelIds: ReadonlySet<string>): LiveComparisonRecord {
   assertExactLiveRecordKeys(input);
   const parsed = liveSchema.parse(snapshotPlainData(input, { nodes: 0 }));
   for (const engine of [parsed.v1, parsed.v2]) if (engine.model && !allowedModelIds.has(engine.model.modelId)) throw new Error(`model is absent from the frozen run allowlist: ${engine.model.modelId}`);
   const v2Relation: LiveV2Relation = parsed.v2.status === "simulation_not_executed"
-    ? { v2: parsed.v2, intendedEffects: requireNonEmptyEffects(parsed.intendedEffects) }
+    ? {
+        v2: {
+          ...parsed.v2,
+          executeDecisions: requireNonEmptyExecuteDecisions(parsed.v2.executeDecisions),
+        },
+        intendedEffects: requireNonEmptyEffects(parsed.intendedEffects),
+      }
     : { v2: parsed.v2, intendedEffects: Object.freeze([]) };
   if (parsed.comparisonStatus === "comparable") {
     return freeze({

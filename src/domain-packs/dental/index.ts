@@ -21,6 +21,18 @@ export type {
   DentalPolicy,
 } from "@/domain-packs/dental/capabilities";
 export { DENTAL_OUTCOME_SCHEMA } from "@/domain-packs/dental/capabilities";
+export {
+  DENTAL_OUTCOME_PROVENANCE,
+  dentalDecisionProvenanceIdentity,
+  dentalOutcomeStructuralSummary,
+  isDentalExecuteDecisionIdentity,
+  isDentalOutcomeStructuralSummary,
+  type DentalDecisionProvenanceIdentity,
+  type DentalCapabilityId,
+  type DentalExecuteAction,
+  type DentalExecuteDecisionIdentity,
+  type DentalOutcomeStructuralSummary,
+} from "@/domain-packs/dental/outcome-provenance";
 export type { DentalRequest } from "@/domain-packs/dental/vocabulary";
 
 export function createDentalPack(ports: {

@@ -98,10 +98,13 @@ O wire contract vigente é `conversation-v2-live-comparison.v2`, com uniões dis
 por `comparisonStatus` e status de cada braço. V2 nunca aceita `unavailable`; estados
 unsupported/error/simulation não podem carregar outcomes, classes ou FinalText incompatíveis.
 Outcomes observados/no-safe usam uma identidade única por resultado, ligando capability,
-Decision kind, OutcomeType concreto e semanticClass canônica; arrays estruturais redundantes têm
-mesma cardinalidade/ordem e duplicatas inválidas falham fechado. `intendedEffects` é não vazio e
-1:1 somente em `simulation_not_executed`, com Decision `execute` e mesmo owner; nos demais
-estados deve ser vazio.
+Decision kind, action concreta quando aplicável, OutcomeType concreto e semanticClass canônica.
+O Dental Pack mantém uma única tabela frozen de provenance; os tipos e o guard runtime são
+derivados dos mesmos literais e carregam também os requisitos canônicos de subject/evidence.
+O produtor pareia cada Decision preparada com o ActionResult concreto, incluindo owner; arrays
+estruturais redundantes têm mesma cardinalidade/ordem e duplicatas inválidas falham fechado.
+`intendedEffects` é não vazio e 1:1 somente em `simulation_not_executed`, cuja identidade tipada
+preserva capability, Decision `execute` e action concreta; nos demais estados deve ser vazio.
 Antes do Zod, a boundary cria uma cópia plain-data única a partir de descriptors e rejeita
 proxy, accessor, symbol ou protótipo não-plain sem executar getters; limites conservadores de
 depth, nodes, array e chaves impedem travessia adversarial sem limite. A `.v1` era protótipo
@@ -259,7 +262,14 @@ no escopo, será necessária boundary externa imutável/assinada de build ou CI.
   introduziu outcome identity estruturada e alinhada, fechou efeitos simulados, preservou a
   telemetria pós-provider, manteve `null` pré-provider, aplicou budgets antes da cópia, ampliou o
   denylist e usa relógio/timers controlados nos testes do admission scheduler.
-- A nova re-review independente da Task 7 ainda é posterior a este checkpoint. Até artifact
+- A re-review da terceira rodada encontrou um último Important: capability, Decision e Outcome
+  válidos isoladamente ainda podiam formar uma combinação impossível, e a simulação perdia a
+  identidade da action concreta. O finding foi confirmado. O RED teve 2/40 falhas runtime e 4
+  combinações compile-time aceitas; a ampliação adversarial cobriu action/outcome, owner forjado,
+  serialização e multi-owner. O GREEN introduziu a única fonte de provenance no Dental Pack,
+  fez a application boundary consumi-la e passou a rejeitar owner/action/decision/outcome
+  incompatíveis antes do sink. `conversation-core` não recebeu literal dental.
+- A re-review independente final da Task 7 ainda é posterior a este checkpoint. Até artifact
   content-bound e assinado existir, `adversarial_review` permanece corretamente `not_measurable`
   no gate report.
 
@@ -343,7 +353,8 @@ O teste agora preserva a prova de zero start em/depois de T e exige que `overrun
   a seam observacional V1 previamente revisados; a Task 7 não alterou esses diretórios.
 
 A primeira, a segunda e a terceira revisões independentes da Task 7 encontraram os gaps acima.
-A nova re-review da rodada 3 ocorre depois deste checkpoint. Os resultados locais não alteram
+A re-review da rodada 3 confirmou o último Important de provenance; a re-review final da correção
+ocorre depois deste checkpoint. Os resultados locais não alteram
 retroativamente o gate report
 unsigned nem fabricam observações V1×V2.
 

@@ -6,7 +6,33 @@ import {
   pairApprovedEvalRecords,
   parseApprovedEvalRecord,
   parseLiveComparisonRecord,
+  type OutcomeStructuralSummary,
 } from "@/application/conversation-v2/comparison-record";
+
+// @ts-expect-error dental-catalog/answer cannot produce appointment_created
+const invalidCatalogAppointment: OutcomeStructuralSummary = { capabilityId: "dental-catalog", decisionKind: "answer", type: "appointment_created", semanticClass: "effect_completed" };
+// @ts-expect-error dental-scheduling/offer cannot produce catalog_answered
+const invalidSchedulingCatalog: OutcomeStructuralSummary = { capabilityId: "dental-scheduling", decisionKind: "offer", type: "catalog_answered", semanticClass: "information_authorized" };
+// @ts-expect-error dental-escalation/escalate cannot produce slots_found
+const invalidEscalationSlots: OutcomeStructuralSummary = { capabilityId: "dental-escalation", decisionKind: "escalate", type: "slots_found", semanticClass: "options_found" };
+// @ts-expect-error dental-catalog/execute is not a productive provenance tuple
+const invalidCatalogExecute: OutcomeStructuralSummary = { capabilityId: "dental-catalog", decisionKind: "execute", type: "catalog_answered", semanticClass: "information_authorized" };
+// @ts-expect-error book_slot cannot produce appointment_confirmed
+const invalidBookConfirmed: OutcomeStructuralSummary = { capabilityId: "dental-scheduling", decisionKind: "execute", action: "book_slot", type: "appointment_confirmed", semanticClass: "effect_completed" };
+// @ts-expect-error confirm_appointment cannot produce appointment_created
+const invalidConfirmCreated: OutcomeStructuralSummary = { capabilityId: "dental-scheduling", decisionKind: "execute", action: "confirm_appointment", type: "appointment_created", semanticClass: "effect_completed" };
+const validBookCreated: OutcomeStructuralSummary = { capabilityId: "dental-scheduling", decisionKind: "execute", action: "book_slot", type: "appointment_created", semanticClass: "effect_completed" };
+const validConfirmFailed: OutcomeStructuralSummary = { capabilityId: "dental-scheduling", decisionKind: "execute", action: "confirm_appointment", type: "appointment_confirmation_failed", semanticClass: "effect_failed" };
+void [
+  invalidCatalogAppointment,
+  invalidSchedulingCatalog,
+  invalidEscalationSlots,
+  invalidCatalogExecute,
+  invalidBookConfirmed,
+  invalidConfirmCreated,
+  validBookCreated,
+  validConfirmFailed,
+];
 
 const ref = (value: string): `hmac:${string}` => `hmac:${"a".repeat(63)}${value}`;
 
@@ -143,6 +169,11 @@ describe("Cycle I comparison records", () => {
       status: "simulation_not_executed",
       capabilityIds: ["dental-scheduling"],
       decisionKinds: ["execute"],
+      executeDecisions: [{
+        capabilityId: "dental-scheduling",
+        decisionKind: "execute",
+        action: "book_slot",
+      }],
     }],
   ])("accepts only the exact valid V2 %s shape in both comparison modes", (_status, v2) => {
     const intendedEffects = v2.status === "simulation_not_executed" ? [intendedEffect] : [];
@@ -316,12 +347,68 @@ describe("Cycle I comparison records", () => {
     }
   });
 
+  it("rejects outcome tuples that are impossible for the concrete dental capability decision", () => {
+    for (const outcome of [
+      { capabilityId: "dental-catalog", decisionKind: "answer", type: "appointment_created", semanticClass: "effect_completed" },
+      { capabilityId: "dental-scheduling", decisionKind: "offer", type: "catalog_answered", semanticClass: "information_authorized" },
+      { capabilityId: "dental-escalation", decisionKind: "escalate", type: "slots_found", semanticClass: "options_found" },
+      { capabilityId: "dental-catalog", decisionKind: "execute", type: "catalog_answered", semanticClass: "information_authorized" },
+      { capabilityId: "dental-scheduling", decisionKind: "execute", action: "book_slot", type: "appointment_confirmed", semanticClass: "effect_completed" },
+      { capabilityId: "dental-scheduling", decisionKind: "execute", action: "confirm_appointment", type: "appointment_created", semanticClass: "effect_completed" },
+    ]) {
+      expect(() => parseLiveComparisonRecord(live({
+        v2: {
+          ...observedV2,
+          capabilityIds: [outcome.capabilityId],
+          decisionKinds: [outcome.decisionKind],
+          outcomes: [outcome],
+        },
+      }), new Set(["gpt-5.4-mini"]))).toThrow(/provenance|capability|decision|outcome|invalid/i);
+    }
+  });
+
+  it("accepts only explicitly registered concrete execute outcome tuples", () => {
+    for (const outcome of [validBookCreated, validConfirmFailed]) {
+      const parsed = parseLiveComparisonRecord(live({
+        v2: {
+          ...observedV2,
+          capabilityIds: [outcome.capabilityId],
+          decisionKinds: [outcome.decisionKind],
+          outcomes: [outcome],
+        },
+      }), new Set(["gpt-5.4-mini"]));
+      expect(parsed.v2.outcomes).toEqual([outcome]);
+    }
+  });
+
+  it("preserves concrete execute provenance across wire serialization", () => {
+    const input = live({
+      v2: {
+        ...observedV2,
+        capabilityIds: [validBookCreated.capabilityId],
+        decisionKinds: [validBookCreated.decisionKind],
+        outcomes: [validBookCreated],
+      },
+    });
+    const reparsed = parseLiveComparisonRecord(
+      JSON.parse(JSON.stringify(input)),
+      new Set(["gpt-5.4-mini"]),
+    );
+    expect(reparsed.v2.outcomes).toEqual([validBookCreated]);
+    expect(Object.isFrozen(reparsed.v2.outcomes[0])).toBe(true);
+  });
+
   it("closes intended effects to an aligned nonempty execute-only simulation", () => {
     const simulation = {
       ...emptyEngine,
       status: "simulation_not_executed",
       capabilityIds: ["dental-scheduling"],
       decisionKinds: ["execute"],
+      executeDecisions: [{
+        capabilityId: "dental-scheduling",
+        decisionKind: "execute",
+        action: "book_slot",
+      }],
     };
     expect(parseLiveComparisonRecord(live({
       v2: simulation,
@@ -351,6 +438,71 @@ describe("Cycle I comparison records", () => {
       expect(() => parseLiveComparisonRecord(live(invalid), new Set(["gpt-5.4-mini"])))
         .toThrow(/effect|simulation|execute|capability|invalid/i);
     }
+  });
+
+  it("requires simulation to carry and match the exact execute action identity", () => {
+    const simulationWithoutActionIdentity = {
+      ...emptyEngine,
+      status: "simulation_not_executed",
+      capabilityIds: ["dental-scheduling"],
+      decisionKinds: ["execute"],
+    };
+    expect(() => parseLiveComparisonRecord(live({
+      v2: simulationWithoutActionIdentity,
+      intendedEffects: [intendedEffect],
+    }), new Set(["gpt-5.4-mini"]))).toThrow(/action|identity|provenance|invalid/i);
+
+    expect(() => parseLiveComparisonRecord(live({
+      v2: {
+        ...simulationWithoutActionIdentity,
+        executeDecisions: [{
+          capabilityId: "dental-scheduling",
+          decisionKind: "execute",
+          action: "confirm_appointment",
+        }],
+      },
+      intendedEffects: [intendedEffect],
+    }), new Set(["gpt-5.4-mini"]))).toThrow(/action|effect|identity|provenance|invalid/i);
+
+    expect(() => parseLiveComparisonRecord(live({
+      v2: {
+        ...simulationWithoutActionIdentity,
+        executeDecisions: [{
+          capabilityId: "dental-catalog",
+          decisionKind: "execute",
+          action: "book_slot",
+        }],
+      },
+      intendedEffects: [intendedEffect],
+    }), new Set(["gpt-5.4-mini"]))).toThrow(/action|effect|identity|provenance|capability|invalid/i);
+  });
+
+  it("preserves valid multi-owner outcome order and rejects duplicate owners", () => {
+    const outcomes = [
+      { capabilityId: "dental-catalog", decisionKind: "answer", type: "catalog_answered", semanticClass: "information_authorized" },
+      { capabilityId: "dental-scheduling", decisionKind: "offer", type: "slots_found", semanticClass: "options_found" },
+    ] as const;
+    const parsed = parseLiveComparisonRecord(live({
+      v2: {
+        ...observedV2,
+        capabilityIds: ["dental-catalog", "dental-scheduling"],
+        decisionKinds: ["answer", "offer"],
+        outcomes,
+      },
+    }), new Set(["gpt-5.4-mini"]));
+    expect(parsed.v2.outcomes).toEqual(outcomes);
+
+    expect(() => parseLiveComparisonRecord(live({
+      v2: {
+        ...observedV2,
+        capabilityIds: ["dental-catalog", "dental-catalog"],
+        decisionKinds: ["answer", "ask"],
+        outcomes: [
+          outcomes[0],
+          { capabilityId: "dental-catalog", decisionKind: "ask", type: "clarification_required", semanticClass: "clarification_required" },
+        ],
+      },
+    }), new Set(["gpt-5.4-mini"]))).toThrow(/duplicate|identity|capability/i);
   });
 
   it("requires positive final text and positive calls when model telemetry exists", () => {

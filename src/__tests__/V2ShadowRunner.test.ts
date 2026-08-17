@@ -38,6 +38,11 @@ describe("V2 shadow runner", () => {
     expect(result.status).toBe("simulation_not_executed");
     if (result.status !== "simulation_not_executed") throw new Error("expected simulation");
     expect(result.intendedEffects).toEqual([expect.objectContaining({ action: "book_slot", capabilityId: "dental-scheduling" })]);
+    expect(result.executeDecisions).toEqual([{
+      capabilityId: "dental-scheduling",
+      decisionKind: "execute",
+      action: "book_slot",
+    }]);
     expect(JSON.stringify(result.intendedEffects)).not.toContain("slot-secret");
     expect(result.intendedEffects[0]!.payloadHash).toMatch(/^[a-f0-9]{64}$/);
   });
@@ -54,6 +59,18 @@ describe("V2 shadow runner", () => {
 
   it("marca action desconhecida como unsupported", () => {
     expect(recordDentalIntendedEffect({ capabilityId: "dental-scheduling", decision: { kind: "execute", action: { type: "unknown", parameters: {} }, nextBestStep: null }, hmacKey: "key" })).toBeNull();
+  });
+
+  it("rejeita owner forjado mesmo para uma action dental conhecida", () => {
+    expect(recordDentalIntendedEffect({
+      capabilityId: "dental-catalog",
+      decision: {
+        kind: "execute",
+        action: { type: "book-slot", parameters: { slotId: "slot-secret" } },
+        nextBestStep: null,
+      },
+      hmacKey: "key",
+    })).toBeNull();
   });
 
   it("registra confirmação de appointment como efeito HMAC fechado", () => {

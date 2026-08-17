@@ -226,11 +226,14 @@ exact V1 `unavailable/final_response_unavailable` arm and an empty divergence li
 classes or final-response material. An unsupported result may carry model telemetry only when
 the provider callback actually ran; pre-provider duplicate or missing-read rejection carries
 `model: null`, and every non-null summary has `calls >= 1`. Observed/no-safe outcomes bind
-capability, prepared Decision kind, concrete outcome type and canonical semantic class in one
-structured identity. Redundant capability/Decision arrays must align one-to-one and in order;
-invalid duplicates fail closed. Intended effects are nonempty only for
-`simulation_not_executed`, align one-to-one with execute Decisions and their capability owner,
-and are forbidden for every other status. The parser rejects proxies, accessors, symbol keys and
+capability, prepared Decision kind, concrete execute action when applicable, concrete outcome
+type and canonical semantic class in one structured identity. The Dental Pack owns one frozen
+provenance registry whose same literal definitions derive the TypeScript union and runtime
+validation; the generic core remains unaware of dental literals. Redundant capability/Decision
+arrays must align one-to-one and in order; invalid duplicates fail closed. Intended effects are
+nonempty only for `simulation_not_executed`, align one-to-one with typed execute-decision
+identities, including their concrete action and capability owner, and are forbidden for every
+other status. The parser rejects proxies, accessors, symbol keys and
 non-plain prototypes before schema evaluation, applies conservative depth/node/array/object
 budgets, then validates and freezes the one canonical snapshot.
 
@@ -243,6 +246,13 @@ The round-3 relational completion also occurred before the first `.v2` observati
 persistence or tenant/channel activation. It replaces the unpublished parallel outcome arrays
 with structured per-result identities under the already-selected `.v2` pre-activation contract;
 this decision is recorded explicitly and does not reinterpret stored data.
+
+The final provenance closure occurred under the same pre-observation condition. It makes the
+Domain Pack registry authoritative for capability → Decision → concrete action → outcome →
+semantic class/requirements, requires the application producer to pair each prepared Decision
+with its exact ActionResult, and preserves concrete action identity in simulations and wire
+round-trips. This closes an impossible-tuple gap; it does not migrate or reinterpret persisted
+records because none exist.
 
 Live records do not contain response text, raw lead input, raw history, prompts, names, phones,
 emails, URLs, provider payloads, opaque database identifiers or raw evidence references. The

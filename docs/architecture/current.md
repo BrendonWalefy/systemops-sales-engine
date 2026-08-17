@@ -202,6 +202,11 @@ availability — o shadow retorna `shared_read_unavailable`; não reconstrói o 
 atual também não captura o artifact final enviado pela V1, live records marcam o braço V1
 `unavailable` e a comparação `not_measurable`, sem inferir divergência de planos intermediários.
 
+No braço V2, o Dental Pack é o dono da provenance capability → Decision → action concreta →
+outcome → classe/requisitos. Uma única definição frozen sustenta tipos e validação runtime; a
+application boundary pareia Decision preparada e ActionResult antes de persistir e conserva a
+action concreta no shadow. O `conversation-core` continua genérico e sem literais dentais.
+
 O deadline do lote é de admissão. Depois de T nenhuma operação começa; trabalho já admitido é
 drenado e eventual overrun é medido. Isso não é uma garantia de retorno estrito até T.
 

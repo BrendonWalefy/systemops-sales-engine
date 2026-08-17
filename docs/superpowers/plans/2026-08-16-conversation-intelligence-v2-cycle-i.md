@@ -367,6 +367,17 @@ inspection and conservative depth/node/array/object budgets precede snapshot tra
 completes the unpublished/unpersisted `.v2` contract rather than widening an activated wire
 format; zero V1×V2 result and zero tenant/channel activation still existed at this decision.
 
+**Task 7 hardening amendment — provenance closure (2026-08-17, pre-activation):** the Dental
+Pack owns one frozen provenance registry for capability, prepared Decision kind, concrete execute
+action when applicable, outcome type, semantic class and the existing subject/evidence
+requirements. The same literal registry derives the TypeScript union and performs runtime
+validation; `conversation-core` knows only generic contracts. Observed/no-safe records require
+each prepared Decision to pair with its actual ActionResult owner and exact permitted tuple.
+Simulation records carry typed concrete execute identities and align them one-to-one and in order
+with intended effects. Forged, widened, cross-capability, cross-action and cross-decision tuples
+fail closed. This amendment closes the last independent Task 7 finding before any `.v2`
+observation, persistence or tenant/channel activation and does not reinterpret stored data.
+
 `HmacRef` valida exatamente `^hmac:[a-f0-9]{64}$`. `modelId` não aceita texto arbitrário:
 `parseLiveComparisonRecord` exige membership no `allowedModelIds` congelado pelo run manifest;
 provider payload/id nunca tem campo no schema. Todos os demais strings live usam enum fechado,

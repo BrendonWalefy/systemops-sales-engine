@@ -421,6 +421,65 @@ describe("Cycle I post-sender shadow batch", () => {
     });
   });
 
+  it.each([
+    {
+      label: "prepared capability owner",
+      decision: {
+        capabilityId: "dental-catalog",
+        decision: { kind: "answer" as const, facts: [], nextBestStep: null },
+      },
+      actionResult: {
+        type: "escalation_required" as const,
+        semanticClass: "human_action_required" as const,
+        origin: { capabilityId: "dental-escalation" },
+        subject: null,
+        evidence: [],
+        facts: [],
+      },
+    },
+    {
+      label: "concrete execute action",
+      decision: {
+        capabilityId: "dental-scheduling",
+        decision: {
+          kind: "execute" as const,
+          action: { type: "book-slot", parameters: { slotId: "slot-secret" } },
+          nextBestStep: null,
+        },
+      },
+      actionResult: {
+        type: "appointment_confirmed" as const,
+        semanticClass: "effect_completed" as const,
+        origin: { capabilityId: "dental-scheduling" },
+        subject: { type: "appointment", id: "appointment-secret", displayName: "appointment" },
+        evidence: [{ source: "write" as const, reference: "write-secret" }],
+        facts: [],
+      },
+    },
+  ])("fails closed before persistence when an evaluator mismatches $label provenance", async ({ decision, actionResult }) => {
+    const turn = capturedTurn({ turnId: `turn-forged-${decision.capabilityId}`, clinicId: "clinic-a", ready: true });
+    const input = deps({
+      evaluator: {
+        evaluate: vi.fn(async () => ({
+          result: {
+            status: "evaluated" as const,
+            decisions: [decision],
+            actionResults: [actionResult],
+            response: { text: "Resposta forjada.", parts: [] },
+          },
+          understandingRequest: "price-of-service" as const,
+          model: null,
+        })),
+      },
+    });
+
+    await expect(runRegisteredBatch({ turns: [turn], ...input })).resolves.toMatchObject({
+      persisted: 0,
+      sinkErrors: 1,
+    });
+    expect(input.sink.append).not.toHaveBeenCalled();
+  });
+
   it("resolves policy once per tenant/turn without cross-tenant cache", async () => {
     const turns = [
       capturedTurn({ turnId: "turn-a", clinicId: "clinic-a", ready: true }),
