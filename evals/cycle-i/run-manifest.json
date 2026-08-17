@@ -1,7 +1,7 @@
 {
   "version": "conversation-v2-cycle-i-run-manifest.v4",
-  "implementationCommit": "dd675e93a7afd072603e2fd9bd04bfda46494934",
-  "implementationTreeDigest": "hmac:3d95c711d6712fd4b464792a4f717a9df00385caddcb1bc67532e0a38fc5f36c",
+  "implementationCommit": "94b554eec89315ed4504992550f507dac904bae6",
+  "implementationTreeDigest": "hmac:fa9cb4ee59b493a0828c2779fb612a2f0e9348feb8a67225dda85dcfc932b591",
   "implementationSourceDigest": "hmac:c81c6d80eb684a0f02d65e0bc0d5b01e9ea32c019c4533507cdc94f26cb49fbe",
   "runtime": { "nodeVersion": "v25.9.0", "platform": "darwin", "arch": "arm64" },
   "corpusRoot": "evals/corpus",
@@ -19,8 +19,8 @@
   "decisionManifest": null,
   "proseManifest": null,
   "fullTurnEvidence": null,
-  "configDigest": "hmac:36768cc8e81d303421d07929c0e8dec5ebc5c39da9aa659135470a715e89fbe9",
-  "manifestDigest": "hmac:729401012ba234e574b3775bbda60944a157e9ce979ae427974238136133b2ea",
+  "configDigest": "hmac:d7bfca645900afb5a134544d9aedbbe225e1549dfa7124f9542079dc50e7314f",
+  "manifestDigest": "hmac:9056d19b7fdb0cd48b17e7232e9a0d7604f5cc1accc519ed802214e2a3a473ea",
   "judge": "experimental_non_gating",
   "evidence": { "h_entailment": null, "shadow_no_effects": null, "cycle_f_axes": null, "rollback": null, "observability": null, "verification": null, "adversarial_review": null },
   "authoritySignature": null
