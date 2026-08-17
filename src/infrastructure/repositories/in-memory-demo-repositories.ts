@@ -63,6 +63,17 @@ export class InMemoryDemoStore
     return [];
   }
 
+  async ensureWhatsAppIdentity(lead: Lead): Promise<Lead> {
+    const existing = Array.from(this.leads.values()).find(
+      (item) => item.clinicId === lead.clinicId
+        && ((lead.phone && item.phone === lead.phone)
+          || (lead.whatsappLid && item.whatsappLid === lead.whatsappLid)),
+    );
+    if (existing) return existing;
+    this.leads.set(lead.id, lead);
+    return lead;
+  }
+
   async mergeDuplicateLeads(params: {
     canonicalLeadId: string;
     duplicateLeadId: string;
@@ -155,6 +166,15 @@ export class InMemoryDemoStore
     return null;
   }
 
+  async ensureConversation(conversation: Conversation): Promise<Conversation> {
+    const existing = Array.from(this.conversations.values()).find(
+      (item) => item.leadId === conversation.leadId,
+    );
+    if (existing) return existing;
+    this.conversations.set(conversation.id, conversation);
+    return conversation;
+  }
+
   async findActiveByLeadId(leadId: string): Promise<Appointment | null> {
     return (
       Array.from(this.appointments.values()).find(
@@ -225,9 +245,15 @@ export class InMemoryDemoStore
     if (conv) this.conversations.set(conversationId, { ...conv, aiPaused: expiresAt !== null, takeoverExpiresAt: expiresAt });
   }
 
-  async appendMessage(message: Message): Promise<void> {
+  async appendMessage(message: Message): Promise<boolean> {
+    if (message.externalId && Array.from(this.messages.values()).flat().some(
+      (stored) => stored.externalId === message.externalId,
+    )) {
+      return false;
+    }
     const messages = this.messages.get(message.conversationId) ?? [];
     this.messages.set(message.conversationId, [...messages, message]);
+    return true;
   }
 
   async listMessages(conversationId: string): Promise<Message[]> {

@@ -15,10 +15,11 @@ vi.mock("@/application/read-versions/clinic-read-version", () => ({
 
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 
-function insertChain() {
+function insertChain(returningRows: Array<{ id: string }> = [{ id: "msg-1" }]) {
   return {
     values: vi.fn().mockReturnThis(),
-    onConflictDoNothing: vi.fn().mockResolvedValue([]),
+    onConflictDoNothing: vi.fn().mockReturnThis(),
+    returning: vi.fn().mockResolvedValue(returningRows),
   };
 }
 
@@ -58,8 +59,11 @@ describe("DrizzleConversationRepository.appendMessage", () => {
       dbMock.insert.mockReturnValue(insertChain());
       dbMock.update.mockReturnValue(updateChain([{ clinicId: "clinic-42" }]));
 
-      await new DrizzleConversationRepository().appendMessage(message({ conversationId: "conv-1" }));
+      const inserted = await new DrizzleConversationRepository().appendMessage(
+        message({ conversationId: "conv-1" }),
+      );
 
+      expect(inserted).toBe(true);
       expect(bumpInboxVersionMock).toHaveBeenCalledWith("clinic-42");
       expect(bumpInboxVersionMock).toHaveBeenCalledOnce();
     },
@@ -77,4 +81,14 @@ describe("DrizzleConversationRepository.appendMessage", () => {
       expect(bumpInboxVersionMock).not.toHaveBeenCalled();
     },
   );
+
+  it("does not update the conversation or bump Inbox when the external-id insert loses", async () => {
+    dbMock.insert.mockReturnValue(insertChain([]));
+
+    const inserted = await new DrizzleConversationRepository().appendMessage(message());
+
+    expect(inserted).toBe(false);
+    expect(dbMock.update).not.toHaveBeenCalled();
+    expect(bumpInboxVersionMock).not.toHaveBeenCalled();
+  });
 });

@@ -63,6 +63,38 @@ export class DrizzleConversationRepository implements ConversationRepository {
     return row ? mapMessageRow(row.message) : null;
   }
 
+  async ensureConversation(conversation: Conversation): Promise<Conversation> {
+    const existing = await this.findByLeadId(conversation.leadId);
+    if (existing) return existing;
+
+    const [inserted] = await db
+      .insert(conversations)
+      .values({
+        id: conversation.id,
+        clinicId: conversation.clinicId,
+        leadId: conversation.leadId,
+        channel: conversation.channel,
+        category: conversation.category,
+        externalThreadId: conversation.externalThreadId,
+        summary: conversation.summary,
+        lastMessageAt: conversation.lastMessageAt,
+        createdAt: conversation.createdAt,
+        updatedAt: conversation.updatedAt,
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (inserted) {
+      bumpInboxVersion(conversation.clinicId);
+      return mapConversationRow(inserted);
+    }
+
+    const raced = await this.findByLeadId(conversation.leadId);
+    if (!raced) {
+      throw new Error("ensureConversation: insert conflicted without a persisted conversation");
+    }
+    return raced;
+  }
+
   async saveConversation(conversation: Conversation): Promise<void> {
     await db
       .insert(conversations)
@@ -109,9 +141,9 @@ export class DrizzleConversationRepository implements ConversationRepository {
     if (updated) bumpInboxVersion(updated.clinicId);
   }
 
-  async appendMessage(message: Message): Promise<void> {
+  async appendMessage(message: Message): Promise<boolean> {
     try {
-      await db
+      const [inserted] = await db
         .insert(messages)
         .values({
           id: message.id,
@@ -126,7 +158,9 @@ export class DrizzleConversationRepository implements ConversationRepository {
           deliveryFormat: message.deliveryFormat ?? null,
           simulated: message.simulated ?? false,
         })
-        .onConflictDoNothing();
+        .onConflictDoNothing()
+        .returning({ id: messages.id });
+      if (!inserted) return false;
 
       const [updated] = await db
         .update(conversations)
@@ -138,13 +172,14 @@ export class DrizzleConversationRepository implements ConversationRepository {
         .where(eq(conversations.id, message.conversationId))
         .returning({ clinicId: conversations.clinicId });
       if (updated) bumpInboxVersion(updated.clinicId);
+      return true;
     } catch (err) {
       // Código 23503 = foreign_key_violation no PostgreSQL.
       // Ocorre quando a conversa foi deletada concorrentemente (ex: reset E2E)
       // enquanto o Orchestrator ainda estava processando. Ignorar é seguro aqui.
       if (isPostgresErrorCode(err, "23503")) {
         console.warn("[appendMessage] FK violation — conversa deletada concorrentemente:", message.conversationId);
-        return;
+        return false;
       }
       throw err;
     }

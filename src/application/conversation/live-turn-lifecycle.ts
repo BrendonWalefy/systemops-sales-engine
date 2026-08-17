@@ -82,48 +82,12 @@ type LiveTurnLifecycleDependencies = Readonly<{
   now: () => Date;
 }>;
 
-// One worker invocation shares an orchestrator across its parallel job batch.
-// Serialize the same provider id until its canonical messages row is visible.
-// Across workers, durable ingress already collapses `(provider, providerMessageId)`
-// to one inbound event/job and the job queue claims that row once. The messages
-// unique index remains a final integrity check, not the side-effect gate.
-const externalMessageTurnTails = new Map<string, Promise<void>>();
-
-async function withExternalMessageTurnLock<T>(
-  externalMessageId: string,
-  run: () => Promise<T>,
-): Promise<T> {
-  const previous = externalMessageTurnTails.get(externalMessageId);
-  let release!: () => void;
-  const current = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  externalMessageTurnTails.set(externalMessageId, current);
-  if (previous) await previous;
-  try {
-    return await run();
-  } finally {
-    release();
-    if (externalMessageTurnTails.get(externalMessageId) === current) {
-      externalMessageTurnTails.delete(externalMessageId);
-    }
-  }
-}
-
 export class LiveTurnLifecycle {
   constructor(private readonly deps: LiveTurnLifecycleDependencies) {}
 
   async begin(
     input: ConversationHandleInput,
     options: BeginLiveTurnOptions = {},
-  ): Promise<BeginLiveTurnResult> {
-    return withExternalMessageTurnLock(input.messageId, () =>
-      this.beginExclusive(input, options));
-  }
-
-  private async beginExclusive(
-    input: ConversationHandleInput,
-    options: BeginLiveTurnOptions,
   ): Promise<BeginLiveTurnResult> {
     const existing = await this.deps.conversationRepository
       .findMessageByExternalId(input.messageId);
@@ -170,14 +134,16 @@ export class LiveTurnLifecycle {
       },
     });
 
-    // `messages_external_id_idx` remains the authority for races that pass both
-    // preflight reads. Only the row that actually won that unique key proceeds.
-    const persistedInbound = await this.deps.conversationRepository
-      .findMessageByExternalId(input.messageId);
-    if (!persistedInbound) return { outcome: "busy", reason: "conversation_lease" };
-    if (persistedInbound.id !== registered.message.id) {
+    // `messages_external_id_idx` is the durable authority for races that pass
+    // both preflight reads. RegisterIncomingMessage gates every mutable effect
+    // on the insert result, so only the row winner may continue to an engine.
+    if (!registered.messageInserted) {
+      const persistedInbound = await this.deps.conversationRepository
+        .findMessageByExternalId(input.messageId);
+      if (!persistedInbound) return { outcome: "busy", reason: "conversation_lease" };
       return { outcome: "duplicate", reason: "external_id" };
     }
+    const persistedInbound = registered.message;
 
     const outboundAddress = resolveWhatsAppChannelAddress({
       phone: registered.lead.phone,

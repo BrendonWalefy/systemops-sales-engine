@@ -96,6 +96,7 @@ function makeLeadRepo(lead: Lead | null = makeLead()): LeadRepository {
     findByPhone: vi.fn().mockResolvedValue(null),
     findByWhatsAppLid: vi.fn().mockResolvedValue(null),
     findInactiveLeads: vi.fn().mockResolvedValue([]),
+    ensureWhatsAppIdentity: vi.fn().mockResolvedValue(lead ?? makeLead()),
     mergeDuplicateLeads: vi.fn().mockResolvedValue(lead),
   };
 }

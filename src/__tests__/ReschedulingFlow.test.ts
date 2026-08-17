@@ -179,6 +179,7 @@ function makeLeadRepo() {
     async findByPhone() { return null; },
     async findByWhatsAppLid() { return null; },
     async findInactiveLeads() { return []; },
+    async ensureWhatsAppIdentity(l) { return l; },
     async mergeDuplicateLeads() { throw new Error("not implemented"); },
   };
   return { repo, saved };

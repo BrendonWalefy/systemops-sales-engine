@@ -93,6 +93,17 @@ class MemoryLeadRepository implements LeadRepository {
     return [];
   }
 
+  async ensureWhatsAppIdentity(lead: Lead): Promise<Lead> {
+    const existing = [...this.leads.values()].find(
+      (item) => item.clinicId === lead.clinicId
+        && ((lead.phone && item.phone === lead.phone)
+          || (lead.whatsappLid && item.whatsappLid === lead.whatsappLid)),
+    );
+    if (existing) return existing;
+    this.leads.set(lead.id, lead);
+    return lead;
+  }
+
   async mergeDuplicateLeads(): Promise<Lead> {
     throw new Error("not used");
   }
@@ -127,12 +138,22 @@ class MemoryConversationRepository implements ConversationRepository {
   async setAiPaused(): Promise<void> {}
   async setTakeover(): Promise<void> {}
 
-  async appendMessage(message: Message): Promise<void> {
+  async ensureConversation(conversation: Conversation): Promise<Conversation> {
+    const existing = [...this.conversations.values()].find(
+      (item) => item.leadId === conversation.leadId,
+    );
+    if (existing) return existing;
+    this.conversations.set(conversation.id, conversation);
+    return conversation;
+  }
+
+  async appendMessage(message: Message): Promise<boolean> {
     this.appendCalls += 1;
-    if (message.externalId && this.messagesByExternalId.has(message.externalId)) return;
+    if (message.externalId && this.messagesByExternalId.has(message.externalId)) return false;
     if (message.externalId) this.messagesByExternalId.set(message.externalId, message);
     const history = this.messages.get(message.conversationId) ?? [];
     this.messages.set(message.conversationId, [...history, message]);
+    return true;
   }
 
   async listMessages(conversationId: string): Promise<Message[]> {
@@ -233,14 +254,6 @@ function makeHarness() {
     async recoverStaleSending() { return 0; },
   };
   let sequence = 0;
-  const registerIncomingMessage = new RegisterIncomingMessage({
-    leadRepository: leads,
-    conversationRepository: conversations,
-    usageCostTracker,
-    followUpRepository,
-    idGenerator: () => `generated-${++sequence}`,
-    now: () => NOW,
-  });
   const contextReader: LiveConversationContextReader = {
     async findOrganization(clinicId) {
       return clinicId === organization.id ? organization : null;
@@ -249,8 +262,15 @@ function makeHarness() {
       return null;
     },
   };
-  const lifecycle = new LiveTurnLifecycle({
-    registerIncomingMessage,
+  const makeLifecycle = () => new LiveTurnLifecycle({
+    registerIncomingMessage: new RegisterIncomingMessage({
+      leadRepository: leads,
+      conversationRepository: conversations,
+      usageCostTracker,
+      followUpRepository,
+      idGenerator: () => `generated-${++sequence}`,
+      now: () => NOW,
+    }),
     conversationRepository: conversations,
     contextReader,
     turnCoordinator: new ConversationTurnCoordinator(leaseStore, { maxWaitMs: 0 }),
@@ -272,8 +292,10 @@ function makeHarness() {
     },
     now: () => NOW,
   });
+  const lifecycle = makeLifecycle();
   return {
     lifecycle,
+    makeLifecycle,
     leads,
     conversations,
     leaseStore,
@@ -348,16 +370,32 @@ describe("LiveTurnLifecycle", () => {
     await context.releaseLease();
   });
 
-  it("suppresses concurrent duplicate external ids before either engine can run", async () => {
+  it("suppresses cross-process duplicate external ids before either engine can run", async () => {
     const single = makeHarness();
     const singleResult = await single.lifecycle.begin(turn("single-id"));
     const winnerEffects = single.effects();
     await ready(singleResult).releaseLease();
-    const { lifecycle, leaseStore, effects } = makeHarness();
+    const { lifecycle, makeLifecycle, conversations, leaseStore, effects } = makeHarness();
+    const secondProcessLifecycle = makeLifecycle();
+    const originalFindByExternalId = conversations.findMessageByExternalId.bind(conversations);
+    let initialReads = 0;
+    let releaseInitialReads!: () => void;
+    const initialReadBarrier = new Promise<void>((resolve) => {
+      releaseInitialReads = resolve;
+    });
+    conversations.findMessageByExternalId = async (externalId) => {
+      if (externalId === "same-id" && initialReads < 2) {
+        initialReads += 1;
+        if (initialReads === 2) releaseInitialReads();
+        await initialReadBarrier;
+        return null;
+      }
+      return originalFindByExternalId(externalId);
+    };
 
     const results = await Promise.all([
       lifecycle.begin(turn("same-id")),
-      lifecycle.begin(turn("same-id")),
+      secondProcessLifecycle.begin(turn("same-id")),
     ]);
 
     expect(results.filter(({ outcome }) => outcome === "ready")).toHaveLength(1);
@@ -365,7 +403,8 @@ describe("LiveTurnLifecycle", () => {
       { outcome: "duplicate", reason: "external_id" },
     ]);
     expect(leaseStore.held.size).toBe(1);
-    expect(effects()).toEqual(winnerEffects);
+    expect(conversations.appendCalls).toBe(2);
+    expect(effects()).toEqual({ ...winnerEffects, messageAppends: 2 });
     await ready(results.find(({ outcome }) => outcome === "ready")!).releaseLease();
   });
 
@@ -378,6 +417,31 @@ describe("LiveTurnLifecycle", () => {
 
     expect(result).toEqual({ outcome: "duplicate", reason: "recent_content" });
     expect([...conversations.messages.values()].flat()).toHaveLength(1);
+  });
+
+  it("does not classify a failed insert without a canonical external row as a duplicate", async () => {
+    const { lifecycle, conversations, leaseStore, effects } = makeHarness();
+    conversations.appendMessage = async () => false;
+    let afterRegisterCalls = 0;
+
+    const result = await lifecycle.begin(turn("provider-fk-disappeared"), {
+      afterRegister: () => {
+        afterRegisterCalls += 1;
+      },
+    });
+
+    expect(result).toEqual({ outcome: "busy", reason: "conversation_lease" });
+    expect(await conversations.findMessageByExternalId("provider-fk-disappeared")).toBeNull();
+    expect(afterRegisterCalls).toBe(0);
+    expect(leaseStore.held.size).toBe(0);
+    expect(effects()).toEqual({
+      leadSaves: 0,
+      conversationSaves: 0,
+      messageAppends: 0,
+      followUpLists: 0,
+      followUpCancels: 0,
+      whatsappCosts: 0,
+    });
   });
 
   it("returns busy when the persisted conversation lease is already held", async () => {

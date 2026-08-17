@@ -243,6 +243,10 @@ class FakeLeadRepository implements LeadRepository {
     return [];
   }
 
+  async ensureWhatsAppIdentity(): Promise<Lead> {
+    return lead;
+  }
+
   async mergeDuplicateLeads(): Promise<Lead> {
     return lead;
   }
