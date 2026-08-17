@@ -5,16 +5,13 @@ import { drainMessageProcessQueue } from "@/application/jobs/drain-message-proce
 import { drainMessageSendQueue } from "@/application/jobs/drain-message-send-queue";
 import { ProcessMessageJobHandler } from "@/application/jobs/process-message-job";
 import { SendMessageJobHandler } from "@/application/jobs/send-message-job";
-import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrator";
 import { WhisperGateway } from "@/infrastructure/adapters/ai/whisper-gateway";
 import { ZApiAudioTranscriber } from "@/infrastructure/adapters/channels/whatsapp/zapi-audio-transcriber";
-import { DrizzleClinicAutomationPolicyReader } from "@/infrastructure/repositories/drizzle-clinic-automation-policy-reader";
 import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 import { createLogger } from "@/infrastructure/logging/logger";
-import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 import { reconcileMessageJobOrphans } from "@/application/jobs/reconcile-message-job-orphans";
 import { DrizzleMessageJobOrphanReader } from "@/infrastructure/repositories/drizzle-message-job-orphan-reader";
 import {
@@ -24,11 +21,9 @@ import {
 } from "@/application/jobs/worker-capacity";
 import {
   runAfterSenderDrainAttempt,
-  runConversationV2ShadowBatch,
   type ShadowBatchSummary,
 } from "@/application/conversation-v2/run-shadow-batch";
 import { createConversationV2Runtime } from "@/infrastructure/conversation-v2/create-conversation-v2-runtime";
-import { V2ShadowSelectionRegistry } from "@/application/conversation-v2/tenant-engine-router";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -56,15 +51,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const inboundEventStore = new DrizzleInboundEventStore();
   const jobQueue = new DrizzleJobQueue();
+  const outboundMessageStore = new DrizzleOutboundMessageStore();
   const audioTranscriber = new ZApiAudioTranscriber(new WhisperGateway());
-  const decisionTraceSink = createRuntimeDecisionTraceSink();
-  const conversationV2Runtime = createConversationV2Runtime();
+  const conversationV2Runtime = createConversationV2Runtime({
+    jobQueue,
+    outboundMessageStore,
+  });
   const handler = new ProcessMessageJobHandler({
     inboundEventStore,
-    automationPolicy: new DrizzleClinicAutomationPolicyReader(),
-    conversationHandler: new ConversationOrchestrator({ decisionTraceSink }),
+    automationPolicy: conversationV2Runtime.automationPolicy,
+    conversationHandler: conversationV2Runtime.conversationHandler,
     transcribeAudio: audioTranscriber.transcribe.bind(audioTranscriber),
-    decisionTraceSink,
+    decisionTraceSink: conversationV2Runtime.decisionTraceSink,
     createTurnObservationSink: conversationV2Runtime.createTurnObservationSink,
   });
 
@@ -100,14 +98,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       const postSender = await runAfterSenderDrainAttempt({
         turns: capturedV2Turns,
         drainSender: async () => {
-          const outboundMessageStore = new DrizzleOutboundMessageStore();
           return drainMessageSendQueue({
             jobQueue,
             outboundMessageStore,
             handler: new SendMessageJobHandler({
               outboundMessageStore,
               safetyContextReader: new DrizzleOutboundSafetyContextReader(),
-              decisionTraceSink,
+              decisionTraceSink: conversationV2Runtime.decisionTraceSink,
             }),
             workerId: `${workerId}:send`,
             maxJobs: MAX_JOBS_PER_RUN,
@@ -117,16 +114,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         occurredAt: () => new Date().toISOString(),
         afterAttempt: async (senderBarrier, turns) => {
           try {
-            const summary = await runConversationV2ShadowBatch({
+            const summary = await conversationV2Runtime.runSelectedShadowTurns({
               senderBarrier,
               turns,
-              selectedTurns: new V2ShadowSelectionRegistry().consumeAll(),
-              evaluator: conversationV2Runtime.evaluator,
-              sink: conversationV2Runtime.sink,
-              maxTurns: conversationV2Runtime.maxTurns,
-              deadlineMs: conversationV2Runtime.deadlineMs,
-              now: conversationV2Runtime.now,
-              recordConfig: conversationV2Runtime.recordConfig,
             });
             for (const selection of summary.selections) {
               log.info("conversation_v2.engine_selected", selection);

@@ -136,9 +136,28 @@ describe("Cycle I final runtime boundaries", () => {
 
     expect(source).toContain("createConversationV2Runtime");
     expect(source).toContain("runAfterSenderDrainAttempt");
-    expect(source).toContain("runConversationV2ShadowBatch");
-    expect(source).not.toMatch(/resolveConversationEngine|V2ShadowRunner|createDentalPack|DentalUnderstanding|bookSlot|confirmAppointment|v2_internal/);
+    expect(source).toContain("conversationV2Runtime.runSelectedShadowTurns");
+    expect(source).not.toMatch(/resolveConversationEngine|V2ShadowRunner|V2ShadowSelectionRegistry|runConversationV2ShadowBatch|createDentalPack|DentalUnderstanding|bookSlot|confirmAppointment|v2_internal/);
     expect(source).not.toContain("shadowModeEnabled");
     expect(source.match(/export async function GET/g)).toHaveLength(1);
+  });
+
+  it("mantém TenantEngineRouter como único boundary de seleção live", () => {
+    const production = sourceFiles("src").filter((file) => !file.includes("/__tests__/"));
+    const liveHandlerReferences = production.filter((file) =>
+      /\bV2LiveConversationHandler\b/.test(readFileSync(file, "utf8")));
+    const engineBranches = production.filter((file) => {
+      if (file.endsWith("engine-selection.ts") || file.endsWith("tenant-engine-router.ts")) {
+        return false;
+      }
+      const source = readFileSync(file, "utf8");
+      return /engine\s*===\s*["'](?:v1|v1_with_v2_shadow|v2_internal)["']/.test(source);
+    });
+
+    expect(liveHandlerReferences).toEqual([
+      "src/application/conversation-v2/v2-live-conversation-handler.ts",
+      "src/infrastructure/conversation-v2/create-conversation-v2-runtime.ts",
+    ]);
+    expect(engineBranches).toEqual([]);
   });
 });

@@ -78,6 +78,17 @@ describe("Conversation V2 isolated execution boundary", () => {
     expect(source).not.toContain("engine.selected");
   });
 
+  it("compõe live somente com o understanding fechado gpt-4o-mini", () => {
+    const source = readFileSync(
+      "src/infrastructure/conversation-v2/create-conversation-v2-runtime.ts",
+      "utf8",
+    );
+
+    expect(source).toContain("createLiveDentalUnderstanding");
+    expect(source).toContain("new V2LiveConversationHandler");
+    expect(source).not.toMatch(/OPENAI_V2_UNDERSTANDING_MODEL[^\n]*createLiveDentalUnderstanding/);
+  });
+
   it("shadow intercepta write antes de Capability.execute e não produz texto de sucesso", async () => {
     const runner = new V2ShadowRunner({
       understand: async () => ({

@@ -7,7 +7,10 @@ import {
   runAfterSenderDrainAttempt,
   runConversationV2ShadowBatch,
 } from "@/application/conversation-v2/run-shadow-batch";
-import { V2ShadowSelectionRegistry } from "@/application/conversation-v2/tenant-engine-router";
+import {
+  TenantEngineRouter,
+  V2ShadowSelectionRegistry,
+} from "@/application/conversation-v2/tenant-engine-router";
 
 const openAiCreate = vi.hoisted(() => vi.fn());
 vi.mock("openai", async (importOriginal) => {
@@ -35,6 +38,21 @@ function readyEvents(turnId: string): V1TurnObservationEvent[] {
 
 describe("Cycle I message worker composition", () => {
   beforeEach(() => openAiCreate.mockReset());
+
+  it("injects TenantEngineRouter as the only ProcessMessageJobHandler conversation handler", () => {
+    const runtime = createConversationV2Runtime({
+      env: {
+        CONVERSATION_V2_COMPARISON_HMAC_KEY: "x".repeat(32),
+        SYSTEMOPS_LAB_CLINIC_ID: "systemops-lab",
+      },
+      collector: new V1ObservationCollector(),
+    });
+
+    expect(runtime.conversationHandler).toBeInstanceOf(TenantEngineRouter);
+    expect(runtime.automationPolicy).toBeDefined();
+    expect(runtime.decisionTraceSink).toBeDefined();
+    expect(runtime.runSelectedShadowTurns).toEqual(expect.any(Function));
+  });
 
   it("binds tenant in the turn-local sink and promotes before exposing the batch", () => {
     const runtime = createConversationV2Runtime({
@@ -244,16 +262,34 @@ describe("Cycle I message worker composition", () => {
     const source = readFileSync("src/app/api/cron/message-worker/route.ts", "utf8");
     expect(source).toContain("createConversationV2Runtime");
     expect(source).toContain("runAfterSenderDrainAttempt");
+    expect(source).toContain("conversationHandler: conversationV2Runtime.conversationHandler");
+    expect(source).toContain("automationPolicy: conversationV2Runtime.automationPolicy");
+    expect(source).toContain("decisionTraceSink: conversationV2Runtime.decisionTraceSink");
+    expect(source).toContain("conversationV2Runtime.runSelectedShadowTurns");
     expect(source).not.toContain("shadowModeEnabled");
     expect(source).not.toMatch(/Dental|bookSlot|confirmAppointment|OpenAI/);
+    expect(source).not.toMatch(/new V2ShadowSelectionRegistry|runConversationV2ShadowBatch/);
     const processCall = source.indexOf("await drainMessageProcessQueue({");
     const senderBarrierCall = source.indexOf("await runAfterSenderDrainAttempt({");
-    const shadowBatchCall = source.indexOf("await runConversationV2ShadowBatch({");
+    const shadowBatchCall = source.indexOf("conversationV2Runtime.runSelectedShadowTurns");
     expect(processCall).toBeGreaterThanOrEqual(0);
     expect(senderBarrierCall).toBeGreaterThan(processCall);
     expect(shadowBatchCall).toBeGreaterThan(senderBarrierCall);
     expect(source.indexOf('log.info("conversation_v2.engine_selected"'))
       .toBeGreaterThan(shadowBatchCall);
+  });
+
+  it("uses the existing process and send queues without a V2 worker", () => {
+    const runtimeSource = readFileSync(
+      "src/infrastructure/conversation-v2/create-conversation-v2-runtime.ts",
+      "utf8",
+    );
+    const routeSource = readFileSync("src/app/api/cron/message-worker/route.ts", "utf8");
+    const source = `${runtimeSource}\n${routeSource}`;
+
+    expect(source).not.toMatch(/v2\.process|v2\.send|V2Worker/);
+    expect(routeSource.match(/new ProcessMessageJobHandler/g)).toHaveLength(1);
+    expect(routeSource.match(/new SendMessageJobHandler/g)).toHaveLength(1);
   });
 
   it("does not cache policy in runtime assembly", async () => {
