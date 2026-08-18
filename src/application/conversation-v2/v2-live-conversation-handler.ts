@@ -34,6 +34,7 @@ import {
   type DentalPolicy,
 } from "@/domain-packs/dental";
 import { dentalEffectDecisionIdentity } from "@/application/conversation-v2/dental-intended-effects";
+import { classifyUnderstandingFailure } from "@/application/conversation-v2/understanding-failure-code";
 import {
   assertRegisteredLiveDentalUnderstanding,
   type LiveDentalUnderstanding,
@@ -299,6 +300,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
                 durationMs: Math.max(0, Math.round(performance.now() - understandingStartedAt)),
                 modelId,
                 request: null,
+                errorCode: classifyUnderstandingFailure(error),
               });
             }
             throw error;
