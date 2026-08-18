@@ -84,6 +84,22 @@ A análise de maturidade, os gatilhos de migração e os custos estimados estão
 | Observabilidade | Sentry, métricas operacionais e Decision Trace sanitizado |
 | Testes | Vitest, CI e replay E2E isolado |
 
+### Seleção de engine de conversa
+
+Cada organização tem uma engine conversacional persistida, com vocabulário fechado e default `v1`:
+
+| Valor | Comportamento |
+| --- | --- |
+| `v1` | orquestrador atual decide e responde |
+| `v1_with_v2_shadow` | V1 responde; a V2 roda em shadow, sem escrita, canal ou agenda |
+| `v2_internal` | runtime V2 conduz o turno; alcançável somente no SystemOps Lab interno |
+
+`src/application/conversation-v2/tenant-engine-router.ts` é o único componente que escolhe a engine, uma vez por turno, depois do modo de automação. Nenhuma rota, worker, sender ou adapter ramifica por engine. Não existe fallback `V2 -> V1` dentro do mesmo turno: uma troca de engine só vale a partir do turno seguinte, e a V1 permanece como rollback.
+
+`v2_internal` é fail-closed. Ele exige, simultaneamente, aprovação interna Ed25519 registrada e vinculada ao build implantado, tenant e canal com digests exatos, `isTest=true`, `isDemo=false` e status operacional `test`. Qualquer ausência devolve o turno à V1 antes de qualquer efeito. Essa autorização interna cobre apenas dogfooding no SystemOps Lab: ela não altera o resultado do Cycle I, não substitui os dois reviewers humanos calibrados exigidos antes do primeiro cliente externo e não alcança tenant externo.
+
+O procedimento operacional completo — preconditions, comandos, saídas esperadas, stop conditions e rollback — está em [Runbook do SystemOps Lab](docs/operations/systemops-lab-runbook.md).
+
 ## Execução local
 
 Requisitos: Node.js 22+, npm e PostgreSQL compatível com a `DATABASE_URL`.
@@ -123,6 +139,7 @@ Configuração compartilhada de infraestrutura fica em `.env.local`. Configuraç
 - [Fontes de verdade](docs/architecture/sources-of-truth.md)
 - [Replay e Decision Trace](docs/architecture/replay-and-decision-trace.md)
 - [Change control e deploy](docs/operations/change-control.md)
+- [Runbook do SystemOps Lab](docs/operations/systemops-lab-runbook.md)
 - [Onboarding de organização](docs/operations/onboarding-clinica.md)
 - [Migrations](docs/operations/migrations-baseline.md)
 - [LGPD e dados de saúde](docs/compliance/lgpd-healthcare.md)
