@@ -1273,24 +1273,37 @@ describe("Cycle I post-sender shadow batch", () => {
       sink,
     });
 
-    const summary = await runRegisteredBatch({ turns: [turn], ...input });
+    // Admission is guarded by the injected clock *and* by `performance.now()`. Only a
+    // controlled timer keeps a 5 ms deadline from depending on how loaded the machine is.
+    vi.useFakeTimers({ now: 0 });
+    try {
+      const running = runRegisteredBatch({ turns: [turn], ...input });
+      await flushMicrotasksUntil(
+        () => sink.append.mock.calls.length === 1,
+        "sink dependency was not admitted before the controlled deadline",
+      );
+      await vi.advanceTimersByTimeAsync(25);
+      const summary = await running;
 
-    expect(summary).toMatchObject({
-      persisted: 1,
-      deadlineReached: true,
-      deadline: {
-        admissionClosed: true,
-        returnedAt: null,
-        overrun: true,
-        clockStatus: "malformed",
-      },
-      drain: {
-        admitted: 2,
-        settled: 2,
-        activeAtReturn: 0,
-      },
-    });
-    expect(summary.deadline.overrunMs).toBeGreaterThan(0);
+      expect(summary).toMatchObject({
+        persisted: 1,
+        deadlineReached: true,
+        deadline: {
+          admissionClosed: true,
+          returnedAt: null,
+          overrun: true,
+          clockStatus: "malformed",
+        },
+        drain: {
+          admitted: 2,
+          settled: 2,
+          activeAtReturn: 0,
+        },
+      });
+      expect(summary.deadline.overrunMs).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it.each([
