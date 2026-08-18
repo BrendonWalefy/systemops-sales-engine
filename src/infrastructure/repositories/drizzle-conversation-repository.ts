@@ -1,9 +1,9 @@
-import { eq, asc, desc } from "drizzle-orm";
+import { and, asc, desc, eq, gte, or } from "drizzle-orm";
 import type { Conversation, Message } from "@/domain/entities/conversation";
 import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
 import { db } from "@/infrastructure/db/client";
 import { isPostgresErrorCode } from "@/infrastructure/db/is-postgres-error-code";
-import { conversations, messages } from "@/infrastructure/db/schema";
+import { conversations, leads, messages } from "@/infrastructure/db/schema";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export class DrizzleConversationRepository implements ConversationRepository {
@@ -12,6 +12,96 @@ export class DrizzleConversationRepository implements ConversationRepository {
       where: eq(conversations.leadId, leadId),
     });
     return row ? mapConversationRow(row) : null;
+  }
+
+  async findMessageById(id: string): Promise<Message | null> {
+    const [row] = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.id, id))
+      .limit(1);
+    return row ? mapMessageRow(row) : null;
+  }
+
+  async findMessageByExternalId(externalId: string): Promise<Message | null> {
+    const [row] = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.externalId, externalId))
+      .limit(1);
+    return row ? mapMessageRow(row) : null;
+  }
+
+  async findRecentLeadMessageByIdentityAndContent(input: {
+    clinicId: string;
+    phone: string | null;
+    whatsappLid: string | null;
+    fallbackPhone: string;
+    body: string;
+    sentAtOrAfter: Date;
+  }): Promise<Message | null> {
+    const identityMatch = input.phone
+      ? input.whatsappLid
+        ? or(
+            eq(leads.phone, input.phone),
+            eq(leads.whatsappLid, input.whatsappLid),
+            eq(leads.phone, input.whatsappLid),
+          )
+        : eq(leads.phone, input.phone)
+      : input.whatsappLid
+        ? or(
+            eq(leads.whatsappLid, input.whatsappLid),
+            eq(leads.phone, input.whatsappLid),
+          )
+        : eq(leads.phone, input.fallbackPhone);
+    const [row] = await db
+      .select({ message: messages })
+      .from(messages)
+      .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+      .innerJoin(leads, eq(leads.id, conversations.leadId))
+      .where(
+        and(
+          eq(leads.clinicId, input.clinicId),
+          identityMatch,
+          eq(messages.author, "lead"),
+          eq(messages.body, input.body),
+          gte(messages.sentAt, input.sentAtOrAfter),
+        ),
+      )
+      .limit(1);
+    return row ? mapMessageRow(row.message) : null;
+  }
+
+  async ensureConversation(conversation: Conversation): Promise<Conversation> {
+    const existing = await this.findByLeadId(conversation.leadId);
+    if (existing) return existing;
+
+    const [inserted] = await db
+      .insert(conversations)
+      .values({
+        id: conversation.id,
+        clinicId: conversation.clinicId,
+        leadId: conversation.leadId,
+        channel: conversation.channel,
+        category: conversation.category,
+        externalThreadId: conversation.externalThreadId,
+        summary: conversation.summary,
+        lastMessageAt: conversation.lastMessageAt,
+        createdAt: conversation.createdAt,
+        updatedAt: conversation.updatedAt,
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (inserted) {
+      bumpInboxVersion(conversation.clinicId);
+      return mapConversationRow(inserted);
+    }
+
+    const raced = await this.findByLeadId(conversation.leadId);
+    if (!raced) {
+      throw new Error("ensureConversation: insert conflicted without a persisted conversation");
+    }
+    return raced;
   }
 
   async saveConversation(conversation: Conversation): Promise<void> {
@@ -60,9 +150,9 @@ export class DrizzleConversationRepository implements ConversationRepository {
     if (updated) bumpInboxVersion(updated.clinicId);
   }
 
-  async appendMessage(message: Message): Promise<void> {
+  async appendMessage(message: Message): Promise<boolean> {
     try {
-      await db
+      const [inserted] = await db
         .insert(messages)
         .values({
           id: message.id,
@@ -77,7 +167,9 @@ export class DrizzleConversationRepository implements ConversationRepository {
           deliveryFormat: message.deliveryFormat ?? null,
           simulated: message.simulated ?? false,
         })
-        .onConflictDoNothing();
+        .onConflictDoNothing()
+        .returning({ id: messages.id });
+      if (!inserted) return false;
 
       const [updated] = await db
         .update(conversations)
@@ -89,13 +181,14 @@ export class DrizzleConversationRepository implements ConversationRepository {
         .where(eq(conversations.id, message.conversationId))
         .returning({ clinicId: conversations.clinicId });
       if (updated) bumpInboxVersion(updated.clinicId);
+      return true;
     } catch (err) {
       // Código 23503 = foreign_key_violation no PostgreSQL.
       // Ocorre quando a conversa foi deletada concorrentemente (ex: reset E2E)
       // enquanto o Orchestrator ainda estava processando. Ignorar é seguro aqui.
       if (isPostgresErrorCode(err, "23503")) {
         console.warn("[appendMessage] FK violation — conversa deletada concorrentemente:", message.conversationId);
-        return;
+        return false;
       }
       throw err;
     }

@@ -3,13 +3,14 @@ import { stableSerialize } from "@/application/replay/fingerprint-replay-config"
 
 export const RUNTIME_CONFIG_FINGERPRINT_SCHEMA = "runtime-config.v1" as const;
 
-const SECRET_KEYS = new Set([
+export const RUNTIME_CONFIG_SECRET_KEYS = Object.freeze([
   "zapiToken",
   "zapiClientToken",
   "metaAccessToken",
   "metaAppSecret",
   "calendarSyncToken",
-]);
+] as const);
+const SECRET_KEYS = new Set<string>(RUNTIME_CONFIG_SECRET_KEYS);
 
 const VOLATILE_KEYS = new Set([
   "createdAt",

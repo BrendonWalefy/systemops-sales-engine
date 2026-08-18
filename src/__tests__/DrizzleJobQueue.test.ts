@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PgDialect } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 const dbMock = vi.hoisted(() => ({
   insert: vi.fn(),
@@ -95,6 +97,47 @@ describe("DrizzleJobQueue", () => {
     });
 
     expect(claimed).toMatchObject({ id: "job-1", status: "processing", attempts: 1 });
+    expect(candidateSelect.for).toHaveBeenCalledWith("update", { skipLocked: true });
+    expect(update.set).toHaveBeenCalledOnce();
+  });
+
+  it("claims only the requested dedupe key inside the same locked CTE", async () => {
+    const candidate = { id: {} };
+    const candidateSelect = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      for: vi.fn().mockReturnThis(),
+    };
+    const update = {
+      set: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      returning: vi.fn().mockResolvedValue([{
+        ...existingJob,
+        dedupeKey: "inbound:event-wanted",
+        status: "processing",
+        attempts: 1,
+      }]),
+    };
+    dbMock.$with.mockReturnValue({ as: vi.fn().mockReturnValue(candidate) });
+    dbMock.select.mockReturnValue(candidateSelect);
+    dbMock.with.mockReturnValue({ update: vi.fn().mockReturnValue(update) });
+    const wanted = "inbound:event-wanted";
+
+    const claimed = await new DrizzleJobQueue().claimNextJob({
+      queues: ["message.process"],
+      workerId: "lab-runner-1",
+      dedupeKey: wanted,
+      now: new Date("2026-06-23T12:00:00.000Z"),
+    });
+
+    expect(claimed?.dedupeKey).toBe(wanted);
+    const predicate = candidateSelect.where.mock.calls[0]?.[0];
+    const query = new PgDialect().sqlToQuery(sql`select 1 where ${predicate}`);
+    expect(query.sql).toContain("dedupe_key");
+    expect(query.params).toContain(wanted);
     expect(candidateSelect.for).toHaveBeenCalledWith("update", { skipLocked: true });
     expect(update.set).toHaveBeenCalledOnce();
   });

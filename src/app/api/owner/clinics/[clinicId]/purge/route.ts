@@ -29,6 +29,7 @@ import {
   mediaAssets,
   priceCampaigns,
   humanReviewRequests,
+  conversationV2Comparisons,
 } from "@/infrastructure/db/schema";
 import { createLogger } from "@/infrastructure/logging/logger";
 
@@ -105,6 +106,7 @@ export async function POST(
   }
 
   await db.delete(agentRecommendations).where(eq(agentRecommendations.clinicId, clinicId));
+  await db.delete(conversationV2Comparisons).where(eq(conversationV2Comparisons.clinicId, clinicId));
   await db.delete(outboundMessages).where(eq(outboundMessages.clinicId, clinicId));
   await db.delete(followUps).where(eq(followUps.clinicId, clinicId));
   await db.delete(slotReservations).where(eq(slotReservations.clinicId, clinicId));

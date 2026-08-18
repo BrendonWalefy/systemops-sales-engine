@@ -43,6 +43,34 @@ export class InMemoryDemoStore
     return this.leads.get(id) ?? this.appointments.get(id) ?? null;
   }
 
+  async findByIdForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+  ): Promise<Appointment | null> {
+    const appointment = this.appointments.get(appointmentId);
+    return appointment?.clinicId === clinicId && appointment.leadId === leadId
+      ? appointment
+      : null;
+  }
+
+  async confirmScheduledForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+    updatedAt: Date,
+  ): Promise<Appointment | null> {
+    const appointment = await this.findByIdForClinicAndLead(
+      clinicId,
+      leadId,
+      appointmentId,
+    );
+    if (!appointment || appointment.status !== "scheduled") return null;
+    const confirmed = { ...appointment, status: "confirmed" as const, updatedAt };
+    this.appointments.set(appointmentId, confirmed);
+    return confirmed;
+  }
+
   async findByPhone(clinicId: string, phone: string): Promise<Lead | null> {
     return (
       Array.from(this.leads.values()).find(
@@ -61,6 +89,17 @@ export class InMemoryDemoStore
 
   async findInactiveLeads(): Promise<Lead[]> {
     return [];
+  }
+
+  async ensureWhatsAppIdentity(lead: Lead): Promise<Lead> {
+    const existing = Array.from(this.leads.values()).find(
+      (item) => item.clinicId === lead.clinicId
+        && ((lead.phone && item.phone === lead.phone)
+          || (lead.whatsappLid && item.whatsappLid === lead.whatsappLid)),
+    );
+    if (existing) return existing;
+    this.leads.set(lead.id, lead);
+    return lead;
   }
 
   async mergeDuplicateLeads(params: {
@@ -118,6 +157,56 @@ export class InMemoryDemoStore
       ) ??
       null
     );
+  }
+
+  async findMessageByExternalId(externalId: string): Promise<Message | null> {
+    return Array.from(this.messages.values()).flat().find(
+      (message) => message.externalId === externalId,
+    ) ?? null;
+  }
+
+  async findMessageById(id: string): Promise<Message | null> {
+    return Array.from(this.messages.values()).flat().find(
+      (message) => message.id === id,
+    ) ?? null;
+  }
+
+  async findRecentLeadMessageByIdentityAndContent(input: {
+    clinicId: string;
+    phone: string | null;
+    whatsappLid: string | null;
+    fallbackPhone: string;
+    body: string;
+    sentAtOrAfter: Date;
+  }): Promise<Message | null> {
+    for (const conversation of this.conversations.values()) {
+      if (conversation.clinicId !== input.clinicId) continue;
+      const lead = this.leads.get(conversation.leadId);
+      if (!lead) continue;
+      const identityMatches = Boolean(
+        (input.phone && lead.phone === input.phone)
+        || (input.whatsappLid
+          && (lead.whatsappLid === input.whatsappLid || lead.phone === input.whatsappLid))
+        || (!input.phone && !input.whatsappLid && lead.phone === input.fallbackPhone),
+      );
+      if (!identityMatches) continue;
+      const match = (this.messages.get(conversation.id) ?? []).find(
+        (message) => message.author === "lead"
+          && message.body === input.body
+          && message.sentAt >= input.sentAtOrAfter,
+      );
+      if (match) return match;
+    }
+    return null;
+  }
+
+  async ensureConversation(conversation: Conversation): Promise<Conversation> {
+    const existing = Array.from(this.conversations.values()).find(
+      (item) => item.leadId === conversation.leadId,
+    );
+    if (existing) return existing;
+    this.conversations.set(conversation.id, conversation);
+    return conversation;
   }
 
   async findActiveByLeadId(leadId: string): Promise<Appointment | null> {
@@ -190,9 +279,19 @@ export class InMemoryDemoStore
     if (conv) this.conversations.set(conversationId, { ...conv, aiPaused: expiresAt !== null, takeoverExpiresAt: expiresAt });
   }
 
-  async appendMessage(message: Message): Promise<void> {
+  async appendMessage(message: Message): Promise<boolean> {
+    const storedMessages = Array.from(this.messages.values()).flat();
+    if (
+      storedMessages.some((stored) => stored.id === message.id) ||
+      (message.externalId && storedMessages.some(
+        (stored) => stored.externalId === message.externalId,
+      ))
+    ) {
+      return false;
+    }
     const messages = this.messages.get(message.conversationId) ?? [];
     this.messages.set(message.conversationId, [...messages, message]);
+    return true;
   }
 
   async listMessages(conversationId: string): Promise<Message[]> {

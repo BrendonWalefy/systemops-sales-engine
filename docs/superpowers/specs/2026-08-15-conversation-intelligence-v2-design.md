@@ -32,8 +32,9 @@ requisitos.
 
 A auditoria mediu o mecanismo que produz a dívida. `handle()` tem 4.571 linhas em um escopo
 único, com 529 `if` e 296 regex literais. Ao lado dele existem 30 predicados de palavra-chave e
-uma função — `coerceBusinessIntent` — cuja finalidade declarada é sobrescrever um classificador
-que acerta 95,2%.
+uma função — `coerceBusinessIntent` — cuja finalidade declarada é sobrescrever um classificador.
+A baseline persistida mede 73,0% nos 21 incidentes reais e 92,5% nas 58 frases derivadas do
+próprio prompt; o antigo número de 95,2% não possui baseline persistida e foi retirado do gate.
 
 Refatorar extraindo helpers reduz o tamanho do *arquivo* e não toca o problema, que é o
 *escopo*. Enquanto toda decisão conversacional couber no mesmo lugar, cada bug novo continua
@@ -342,6 +343,44 @@ autorizada. O composer escolhe **como dizer**, nunca **o que propor**. Consequê
 objeção cadastrada ganha uma capability responsável por respondê-la antes de qualquer pivô para
 agendamento, e isso é testável sem chamar o modelo.
 
+### 7.1 Gate semântico do Ciclo H e avaliação qualitativa do Ciclo I
+
+Decisão canônica `CI-V2-H-GATE-2026-08-16`, registrada antes de qualquer resultado final da
+comparação V1×V2 do Ciclo I:
+
+- o Ciclo H é o gate de **segurança semântica da composição**;
+- H só fecha quando testes adversariais demonstrarem
+  `semantics(finalText) ⊆ semantics(validatedDraft) ⊆ semantics(authorizedPlan)`;
+- H deve fechar os CRITICAL da revisão adversarial e os IMPORTANT que afetem fronteiras de
+  autoridade: plano validado/branded, integridade referencial, origem canônica da autoridade,
+  subject preservado, tipos de outcome não alargados e relações inválidas rejeitadas;
+- plano, draft e seus snapshots devem resistir a TOCTOU, getters, accessors, proxies, aliases e
+  mutações posteriores à validação;
+- a relação `OutcomeType → semanticClass`, incluindo requisitos de subject e evidence, deriva de
+  uma única fonte genérica fornecida pelo Domain Pack e é validada em compile-time e runtime;
+- contribuição de linguagem não é uma segunda fonte de autoridade. O renderer H usa léxico
+  genérico fechado e somente dados lexicais explicitamente autorizados no plano;
+- composer e renderer H fazem zero chamadas a provider/model. O estágio de
+  composição/renderização implementado no Ciclo H realiza zero chamadas a provider/model;
+  portanto seu custo de inferência é zero. Esta afirmação é restrita ao estágio H e não compara
+  ambiguamente seu custo com o custo do turno V1 completo;
+- suítes focadas, regressões relevantes e `npm run verify` precisam estar verdes.
+
+`judge ≥ V1` não é gate de H. A exigência qualitativa não foi removida: ela pertence ao Ciclo I,
+que executará comparação V1×V2 pareada e intercalada, com o mesmo N para ambos, primary analysis
+nos casos estáveis, sensitivity analysis nos casos instáveis e critério de vitória fixado antes
+do resultado. O judge aprovado atualmente tem status `experimental_non_gating`: sua instabilidade
+medida foi 42,9%, acima do limite previamente aprovado de 25%, logo ele não pode decidir GO/NO-GO
+enquanto não estiver calibrado. A medição e o status estão persistidos em
+[`evals/corpus/baseline-v1.json`](../../../evals/corpus/baseline-v1.json), sob o protocolo aprovado
+em [`2026-08-13-prose-judge-design.md`](./2026-08-13-prose-judge-design.md). No Ciclo I, o judge
+será usado somente se calibrado; caso contrário, a decisão qualitativa usará human-review ou
+instrumento substituto previamente calibrado.
+
+Esta alteração corrige a etapa responsável pela medição e a validade do instrumento; não reduz o
+nível de qualidade exigido. Seu registro anterior a qualquer resultado final V1×V2 do Ciclo I
+impede que seja interpretada como ajuste retrospectivo de critério.
+
 ## 8. ActionResult até outbound
 
 ```mermaid
@@ -534,6 +573,88 @@ Garantias, todas necessárias para o shadow não virar risco:
 comportamento sob rajada. Isso só aparece com a V2 executando de verdade, e é a razão de o
 cutover ser por tenant, começando pelo de menor volume.
 
+### 11.1 Decisão canônica do Ciclo I
+
+Decisão `CI-V2-I-SHADOW-2026-08-16`, registrada antes da execução e de qualquer resultado final
+V1×V2 do Ciclo I:
+
+- o caminho selecionado é **captured-read shadow + recording execution**: a V1 continua sendo o
+  controle e expõe snapshots plain-data, imutáveis e turn-local das leituras que efetivamente
+  usou; a V2 só pode consultar adapters alimentados por esses snapshots;
+- ausência de uma leitura capturada falha como `shared_read_unavailable`. É proibido completar o
+  shadow com uma nova consulta à produção;
+- outcome, resposta ou side effect da V1 não são autoridade nem entrada da V2. Eles entram apenas
+  no braço de controle do registro comparativo;
+- toda porta de escrita da V2 em shadow registra `would_have_executed` e nunca delega a um writer
+  real. Se a decisão for `execute`, o shadow para antes de `Capability.execute`, registra a
+  intenção tipada e não produz `ActionResult` ou texto. Uma escrita simulada não pode ser
+  promovida a sucesso/failure executado nem verbalizada como tal;
+- persistir o registro comparativo é um efeito de observabilidade explicitamente autorizado,
+  posterior e best-effort. Não é efeito de capability e não altera estado conversacional,
+  agendamento, outbox, canal, CRM ou provider. O registro live não contém input, histórico ou
+  resposta em texto; esses conteúdos só existem no corpus sanitizado ou replay aprovado;
+- o selector V2 é distinto de `shadowModeEnabled`, que conserva seu significado legado. Os
+  estados fechados são `v1`, `v1_with_v2_shadow` e `v2_internal`, com default `v1`;
+- `v2_internal` é restrito a tenants `isTest`, exige aprovação derivada de um gate report válido e
+  volta imediatamente a `v1` se qualquer precondição faltar. Depois que uma escrita V2 começa, o
+  mesmo turno não pode cair para V1;
+- na implementação inicial do I, `v2_internal` permanece fail-closed em V1 até existir shell
+  produtivo que preserve dedupe, estado, outbox e delivery, além de todos os gates. Shadow roda
+  somente depois que o caminho V1 e seu sender terminam;
+- o protocolo final usa pares intercalados `V1_i → V2_i`, o mesmo conjunto de casos e `N = 6` em
+  cada braço. Casos estáveis são a análise primária e casos D0 instáveis, a sensibilidade;
+- o judge atual continua `experimental_non_gating`. GO qualitativo exige instrumento previamente
+  calibrado ou revisão humana estruturada com a rubrica congelada;
+- custo e p95 comparam o turno completo, nunca usam o custo zero do estágio H como proxy.
+- o wire contract live vigente é `conversation-v2-live-comparison.v2`. A versão `.v1` foi um
+  protótipo pré-ativação: não houve observação real, persistência nem ativação com ela, portanto
+  não existe migração de dado produtivo. O parser a rejeita em vez de reinterpretá-la. A `.v2`
+  usa uniões discriminadas exatas por `comparisonStatus` e por status de cada braço: V2 nunca é
+  `unavailable`; V1 sem artifact final é exatamente `unavailable/final_response_unavailable` e
+  torna a comparação `not_measurable`, sem divergência. Estados sem observação não podem carregar
+  outcomes, classes semânticas, texto final ou atribuições incompatíveis.
+
+O desenho operacional, schema de persistência, critérios de privacidade, rollback e gates desta
+decisão estão em
+[`2026-08-16-conversation-intelligence-v2-cycle-i-design.md`](./2026-08-16-conversation-intelligence-v2-cycle-i-design.md).
+
+### 11.2 Emenda canônica: deadline de admissão e drain obrigatório
+
+Decisão `CI-V2-I-ADMISSION-DEADLINE-2026-08-16`, aprovada em 2026-08-16 como resolução
+prospectiva do blocker arquitetural restante da Task 5:
+
+- `deadlineAt` fecha **admissão**. A partir desse instante, nenhuma nova chamada a provider,
+  leitura/escrita de banco, side effect ou operação assíncrona relevante pode começar;
+- toda operação admitida antes de `deadlineAt` é observada e aguardada até conclusão ou falha
+  explícita. Não existe Promise órfã, fire-and-forget nem `Promise.race` que devolva enquanto
+  trabalho iniciado permanece vivo;
+- cancelamento é cooperativo e só é alegado onde a primitiva o comprova. O provider/OpenAI
+  recebe `AbortSignal`; o summary separa pedido de abort de cancelamento confirmado por erro
+  tipado do provider. Aborto do fetch não é evidência de cancelamento server-side no Neon;
+- para Drizzle/Neon, o runtime verifica a admissão imediatamente antes de iniciar cada operação
+  e, depois do início, aguarda seu settlement. Nenhuma mutação nova começa com admissão fechada
+  nem pode ser despachada depois da criação do summary;
+- exception, resultado malformado ou captured read ausente só pode virar comparison record se a
+  escrita no sink for admitida antes de `deadlineAt`. Se a admissão fechar antes do sink, o
+  resultado existe apenas no summary frozen em memória e zero append/DB record é iniciado;
+- o retorno pode ocorrer depois de T enquanto operações já admitidas são drenadas. Esse estado é
+  **overrun**, nunca conformidade com deadline estrito. Fechamento causado por T registra
+  `admissionClosedAt = deadlineAt`;
+- o summary expõe, sem IDs crus ou PII, o overrun medido, se a admissão fechou e os fatos de drain
+  das operações admitidas. A maior amostra válida do relógio permanece como evidência mínima de
+  overrun; amostra posterior malformada/regressiva não pode apagá-la nem converter overrun em
+  sucesso aparente;
+- strict return-by-T com zero órfão e zero commit pós-retorno requer outra fronteira de execução
+  e propriedade de cancelamento. Essa evolução fica futura; nenhum worker, fila ou redesign é
+  introduzido nesta emenda.
+
+Racional: a implementação anterior da Task 5 recebeu QUALITY PASS; o blocker era exclusivamente
+semântico/arquitetural. As portas atuais não demonstram a antiga garantia e o `AbortSignal` do
+Neon HTTP não prova ausência de commit server-side. Preservar segurança por drain explícito tem
+precedência sobre simular strictness com abandono de Promise. Esta decisão não relaxa isolamento
+de tenant, aprovação, autoridade, envelopes single-use, sender barrier, rollback, isolamento de
+escrita ou observabilidade.
+
 ## 12. Corpus e evals
 
 Três camadas. A do meio é a que a V1 nunca teve, e é onde os bugs vivem.
@@ -604,10 +725,10 @@ Um de cada vez, cada um com baseline, alteração e evidência. Gate obrigatóri
 | C | **Corpus e as três camadas de eval** (I4) | V1 medida em todas as camadas; demo curada convertida em golden |
 | D | Instrumentar a camada de keywords | lista ordenada: quais predicados são feature e quais são cicatriz |
 | E | Core V2 + `fixture-pack` + testes arquiteturais | pipeline verde sem nenhum substantivo de negócio no core |
-| F | Domain pack dental | Understanding ≥ 95,2% e ≥ paridade nos predicados medidos em D |
+| F | Domain pack dental | gate vetorial por população do plano detalhado do F; zero erro crítico e paridade das 3 features estruturais de D |
 | G | Capabilities do dental, coordinator e política estruturada | Decision ≥ V1 nos golden; divergências justificadas caso a caso |
-| H | Composer V2 e prompt minimalista | judge ≥ V1; custo por turno ≤ V1 |
-| I | Shadow e comparação | critérios da seção 14 |
+| H | Composer/validator/renderer determinísticos | gate de segurança semântica da seção 7.1; zero chamadas a provider/model no estágio H |
+| I | Shadow e comparação qualitativa V1×V2 | critérios da seção 14 e protocolo pareado/intercalado da seção 7.1 |
 | J | Cutover por tenant e limpeza | 7 dias sem regressão crítica antes de apagar qualquer linha |
 
 Ciclo A já está parcialmente feito: o reparo de estilo do Ciclo 1 da auditoria foi preservado em
@@ -627,15 +748,16 @@ O grupo de segurança é bloqueante: regressão ali cancela o cutover independen
 | | cobertura de validação | 1 de 6 chamadores | 6 de 6 |
 | | injeção via nome de exibição | 1 caminho exposto | 0, com regressão |
 | Conversa | fallback determinístico | 45% dos turnos | **nenhum por violação de estilo** — a cláusula vinculante. O alvo de < 10% é indicativo e será recalibrado no ciclo C, quando se souber quanto do fallback é correto por ser fato de fato não autorizado |
-| | acerto de Understanding | 95,2% em 79 casos | ≥ 95,2% + paridade nos predicados de D |
+| | acerto de Understanding | harness: 73,0% em 21 incidentes e 92,5% em 58 regras; corpus V1: 44/64 comparáveis | aceitação por eixo no recorte F + diagnóstico legado sem regressão + paridade das 3 features estruturais de D |
 | | Decision correta no corpus golden | a medir no ciclo C | ≥ V1, sem regressão em agendamento |
-| | prosa — judge par a par | a medir no ciclo C | ≥ V1 |
+| | prosa — comparação qualitativa pareada | judge atual `experimental_non_gating` | ≥ V1 no Ciclo I, por judge calibrado ou revisão/instrumento previamente calibrado |
 | Arquitetura | maior escopo de decisão | 4.571 linhas | nenhuma função > 200 linhas |
 | | regex sobre linguagem aberta na decisão | 296 literais, 30 predicados | 0 |
 | | substantivos de domínio no core | `isClinicSegment` em 2 camadas | 0, provado pelo `fixture-pack` |
 | | custo de um pack novo | — | 0 linhas alteradas no core |
+| | chamadas a provider/model no composer/renderer H | — | 0 |
 | Operação | trace: modelo, promptVersion, tokens, latência | 0 dos 4 campos | 4 de 4 em 100% dos turnos |
-| | custo por turno | a instrumentar no ciclo B | ≤ V1 |
+| | custo por turno completo | a instrumentar no ciclo B | ≤ V1, medido no Ciclo I sem usar como proxy o custo isolado do estágio H |
 | | latência p95 | a instrumentar no ciclo B | ≤ V1 |
 
 Critério que resume os outros: um bug conversacional novo, encontrado depois do cutover, deve ter
@@ -648,7 +770,8 @@ Registrado para não ser confundido com decisão tomada:
 
 - **Provider e modelo de cada estágio.** Depende de medição no ciclo C. Fallback de provider é
   desejável — `@anthropic-ai/sdk` já é dependência — mas não está desenhado aqui.
-- **Formato de persistência do resultado de shadow.** Definido no ciclo I, junto do consumo.
+- **Formato de persistência do resultado de shadow.** Decidido no Ciclo I pela decisão
+  `CI-V2-I-SHADOW-2026-08-16`; detalhes no design específico linkado na seção 11.1.
 - **Se `conversation-response-parts.ts` (927 linhas) é decomposto ou reescrito.** Marcado para
   medir: separar seleção de mídia, que é assunto de plano, de divisão de partes, que é assunto
   de entrega.

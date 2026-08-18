@@ -70,6 +70,10 @@ export type OutboundMessageStore = {
     options?: { turnId?: string | null },
   ): Promise<CreateOutboundMessageAndEnqueueResult>;
   findOutboundMessage(id: string): Promise<OutboundMessage | null>;
+  findConversationReplyByTurnId(input: {
+    clinicId: string;
+    turnId: string;
+  }): Promise<OutboundMessage | null>;
   hasEarlierActiveMessage(message: OutboundMessage): Promise<boolean>;
   markOutboundProcessing(id: string): Promise<boolean>;
   markOutboundPending(id: string, error: string): Promise<void>;

@@ -30,6 +30,7 @@ function selectChain(rows: unknown[]) {
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue(rows),
+    orderBy: vi.fn().mockResolvedValue(rows),
   };
 }
 
@@ -100,5 +101,27 @@ describe("SlotReservationService", () => {
     expect(result).toBeNull();
     expect(dbMock.insert).not.toHaveBeenCalled();
     expect(dbMock.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists only active overlapping reservations through a tenant-scoped read", async () => {
+    const active = {
+      id: "reservation-active",
+      clinicId,
+      leadId,
+      startsAt,
+      endsAt,
+      status: "pending",
+      calendarEventId: null,
+      expiresAt: new Date("2026-06-05T20:15:00.000Z"),
+    };
+    dbMock.select.mockReturnValueOnce(selectChain([active]));
+
+    await expect(new SlotReservationService().findActiveByPeriod(
+      clinicId,
+      startsAt,
+      endsAt,
+      new Date("2026-06-05T20:05:00.000Z"),
+    )).resolves.toEqual([active]);
+    expect(dbMock.select).toHaveBeenCalledOnce();
   });
 });

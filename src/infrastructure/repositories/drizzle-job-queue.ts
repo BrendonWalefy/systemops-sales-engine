@@ -55,6 +55,9 @@ export class DrizzleJobQueue implements JobQueue {
         .where(
           and(
             inArray(jobs.queue, input.queues),
+            input.dedupeKey === undefined
+              ? undefined
+              : eq(jobs.dedupeKey, input.dedupeKey),
             eq(jobs.status, "pending"),
             lte(jobs.runAt, now),
           ),

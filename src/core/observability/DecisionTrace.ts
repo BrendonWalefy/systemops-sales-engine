@@ -6,20 +6,30 @@
  * runtime normal use noop e o replay capture a sequência completa em memória.
  */
 
+import type { KeywordPredicateEvaluation } from "@/core/observability/KeywordPredicateEvaluation";
+
 export const DECISION_TRACE_SCHEMA_VERSION = "decision-trace.v1" as const;
 
 export const DECISION_TRACE_STAGES = [
   "ingress.received",
   "ingress.content_resolved",
+  "engine.selected",
   "orchestrator.started",
   "tenant.config_loaded",
   "state.loaded",
   "intent.classified",
+  // Ciclo D: uma avaliação de predicado de keyword. Emitido por consulta, não
+  // por turno — um turno que passa pela coerção emite vários.
+  "intent.predicate_evaluated",
   "intent.resolved",
   "treatment.resolved",
   "response.plan_built",
   "response.validated",
   "response.fallback_applied",
+  "v2.understanding",
+  "v2.decision",
+  "v2.action_result",
+  "v2.outbox",
   "state.before_delivery",
   "outbound.planned",
   "outbound.enqueued",
@@ -37,6 +47,17 @@ export type DecisionTraceStage = typeof DECISION_TRACE_STAGES[number];
 const DECISION_TRACE_STAGE_ALLOWLIST = new Set<string>(DECISION_TRACE_STAGES);
 
 export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
+  "engine.selected": ["route", "shadow", "reason"],
+  // Camada de keyword (Ciclo D). Só nome de predicado, booleanos e nomes de
+  // intent — a allowlist é o que garante que a instrumentação não vire uma
+  // porta lateral para o texto do lead entrar no trace.
+  "intent.predicate_evaluated": [
+    "predicateName",
+    "predicateFired",
+    "classifiedIntent",
+    "predicateIntent",
+    "divergedFromClassifier",
+  ],
   "response.plan_built": [
     "action",
     "planVersion",
@@ -45,6 +66,13 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     "allowedMediaCount",
     "maxCharacters",
     "expectedState",
+    "outcomeRefs",
+    "evidenceRefs",
+    "outcomeCount",
+    "factCount",
+    "optionCount",
+    "subjectCount",
+    "evidenceCount",
   ],
   "response.validated": [
     "action",
@@ -63,11 +91,43 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     "inputTokens",
     "outputTokens",
     "latencyMs",
+    "source",
+    "costMicros",
   ],
   "response.fallback_applied": [
     "action",
     "fallbackReason",
     "requiresHandoff",
+  ],
+  "v2.understanding": [
+    "status",
+    "durationMs",
+    "modelId",
+    "request",
+  ],
+  "v2.decision": [
+    "status",
+    "durationMs",
+    "decisionCount",
+    "executeCount",
+    "capabilityIds",
+    "decisionKinds",
+    "intendedEffects",
+  ],
+  "v2.action_result": [
+    "status",
+    "durationMs",
+    "resultCount",
+    "completedEffectCount",
+    "failedEffectCount",
+    "outcomeTypes",
+    "semanticClasses",
+  ],
+  "v2.outbox": [
+    "status",
+    "durationMs",
+    "messageWasNew",
+    "jobWasNew",
   ],
 } as const satisfies Partial<Record<DecisionTraceStage, readonly string[]>>;
 
@@ -159,6 +219,38 @@ export async function recordDecisionTrace(
   } catch {
     // Observabilidade é best-effort no runtime e não muda decisões de negócio.
   }
+}
+
+/**
+ * Registra a avaliação de um predicado da camada de keyword.
+ *
+ * Best-effort como todo o resto do trace: `recordDecisionTrace` engole a falha,
+ * porque observabilidade nunca pode derrubar um atendimento.
+ */
+export async function recordPredicateEvaluation(
+  sink: DecisionTraceSink | undefined,
+  input: {
+    turnId: string;
+    clinicId?: string;
+    conversationId?: string;
+    occurredAt?: string;
+    evaluation: KeywordPredicateEvaluation;
+  },
+): Promise<void> {
+  await recordDecisionTrace(sink, {
+    turnId: input.turnId,
+    stage: "intent.predicate_evaluated",
+    occurredAt: input.occurredAt ?? new Date().toISOString(),
+    clinicId: input.clinicId,
+    conversationId: input.conversationId,
+    metadata: {
+      predicateName: input.evaluation.predicateName,
+      predicateFired: input.evaluation.predicateFired,
+      classifiedIntent: input.evaluation.classifiedIntent,
+      predicateIntent: input.evaluation.predicateIntent,
+      divergedFromClassifier: input.evaluation.divergedFromClassifier,
+    },
+  });
 }
 
 /**

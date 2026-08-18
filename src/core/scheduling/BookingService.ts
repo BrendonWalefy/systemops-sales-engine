@@ -29,6 +29,17 @@ export type BookingResult =
   | { success: true; appointment: Appointment }
   | { success: false; reason: "slot_taken" | "calendar_error" | "db_error" };
 
+export type AppointmentConfirmationResult =
+  | { success: true; appointment: Appointment }
+  | {
+      success: false;
+      reason:
+        | "invalid_binding"
+        | "appointment_not_found"
+        | "appointment_not_active"
+        | "db_error";
+    };
+
 export type BookingReservationService = {
   releaseExpired(): Promise<void>;
   reserve(clinicId: string, leadId: string, startsAt: Date, endsAt: Date, ttlMinutes?: number): Promise<SlotReservation | null>;
@@ -222,6 +233,64 @@ export class BookingService {
     }
 
     return { success: true, appointment };
+  }
+
+  async confirmAppointment(params: {
+    clinic: Organization;
+    lead: Lead;
+    appointmentId: string;
+  }): Promise<AppointmentConfirmationResult> {
+    const { clinic, lead, appointmentId } = params;
+    if (lead.clinicId !== clinic.id) {
+      return { success: false, reason: "invalid_binding" };
+    }
+    let appointment = await this.appointmentRepo.findByIdForClinicAndLead(
+      clinic.id,
+      lead.id,
+      appointmentId,
+    );
+    if (!appointment) {
+      return { success: false, reason: "appointment_not_found" };
+    }
+    if (appointment.clinicId !== clinic.id || appointment.leadId !== lead.id) {
+      return { success: false, reason: "appointment_not_found" };
+    }
+    if (appointment.status === "confirmed") return { success: true, appointment };
+    if (appointment.status !== "scheduled") {
+      return { success: false, reason: "appointment_not_active" };
+    }
+
+    try {
+      const confirmed = await this.appointmentRepo.confirmScheduledForClinicAndLead(
+        clinic.id,
+        lead.id,
+        appointmentId,
+        new Date(),
+      );
+      if (confirmed) {
+        return confirmed.clinicId === clinic.id && confirmed.leadId === lead.id
+          ? { success: true, appointment: confirmed }
+          : { success: false, reason: "db_error" };
+      }
+    } catch (err) {
+      console.error("[BookingService] Failed to confirm appointment in DB:", err);
+      return { success: false, reason: "db_error" };
+    }
+
+    appointment = await this.appointmentRepo.findByIdForClinicAndLead(
+      clinic.id,
+      lead.id,
+      appointmentId,
+    );
+    if (!appointment) return { success: false, reason: "appointment_not_found" };
+    if (appointment.clinicId !== clinic.id || appointment.leadId !== lead.id) {
+      return { success: false, reason: "appointment_not_found" };
+    }
+    if (appointment.status === "confirmed") return { success: true, appointment };
+    if (appointment.status !== "scheduled") {
+      return { success: false, reason: "appointment_not_active" };
+    }
+    return { success: false, reason: "db_error" };
   }
 
   async cancel(params: {

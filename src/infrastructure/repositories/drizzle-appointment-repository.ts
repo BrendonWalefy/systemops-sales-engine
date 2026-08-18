@@ -58,6 +58,44 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     return row ? mapRow(row) : null;
   }
 
+  async findByIdForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+  ): Promise<Appointment | null> {
+    const row = await db.query.appointments.findFirst({
+      where: and(
+        eq(appointments.id, appointmentId),
+        eq(appointments.clinicId, clinicId),
+        eq(appointments.leadId, leadId),
+      ),
+    });
+    return row ? mapRow(row) : null;
+  }
+
+  async confirmScheduledForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+    updatedAt: Date,
+  ): Promise<Appointment | null> {
+    const [row] = await db
+      .update(appointments)
+      .set({ status: "confirmed", updatedAt })
+      .where(
+        and(
+          eq(appointments.id, appointmentId),
+          eq(appointments.clinicId, clinicId),
+          eq(appointments.leadId, leadId),
+          eq(appointments.status, "scheduled"),
+        ),
+      )
+      .returning();
+    if (!row) return null;
+    bumpInboxVersion(clinicId);
+    return mapRow(row);
+  }
+
   async findByLeadId(leadId: string): Promise<Appointment | null> {
     const row = await db.query.appointments.findFirst({
       where: eq(appointments.leadId, leadId),

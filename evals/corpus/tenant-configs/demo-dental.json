@@ -1,0 +1,91 @@
+{
+  "ref": "demo-dental",
+  "segment": "dental",
+  "timezone": "America/Sao_Paulo",
+  "businessHours": "Seg–sex 08h–19h · Sáb 08h–13h",
+  "note": "Clínica inventada da demo curada. Não é tenant real: existe para que os casos golden de tom tenham fatos verificáveis por trás, sem carregar dado de cliente.",
+  "facts": {
+    "address": {
+      "status": "known",
+      "value": "endereço registrado no seed da clínica demo",
+      "source": "src/application/demo/seed-demo-clinic.ts"
+    },
+    "businessHours": {
+      "status": "known",
+      "value": "Seg–sex 08h–19h · Sáb 08h–13h",
+      "source": "src/application/demo/seed-demo-clinic.ts"
+    },
+    "serviceAttributes": {
+      "status": "known",
+      "value": "9 serviços com descrição no seed",
+      "source": "src/application/demo/seed-demo-clinic.ts (treatments.description)"
+    },
+    "mediaLibrary": {
+      "status": "known",
+      "value": "video \"Implante\"; video \"Lentes\"; video \"Porcelana\"; image \"Sorriso antes depois\"",
+      "source": "src/application/demo/demo-media-manifest.ts"
+    },
+    "commercialPolicy": {
+      "status": "not_provided",
+      "value": null,
+      "source": null
+    }
+  },
+  "services": [
+    {
+      "name": "Lentes de resina",
+      "priceCents": 95000,
+      "description": "Cobrada por dente, após avaliação. Melhora formato, cor e harmonia com planejamento conservador."
+    },
+    {
+      "name": "Lentes de porcelana",
+      "priceCents": 180000,
+      "description": "Cobrada por dente, sempre após avaliação. Melhora formato, cor e harmonia do sorriso."
+    },
+    {
+      "name": "Clareamento dental",
+      "priceCents": 69000,
+      "description": "A laser na clínica ou com moldeiras para uso em casa."
+    },
+    {
+      "name": "Implante dentário",
+      "priceCents": 290000,
+      "description": "Implante de titânio para substituir dente ausente, após avaliação e exames."
+    },
+    {
+      "name": "Prótese dentária",
+      "priceCents": 240000,
+      "description": "Reabilitação com prótese fixa, removível ou sobre implantes, conforme avaliação."
+    },
+    {
+      "name": "Remoção de dentes",
+      "priceCents": 65000,
+      "description": "Avaliação cirúrgica para sisos, dentes quebrados ou extrações indicadas por planejamento."
+    },
+    {
+      "name": "Alinhadores invisíveis",
+      "priceCents": 35000,
+      "description": "Correção ortodôntica com alinhadores transparentes removíveis."
+    },
+    {
+      "name": "Harmonização facial",
+      "priceCents": 89000,
+      "description": "Procedimentos estéticos faciais realizados pelo dentista."
+    },
+    {
+      "name": "Botox",
+      "priceCents": 89000,
+      "description": "Avaliação para toxina botulínica estética ou apoio em tensão muscular/bruxismo."
+    }
+  ],
+  "knownAmbiguity": "Nenhuma: os casos curados foram escritos com o serviço já identificado.",
+  "provenance": {
+    "exportedAt": "2026-08-15T20:55:33.680Z",
+    "readOnly": true,
+    "note": "Clínica inventada da demo. Fatos derivados do seed e do manifesto de mídia — nunca copiados das respostas curadas."
+  },
+  "catalogCompleteness": {
+    "status": "closed",
+    "source": "src/application/demo/seed-demo-clinic.ts (o seed define a clínica inteira; não existe serviço fora dele)"
+  }
+}

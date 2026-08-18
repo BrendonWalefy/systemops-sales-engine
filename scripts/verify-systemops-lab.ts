@@ -3,8 +3,18 @@ import { fileURLToPath } from "node:url";
 
 import {
   evaluateSystemOpsLabReadiness,
+  type SystemOpsLabReadinessPhase,
   type SystemOpsLabReadinessReport,
 } from "@/application/labs/systemops-lab-readiness";
+import { digestSystemOpsDentalLabOwnerMembership } from "@/application/labs/systemops-dental-lab-config";
+import {
+  parseAndRegisterDeployedInternalLabApproval,
+} from "@/application/conversation-v2/internal-lab-approval";
+import { createConfiguredCycleIRuntimeBuildIdentity } from "@/application/conversation-v2/configured-cycle-i-authority";
+import {
+  resolveConversationEngineActivationProof,
+  type ConversationEngineActivationProof,
+} from "@/application/conversation-v2/engine-selection";
 import { resolveClinicByZapiInstance } from "@/application/tenancy/resolve-clinic";
 import { getZApiInstanceStatus, type ZApiInstanceStatus } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import {
@@ -12,8 +22,14 @@ import {
   type ClinicChannelConfig,
 } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
 import { db } from "@/infrastructure/db/client";
-import { organizations } from "@/infrastructure/db/schema";
-import { eq } from "drizzle-orm";
+import { clinicMembers, organizations } from "@/infrastructure/db/schema";
+import {
+  loadConfiguredInternalLabAuthority,
+  loadConfiguredInternalLabDeploymentIdentity,
+} from "@/infrastructure/conversation-v2/configured-internal-lab-authority";
+import { DrizzleInternalLabRuntimeBindingsReader } from "@/infrastructure/conversation-v2/drizzle-internal-lab-runtime-bindings-reader";
+import { DrizzleConversationEnginePolicyReader } from "@/infrastructure/repositories/drizzle-conversation-engine-policy-reader";
+import { and, eq } from "drizzle-orm";
 
 export type SystemOpsLabReadinessVerifierEnv = Record<string, string | undefined>;
 
@@ -32,6 +48,7 @@ type SystemOpsLabReadinessSnapshot = {
   zapiInstanceId: string | null;
   zapiToken: string | null;
   zapiClientToken: string | null;
+  ownerMembershipDigest: string | null;
 };
 
 type SystemOpsLabReadinessVerifierDependencies = {
@@ -39,6 +56,19 @@ type SystemOpsLabReadinessVerifierDependencies = {
   resolveClinicByInstance(instanceId: string | null): Promise<string | null>;
   resolveChannel(snapshot: SystemOpsLabReadinessSnapshot): ClinicChannelConfig;
   getRemoteStatus(creds: NonNullable<ClinicChannelConfig["zapi"]>): Promise<ZApiInstanceStatus>;
+  resolveEngineActivation(input: {
+    clinicId: string;
+    phase: SystemOpsLabReadinessPhase;
+  }): Promise<ConversationEngineActivationProof | null>;
+  resolveApproval?(input: {
+    clinicId: string;
+    phase: SystemOpsLabReadinessPhase;
+  }): Promise<{
+    configDigest: string | null;
+    expectedConfigDigest: string | null;
+    decision: "INTERNAL_LAB_SMOKE_AUTHORIZED" | "INTERNAL_LAB_READY" | null;
+    registered: boolean;
+  }>;
   write(line: string): void;
 };
 
@@ -54,6 +84,14 @@ function reportMissingClinic(): SystemOpsLabReadinessReport {
     readyForAutomation: false,
     blockers: ["target_not_test"],
   };
+}
+
+function readinessPhase(env: SystemOpsLabReadinessVerifierEnv): SystemOpsLabReadinessPhase {
+  const value = env.SYSTEMOPS_LAB_READINESS_PHASE?.trim() || "preactivation";
+  if (value !== "preactivation" && value !== "smoke" && value !== "ready") {
+    throw new Error("SYSTEMOPS_LAB_READINESS_PHASE is invalid");
+  }
+  return value;
 }
 
 function writeReadinessFailure(
@@ -80,6 +118,7 @@ export async function runSystemOpsLabReadinessVerifier(
   deps: SystemOpsLabReadinessVerifierDependencies,
 ): Promise<SystemOpsLabReadinessReport> {
   const clinicId = requiredEnv(env, "SYSTEMOPS_LAB_CLINIC_ID");
+  const phase = readinessPhase(env);
   const snapshot = await deps.readSnapshot(clinicId);
 
   if (!snapshot) {
@@ -103,19 +142,46 @@ export async function runSystemOpsLabReadinessVerifier(
       : Promise.resolve(false)
     : Promise.resolve(null);
   const resolvedClinicId = await deps.resolveClinicByInstance(snapshot.zapiInstanceId);
+  const engineActivationProof = await deps.resolveEngineActivation({ clinicId, phase });
+  const approval = phase === "preactivation"
+    ? {
+        configDigest: null,
+        expectedConfigDigest: null,
+        decision: null,
+        registered: false,
+      } as const
+    : deps.resolveApproval
+      ? await deps.resolveApproval({ clinicId, phase })
+      : {
+          configDigest: null,
+          expectedConfigDigest: null,
+          decision: null,
+          registered: false,
+        } as const;
   const readiness = evaluateSystemOpsLabReadiness({
+    phase,
     clinicId,
     isTest: snapshot.isTest,
     isDemo: snapshot.isDemo,
     operationalStatus: snapshot.operationalStatus,
     autoReplyEnabled: snapshot.autoReplyEnabled,
     shadowModeEnabled: snapshot.shadowModeEnabled,
+    engineActivationProof,
     channelProvider: channel.provider,
     zapiInstanceId: channel.zapi?.instanceId ?? snapshot.zapiInstanceId,
     hasEncryptedToken: Boolean(snapshot.zapiToken?.trim()),
     resolvedClinicId,
+    ownerMembershipMatches: Boolean(
+      snapshot.ownerMembershipDigest
+      && snapshot.ownerMembershipDigest
+        === env.SYSTEMOPS_LAB_OWNER_MEMBERSHIP_DIGEST?.trim(),
+    ),
     webhookSecretConfigured: Boolean(env.ZAPI_WEBHOOK_SECRET?.trim()),
     remoteConnected: await remoteConnected,
+    configDigest: approval.configDigest,
+    expectedConfigDigest: approval.expectedConfigDigest,
+    approvalDecision: approval.decision,
+    approvalRegistered: approval.registered,
   });
   const remoteValue = remoteCheckRequested ? await remoteConnected : null;
 
@@ -151,30 +217,85 @@ export async function runSystemOpsLabReadinessCommand(
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const enginePolicyReader = new DrizzleConversationEnginePolicyReader();
   void runSystemOpsLabReadinessCommand(process.env, {
     readSnapshot: async (clinicId) => {
-      const row = await db
-        .select({
-          id: organizations.id,
-          isTest: organizations.isTest,
-          isDemo: organizations.isDemo,
-          operationalStatus: organizations.operationalStatus,
-          autoReplyEnabled: organizations.autoReplyEnabled,
-          shadowModeEnabled: organizations.shadowModeEnabled,
-          channelProvider: organizations.channelProvider,
-          zapiInstanceId: organizations.zapiInstanceId,
-          zapiToken: organizations.zapiToken,
-          zapiClientToken: organizations.zapiClientToken,
-        })
-        .from(organizations)
-        .where(eq(organizations.id, clinicId))
-        .limit(1)
-        .then((rows) => rows[0] ?? null);
-      return row;
+      const [row, ownerMembership] = await Promise.all([
+        db
+          .select({
+            id: organizations.id,
+            isTest: organizations.isTest,
+            isDemo: organizations.isDemo,
+            operationalStatus: organizations.operationalStatus,
+            autoReplyEnabled: organizations.autoReplyEnabled,
+            shadowModeEnabled: organizations.shadowModeEnabled,
+            channelProvider: organizations.channelProvider,
+            zapiInstanceId: organizations.zapiInstanceId,
+            zapiToken: organizations.zapiToken,
+            zapiClientToken: organizations.zapiClientToken,
+          })
+          .from(organizations)
+          .where(eq(organizations.id, clinicId))
+          .limit(1)
+          .then((rows) => rows[0] ?? null),
+        db
+          .select({
+            id: clinicMembers.id,
+            email: clinicMembers.email,
+            role: clinicMembers.role,
+          })
+          .from(clinicMembers)
+          .where(and(eq(clinicMembers.clinicId, clinicId), eq(clinicMembers.role, "owner"))),
+      ]);
+      return row
+        ? {
+            ...row,
+            ownerMembershipDigest: ownerMembership.length > 0
+              ? digestSystemOpsDentalLabOwnerMembership(ownerMembership)
+              : null,
+          }
+        : null;
     },
     resolveClinicByInstance: resolveClinicByZapiInstance,
+    resolveEngineActivation: ({ clinicId, phase }) =>
+      resolveConversationEngineActivationProof(enginePolicyReader, {
+        clinicId,
+        activation: phase === "preactivation" ? "preactivation_v1" : "internal_live_v2",
+      }),
     resolveChannel: resolveChannelConfig,
     getRemoteStatus: getZApiInstanceStatus,
+    resolveApproval: async ({ clinicId }) => {
+      try {
+        const bindings = await new DrizzleInternalLabRuntimeBindingsReader().resolve(clinicId);
+        const runtimeIdentity = createConfiguredCycleIRuntimeBuildIdentity();
+        const approval = parseAndRegisterDeployedInternalLabApproval({
+          serializedApproval: process.env.CONVERSATION_V2_INTERNAL_LAB_APPROVAL_JSON ?? "",
+          authority: loadConfiguredInternalLabAuthority(),
+          runtimeIdentity,
+          deploymentIdentity: loadConfiguredInternalLabDeploymentIdentity(),
+          expectedTenantDigest: bindings.tenantDigest,
+          expectedChannelDigest: bindings.channelDigest,
+          expectedConfigDigest: bindings.configDigest,
+          expectedClinicId: clinicId,
+          now: new Date(),
+        });
+        return {
+          configDigest: bindings.configDigest,
+          expectedConfigDigest:
+            process.env.CONVERSATION_V2_INTERNAL_LAB_CONFIG_DIGEST?.trim() ?? null,
+          decision: approval.claims.decision,
+          registered: true,
+        };
+      } catch {
+        return {
+          configDigest: null,
+          expectedConfigDigest:
+            process.env.CONVERSATION_V2_INTERNAL_LAB_CONFIG_DIGEST?.trim() ?? null,
+          decision: null,
+          registered: false,
+        };
+      }
+    },
     write: (line) => process.stdout.write(`${line}\n`),
   }).then((readiness) => {
     if (readiness === null) process.exitCode = 1;

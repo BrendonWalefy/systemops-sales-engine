@@ -30,6 +30,15 @@ class MemoryLeadRepository implements LeadRepository {
     return [];
   }
 
+  async ensureWhatsAppIdentity(lead: Lead): Promise<Lead> {
+    await this.save(lead);
+    return (lead.phone ? await this.findByPhone(lead.clinicId, lead.phone) : null)
+      ?? (lead.whatsappLid
+        ? await this.findByWhatsAppLid(lead.clinicId, lead.whatsappLid)
+        : null)
+      ?? lead;
+  }
+
   async save(lead: Lead): Promise<void> {
     const existing = Array.from(this.leads.values()).find(
       (row) =>

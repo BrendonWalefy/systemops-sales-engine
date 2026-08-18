@@ -56,6 +56,53 @@ export class DrizzleLeadRepository implements LeadRepository {
     return rows.map((r) => mapRow(r.lead));
   }
 
+  async ensureWhatsAppIdentity(lead: Lead): Promise<Lead> {
+    const existing =
+      (lead.phone ? await this.findByPhone(lead.clinicId, lead.phone) : null) ??
+      (lead.whatsappLid
+        ? await this.findByWhatsAppLid(lead.clinicId, lead.whatsappLid)
+        : null);
+    if (existing) return existing;
+
+    const [inserted] = await db
+      .insert(leads)
+      .values({
+        id: lead.id,
+        clinicId: lead.clinicId,
+        name: lead.name,
+        phone: lead.phone,
+        whatsappLid: lead.whatsappLid,
+        email: lead.email,
+        channel: lead.channel,
+        campaignId: lead.campaignId,
+        treatmentInterest: lead.treatmentInterest,
+        profilePicUrl: lead.profilePicUrl,
+        status: lead.status,
+        temperature: lead.temperature,
+        assignedToUserId: lead.assignedToUserId,
+        nextActionAt: lead.nextActionAt,
+        lostReason: lead.lostReason,
+        createdAt: lead.createdAt,
+        updatedAt: lead.updatedAt,
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (inserted) {
+      bumpInboxVersion(lead.clinicId);
+      return mapRow(inserted);
+    }
+
+    const raced =
+      (lead.phone ? await this.findByPhone(lead.clinicId, lead.phone) : null) ??
+      (lead.whatsappLid
+        ? await this.findByWhatsAppLid(lead.clinicId, lead.whatsappLid)
+        : null);
+    if (!raced) {
+      throw new Error("ensureWhatsAppIdentity: insert conflicted without a persisted identity");
+    }
+    return raced;
+  }
+
   async save(lead: Lead): Promise<void> {
     const values = {
       id: lead.id,
@@ -247,6 +294,17 @@ export class DrizzleLeadRepository implements LeadRepository {
         phone: canonical.phone ?? duplicate.phone,
         whatsappLid: canonical.whatsappLid ?? duplicate.whatsappLid,
         name: canonical.name ?? duplicate.name,
+        ...(canonical.contactConsentRevokedAt
+          ? {
+              contactConsentRevokedAt: canonical.contactConsentRevokedAt,
+              contactConsentSource: canonical.contactConsentSource ?? null,
+            }
+          : duplicate.contactConsentRevokedAt
+            ? {
+                contactConsentRevokedAt: duplicate.contactConsentRevokedAt,
+                contactConsentSource: duplicate.contactConsentSource ?? null,
+              }
+            : {}),
         updatedAt: now,
       })
       .where(eq(leads.id, params.canonicalLeadId));
@@ -279,6 +337,8 @@ function mapRow(row: typeof leads.$inferSelect): Lead {
     assignedToUserId: row.assignedToUserId,
     nextActionAt: row.nextActionAt,
     lostReason: row.lostReason,
+    contactConsentRevokedAt: row.contactConsentRevokedAt,
+    contactConsentSource: row.contactConsentSource,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

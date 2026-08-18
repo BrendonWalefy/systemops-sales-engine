@@ -63,8 +63,8 @@ Levantado por import de pacote de modelo (`openai`, `@anthropic-ai/sdk`) e pelos
 ## Contagem
 
 ```
-AUTONOMOUS_EXTERNAL encontrados: 6
-protegidos:                      6
+AUTONOMOUS_EXTERNAL encontrados: 7
+protegidos:                      7
 sem proteção:                    0
 
 HUMAN_APPROVED_EXTERNAL:         2  (+1 script manual fora do deploy)

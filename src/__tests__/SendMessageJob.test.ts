@@ -3,6 +3,8 @@ import { drainMessageSendQueue } from "@/application/jobs/drain-message-send-que
 import { SendMessageJobHandler, SHADOW_DELIVERY_SUPPRESSED } from "@/application/jobs/send-message-job";
 import type { OutboundMessage } from "@/application/ports/outbound-message-store";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
+import { isConversationOutboundPayload } from "@/application/jobs/conversation-outbound-payload";
+import { buildInitialAgentMessage } from "@/core/pipeline/outbound-message-persistence";
 
 const outbound: OutboundMessage = {
   id: "outbound-1",
@@ -35,6 +37,17 @@ const outbound: OutboundMessage = {
   sentAt: null,
 };
 
+const internalLabBinding = {
+  schemaVersion: "conversation-v2.internal-lab-delivery-binding.v1" as const,
+  tenantDigest: `sha256:${"1".repeat(64)}`,
+  channelDigest: `sha256:${"2".repeat(64)}`,
+  configDigest: `sha256:${"3".repeat(64)}`,
+};
+
+function allowingInternalLabDeliveryGuard() {
+  return { authorize: vi.fn().mockResolvedValue(true) };
+}
+
 function makeStore() {
   return {
     findOutboundMessage: vi.fn().mockResolvedValue(outbound),
@@ -44,6 +57,24 @@ function makeStore() {
     markOutboundDelivered: vi.fn().mockResolvedValue(undefined),
     markOutboundCancelled: vi.fn().mockResolvedValue(undefined),
     countSentSince: vi.fn().mockResolvedValue(0),
+  };
+}
+
+function legacyConversationRepository() {
+  return {
+    appendMessage: vi.fn(),
+    findMessageById: vi.fn().mockResolvedValue({
+      id: "agent-message-1",
+      conversationId: "conversation-1",
+      author: "agent",
+      body: "Olá",
+      mediaUrl: null,
+      mediaType: null,
+      sentAt: new Date("2026-06-23T11:59:00.000Z"),
+      externalId: null,
+      intent: null,
+      deliveryFormat: null,
+    }),
   };
 }
 
@@ -109,6 +140,354 @@ function makeAutomationDispatchLifecycle() {
 }
 
 describe("SendMessageJobHandler", () => {
+  it.each([
+    { ...(outbound.payload as Record<string, unknown>), agentMessagePersistence: "sender" },
+    { ...(outbound.payload as Record<string, unknown>), internalLabBinding },
+    { ...(outbound.payload as Record<string, unknown>), unexpected: true },
+    {
+      ...(outbound.payload as Record<string, unknown>),
+      agentMessagePersistence: "sender",
+      internalLabBinding: { ...internalLabBinding, unexpected: true },
+    },
+  ])("rejects half-paired or unknown conversation payload fields", (payload) => {
+    expect(isConversationOutboundPayload(payload)).toBe(false);
+  });
+
+  it("fails closed when a legacy reply has no exact pre-existing agent message", async () => {
+    const store = makeStore();
+    const delivery = vi.fn();
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: {
+        appendMessage: vi.fn(),
+        findMessageById: vi.fn().mockResolvedValue(null),
+      },
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
+      .resolves.toBe("ignored");
+    expect(store.markOutboundCancelled).toHaveBeenCalledWith(
+      outbound.id,
+      "conversation_agent_message_missing",
+    );
+    expect(delivery).not.toHaveBeenCalled();
+  });
+
+  it("does not let an existing sender-created V2 placeholder downgrade to legacy on retry", async () => {
+    const store = makeStore();
+    const delivery = vi.fn();
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: {
+        appendMessage: vi.fn(),
+        findMessageById: vi.fn().mockResolvedValue({
+          id: "agent-message-1",
+          conversationId: "conversation-1",
+          author: "agent",
+          body: "Olá",
+          mediaUrl: null,
+          mediaType: null,
+          sentAt: new Date("2026-08-17T12:00:00.000Z"),
+          externalId: null,
+          intent: null,
+          deliveryFormat: null,
+        }),
+      },
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
+      .resolves.toBe("ignored");
+    expect(delivery).not.toHaveBeenCalled();
+  });
+
+  it("delivers the exact canonical V1 deposit message persisted as text", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue({
+      ...outbound,
+      payload: {
+        ...(outbound.payload as Record<string, unknown>),
+        intent: "confirm_slot",
+        replyText: "Para reservar, envie o sinal via Pix.",
+      },
+    });
+    const delivery = vi.fn().mockResolvedValue("provider-deposit");
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: {
+        appendMessage: vi.fn(),
+        findMessageById: vi.fn().mockResolvedValue({
+          id: "agent-message-1",
+          conversationId: "conversation-1",
+          author: "agent",
+          body: "Para reservar, envie o sinal via Pix.",
+          mediaUrl: null,
+          mediaType: null,
+          sentAt: new Date("2026-06-23T11:59:00.000Z"),
+          externalId: null,
+          intent: "confirm_slot",
+          deliveryFormat: "text",
+        }),
+      },
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
+      .resolves.toBe("sent");
+    expect(delivery).toHaveBeenCalledOnce();
+    expect(store.markOutboundCancelled).not.toHaveBeenCalled();
+  });
+
+  it("delivers the exact first-media representation persisted by canonical V1 composition", async () => {
+    const firstMedia = {
+      type: "media" as const,
+      mediaId: "media-1",
+      url: "https://cdn.example.test/before-after.jpg",
+      mediaType: "image" as const,
+      title: "Antes e depois",
+    };
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue({
+      ...outbound,
+      payload: {
+        ...(outbound.payload as Record<string, unknown>),
+        replyText: "Veja este resultado.",
+        intent: "general_question",
+        interleavedParts: [firstMedia, { type: "text", content: "Gostou?" }],
+      },
+    });
+    const persisted = buildInitialAgentMessage({
+      id: "agent-message-1",
+      conversationId: "conversation-1",
+      replyText: "Veja este resultado.",
+      sentAt: new Date("2026-06-23T11:59:00.000Z"),
+      intent: "general_question",
+      hasInterleavedMedia: true,
+      outboundParts: [firstMedia, { type: "text", content: "Gostou?" }],
+    });
+    const delivery = vi.fn().mockResolvedValue("provider-media");
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: {
+        appendMessage: vi.fn(),
+        findMessageById: vi.fn().mockResolvedValue(persisted),
+      },
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
+      .resolves.toBe("sent");
+    expect(delivery).toHaveBeenCalledOnce();
+    expect(store.markOutboundCancelled).not.toHaveBeenCalled();
+  });
+
+  it("passes the exact delivery authorization returned immediately before V2 delivery", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue({
+      ...outbound,
+      payload: {
+        ...(outbound.payload as Record<string, unknown>),
+        agentMessagePersistence: "sender",
+        internalLabBinding,
+      },
+    });
+    const authorization = Object.freeze({ schemaVersion: "test.authorization" });
+    const delivery = vi.fn().mockResolvedValue("provider-1");
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: {
+        appendMessage: vi.fn().mockResolvedValue(true),
+        findMessageById: vi.fn(),
+      },
+      internalLabDeliveryGuard: {
+        authorize: vi.fn().mockResolvedValue(authorization),
+      } as never,
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
+      .resolves.toBe("sent");
+    expect(delivery).toHaveBeenCalledWith(expect.objectContaining({
+      internalLabDeliveryAuthorization: authorization,
+    }));
+  });
+
+  it("suppresses a V2 reply when channel bindings drift after outbox enqueue", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue({
+      ...outbound,
+      payload: {
+        ...(outbound.payload as Record<string, unknown>),
+        turnId: "turn-v2-drift",
+        agentMessagePersistence: "sender",
+        internalLabBinding: {
+          schemaVersion: "conversation-v2.internal-lab-delivery-binding.v1",
+          tenantDigest: `sha256:${"1".repeat(64)}`,
+          channelDigest: `sha256:${"2".repeat(64)}`,
+          configDigest: `sha256:${"3".repeat(64)}`,
+        },
+      },
+    });
+    const delivery = vi.fn();
+    const authorize = vi.fn().mockResolvedValue(false);
+    const appendMessage = vi.fn().mockResolvedValue(true);
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: { appendMessage, findMessageById: vi.fn() },
+      internalLabDeliveryGuard: { authorize },
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({
+      payload: { outboundMessageId: outbound.id, turnId: "turn-v2-drift" },
+    })).resolves.toBe("ignored");
+
+    expect(authorize).toHaveBeenCalledWith(expect.objectContaining({
+      clinicId: outbound.clinicId,
+      binding: expect.objectContaining({ channelDigest: `sha256:${"2".repeat(64)}` }),
+    }));
+    expect(store.markOutboundCancelled).toHaveBeenCalledWith(
+      outbound.id,
+      "internal_lab_binding_drift",
+    );
+    expect(appendMessage).not.toHaveBeenCalled();
+    expect(delivery).not.toHaveBeenCalled();
+  });
+
+  it("persiste a mensagem agent no sender quando o payload live V2 delega essa ownership", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue({
+      ...outbound,
+      payload: {
+        ...(outbound.payload as Record<string, unknown>),
+        turnId: "turn-v2",
+        agentMessagePersistence: "sender",
+        internalLabBinding,
+      },
+    });
+    const appendMessage = vi.fn().mockResolvedValue(true);
+    const delivery = vi.fn().mockResolvedValue("provider-message-v2");
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: { appendMessage, findMessageById: vi.fn() },
+      internalLabDeliveryGuard: allowingInternalLabDeliveryGuard(),
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id, turnId: "turn-v2" } }))
+      .resolves.toBe("sent");
+
+    expect(appendMessage).toHaveBeenCalledTimes(1);
+    expect(appendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      id: "agent-message-1",
+      conversationId: "conversation-1",
+      author: "agent",
+      body: "Olá",
+      externalId: null,
+    }));
+    expect(appendMessage.mock.invocationCallOrder[0]).toBeLessThan(
+      delivery.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("reuses the exact deterministic sender-owned placeholder on a legitimate retry", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue({
+      ...outbound,
+      payload: {
+        ...(outbound.payload as Record<string, unknown>),
+        turnId: "turn-v2",
+        agentMessagePersistence: "sender",
+        internalLabBinding,
+      },
+    });
+    const appendMessage = vi.fn().mockResolvedValue(false);
+    const findMessageById = vi.fn().mockResolvedValue({
+      id: "agent-message-1",
+      conversationId: "conversation-1",
+      author: "agent",
+      body: "Olá",
+      mediaUrl: null,
+      mediaType: null,
+      sentAt: new Date("2026-08-17T12:00:00.000Z"),
+      externalId: null,
+      intent: null,
+      deliveryFormat: null,
+    });
+    const delivery = vi.fn().mockResolvedValue("provider-message-v2");
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: { appendMessage, findMessageById },
+      internalLabDeliveryGuard: allowingInternalLabDeliveryGuard(),
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id, turnId: "turn-v2" } }))
+      .resolves.toBe("sent");
+
+    expect(findMessageById).toHaveBeenCalledWith("agent-message-1");
+    expect(delivery).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["missing", null],
+    ["conversation", { conversationId: "other-conversation" }],
+    ["author", { author: "lead" }],
+    ["body", { body: "conteúdo diferente" }],
+    ["intent", { intent: "different-intent" }],
+    ["delivery", { deliveryFormat: "text" }],
+  ] as const)(
+    "fails before external delivery when the existing sender-owned placeholder has a %s mismatch",
+    async (_case, patch) => {
+      const store = makeStore();
+      store.findOutboundMessage.mockResolvedValue({
+        ...outbound,
+        payload: {
+          ...(outbound.payload as Record<string, unknown>),
+          turnId: "turn-v2",
+          agentMessagePersistence: "sender",
+          internalLabBinding,
+        },
+      });
+      const appendMessage = vi.fn().mockResolvedValue(false);
+      const existing = patch === null ? null : {
+        id: "agent-message-1",
+        conversationId: "conversation-1",
+        author: "agent",
+        body: "Olá",
+        mediaUrl: null,
+        mediaType: null,
+        sentAt: new Date("2026-08-17T12:00:00.000Z"),
+        externalId: null,
+        intent: null,
+        deliveryFormat: null,
+        ...patch,
+      };
+      const findMessageById = vi.fn().mockResolvedValue(existing);
+      const delivery = vi.fn();
+      const handler = new SendMessageJobHandler({
+        outboundMessageStore: store as never,
+        conversationRepository: { appendMessage, findMessageById },
+        internalLabDeliveryGuard: allowingInternalLabDeliveryGuard(),
+        delivery,
+        conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+      });
+
+      await expect(handler.processJob({ payload: { outboundMessageId: outbound.id, turnId: "turn-v2" } }))
+        .rejects.toThrow(/sender-owned agent message/i);
+      expect(delivery).not.toHaveBeenCalled();
+    },
+  );
+
   it("devolve a mensagem para espera quando existe uma saída anterior ativa", async () => {
     const store = makeStore();
     store.hasEarlierActiveMessage.mockResolvedValue(true);
@@ -130,6 +509,7 @@ describe("SendMessageJobHandler", () => {
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       delivery,
+      conversationRepository: legacyConversationRepository(),
       decisionTraceSink,
       conversationStateReader: {
         getCurrentState: vi.fn().mockResolvedValue(null),
@@ -161,6 +541,7 @@ describe("SendMessageJobHandler", () => {
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       delivery: vi.fn().mockRejectedValue(new Error("provider unavailable")),
+      conversationRepository: legacyConversationRepository(),
       decisionTraceSink,
     });
 

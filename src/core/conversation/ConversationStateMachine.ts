@@ -3,7 +3,7 @@
 
 import { db } from "@/infrastructure/db/client";
 import { conversationStates } from "@/infrastructure/db/schema";
-import { and, eq, desc, lte } from "drizzle-orm";
+import { and, eq, desc, lte, sql } from "drizzle-orm";
 import type { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import type { Treatment } from "@/domain/entities/treatment";
 import { runtimeNow } from "@/core/time/RuntimeClock";
@@ -32,6 +32,7 @@ export type FormattedSlot = {
 export type SlotsOfferedPayload = {
   slots: FormattedSlot[];
   expiresAt: string; // ISO UTC
+  treatmentId?: string;
   treatmentName?: string;
   durationMinutes?: number;
 };
@@ -129,7 +130,7 @@ export class ConversationStateMachine {
             )
           : eq(conversationStates.conversationId, conversationId),
       )
-      .orderBy(desc(conversationStates.createdAt))
+      .orderBy(desc(conversationStates.createdAt), desc(conversationStates.id))
       .limit(1);
 
     if (rows.length === 0) return null;
@@ -183,6 +184,27 @@ export class ConversationStateMachine {
     });
   }
 
+  async invalidateIfCurrent(
+    conversationId: string,
+    expectedStateId: string,
+  ): Promise<boolean> {
+    const result = await db.execute<{ id: string }>(sql`
+      INSERT INTO ${conversationStates}
+        (conversation_id, state, payload, supersedes_state_id, expires_at)
+      SELECT ${conversationId}::uuid, 'idle', NULL::jsonb, ${expectedStateId}::uuid, NULL
+      WHERE ${expectedStateId}::uuid = (
+        SELECT ${conversationStates.id}
+        FROM ${conversationStates}
+        WHERE ${conversationStates.conversationId} = ${conversationId}::uuid
+        ORDER BY ${conversationStates.createdAt} DESC, ${conversationStates.id} DESC
+        LIMIT 1
+      )
+      ON CONFLICT (supersedes_state_id) DO NOTHING
+      RETURNING id
+    `);
+    return result.rows.length === 1;
+  }
+
   // Invalida o estado e registra o momento do reset para que a próxima mensagem
   // receba apenas o histórico pós-reset (evita que o LLM reutilize mídias já enviadas).
   // TTL de 2h: após isso getCurrentState retorna null e o Orchestrator usa allMessages normalmente.
@@ -232,6 +254,57 @@ export class ConversationStateMachine {
     durationMinutes?: number,
     ttlMinutes?: number,
     voiceEnabled?: boolean,
+    treatmentId?: string,
+  ): Promise<FormattedSlot[]> {
+    return this.persistSlotOffer(
+      undefined,
+      conversationId,
+      slots,
+      timezone,
+      treatmentName,
+      durationMinutes,
+      ttlMinutes,
+      voiceEnabled,
+      treatmentId,
+    );
+  }
+
+  // V2 live binds the persisted offer to a deterministic turn-scoped state id.
+  // The write remains behind the prepared capability token.
+  async offerSlotsForTurn(
+    stateId: string,
+    conversationId: string,
+    slots: Array<{ startsAt: Date; endsAt: Date }>,
+    timezone: ClinicTimezone,
+    treatmentName?: string,
+    durationMinutes?: number,
+    ttlMinutes?: number,
+    voiceEnabled?: boolean,
+    treatmentId?: string,
+  ): Promise<FormattedSlot[]> {
+    return this.persistSlotOffer(
+      stateId,
+      conversationId,
+      slots,
+      timezone,
+      treatmentName,
+      durationMinutes,
+      ttlMinutes,
+      voiceEnabled,
+      treatmentId,
+    );
+  }
+
+  private async persistSlotOffer(
+    stateId: string | undefined,
+    conversationId: string,
+    slots: Array<{ startsAt: Date; endsAt: Date }>,
+    timezone: ClinicTimezone,
+    treatmentName?: string,
+    durationMinutes?: number,
+    ttlMinutes?: number,
+    voiceEnabled?: boolean,
+    treatmentId?: string,
   ): Promise<FormattedSlot[]> {
     const formatted: FormattedSlot[] = slots.map((s, i) => ({
       index: i + 1,
@@ -244,11 +317,13 @@ export class ConversationStateMachine {
     const payload: SlotsOfferedPayload = {
       slots: formatted,
       expiresAt: expiresAt.toISOString(),
+      ...(treatmentId && { treatmentId }),
       ...(treatmentName && { treatmentName }),
       ...(durationMinutes && { durationMinutes }),
     };
 
     await db.insert(conversationStates).values({
+      ...(stateId ? { id: stateId } : {}),
       conversationId,
       state: "slots_offered",
       payload,

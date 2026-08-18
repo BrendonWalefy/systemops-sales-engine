@@ -1,0 +1,11 @@
+{
+  "version": "cycle-f-v2-to-legacy.v1",
+  "mapping": {
+    "price-of-service": "price_inquiry",
+    "service-availability": "general_question",
+    "book-appointment": "book_appointment",
+    "confirm-slot": "confirm_slot",
+    "confirm-appointment": "confirm_slot"
+  },
+  "usage": "diagnostic-only; Cycle F does not execute V1 or compare V1 with V2"
+}

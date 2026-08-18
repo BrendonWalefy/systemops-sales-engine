@@ -5,6 +5,7 @@
  * dela — e não pelo de outra clínica.
  */
 import { decryptCredentialNullable } from "@/infrastructure/crypto/credential-vault";
+import type { ChannelConfigSnapshot } from "@/application/ports/channel-config-snapshot";
 
 export type ZapiCreds = {
   instanceId: string;
@@ -17,11 +18,7 @@ export type MetaCreds = {
   accessToken: string;
 };
 
-export type ClinicChannelConfig = {
-  provider: "z_api" | "meta_cloud_api";
-  zapi: ZapiCreds | null;
-  meta: MetaCreds | null;
-};
+export type ClinicChannelConfig = ChannelConfigSnapshot;
 
 type ClinicChannelFields = {
   channelProvider?: "z_api" | "meta_cloud_api" | null;

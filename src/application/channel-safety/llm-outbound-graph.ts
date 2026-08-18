@@ -28,6 +28,8 @@ export type LlmOutboundPath = {
   sinks: string[];
   /** Se ele importa a fronteira aprovada. */
   usesPlanner: boolean;
+  /** Se ele importa o pipeline V2 de plano autorizado + validação. */
+  usesTurnPipeline: boolean;
 };
 
 /** Pacotes e módulos que produzem texto de modelo. */
@@ -44,6 +46,7 @@ const OUTBOUND_SINK_CALLS = [
 
 /** A fronteira aprovada: plano → gerador → validador → fallback. */
 const PLANNER_MODULE = "core/conversation/ConversationResponsePlanner";
+const TURN_PIPELINE_MODULE = "conversation-core/turn-pipeline";
 
 export function collectSourceFiles(root: string): string[] {
   const out: string[] = [];
@@ -147,6 +150,9 @@ export function buildLlmOutboundPaths(repoRoot: string): LlmOutboundPath[] {
       sinks,
       usesPlanner: (imports.get(module)?.internal ?? []).some((dependency) =>
         dependency.startsWith(PLANNER_MODULE),
+      ),
+      usesTurnPipeline: (imports.get(module)?.internal ?? []).some((dependency) =>
+        dependency.startsWith(TURN_PIPELINE_MODULE),
       ),
     });
   }

@@ -2,12 +2,34 @@ import { describe, expect, it } from "vitest";
 
 import { evaluateSystemOpsLabReadiness } from "@/application/labs/systemops-lab-readiness";
 import {
+  resolveConversationEngineActivationProof,
+  type ConversationEngineActivation,
+  type ConversationEngineActivationProof,
+} from "@/application/conversation-v2/engine-selection";
+import {
   runSystemOpsLabReadinessCommand,
   runSystemOpsLabReadinessVerifier,
 } from "../../scripts/verify-systemops-lab";
 
+const ownerMembershipDigest = `sha256:${"c".repeat(64)}`;
+
+async function engineProof(
+  clinicId: string,
+  activation: ConversationEngineActivation,
+): Promise<ConversationEngineActivationProof> {
+  const proof = await resolveConversationEngineActivationProof({
+    getConversationEnginePolicy: async () => ({
+      clinicId,
+      engine: activation === "preactivation_v1" ? "v1" : "v2_internal",
+      isTest: true,
+    }),
+  }, { clinicId, activation });
+  if (!proof) throw new Error("test engine proof was not issued");
+  return proof;
+}
+
 describe("SystemOps Lab readiness", () => {
-  it("is ready for controlled inbound but not automation", () => {
+  it("is ready for controlled inbound but not automation", async () => {
     const report = evaluateSystemOpsLabReadiness({
       clinicId: "lab-id",
       isTest: true,
@@ -19,6 +41,8 @@ describe("SystemOps Lab readiness", () => {
       zapiInstanceId: "instance-1",
       hasEncryptedToken: true,
       resolvedClinicId: "lab-id",
+      ownerMembershipMatches: true,
+      engineActivationProof: await engineProof("lab-id", "preactivation_v1"),
       webhookSecretConfigured: true,
       remoteConnected: true,
     });
@@ -28,7 +52,7 @@ describe("SystemOps Lab readiness", () => {
     expect(report.blockers).toEqual([]);
   });
 
-  it("blocks tenant mismatch and enabled automation", () => {
+  it("blocks tenant mismatch and enabled automation", async () => {
     const report = evaluateSystemOpsLabReadiness({
       clinicId: "lab-id",
       isTest: true,
@@ -40,6 +64,8 @@ describe("SystemOps Lab readiness", () => {
       zapiInstanceId: "instance-1",
       hasEncryptedToken: true,
       resolvedClinicId: "other-id",
+      ownerMembershipMatches: true,
+      engineActivationProof: await engineProof("lab-id", "preactivation_v1"),
       webhookSecretConfigured: true,
       remoteConnected: true,
     });
@@ -49,7 +75,7 @@ describe("SystemOps Lab readiness", () => {
     expect(report.blockers).toContain("automation_must_remain_disabled");
   });
 
-  it("does not block local readiness when remote status was not requested", () => {
+  it("does not block local readiness when remote status was not requested", async () => {
     const report = evaluateSystemOpsLabReadiness({
       clinicId: "lab-id",
       isTest: true,
@@ -61,6 +87,8 @@ describe("SystemOps Lab readiness", () => {
       zapiInstanceId: "instance-1",
       hasEncryptedToken: true,
       resolvedClinicId: "lab-id",
+      ownerMembershipMatches: true,
+      engineActivationProof: await engineProof("lab-id", "preactivation_v1"),
       webhookSecretConfigured: true,
       remoteConnected: null,
     });
@@ -69,12 +97,171 @@ describe("SystemOps Lab readiness", () => {
     expect(report.blockers).toEqual([]);
   });
 
+  it("requires V1 and automation off during preactivation", async () => {
+    const report = evaluateSystemOpsLabReadiness({
+      phase: "preactivation",
+      clinicId: "lab-id",
+      isTest: true,
+      isDemo: false,
+      operationalStatus: "test",
+      autoReplyEnabled: false,
+      shadowModeEnabled: false,
+      engineActivationProof: await engineProof("lab-id", "internal_live_v2"),
+      channelProvider: "z_api",
+      zapiInstanceId: "instance-1",
+      hasEncryptedToken: true,
+      resolvedClinicId: "lab-id",
+      ownerMembershipMatches: true,
+      webhookSecretConfigured: true,
+      remoteConnected: true,
+      configDigest: `sha256:${"a".repeat(64)}`,
+      expectedConfigDigest: `sha256:${"a".repeat(64)}`,
+      approvalDecision: null,
+      approvalRegistered: false,
+    });
+
+    expect(report.readyForControlledInbound).toBe(false);
+    expect(report.blockers).toContain("engine_must_be_v1");
+  });
+
+  it("rejects a structurally identical but unregistered engine proof", async () => {
+    const registered = await engineProof("lab-id", "preactivation_v1");
+    const report = evaluateSystemOpsLabReadiness({
+      clinicId: "lab-id",
+      isTest: true,
+      isDemo: false,
+      operationalStatus: "test",
+      autoReplyEnabled: false,
+      shadowModeEnabled: false,
+      engineActivationProof: Object.freeze({ ...registered }),
+      channelProvider: "z_api",
+      zapiInstanceId: "instance-1",
+      hasEncryptedToken: true,
+      resolvedClinicId: "lab-id",
+      ownerMembershipMatches: true,
+      webhookSecretConfigured: true,
+      remoteConnected: true,
+    });
+
+    expect(report.readyForControlledInbound).toBe(false);
+    expect(report.blockers).toEqual(["engine_must_be_v1"]);
+  });
+
+  it("requires a registered smoke approval, exact config and V2 engine for smoke", async () => {
+    const report = evaluateSystemOpsLabReadiness({
+      phase: "smoke",
+      clinicId: "lab-id",
+      isTest: true,
+      isDemo: false,
+      operationalStatus: "test",
+      autoReplyEnabled: true,
+      shadowModeEnabled: false,
+      engineActivationProof: await engineProof("lab-id", "internal_live_v2"),
+      channelProvider: "z_api",
+      zapiInstanceId: "instance-1",
+      hasEncryptedToken: true,
+      resolvedClinicId: "lab-id",
+      ownerMembershipMatches: true,
+      webhookSecretConfigured: true,
+      remoteConnected: true,
+      configDigest: `sha256:${"a".repeat(64)}`,
+      expectedConfigDigest: `sha256:${"b".repeat(64)}`,
+      approvalDecision: "INTERNAL_LAB_SMOKE_AUTHORIZED",
+      approvalRegistered: true,
+    });
+
+    expect(report.readyForAutomation).toBe(false);
+    expect(report.blockers).toEqual(["config_digest_mismatch"]);
+  });
+
+  it("never treats an omitted owner membership proof as ready", async () => {
+    const report = evaluateSystemOpsLabReadiness({
+      phase: "smoke",
+      clinicId: "lab-id",
+      isTest: true,
+      isDemo: false,
+      operationalStatus: "test",
+      autoReplyEnabled: true,
+      shadowModeEnabled: false,
+      engineActivationProof: await engineProof("lab-id", "internal_live_v2"),
+      channelProvider: "z_api",
+      zapiInstanceId: "instance-1",
+      hasEncryptedToken: true,
+      resolvedClinicId: "lab-id",
+      ownerMembershipMatches: undefined as never,
+      webhookSecretConfigured: true,
+      remoteConnected: true,
+      configDigest: `sha256:${"a".repeat(64)}`,
+      expectedConfigDigest: `sha256:${"a".repeat(64)}`,
+      approvalDecision: "INTERNAL_LAB_SMOKE_AUTHORIZED",
+      approvalRegistered: true,
+    });
+
+    expect(report.readyForAutomation).toBe(false);
+    expect(report.blockers).toContain("owner_membership_mismatch");
+  });
+
+  it("blocks readiness when the exact internal owner membership changes", async () => {
+    const report = evaluateSystemOpsLabReadiness({
+      phase: "smoke",
+      clinicId: "lab-id",
+      isTest: true,
+      isDemo: false,
+      operationalStatus: "test",
+      autoReplyEnabled: true,
+      shadowModeEnabled: false,
+      engineActivationProof: await engineProof("lab-id", "internal_live_v2"),
+      channelProvider: "z_api",
+      zapiInstanceId: "instance-1",
+      hasEncryptedToken: true,
+      resolvedClinicId: "lab-id",
+      ownerMembershipMatches: false,
+      webhookSecretConfigured: true,
+      remoteConnected: true,
+      configDigest: `sha256:${"a".repeat(64)}`,
+      expectedConfigDigest: `sha256:${"a".repeat(64)}`,
+      approvalDecision: "INTERNAL_LAB_SMOKE_AUTHORIZED",
+      approvalRegistered: true,
+    });
+
+    expect(report.readyForAutomation).toBe(false);
+    expect(report.blockers).toEqual(["owner_membership_mismatch"]);
+  });
+
+  it("keeps READY distinct from smoke and never treats human review as a readiness input", async () => {
+    const report = evaluateSystemOpsLabReadiness({
+      phase: "ready",
+      clinicId: "lab-id",
+      isTest: true,
+      isDemo: false,
+      operationalStatus: "test",
+      autoReplyEnabled: true,
+      shadowModeEnabled: false,
+      engineActivationProof: await engineProof("lab-id", "internal_live_v2"),
+      channelProvider: "z_api",
+      zapiInstanceId: "instance-1",
+      hasEncryptedToken: true,
+      resolvedClinicId: "lab-id",
+      ownerMembershipMatches: true,
+      webhookSecretConfigured: true,
+      remoteConnected: true,
+      configDigest: `sha256:${"a".repeat(64)}`,
+      expectedConfigDigest: `sha256:${"a".repeat(64)}`,
+      approvalDecision: "INTERNAL_LAB_SMOKE_AUTHORIZED",
+      approvalRegistered: true,
+    });
+
+    expect(report.readyForAutomation).toBe(false);
+    expect(report.blockers).toEqual(["approval_decision_mismatch"]);
+  });
+
   it("emits a read-only local report and keeps an unchecked remote status as a warning", async () => {
     const lines: string[] = [];
     let remoteChecks = 0;
 
     await runSystemOpsLabReadinessVerifier({
       SYSTEMOPS_LAB_CLINIC_ID: "lab-id",
+      SYSTEMOPS_LAB_OWNER_MEMBERSHIP_DIGEST: ownerMembershipDigest,
       ZAPI_WEBHOOK_SECRET: "configured-locally",
     }, {
       readSnapshot: async () => ({
@@ -88,7 +275,12 @@ describe("SystemOps Lab readiness", () => {
         zapiInstanceId: "instance-1",
         zapiToken: "encrypted-token",
         zapiClientToken: null,
+        ownerMembershipDigest,
       }),
+      resolveEngineActivation: ({ clinicId, phase }) => engineProof(
+        clinicId,
+        phase === "preactivation" ? "preactivation_v1" : "internal_live_v2",
+      ),
       resolveClinicByInstance: async () => "lab-id",
       resolveChannel: () => ({
         provider: "z_api",
@@ -120,6 +312,44 @@ describe("SystemOps Lab readiness", () => {
     expect(remoteChecks).toBe(0);
   });
 
+  it("maps an absent or changed owner membership to a sanitized verifier blocker", async () => {
+    const lines: string[] = [];
+    const readiness = await runSystemOpsLabReadinessVerifier({
+      SYSTEMOPS_LAB_CLINIC_ID: "lab-id",
+      SYSTEMOPS_LAB_OWNER_MEMBERSHIP_DIGEST: `sha256:${"a".repeat(64)}`,
+      ZAPI_WEBHOOK_SECRET: "configured-locally",
+    }, {
+      readSnapshot: async () => ({
+        id: "lab-id",
+        isTest: true,
+        isDemo: false,
+        operationalStatus: "test",
+        autoReplyEnabled: false,
+        shadowModeEnabled: false,
+        channelProvider: "z_api",
+        zapiInstanceId: "instance-1",
+        zapiToken: "encrypted-token",
+        zapiClientToken: null,
+        ownerMembershipDigest: null,
+      }),
+      resolveEngineActivation: ({ clinicId, phase }) => engineProof(
+        clinicId,
+        phase === "preactivation" ? "preactivation_v1" : "internal_live_v2",
+      ),
+      resolveClinicByInstance: async () => "lab-id",
+      resolveChannel: () => ({
+        provider: "z_api",
+        zapi: { instanceId: "instance-1", token: "decrypted-only-in-memory" },
+        meta: null,
+      }),
+      getRemoteStatus: async () => ({ connected: true, smartphoneConnected: true }),
+      write: (line) => lines.push(line),
+    });
+
+    expect(readiness.blockers).toEqual(["owner_membership_mismatch"]);
+    expect(lines.join("\n")).not.toContain("encrypted-token");
+  });
+
   it("checks a disconnected remote once and emits only the sanitized blocker", async () => {
     const lines: string[] = [];
     let remoteChecks = 0;
@@ -127,6 +357,7 @@ describe("SystemOps Lab readiness", () => {
     const readiness = await runSystemOpsLabReadinessVerifier({
       SYSTEMOPS_LAB_CLINIC_ID: "lab-id",
       SYSTEMOPS_LAB_CHECK_REMOTE: "true",
+      SYSTEMOPS_LAB_OWNER_MEMBERSHIP_DIGEST: ownerMembershipDigest,
       ZAPI_WEBHOOK_SECRET: "webhook-secret-not-for-output",
     }, {
       readSnapshot: async () => ({
@@ -140,7 +371,12 @@ describe("SystemOps Lab readiness", () => {
         zapiInstanceId: "instance-1",
         zapiToken: "encrypted-token-not-for-output",
         zapiClientToken: "encrypted-client-token-not-for-output",
+        ownerMembershipDigest,
       }),
+      resolveEngineActivation: ({ clinicId, phase }) => engineProof(
+        clinicId,
+        phase === "preactivation" ? "preactivation_v1" : "internal_live_v2",
+      ),
       resolveClinicByInstance: async () => "lab-id",
       resolveChannel: () => ({
         provider: "z_api",
@@ -196,6 +432,10 @@ describe("SystemOps Lab readiness", () => {
       readSnapshot: async () => {
         throw new Error("database rejected secret-not-for-output");
       },
+      resolveEngineActivation: ({ clinicId, phase }) => engineProof(
+        clinicId,
+        phase === "preactivation" ? "preactivation_v1" : "internal_live_v2",
+      ),
       resolveClinicByInstance: async () => "lab-id",
       resolveChannel: () => ({ provider: "z_api", zapi: null, meta: null }),
       getRemoteStatus: async () => ({ connected: false, smartphoneConnected: false }),
