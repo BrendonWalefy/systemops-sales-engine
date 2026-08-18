@@ -39,9 +39,19 @@ jobs:
         uses: neondatabase/create-branch-action@v6
         with:
           project_id: ${{ secrets.NEON_PROJECT_ID }}
-          branch_name: ci-migration-pr-${{ github.event.pull_request.number }}
+          branch_name: ci-migration-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
           api_key: ${{ secrets.NEON_API_KEY }}
           role: ${{ secrets.NEON_DB_USER }}
+
+      # A action devolve a branch existente em vez de falhar quando o nome se repete.
+      # Uma branch sobrevivente de uma execução anterior já teria a migration
+      # registrada em `__drizzle_migrations`, e o `migrate` seguinte não aplicaria
+      # nada — o check ficaria verde sobre uma migration que nunca rodou.
+      - name: Require a freshly created staging branch
+        if: steps.neon.outputs.created != 'true'
+        run: |
+          echo "Neon staging branch was reused instead of created; refusing to test a migration that may already be recorded." >&2
+          exit 1
 
       - name: Apply migration on staging branch
         env:
@@ -88,5 +98,5 @@ jobs:
         uses: neondatabase/delete-branch-action@v3
         with:
           project_id: ${{ secrets.NEON_PROJECT_ID }}
-          branch: ci-migration-pr-${{ github.event.pull_request.number }}
+          branch: ci-migration-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
           api_key: ${{ secrets.NEON_API_KEY }}
