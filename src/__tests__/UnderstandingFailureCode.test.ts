@@ -38,6 +38,24 @@ describe("understanding failure code", () => {
     expect(classifyUnderstandingFailure("boom")).toBe("unknown");
   });
 
+
+  it("names a provider that could not be reached apart from one that refused", () => {
+    const connection = Object.assign(new Error("Connection error."), { name: "APIConnectionError" });
+    const timeout = Object.assign(new Error("Request timed out."), { name: "APIConnectionTimeoutError" });
+    expect(classifyUnderstandingFailure(connection)).toBe("provider_unreachable");
+    expect(classifyUnderstandingFailure(timeout)).toBe("provider_unreachable");
+  });
+
+  it("separates a misconfigured client from a network fault", () => {
+    const missingKey = Object.assign(new Error("The OPENAI_API_KEY environment variable is missing or empty"), { name: "OpenAIError" });
+    expect(classifyUnderstandingFailure(missingKey)).toBe("provider_misconfigured");
+  });
+
+  it("keeps an explicit status ahead of the class name", () => {
+    const refused = Object.assign(new Error("Unauthorized"), { name: "APIConnectionError", status: 401 });
+    expect(classifyUnderstandingFailure(refused)).toBe("provider_unauthorized");
+  });
+
   it("never emits a code outside the closed vocabulary", () => {
     const samples: unknown[] = [
       { status: 418 }, { status: 429, code: "insufficient_quota" }, new Error("x"),
