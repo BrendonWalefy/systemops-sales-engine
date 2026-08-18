@@ -30,6 +30,7 @@ describe("claims mínimos do pack dental", () => {
       "dental-catalog",
       "dental-scheduling",
       "dental-escalation",
+      "dental-reception",
     ]);
     expect(
       dentalPack.capabilities.map(
@@ -40,7 +41,7 @@ describe("claims mínimos do pack dental", () => {
             completedStepIds: [],
           })?.capabilityId ?? null,
       ),
-    ).toEqual(["dental-catalog", null, null]);
+    ).toEqual(["dental-catalog", null, null, null]);
     const scheduling = dentalPack.capabilities[1]!;
     const claim = scheduling.claim(understanding("book-appointment"), {
       phase: "active",
