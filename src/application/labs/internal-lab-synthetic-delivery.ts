@@ -1,7 +1,7 @@
 import {
-  isRegisteredInternalLabApprovalInstance,
-  type RegisteredInternalLabApproval,
-} from "@/application/conversation-v2/internal-lab-approval";
+  resolveCurrentInternalLabApprovalTarget,
+  type InternalLabRegisteredApproval,
+} from "@/application/conversation-v2/internal-lab-authorization";
 
 export type InternalLabSyntheticRunAuthorization = Readonly<{
   runId: string;
@@ -11,7 +11,7 @@ export type InternalLabSyntheticRunAuthorization = Readonly<{
 }>;
 
 type RegisteredSyntheticRun = Readonly<{
-  approval: RegisteredInternalLabApproval;
+  approval: InternalLabRegisteredApproval;
   runId: string;
   clinicId: string;
   tenantDigest: string;
@@ -92,12 +92,17 @@ function isAddressForRun(address: string, runId: string): boolean {
 }
 
 export function registerInternalLabSyntheticRun(input: {
-  approval: RegisteredInternalLabApproval;
+  approval: InternalLabRegisteredApproval;
   clinicId: string;
   runId: string;
   addresses: readonly string[];
 }): InternalLabSyntheticRunAuthorization {
-  if (!isRegisteredInternalLabApprovalInstance(input.approval, new Date(), input.clinicId)) {
+  const approvalTarget = resolveCurrentInternalLabApprovalTarget({
+    approval: input.approval,
+    expectedClinicId: input.clinicId,
+    now: new Date(),
+  });
+  if (!approvalTarget) {
     throw new Error(
       "Internal Lab synthetic run requires a current registered approval and exact clinic binding",
     );
@@ -126,15 +131,15 @@ export function registerInternalLabSyntheticRun(input: {
   const authorization = Object.freeze({
     runId: input.runId,
     clinicId: input.clinicId,
-    tenantDigest: input.approval.claims.tenantDigest,
-    channelDigest: input.approval.claims.channelDigest,
+    tenantDigest: approvalTarget.tenantDigest,
+    channelDigest: approvalTarget.channelDigest,
   }) satisfies InternalLabSyntheticRunAuthorization;
   registeredRuns.set(authorization, Object.freeze({
     approval: input.approval,
     runId: input.runId,
     clinicId: input.clinicId,
-    tenantDigest: input.approval.claims.tenantDigest,
-    channelDigest: input.approval.claims.channelDigest,
+    tenantDigest: approvalTarget.tenantDigest,
+    channelDigest: approvalTarget.channelDigest,
     addresses: Object.freeze(addresses),
   }));
   return authorization;
@@ -149,17 +154,18 @@ export function isInternalLabSyntheticDeliveryAuthorized(input: Readonly<{
   if (!input.authorization) return false;
   const registered = registeredRuns.get(input.authorization);
   if (!registered) return false;
-  if (!isRegisteredInternalLabApprovalInstance(
-    registered.approval,
-    input.now ?? new Date(),
-    registered.clinicId,
-  )) {
-    return false;
-  }
+  const approvalTarget = resolveCurrentInternalLabApprovalTarget({
+    approval: registered.approval,
+    expectedClinicId: registered.clinicId,
+    now: input.now ?? new Date(),
+  });
+  if (!approvalTarget) return false;
   return input.authorization.runId === registered.runId
     && input.authorization.clinicId === registered.clinicId
     && input.authorization.tenantDigest === registered.tenantDigest
     && input.authorization.channelDigest === registered.channelDigest
+    && approvalTarget.tenantDigest === registered.tenantDigest
+    && approvalTarget.channelDigest === registered.channelDigest
     && input.clinicId === registered.clinicId
     && isAddressForRun(input.address, registered.runId)
     && registered.addresses.has(input.address);
