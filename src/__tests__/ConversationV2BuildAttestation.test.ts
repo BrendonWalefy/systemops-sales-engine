@@ -1,5 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { statSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -8,14 +7,48 @@ import {
   isRegisteredCycleIBuildAttestation,
 } from "@/infrastructure/conversation-v2/git-cycle-i-build-attestation";
 
+const sourceReadOverride = vi.hoisted(() => ({
+  path: null as string | null,
+  bytes: null as Buffer | null,
+  descriptors: new Set<number>(),
+}));
+
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    openSync: ((...args: unknown[]) => {
+      const descriptor = Reflect.apply(actual.openSync, actual, args) as number;
+      if (args[0] === sourceReadOverride.path) sourceReadOverride.descriptors.add(descriptor);
+      return descriptor;
+    }) as typeof actual.openSync,
+    readFileSync: ((...args: unknown[]) => {
+      if (
+        typeof args[0] === "number"
+        && sourceReadOverride.descriptors.has(args[0])
+        && sourceReadOverride.bytes !== null
+      ) return Buffer.from(sourceReadOverride.bytes);
+      return Reflect.apply(actual.readFileSync, actual, args);
+    }) as typeof actual.readFileSync,
+    closeSync: ((...args: unknown[]) => {
+      if (typeof args[0] === "number") sourceReadOverride.descriptors.delete(args[0]);
+      return Reflect.apply(actual.closeSync, actual, args);
+    }) as typeof actual.closeSync,
+  };
+});
 const git = vi.mocked(execFileSync);
 const commit = "a".repeat(40);
 const tree = "b".repeat(40);
 const statusEnd = "--CYCLE-I-STATUS-END--";
 
 describe("Cycle I build attestation", () => {
-  beforeEach(() => git.mockReset());
+  beforeEach(() => {
+    git.mockReset();
+    sourceReadOverride.path = null;
+    sourceReadOverride.bytes = null;
+    sourceReadOverride.descriptors.clear();
+  });
 
   it("does not let a caller select which repository is attested", () => {
     git.mockReturnValue(`${commit}\n${tree}\n${statusEnd}\nH src/relevant.ts\n`);
@@ -99,19 +132,21 @@ describe("Cycle I build attestation", () => {
     expect(() => createGitCycleIBuildAttestation()).toThrow(/index|flag|clean|tree/i);
   });
 
-  it("changes the source digest for same-size bytes even when mtime and Git output are unchanged", () => {
+  it("changes the source digest for same-size bytes even when filesystem metadata and Git output are unchanged", () => {
     git.mockReturnValue(`${commit}\n${tree}\n${statusEnd}\nH src/relevant.ts\n`);
-    const probe = resolve("src/infrastructure/conversation-v2/.cycle-i-source-digest-probe");
+    sourceReadOverride.path = resolve(
+      "src/infrastructure/conversation-v2/git-cycle-i-build-attestation.ts",
+    );
+    sourceReadOverride.bytes = Buffer.alloc(4_096, "a");
     try {
-      writeFileSync(probe, "aaaa", "utf8");
-      const before = statSync(probe);
       const first = computeCycleIImplementationSourceDigest();
-      writeFileSync(probe, "bbbb", "utf8");
-      utimesSync(probe, before.atime, before.mtime);
+      sourceReadOverride.bytes = Buffer.alloc(4_096, "b");
       const second = computeCycleIImplementationSourceDigest();
       expect(second).not.toBe(first);
     } finally {
-      try { unlinkSync(probe); } catch { /* cleanup after a failed assertion */ }
+      sourceReadOverride.path = null;
+      sourceReadOverride.bytes = null;
+      sourceReadOverride.descriptors.clear();
     }
   });
 });
