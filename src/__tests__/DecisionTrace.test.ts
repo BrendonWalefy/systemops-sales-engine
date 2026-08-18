@@ -108,6 +108,35 @@ describe("DecisionTrace", () => {
     expect(sink.getEvents()).toEqual([]);
   });
 
+  it("sanitiza os estágios V2 para metadados estruturais allowlisted", async () => {
+    const sink = new InMemoryDecisionTraceSink();
+
+    await recordDecisionTrace(sink, {
+      turnId: "turn-v2",
+      stage: "v2.action_result",
+      occurredAt: "2026-08-17T12:00:00.000Z",
+      metadata: {
+        status: "completed",
+        durationMs: 12,
+        resultCount: 1,
+        completedEffectCount: 1,
+        failedEffectCount: 0,
+        responseText: "conteúdo privado",
+        phone: "5511999999999",
+        evidenceRef: "appointment:private",
+        appointmentId: "appointment-private",
+      },
+    });
+
+    expect(sink.getEvents("turn-v2")[0]?.metadata).toEqual({
+      status: "completed",
+      durationMs: 12,
+      resultCount: 1,
+      completedEffectCount: 1,
+      failedEffectCount: 0,
+    });
+  });
+
   it("completa apenas os estágios pulados por uma decisão determinística", async () => {
     const sink = new InMemoryDecisionTraceSink();
 

@@ -82,6 +82,8 @@ describe("ConversationResponsePlanner", () => {
         allowedPriceCents: [],
         allowedScheduleFacts: [],
         allowedMediaIds: [],
+        allowedServices: [],
+        strictServiceVocabulary: false,
         maxQuestions: 1,
         maxCharacters: 420,
         expectedState: "idle",
@@ -91,6 +93,8 @@ describe("ConversationResponsePlanner", () => {
       violations: [],
       requiresHandoff: false,
       fallbackReason: null,
+      // Tempo de parede da chamada ao composer; o stub responde na hora.
+      composerLatencyMs: expect.any(Number),
     });
   });
 
@@ -328,10 +332,19 @@ describe("ConversationOrchestrator response planner integration", () => {
           action: "general_question",
           valid: true,
           violationCount: 0,
+          violations: "",
           requiresHandoff: false,
+          // Telemetria da invocação: identificadores e números, nada do texto.
+          model: "planner-model",
+          promptVersion: "test",
+          inputTokens: 17,
+          outputTokens: 9,
+          latencyMs: expect.any(Number),
         },
       }),
     ]);
+    // A resposta autorizada nunca entra no trace, mesmo com telemetria.
+    expect(JSON.stringify(sink.getEvents("turn-valid"))).not.toContain("Resposta autorizada");
   });
 
   it("marca o outbound planejado sem vazar a versão para um turno determinístico", async () => {
@@ -494,7 +507,15 @@ describe("ConversationOrchestrator response planner integration", () => {
           action: "general_question",
           valid: false,
           violationCount: 1,
+          violations: "unauthorized_price",
           requiresHandoff: true,
+          // No fallback a telemetria descreve a resposta determinística que de
+          // fato saiu, não a do composer que foi descartada.
+          model: "deterministic-fallback",
+          promptVersion: "response-fallback.v1",
+          inputTokens: 0,
+          outputTokens: 0,
+          latencyMs: expect.any(Number),
         },
       },
       {

@@ -921,7 +921,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage, b
                     />
                   </FieldGroup>
 
-                  <FieldGroup label="Nome da recepcionista" hint="Nome com que a IA se apresenta ao paciente. Deve coincidir com o nome na saudação automática.">
+                  <FieldGroup label="Nome da persona da IA" hint="Nome com que o especialista virtual se apresenta ao lead. Deve coincidir com o nome na saudação automática.">
                     <input
                       type="text"
                       value={data.receptionistName}

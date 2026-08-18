@@ -113,6 +113,8 @@ export type ReplayBugV1 = {
   code: string;
   severity: "critical" | "high" | "medium" | "low";
   title: string;
+  /** Turno do lead que originou a divergência, para rastrear até a conversa. */
+  turnId?: string;
   evidenceStages: string[];
   probableOwner:
     | "clinic_config"

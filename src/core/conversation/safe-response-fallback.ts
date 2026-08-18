@@ -91,6 +91,11 @@ function buildFallbackText(
       return "Não há agendamentos registrados no momento.";
     case "appointment_confirmation_rejected":
       return "Entendi. Vou deixar esse agendamento como não confirmado.";
+    case "conversation_recovery":
+      // Recovery é outbound: o lead não perguntou nada. Cair na cópia neutra de
+      // handoff mandaria "vou chamar nossa equipe" sem pergunta pendente, o que
+      // é pior do que a retomada genérica. Sem preço, sem agenda, sem promessa.
+      return "Oi! Passando para saber se ainda posso te ajudar com alguma dúvida por aqui.";
     default:
       return null;
   }

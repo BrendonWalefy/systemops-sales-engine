@@ -1,0 +1,202 @@
+/**
+ * O rótulo de prosa é **derivado**, nunca escolhido.
+ *
+ * O revisor responde quatro perguntas objetivas sobre uma resposta observada; o
+ * rótulo sai delas. Isso responde ao risco central do corpus: uma resposta
+ * humana ruim virar `golden` só por ter sido escrita por uma pessoa, e uma
+ * resposta boa da IA virar `anti-pattern` só por ter sido escrita por um modelo.
+ *
+ * Se o checklist der o rótulo errado num caso, a correção é consertar o
+ * checklist e re-derivar tudo — nunca abrir exceção para aquele caso.
+ */
+
+export const REVIEW_CHECKLIST_VERSION = "review-checklist.v2-calibrada" as const;
+
+/**
+ * Impressão digital das quatro perguntas na versão calibrada.
+ *
+ * A régua fechou o C.9 com 91,7 / 91,7 / 87,5 / 87,5 de concordância entre dois
+ * revisores independentes. Esse número é uma propriedade **deste** texto: mudar
+ * uma palavra de uma pergunta invalida a medida e todos os rótulos derivados
+ * dela. O digest existe para que a mudança seja impossível de fazer em silêncio
+ * — quem alterar a pergunta quebra o teste e tem de versionar e recalibrar.
+ */
+export const CALIBRATED_QUESTIONS_DIGEST =
+  "93882ca73baa8c3c08576995fbf4ef4cb4babe507dcb7eabc2c88a176d3a58ed" as const;
+
+export type ReviewChecklist = {
+  /**
+   * Toda afirmação factual ou operacional tem lastro nos fatos do turno?
+   *
+   * Duas regras que a rodada final do C.8 obrigou a escrever, porque sem elas
+   * dois revisores honestos julgavam a mesma frase de formas opostas:
+   *
+   * 1. **Ausência no catálogo não prova inexistência**, a menos que a fixture
+   *    declare o catálogo fechado. Num catálogo de completude desconhecida,
+   *    "não trabalhamos com porcelana" é afirmação sem lastro tanto quanto
+   *    "trabalhamos" seria — a lista simplesmente não responde a pergunta.
+   * 2. **Paráfrase vale enquanto for conservadoramente implicada pela fonte.**
+   *    Acrescentar mecanismo, garantia ou resultado não é reformular: uma
+   *    descrição que registra "prótese sobre implantes" não sustenta
+   *    "parafusada", "não sai do lugar" nem "volta a comer carne".
+   */
+  factuallyCorrect: boolean;
+  /**
+   * A resposta engajou com a necessidade principal do lead?
+   *
+   * Mede **relevância**, não acerto. Resposta errada sobre o assunto certo
+   * trata; resposta impecável sobre outro assunto não trata. Clarificação
+   * necessária trata, porque engaja com a necessidade em vez de desviar dela.
+   *
+   * A separação é deliberada: factualidade é a pergunta 1, e medir a mesma
+   * coisa duas vezes fez esta pergunta ser a única a regredir no C.8 — um
+   * revisor lia "tratou?" como "resolveu?" e o outro como "engajou?".
+   *
+   * Formulada sobre "o que o lead levantou", e não sobre "a pergunta", porque a
+   * maioria dos turnos difíceis do histórico não tem pergunta nenhuma. Ver a
+   * nota de self-review no fim deste arquivo.
+   */
+  addressedWhatTheLeadRaised: boolean;
+  /**
+   * A resposta **reduziu de forma relevante a distância** até uma resolução ou
+   * um próximo passo válido?
+   *
+   * Contam como redução de distância:
+   *
+   * - responder informação necessária;
+   * - reduzir ambiguidade;
+   * - coletar informação necessária para uma próxima ação;
+   * - tratar uma objeção de forma útil;
+   * - executar ou confirmar uma ação válida.
+   *
+   * Não contam: reconhecimento, saudação e encerramento social — cortesia não é
+   * avanço. Pergunta de clarificação conta **quando** coleta informação
+   * realmente necessária, e não conta quando devolve ao lead algo que ele já
+   * disse ou que a configuração já responde. Ação ou disponibilidade fabricada
+   * nunca conta, por mais que aparente mover a conversa: horário inventado,
+   * desconto inexistente e agendamento não realizado afastam da resolução em
+   * vez de aproximar.
+   *
+   * Redigida assim depois do C.7, onde a formulação anterior — "aproximou de um
+   * próximo passo válido" — foi a única divergência que sobrou entre dois
+   * revisores honestos depois de corrigidos régua e renderer. Ela não dizia se
+   * reconhecer aproxima.
+   */
+  advancedTheJourney: boolean;
+  /** Você mandaria exatamente isso hoje, para este lead, neste ponto? */
+  wouldRepeatToday: boolean;
+};
+
+export const REVIEW_CHECKLIST_QUESTIONS: ReadonlyArray<{
+  field: keyof ReviewChecklist;
+  question: string;
+}> = [
+  {
+    field: "factuallyCorrect",
+    question:
+      "Toda afirmação factual ou operacional da resposta está sustentada pelos fatos disponíveis neste turno? (preço, desconto, pagamento, serviço e seus atributos, horário, disponibilidade, agendamento, endereço, garantia, condição comercial, ação que o sistema diz ter feito, capacidade prometida). Não demonstrado falso NÃO basta — sem evidência, responda N. Frase puramente social não precisa de lastro; frase social que promete capacidade operacional precisa. CATÁLOGO: a ausência de um serviço só prova que ele não existe se a fixture declarar o catálogo fechado/completo; em catálogo de completude desconhecida, negar o serviço é tão sem lastro quanto afirmá-lo. PARÁFRASE: vale quando conservadoramente implicada pela fonte — acrescentar mecanismo, garantia ou resultado que a fonte não traz é afirmação nova, não reformulação.",
+  },
+  {
+    field: "addressedWhatTheLeadRaised",
+    question:
+      "A resposta engajou com a necessidade principal que o lead levantou — pergunta, objeção, reclamação ou mídia? Mede relevância, não acerto: resposta errada sobre o assunto certo trata, e a factualidade dela é julgada na pergunta 1. Clarificação necessária trata. Responda N quando a resposta desvia do assunto, ignora o que foi levantado ou responde outra coisa.",
+  },
+  {
+    field: "advancedTheJourney",
+    question:
+      "A resposta reduz de forma relevante a distância até uma resolução ou um próximo passo válido? Conta: responder informação necessária, reduzir ambiguidade, coletar informação necessária para a próxima ação, tratar uma objeção de forma útil, executar ou confirmar uma ação válida. NÃO conta: mero reconhecimento, saudação ou encerramento social. Pergunta de clarificação conta quando coleta informação realmente necessária. Ação ou disponibilidade fabricada (horário inventado, desconto inexistente, agendamento não realizado) NUNCA conta.",
+  },
+  {
+    field: "wouldRepeatToday",
+    question: "Você mandaria exatamente isso hoje, neste ponto da conversa?",
+  },
+];
+
+export type ProseLabel = "golden" | "acceptable" | "anti-pattern";
+
+export type BetterResponder = "ai" | "human" | "tie" | "not_applicable";
+
+export function deriveProseLabel(checklist: ReviewChecklist): ProseLabel {
+  if (!checklist.factuallyCorrect) return "anti-pattern";
+  // Turno morto: não tratou o que o lead levantou e não avançou nada. Sem esta
+  // regra a única forma de chegar a anti-pattern era errar um fato, e a resposta
+  // que ignora a pergunta e devolve menu de saudação saía como "aceitável".
+  if (!checklist.addressedWhatTheLeadRaised && !checklist.advancedTheJourney) {
+    return "anti-pattern";
+  }
+  if (
+    checklist.addressedWhatTheLeadRaised &&
+    checklist.advancedTheJourney &&
+    checklist.wouldRepeatToday
+  ) {
+    return "golden";
+  }
+  return "acceptable";
+}
+
+const PROSE_LABEL_RANK: Record<ProseLabel, number> = {
+  "anti-pattern": 0,
+  acceptable: 1,
+  golden: 2,
+};
+
+export function compareProseLabels(a: ProseLabel, b: ProseLabel): number {
+  return PROSE_LABEL_RANK[a] - PROSE_LABEL_RANK[b];
+}
+
+/**
+ * Quem respondeu melhor naquele turno, derivado dos rótulos das duas respostas.
+ *
+ * Existe porque o corpus precisa carregar os dois contrastes que o programa quer
+ * medir — "IA melhor que humano" e "humano melhor que IA" — sem que alguém
+ * escolha o vencedor no olho.
+ */
+export function deriveBetterResponder(
+  aiLabel: ProseLabel | null,
+  humanLabel: ProseLabel | null,
+): BetterResponder {
+  if (!aiLabel || !humanLabel) return "not_applicable";
+  const comparison = compareProseLabels(aiLabel, humanLabel);
+  if (comparison > 0) return "ai";
+  if (comparison < 0) return "human";
+  return "tie";
+}
+
+/**
+ * ── Self-review das quatro perguntas (Ciclo C2) ──────────────────────────────
+ *
+ * Pergunta que o autor do programa mandou responder antes de congelar:
+ * *"estas perguntas conseguem diferenciar uma resposta comercialmente excelente
+ * de uma resposta apenas correta?"*
+ *
+ * **Não conseguem, e não deveriam.** Duas respostas ao mesmo "qual o valor das
+ * lentes?" — "R$ 2.000 por unidade. Quer agendar uma avaliação?" e "R$ 2.000 por
+ * unidade; no pacote de 10 sai R$ 1.800 cada, que é o que a maioria faz. Vejo um
+ * horário essa semana?" — marcam as quatro afirmativas e saem as duas como
+ * `golden`. A segunda é comercialmente melhor. O checklist é um **piso**
+ * (isto pode ser imitado?), não um ranking; separar excelente de correto é
+ * exatamente o trabalho do judge par a par, que é comparativo por construção.
+ * Acrescentar aqui uma quinta pergunta de "excelência comercial" transformaria
+ * uma pergunta objetiva num juízo de gosto, e é ele que o judge existe para dar.
+ *
+ * **Insuficiência concreta que existia, e o ajuste mínimo que ela obrigou.** A
+ * pergunta 2 estava escrita como *"respondeu a pergunta?"*. Contra o bug real já
+ * registrado no projeto — a IA ignora a objeção cadastrada e pivota para
+ * "avaliação" — ela é vacuamente verdadeira: em "achei caro" o lead não fez
+ * pergunta nenhuma. A resposta "Entendo! Temos parcelamento em até 12x. Quer
+ * agendar uma avaliação?" marcaria as quatro e sairia **golden**, ou seja, o
+ * checklist rotularia como referência um defeito conhecido. Trocar a pergunta
+ * por "tratou o que o lead levantou?" fecha o buraco sem acrescentar campo:
+ * mesmo custo de revisão, mesma derivação, e o turno sem pergunta passa a ser
+ * avaliável. Nenhuma outra das quatro mostrou insuficiência demonstrável com
+ * exemplo real, então nenhuma outra mudou.
+ *
+ * **Segunda insuficiência, achada rotulando o histórico real.** Com a regra
+ * original, o único caminho para `anti-pattern` era errar um fato. No caso
+ * `price-0001` — Ximendes, 15/06 — o lead pergunta o valor pela segunda vez e a
+ * IA devolve o menu de saudação ("valores, agendamento ou algum serviço
+ * específico?"). Nada falso foi dito, então a regra de fato não pega, e o turno
+ * saía `acceptable`. Um turno que não trata o que o lead levantou **e** não
+ * avança nada é "nunca faça isso", não "aceitável". A derivação ganhou essa
+ * segunda regra; as quatro perguntas continuam as mesmas.
+ */

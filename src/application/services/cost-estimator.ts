@@ -26,6 +26,32 @@ const AI_MODEL_PRICES: Record<string, AiModelPrice> = {
     inputUsdMicrosPerMillionTokens: 750_000,
     outputUsdMicrosPerMillionTokens: 4_500_000,
   },
+  // Candidatos medidos no benchmark de classificador de 13/08/2026
+  // (docs/superpowers/plans/2026-08-13-classifier-model-comparison.md).
+  // Atenção: estes números são o preço de input NÃO cacheado. O prompt do
+  // classificador tem ~2 mil tokens estáticos e atinge 87-94% de cache, então o
+  // custo real por chamada é bem menor que o que esta tabela estima — ela
+  // superestima, nunca subestima, o que é o lado seguro para margem.
+  "gpt-4.1-nano": {
+    inputUsdMicrosPerMillionTokens: 100_000,
+    outputUsdMicrosPerMillionTokens: 400_000,
+  },
+  "gpt-5.4-nano": {
+    inputUsdMicrosPerMillionTokens: 200_000,
+    outputUsdMicrosPerMillionTokens: 1_250_000,
+  },
+  "gpt-5.6-luna": {
+    inputUsdMicrosPerMillionTokens: 200_000,
+    outputUsdMicrosPerMillionTokens: 1_200_000,
+  },
+  "gpt-5.6-terra": {
+    inputUsdMicrosPerMillionTokens: 2_000_000,
+    outputUsdMicrosPerMillionTokens: 12_000_000,
+  },
+  "gpt-5.6-sol": {
+    inputUsdMicrosPerMillionTokens: 5_000_000,
+    outputUsdMicrosPerMillionTokens: 30_000_000,
+  },
   "gpt-5.4": {
     inputUsdMicrosPerMillionTokens: 2_500_000,
     outputUsdMicrosPerMillionTokens: 15_000_000,

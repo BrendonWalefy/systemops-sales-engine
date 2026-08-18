@@ -1,0 +1,9 @@
+{
+  "version": "conversation-v2-cycle-i-measurement-status.v1",
+  "status": "infrastructure_error",
+  "errorCode": "openai_api_key_missing",
+  "attemptedObservations": 0,
+  "resultArtifact": null,
+  "humanReviewSheetArtifact": null,
+  "judge": "experimental_non_gating"
+}

@@ -12,7 +12,14 @@ import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/driz
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
-import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
+import { ConversationResponsePlanner } from "@/core/conversation/ConversationResponsePlanner";
+import { recordAutomationResponseTrace } from "@/core/conversation/automation-response-trace";
+import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
+import {
+  FOLLOW_UP_MAX_CHARACTERS,
+  buildFollowUpPlanInput,
+} from "@/app/api/cron/follow-up-dispatcher/follow-up-response";
+import type { ComposerInput } from "@/core/intelligence/ResponseComposer";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
@@ -27,6 +34,7 @@ import { resolveClinicVoiceConfig } from "@/lib/tts-send";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 import type { TtsConfig } from "@/domain/entities/tts-config";
 import type { FollowUp } from "@/domain/entities/follow-up";
+import { extractFirstName } from "@/core/intelligence/lead-display-name";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +68,7 @@ type DispatchDeps = {
   followUpRepository: DrizzleFollowUpRepository;
   leadRepository: DrizzleLeadRepository;
   appointmentRepository: DrizzleAppointmentRepository;
-  composer: ResponseComposer;
+  planner: ConversationResponsePlanner;
   clinic: typeof organizations.$inferSelect;
   editorial: Awaited<ReturnType<typeof resolveActiveEditorialConfig>>;
   timezone: ClinicTimezone;
@@ -126,7 +134,7 @@ async function processOneFollowUp(
     followUpRepository,
     leadRepository,
     appointmentRepository,
-    composer,
+    planner,
     clinic,
     editorial,
     timezone,
@@ -210,7 +218,7 @@ async function processOneFollowUp(
   }
   const videoTitle = isVideoFollowUp ? followUp.reason.slice("video_sent:".length) : null;
 
-  let actionResult: Parameters<typeof composer.compose>[0]["actionResult"];
+  let actionResult: ComposerInput["actionResult"];
 
   if (isVideoFollowUp && videoTitle) {
     actionResult = { type: "video_sent_followup", videoTitle };
@@ -254,22 +262,34 @@ async function processOneFollowUp(
         )
     : [];
 
-  const composed = await composer.compose({
-    actionResult,
-    conversationHistory,
-    clinic: {
-      name: clinic.name,
-      plan: clinic.plan,
-      specialty: editorial?.specialty ?? clinic.specialty,
-      toneOfVoice: editorial?.toneOfVoice ?? null,
-      playbook: editorial?.playbookText ?? null,
-      commercialPolicy: editorial?.commercialPolicy ?? null,
-      receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+  // Plano → composer → validador → fallback. Reengajar não é negociar: se o
+  // composer inventar preço ou garantia, o lead recebe a cópia determinística.
+  const planned = await planner.execute({
+    composerInput: {
+      actionResult,
+      conversationHistory,
+      clinic: {
+        name: clinic.name,
+        plan: clinic.plan,
+        specialty: editorial?.specialty ?? clinic.specialty,
+        toneOfVoice: editorial?.toneOfVoice ?? null,
+        playbook: editorial?.playbookText ?? null,
+        commercialPolicy: editorial?.commercialPolicy ?? null,
+        receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+      },
+      leadName: extractFirstName(lead.name),
+      timezone,
+      isFirstMessage: false,
     },
-    leadName: lead.name,
-    timezone,
-    isFirstMessage: false,
+    planInput: buildFollowUpPlanInput({ maxCharacters: FOLLOW_UP_MAX_CHARACTERS }),
   });
+  await recordAutomationResponseTrace(createRuntimeDecisionTraceSink(), {
+    turnId: `follow-up:${followUp.id}`,
+    clinicId: clinic.id,
+    conversationId: conv.id,
+    planned,
+  });
+  const composed = planned.response;
 
   const { agentMessageId, outbound } = buildFollowUpOutboxInput({
     clinicId: clinic.id,
@@ -334,7 +354,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   const followUpRepository = new DrizzleFollowUpRepository();
   const leadRepository = new DrizzleLeadRepository();
   const appointmentRepository = new DrizzleAppointmentRepository();
-  const composer = new ResponseComposer();
+  const planner = new ConversationResponsePlanner();
   const timezone = new ClinicTimezone(clinic.timezone);
 
   const now = new Date();
@@ -354,7 +374,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
     followUpRepository,
     leadRepository,
     appointmentRepository,
-    composer,
+    planner,
     clinic,
     editorial,
     timezone,

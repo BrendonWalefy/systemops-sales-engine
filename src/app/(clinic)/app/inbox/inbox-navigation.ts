@@ -1,5 +1,5 @@
 import type { ConversationCategory } from "@/domain/value-objects/conversation-category";
-import type { LiveInboxTabFilter } from "./inbox-filter";
+import type { InboxTabKey } from "@/application/inbox/inbox-segmentation";
 
 // Único lugar que sabe montar a URL do Inbox a partir de escopo/aba/busca.
 // page.tsx lê os mesmos três parâmetros de volta (filter/scope/q) pra
@@ -9,7 +9,10 @@ import type { LiveInboxTabFilter } from "./inbox-filter";
 // próprio, sem passar pelo componente React).
 export type InboxNavigationTarget = {
   scope: ConversationCategory;
-  tab: LiveInboxTabFilter | "recovery";
+  // InboxTabKey direto: a união local anterior ("LiveInboxTabFilter |
+  // recovery") era um segundo dono do conjunto de abas, e cada aba nova exigia
+  // lembrar de atualizar os dois.
+  tab: InboxTabKey;
   search: string;
   // Continuação da lista. Ausente ou 1 = primeira página, e nesse caso o
   // parâmetro nem entra na URL: o estado padrão continua sendo `/app/inbox`.

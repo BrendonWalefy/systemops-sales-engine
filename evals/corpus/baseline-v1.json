@@ -1,0 +1,280 @@
+{
+  "generatedAt": "2026-08-16T04:31:13.636Z",
+  "corpus": {
+    "totalCases": 66,
+    "shardHashes": {
+      "ambiguity": 1,
+      "audio": 2,
+      "availability": 5,
+      "burst": 3,
+      "comparison": 2,
+      "discount": 3,
+      "first-contact": 5,
+      "follow-up": 1,
+      "handoff": 3,
+      "injection": 1,
+      "location": 2,
+      "media": 5,
+      "objection": 8,
+      "other": 5,
+      "price": 11,
+      "procedure": 4,
+      "reschedule": 1,
+      "scheduling": 3,
+      "silence-recovery": 1
+    }
+  },
+  "understanding": {
+    "systemUnderTest": "v1-intent-classifier",
+    "model": "gpt-5.4-mini",
+    "axes": [
+      {
+        "axis": "request",
+        "expected": 66,
+        "produced": 64,
+        "correct": 44,
+        "accuracy": 0.6666666666666666
+      },
+      {
+        "axis": "dialogueMove",
+        "expected": 66,
+        "produced": 0,
+        "correct": 0,
+        "accuracy": 0
+      },
+      {
+        "axis": "entities.service",
+        "expected": 35,
+        "produced": 0,
+        "correct": 0,
+        "accuracy": 0
+      },
+      {
+        "axis": "entities.date",
+        "expected": 10,
+        "produced": 0,
+        "correct": 0,
+        "accuracy": 0
+      },
+      {
+        "axis": "signals.objection",
+        "expected": 11,
+        "produced": 0,
+        "correct": 0,
+        "accuracy": 0
+      },
+      {
+        "axis": "safety.requestsHuman",
+        "expected": 3,
+        "produced": 0,
+        "correct": 0,
+        "accuracy": 0
+      },
+      {
+        "axis": "ambiguity",
+        "expected": 6,
+        "produced": 0,
+        "correct": 0,
+        "accuracy": 0
+      }
+    ],
+    "intentAccuracyOnV1Vocabulary": 0.6875,
+    "comparableCases": 64,
+    "skipped": 2,
+    "confusions": [
+      {
+        "caseId": "audio-0001",
+        "expected": "clinical_urgency",
+        "got": "general_question"
+      },
+      {
+        "caseId": "audio-0002",
+        "expected": "general_question",
+        "got": "unclear"
+      },
+      {
+        "caseId": "availability-0001",
+        "expected": "book_appointment",
+        "got": "check_availability"
+      },
+      {
+        "caseId": "burst-0001",
+        "expected": "confirm_slot",
+        "got": "acknowledgment"
+      },
+      {
+        "caseId": "burst-0003",
+        "expected": "general_question",
+        "got": "acknowledgment"
+      },
+      {
+        "caseId": "discount-0001",
+        "expected": "needs_human",
+        "got": "price_inquiry"
+      },
+      {
+        "caseId": "discount-0003",
+        "expected": "price_inquiry",
+        "got": "acknowledgment"
+      },
+      {
+        "caseId": "first-contact-0005",
+        "expected": "general_question",
+        "got": "greeting"
+      },
+      {
+        "caseId": "handoff-0001",
+        "expected": "needs_human",
+        "got": "unclear"
+      },
+      {
+        "caseId": "handoff-0002",
+        "expected": "clinical_urgency",
+        "got": "general_question"
+      },
+      {
+        "caseId": "media-0001",
+        "expected": "needs_human",
+        "got": "unclear"
+      },
+      {
+        "caseId": "media-0002",
+        "expected": "needs_human",
+        "got": "acknowledgment"
+      },
+      {
+        "caseId": "media-0003",
+        "expected": "needs_human",
+        "got": "acknowledgment"
+      },
+      {
+        "caseId": "objection-0002",
+        "expected": "acknowledgment",
+        "got": "general_question"
+      },
+      {
+        "caseId": "objection-0003",
+        "expected": "acknowledgment",
+        "got": "general_question"
+      },
+      {
+        "caseId": "objection-0006",
+        "expected": "general_question",
+        "got": "acknowledgment"
+      },
+      {
+        "caseId": "objection-0008",
+        "expected": "price_inquiry",
+        "got": "acknowledgment"
+      },
+      {
+        "caseId": "price-0003",
+        "expected": "general_question",
+        "got": "book_appointment"
+      },
+      {
+        "caseId": "price-0004",
+        "expected": "price_inquiry",
+        "got": "general_question"
+      },
+      {
+        "caseId": "scheduling-0002",
+        "expected": "clinical_urgency",
+        "got": "book_appointment"
+      }
+    ]
+  },
+  "decision": {
+    "systemUnderTest": "reference-pure",
+    "v1Measurable": false,
+    "v1NotMeasurableReason": "A V1 não expõe função de decisão: o ActionResult é construído inline em ConversationOrchestrator.handle() junto com leitura de agenda e catálogo, e o sink de trace é noop em produção, então também não há registro histórico. Medir exigiria replay com banco e calendário, que não roda em CI.",
+    "deciderId": "reference-pure",
+    "total": 66,
+    "pureCases": 55,
+    "ioCases": 11,
+    "pureAccuracy": 0.8909090909090909,
+    "failures": [
+      {
+        "caseId": "first-contact-0005",
+        "expected": "greeting",
+        "got": "general_question",
+        "purity": "pure",
+        "correct": false
+      },
+      {
+        "caseId": "media-0002",
+        "expected": "pipeline_photo_received",
+        "got": "media_received",
+        "purity": "pure",
+        "correct": false
+      },
+      {
+        "caseId": "media-0003",
+        "expected": "pipeline_photo_received",
+        "got": "media_received",
+        "purity": "pure",
+        "correct": false
+      },
+      {
+        "caseId": "price-0005",
+        "expected": "clarification_needed",
+        "got": "price_inquiry",
+        "purity": "pure",
+        "correct": false
+      },
+      {
+        "caseId": "price-0010",
+        "expected": "clarification_needed",
+        "got": "price_inquiry",
+        "purity": "pure",
+        "correct": false
+      },
+      {
+        "caseId": "price-0011",
+        "expected": "clarification_needed",
+        "got": "general_question",
+        "purity": "pure",
+        "correct": false
+      }
+    ]
+  },
+  "prose": {
+    "v1Responses": {
+      "responses": 33,
+      "medianCharacters": 156,
+      "responsesOver400Characters": 6,
+      "responsesWithTwoOrMoreQuestions": 9,
+      "responsesQuotingUnauthorizedPrice": 0,
+      "responsesRepeatingPreviousBlock": 2,
+      "mediaOnlyResponses": 0
+    },
+    "humanResponses": {
+      "responses": 31,
+      "medianCharacters": 120,
+      "responsesOver400Characters": 3,
+      "responsesWithTwoOrMoreQuestions": 1,
+      "responsesQuotingUnauthorizedPrice": 3,
+      "responsesRepeatingPreviousBlock": 0,
+      "mediaOnlyResponses": 0
+    },
+    "curatedReferences": {
+      "responses": 13,
+      "medianCharacters": 251,
+      "responsesOver400Characters": 0,
+      "responsesWithTwoOrMoreQuestions": 0,
+      "responsesQuotingUnauthorizedPrice": 2,
+      "responsesRepeatingPreviousBlock": 0,
+      "mediaOnlyResponses": 0
+    },
+    "judge": {
+      "status": "experimental_non_gating",
+      "rationale": "14/14 empates e 42,9% de instabilidade ao inverter a ordem, acima do teto de 25% da spec. Não separou casos em que só um lado tinha lastro. Nenhum gate depende deste número.",
+      "lastRun": null
+    }
+  },
+  "cost": {
+    "classifierCalls": 64,
+    "averageClassifierLatencyMs": 1587,
+    "wallClockMs": 101745
+  }
+}

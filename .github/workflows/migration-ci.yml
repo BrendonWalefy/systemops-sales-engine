@@ -39,19 +39,58 @@ jobs:
         uses: neondatabase/create-branch-action@v6
         with:
           project_id: ${{ secrets.NEON_PROJECT_ID }}
-          branch_name: ci-migration-pr-${{ github.event.pull_request.number }}
+          branch_name: ci-migration-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
           api_key: ${{ secrets.NEON_API_KEY }}
           role: ${{ secrets.NEON_DB_USER }}
+
+      # A action devolve a branch existente em vez de falhar quando o nome se repete.
+      # Uma branch sobrevivente de uma execução anterior já teria a migration
+      # registrada em `__drizzle_migrations`, e o `migrate` seguinte não aplicaria
+      # nada — o check ficaria verde sobre uma migration que nunca rodou.
+      - name: Require a freshly created staging branch
+        if: steps.neon.outputs.created != 'true'
+        run: |
+          echo "Neon staging branch was reused instead of created; refusing to test a migration that may already be recorded." >&2
+          exit 1
 
       - name: Apply migration on staging branch
         env:
           DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
         run: npx drizzle-kit migrate
 
+      # A política de teste exige duas declarações independentes: qual host os testes
+      # podem sujar e qual host é produção. Elas são resolvidas aqui como hostnames,
+      # para que nenhuma connection string de produção entre no processo de teste.
+      # Ver docs/operations/test-database-safety.md.
+      - name: Resolve database hosts for the test guardrail
+        id: hosts
+        env:
+          STAGING_DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          PRODUCTION_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          node -e '
+            const { appendFileSync } = require("node:fs");
+            const hostname = (name) => {
+              const value = process.env[name];
+              if (!value) throw new Error(name + " is required to resolve the test guardrail hosts");
+              const host = new URL(value).hostname.toLowerCase();
+              if (!host) throw new Error(name + " has no resolvable host");
+              return host;
+            };
+            const testHost = hostname("STAGING_DATABASE_URL");
+            const productionHost = hostname("PRODUCTION_DATABASE_URL");
+            if (testHost === productionHost) {
+              throw new Error("staging host equals the production host; refusing to run tests against production");
+            }
+            appendFileSync(process.env.GITHUB_OUTPUT, `test_host=${testHost}\nproduction_host=${productionHost}\n`);
+          '
+
       # Roda a suite completa (lint + typecheck + vitest) contra o banco de staging.
       - name: Verify against staging branch
         env:
           DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          TEST_DATABASE_HOST: ${{ steps.hosts.outputs.test_host }}
+          PRODUCTION_DATABASE_HOST: ${{ steps.hosts.outputs.production_host }}
         run: npm run verify
 
       - name: Delete Neon staging branch
@@ -59,5 +98,5 @@ jobs:
         uses: neondatabase/delete-branch-action@v3
         with:
           project_id: ${{ secrets.NEON_PROJECT_ID }}
-          branch: ci-migration-pr-${{ github.event.pull_request.number }}
+          branch: ci-migration-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
           api_key: ${{ secrets.NEON_API_KEY }}

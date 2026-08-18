@@ -19,6 +19,7 @@ import type { CommercialDiagnosticSnapshot } from "@/application/onboarding/comm
 import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
 import type { PostAppointmentRule } from "@/domain/entities/post-appointment-rule";
 import type { DecisionTraceRecord } from "@/core/observability/DecisionTrace";
+import type { BusinessSchedule } from "@/core/scheduling/BusinessSchedule";
 import { sql } from "drizzle-orm";
 
 export const channelEnum = pgEnum("channel", [
@@ -177,6 +178,12 @@ export const orgOperationalStatusEnum = pgEnum("org_operational_status", [
   "cancelled",
 ]);
 
+export const conversationEngineEnum = pgEnum("conversation_engine", [
+  "v1",
+  "v1_with_v2_shadow",
+  "v2_internal",
+]);
+
 export const playbookVersionStatusEnum = pgEnum("playbook_version_status", [
   "active",
   "draft",
@@ -322,6 +329,13 @@ export const organizations = pgTable("organizations", {
   commercialDiagnostic:
     jsonb("commercial_diagnostic").$type<CommercialDiagnosticSnapshot>(),
   businessHours: text("business_hours"),
+  // Escala por dia da semana. Substitui a leitura de business_hours, que só
+  // consegue expressar uma faixa de horário mais uma exceção de sábado — e que
+  // por isso produzia disponibilidade errada para clínica fechada no meio da
+  // semana, dois turnos, ou horário distinto por dia. Null = derivar do texto
+  // legado; ver resolveBusinessSchedule, a porta única de leitura.
+  // business_hours NÃO é removida: é a origem do backfill e a rede de rollback.
+  businessSchedule: jsonb("business_schedule").$type<BusinessSchedule>(),
   googleCalendarId: text("google_calendar_id"),
   // Fonte de verdade da disponibilidade. Null = derivar de googleCalendarId no resolver.
   calendarMode: calendarModeEnum("calendar_mode"),
@@ -354,6 +368,9 @@ export const organizations = pgTable("organizations", {
   // mas o envio real ao WhatsApp é suprimido — usado para validar comportamento
   // sem afetar o lead (clínicas problemáticas ou pré-onboarding).
   shadowModeEnabled: boolean("shadow_mode_enabled").notNull().default(false),
+  conversationEngine: conversationEngineEnum("conversation_engine")
+    .notNull()
+    .default("v1"),
   receptionistPhone: text("receptionist_phone"),
   // Taxa flat por faixa de parcela { n, rate (%), active }. Null = fallback "taxa da maquininha".
   installmentRates:
@@ -908,6 +925,32 @@ export const decisionTraces = pgTable(
       "decision_traces_conversation_updated_at_idx",
     ).on(table.conversationId, table.updatedAt),
     expiresAtIdx: index("decision_traces_expires_at_idx").on(table.expiresAt),
+  }),
+);
+
+// Registro live do shadow V2: somente o schema sanitizado e fechado da
+// aplicação. Texto, prompt, histórico e ids crus não têm coluna nesta tabela.
+export const conversationV2Comparisons = pgTable(
+  "conversation_v2_comparisons",
+  {
+    turnRef: text("turn_ref").primaryKey(),
+    clinicId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    record: jsonb("record").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    clinicOccurredAtIdx: index(
+      "conversation_v2_comparisons_org_occurred_at_idx",
+    ).on(table.clinicId, table.occurredAt),
+    expiresAtIdx: index("conversation_v2_comparisons_expires_at_idx").on(
+      table.expiresAt,
+    ),
   }),
 );
 

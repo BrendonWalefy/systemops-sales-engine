@@ -227,16 +227,32 @@ function isPriceMediaTitle(title: string): boolean {
   return hasAnyKeyword(n, ["valor", "valores", "preco", "investimento", "pacote", "pacotes"]);
 }
 
-export function filterMediaLibraryForComposer<T extends { title: string; treatmentId?: string | null }>(
+export function filterMediaLibraryForComposer<
+  T extends { id: string; title: string; treatmentId?: string | null },
+>(
   items: T[],
   activeTreatmentId: string | null,
   actionResult: ActionResult,
+  // Mídia que os passos do pipeline entregam. O pipeline é o dono dela e a envia
+  // no ritmo dele; ver collectPipelineStepMediaIds.
+  pipelineStepMediaIds?: ReadonlySet<string>,
 ): T[] {
   const treatmentScoped = filterMediaLibraryForTreatment(items, activeTreatmentId);
   if (actionResult.type !== "price_inquiry") return treatmentScoped;
 
+  // Arte de valores vence sempre: há clínica que entrega preço por imagem, e
+  // suprimi-la aqui calaria a própria resposta que o lead pediu.
   const priceMedia = treatmentScoped.filter((item) => isPriceMediaTitle(item.title));
-  return priceMedia.length > 0 ? priceMedia : treatmentScoped;
+  if (priceMedia.length > 0) return priceMedia;
+
+  // Sem arte de valores o fallback era a lista inteira — e era por isso que um
+  // "quanto custa?" fazia a LLM anexar o card de "envie sua foto para
+  // pré-avaliação" e reenviar vídeos de técnica que o pipeline já tinha
+  // mostrado. Mídia de passo de pipeline não é anexável por token: o pipeline
+  // a entrega no momento dele.
+  return pipelineStepMediaIds?.size
+    ? treatmentScoped.filter((item) => !pipelineStepMediaIds.has(item.id))
+    : treatmentScoped;
 }
 
 export function buildAlignedResponseMediaProjection<

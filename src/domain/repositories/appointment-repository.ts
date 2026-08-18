@@ -3,6 +3,17 @@ import type { Appointment } from "../entities/calendar-slot";
 export type AppointmentRepository = {
   save(appointment: Appointment): Promise<void>;
   findById(id: string): Promise<Appointment | null>;
+  findByIdForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+  ): Promise<Appointment | null>;
+  confirmScheduledForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+    updatedAt: Date,
+  ): Promise<Appointment | null>;
   findByLeadId(leadId: string): Promise<Appointment | null>;
   findActiveByLeadId(leadId: string): Promise<Appointment | null>;
   findAllActiveByLeadId(leadId: string): Promise<Appointment[]>;

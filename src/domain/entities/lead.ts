@@ -18,7 +18,9 @@ export type Lead = {
   assignedToUserId: string | null;
   nextActionAt: Date | null;
   lostReason: string | null;
+  /** Durable stop-contact state read by both conversation engines. */
+  contactConsentRevokedAt?: Date | null;
+  contactConsentSource?: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
-

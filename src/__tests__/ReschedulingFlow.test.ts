@@ -160,6 +160,8 @@ function makeApptRepo(overlap: Appointment[] = []) {
   const repo: AppointmentRepository = {
     async save(a) { saved.push(a); },
     async findById() { return null; },
+    async findByIdForClinicAndLead() { return null; },
+    async confirmScheduledForClinicAndLead() { return null; },
     async findByLeadId() { return null; },
     async findActiveByLeadId() { return null; },
     async findAllActiveByLeadId() { return overlap; },
@@ -179,6 +181,7 @@ function makeLeadRepo() {
     async findByPhone() { return null; },
     async findByWhatsAppLid() { return null; },
     async findInactiveLeads() { return []; },
+    async ensureWhatsAppIdentity(l) { return l; },
     async mergeDuplicateLeads() { throw new Error("not implemented"); },
   };
   return { repo, saved };

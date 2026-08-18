@@ -59,6 +59,11 @@ class RacyLeadRepository implements LeadRepository {
     return [];
   }
 
+  async ensureWhatsAppIdentity(lead: Lead): Promise<Lead> {
+    await this.save(lead);
+    return (lead.phone ? await this.findByPhone(lead.clinicId, lead.phone) : null) ?? lead;
+  }
+
   async mergeDuplicateLeads(params: {
     canonicalLeadId: string;
     duplicateLeadId: string;
@@ -112,6 +117,25 @@ class RacyConversationRepository implements ConversationRepository {
     return null;
   }
 
+  async findMessageByExternalId(externalId: string): Promise<Message | null> {
+    return [...this.messages.values()].flat().find(
+      (message) => message.externalId === externalId,
+    ) ?? null;
+  }
+
+  async findMessageById(id: string): Promise<Message | null> {
+    return [...this.messages.values()].flat().find((message) => message.id === id) ?? null;
+  }
+
+  async findRecentLeadMessageByIdentityAndContent(): Promise<Message | null> {
+    return null;
+  }
+
+  async ensureConversation(conversation: Conversation): Promise<Conversation> {
+    await this.saveConversation(conversation);
+    return await this.findByLeadId(conversation.leadId) ?? conversation;
+  }
+
   async saveConversation(conversation: Conversation): Promise<void> {
     const existingId = this.leadIndex.get(conversation.leadId);
 
@@ -129,9 +153,13 @@ class RacyConversationRepository implements ConversationRepository {
 
   async setTakeover(): Promise<void> {}
 
-  async appendMessage(message: Message): Promise<void> {
+  async appendMessage(message: Message): Promise<boolean> {
+    if (message.externalId && [...this.messages.values()].flat().some(
+      (stored) => stored.externalId === message.externalId,
+    )) return false;
     const messages = this.messages.get(message.conversationId) ?? [];
     this.messages.set(message.conversationId, [...messages, message]);
+    return true;
   }
 
   async listMessages(conversationId: string): Promise<Message[]> {
@@ -166,7 +194,22 @@ class SimpleLeadRepository implements LeadRepository {
     return [];
   }
 
-  async mergeDuplicateLeads(): Promise<Lead> {
+  async ensureWhatsAppIdentity(lead: Lead): Promise<Lead> {
+    const existing = Array.from(this.leads.values()).find(
+      (item) => item.clinicId === lead.clinicId
+        && ((lead.phone && item.phone === lead.phone)
+          || (lead.whatsappLid && item.whatsappLid === lead.whatsappLid)),
+    );
+    if (existing) return existing;
+    this.leads.set(lead.id, lead);
+    return lead;
+  }
+
+  async mergeDuplicateLeads(params: {
+    canonicalLeadId: string;
+    duplicateLeadId: string;
+  }): Promise<Lead> {
+    void params;
     throw new Error("not implemented");
   }
 
@@ -187,6 +230,29 @@ class SimpleConversationRepository implements ConversationRepository {
     );
   }
 
+  async findMessageByExternalId(externalId: string): Promise<Message | null> {
+    return [...this.messages.values()].flat().find(
+      (message) => message.externalId === externalId,
+    ) ?? null;
+  }
+
+  async findMessageById(id: string): Promise<Message | null> {
+    return [...this.messages.values()].flat().find((message) => message.id === id) ?? null;
+  }
+
+  async findRecentLeadMessageByIdentityAndContent(): Promise<Message | null> {
+    return null;
+  }
+
+  async ensureConversation(conversation: Conversation): Promise<Conversation> {
+    const existing = Array.from(this.conversations.values()).find(
+      (item) => item.leadId === conversation.leadId,
+    );
+    if (existing) return existing;
+    this.conversations.set(conversation.id, conversation);
+    return conversation;
+  }
+
   async saveConversation(conversation: Conversation): Promise<void> {
     this.conversations.set(conversation.id, conversation);
   }
@@ -195,9 +261,13 @@ class SimpleConversationRepository implements ConversationRepository {
 
   async setTakeover(): Promise<void> {}
 
-  async appendMessage(message: Message): Promise<void> {
+  async appendMessage(message: Message): Promise<boolean> {
+    if (message.externalId && [...this.messages.values()].flat().some(
+      (stored) => stored.externalId === message.externalId,
+    )) return false;
     const messages = this.messages.get(message.conversationId) ?? [];
     this.messages.set(message.conversationId, [...messages, message]);
+    return true;
   }
 
   async listMessages(conversationId: string): Promise<Message[]> {
@@ -241,6 +311,250 @@ function makeMessage(body: string, externalMessageId: string, receivedAt: Date):
 }
 
 describe("RegisterIncomingMessage — corrida de primeiro contato", () => {
+  it("uses the durable external-id insert winner as the only registration side-effect owner", async () => {
+    const leadRepository = new SimpleLeadRepository();
+    const conversationRepository = new SimpleConversationRepository();
+    const existingLead: Lead = {
+      id: "lead-existing",
+      clinicId: "ximendes",
+      name: "Larissa Sales",
+      phone: "5511986905114",
+      whatsappLid: null,
+      email: null,
+      channel: "whatsapp",
+      campaignId: null,
+      treatmentInterest: null,
+      profilePicUrl: null,
+      status: "new",
+      temperature: null,
+      assignedToUserId: null,
+      nextActionAt: null,
+      lostReason: null,
+      createdAt: new Date("2026-06-01T12:00:00.000Z"),
+      updatedAt: new Date("2026-06-01T12:00:00.000Z"),
+    };
+    const existingConversation: Conversation = {
+      id: "conversation-existing",
+      clinicId: "ximendes",
+      leadId: existingLead.id,
+      channel: "whatsapp",
+      category: "sales",
+      externalThreadId: "5511986905114",
+      summary: null,
+      aiPaused: false,
+      takeoverExpiresAt: null,
+      needsAttention: false,
+      attentionReason: null,
+      consecutiveUnclearCount: 0,
+      lastMessageAt: null,
+      createdAt: new Date("2026-06-01T12:00:00.000Z"),
+      updatedAt: new Date("2026-06-01T12:00:00.000Z"),
+    };
+    leadRepository.leads.set(existingLead.id, existingLead);
+    conversationRepository.conversations.set(existingConversation.id, existingConversation);
+
+    const leadSave = vi.spyOn(leadRepository, "save");
+    const conversationSave = vi.spyOn(conversationRepository, "saveConversation");
+    const appendMessage = vi
+      .spyOn(conversationRepository, "appendMessage")
+      .mockImplementation(async (message) => {
+        const existing = [...conversationRepository.messages.values()].flat().some(
+          (stored) => stored.externalId === message.externalId,
+        );
+        if (existing) return false;
+        const history = conversationRepository.messages.get(message.conversationId) ?? [];
+        conversationRepository.messages.set(message.conversationId, [...history, message]);
+        return true;
+      });
+    const followUpRepository = makeFollowUpRepository();
+    const followUpList = vi.spyOn(followUpRepository, "listPendingByLead");
+    const trackWhatsAppCost = vi.fn(async () => {});
+    const trackedUsageCost: UsageCostTracker = {
+      async trackAiUsage() {},
+      async trackTtsUsage() {},
+      trackWhatsAppCost,
+    };
+    let firstSequence = 0;
+    let secondSequence = 0;
+    const firstProcess = new RegisterIncomingMessage({
+      leadRepository,
+      conversationRepository,
+      usageCostTracker: trackedUsageCost,
+      followUpRepository,
+      idGenerator: () => `process-a-${++firstSequence}`,
+      now: () => new Date("2026-06-12T12:00:00.000Z"),
+    });
+    const secondProcess = new RegisterIncomingMessage({
+      leadRepository,
+      conversationRepository,
+      usageCostTracker: trackedUsageCost,
+      followUpRepository,
+      idGenerator: () => `process-b-${++secondSequence}`,
+      now: () => new Date("2026-06-12T12:00:00.000Z"),
+    });
+    const incoming = makeMessage(
+      "Quero clareamento",
+      "provider-cross-process-duplicate",
+      new Date("2026-06-12T11:59:30.000Z"),
+    );
+
+    await Promise.all([
+      firstProcess.execute({ clinicId: "ximendes", message: incoming }),
+      secondProcess.execute({ clinicId: "ximendes", message: incoming }),
+    ]);
+
+    expect(appendMessage).toHaveBeenCalledTimes(2);
+    expect([...conversationRepository.messages.values()].flat()).toHaveLength(1);
+    expect(leadSave).toHaveBeenCalledTimes(1);
+    expect(conversationSave).toHaveBeenCalledTimes(1);
+    expect(followUpList).toHaveBeenCalledTimes(1);
+    expect(trackWhatsAppCost).toHaveBeenCalledTimes(1);
+  });
+
+  it("converges a first-contact same-id race before any loser post-gate mutation", async () => {
+    const leadRepository = new SimpleLeadRepository();
+    const conversationRepository = new SimpleConversationRepository();
+    const leadSave = vi.spyOn(leadRepository, "save");
+    const conversationSave = vi.spyOn(conversationRepository, "saveConversation");
+    const followUpRepository = makeFollowUpRepository();
+    const followUpList = vi.spyOn(followUpRepository, "listPendingByLead");
+    const trackWhatsAppCost = vi.fn(async () => {});
+    const trackedUsageCost: UsageCostTracker = {
+      async trackAiUsage() {},
+      async trackTtsUsage() {},
+      trackWhatsAppCost,
+    };
+    let sequenceA = 0;
+    let sequenceB = 0;
+    const makeProcess = (prefix: string, nextId: () => number) =>
+      new RegisterIncomingMessage({
+        leadRepository,
+        conversationRepository,
+        usageCostTracker: trackedUsageCost,
+        followUpRepository,
+        idGenerator: () => `${prefix}-${nextId()}`,
+        now: () => new Date("2026-06-12T12:00:00.000Z"),
+      });
+    const firstProcess = makeProcess("process-a", () => ++sequenceA);
+    const secondProcess = makeProcess("process-b", () => ++sequenceB);
+    const incoming = makeMessage(
+      "Primeiro contato",
+      "provider-first-contact-duplicate",
+      new Date("2026-06-12T11:59:30.000Z"),
+    );
+
+    const results = await Promise.all([
+      firstProcess.execute({ clinicId: "ximendes", message: incoming }),
+      secondProcess.execute({ clinicId: "ximendes", message: incoming }),
+    ]);
+
+    expect(results.filter(({ messageInserted }) => messageInserted)).toHaveLength(1);
+    expect(leadRepository.leads.size).toBe(1);
+    expect(conversationRepository.conversations.size).toBe(1);
+    expect([...conversationRepository.messages.values()].flat()).toHaveLength(1);
+    expect(leadSave).toHaveBeenCalledTimes(2);
+    expect(conversationSave).toHaveBeenCalledTimes(1);
+    expect(followUpList).toHaveBeenCalledTimes(1);
+    expect(trackWhatsAppCost).toHaveBeenCalledTimes(1);
+  });
+
+  it("merges split phone and lid identities only after winning the message insert", async () => {
+    const leadRepository = new SimpleLeadRepository();
+    const conversationRepository = new SimpleConversationRepository();
+    const baseLead: Omit<Lead, "id" | "phone" | "whatsappLid"> = {
+      clinicId: "ximendes",
+      name: "Larissa Sales",
+      email: null,
+      channel: "whatsapp",
+      campaignId: null,
+      treatmentInterest: null,
+      profilePicUrl: null,
+      status: "new",
+      temperature: null,
+      assignedToUserId: null,
+      nextActionAt: null,
+      lostReason: null,
+      createdAt: new Date("2026-06-01T12:00:00.000Z"),
+      updatedAt: new Date("2026-06-01T12:00:00.000Z"),
+    };
+    const phoneLead: Lead = {
+      ...baseLead,
+      id: "lead-phone",
+      phone: "5511986905114",
+      whatsappLid: null,
+    };
+    const lidLead: Lead = {
+      ...baseLead,
+      id: "lead-lid",
+      phone: null,
+      whatsappLid: "123456789@lid",
+    };
+    leadRepository.leads.set(phoneLead.id, phoneLead);
+    leadRepository.leads.set(lidLead.id, lidLead);
+    conversationRepository.conversations.set("conversation-phone", {
+      id: "conversation-phone",
+      clinicId: "ximendes",
+      leadId: phoneLead.id,
+      channel: "whatsapp",
+      category: "sales",
+      externalThreadId: "5511986905114",
+      summary: null,
+      aiPaused: false,
+      takeoverExpiresAt: null,
+      needsAttention: false,
+      attentionReason: null,
+      consecutiveUnclearCount: 0,
+      lastMessageAt: null,
+      createdAt: baseLead.createdAt,
+      updatedAt: baseLead.updatedAt,
+    });
+    const mergeDuplicateLeads = vi
+      .spyOn(leadRepository, "mergeDuplicateLeads")
+      .mockImplementation(async ({ canonicalLeadId, duplicateLeadId }) => {
+        const canonical = leadRepository.leads.get(canonicalLeadId)!;
+        const duplicate = leadRepository.leads.get(duplicateLeadId)!;
+        const merged = {
+          ...canonical,
+          phone: canonical.phone ?? duplicate.phone,
+          whatsappLid: canonical.whatsappLid ?? duplicate.whatsappLid,
+        };
+        leadRepository.leads.set(canonicalLeadId, merged);
+        leadRepository.leads.delete(duplicateLeadId);
+        return merged;
+      });
+    const trackWhatsAppCost = vi.fn(async () => {});
+    const trackedUsageCost: UsageCostTracker = {
+      async trackAiUsage() {},
+      async trackTtsUsage() {},
+      trackWhatsAppCost,
+    };
+    let sequence = 0;
+    const makeProcess = () => new RegisterIncomingMessage({
+      leadRepository,
+      conversationRepository,
+      usageCostTracker: trackedUsageCost,
+      idGenerator: () => `generated-${++sequence}`,
+      now: () => new Date("2026-06-12T12:00:00.000Z"),
+    });
+    const incoming = {
+      ...makeMessage(
+        "Contato com duas identidades",
+        "provider-split-identity-duplicate",
+        new Date("2026-06-12T11:59:30.000Z"),
+      ),
+      whatsappLid: "123456789@lid",
+    };
+
+    const results = await Promise.all([
+      makeProcess().execute({ clinicId: "ximendes", message: incoming }),
+      makeProcess().execute({ clinicId: "ximendes", message: incoming }),
+    ]);
+
+    expect(results.filter(({ messageInserted }) => messageInserted)).toHaveLength(1);
+    expect(mergeDuplicateLeads).toHaveBeenCalledTimes(1);
+    expect(trackWhatsAppCost).toHaveBeenCalledTimes(1);
+  });
+
   it("converge duas mensagens simultâneas para um único lead e uma única conversa", async () => {
     const leadRepository = new RacyLeadRepository(new TwoPartyBarrier());
     const conversationRepository = new RacyConversationRepository(new TwoPartyBarrier());

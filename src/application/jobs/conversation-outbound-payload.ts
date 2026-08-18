@@ -1,5 +1,6 @@
 import type { IntentType } from "@/core/intelligence/IntentClassifier";
 import type { TtsConfig } from "@/domain/entities/tts-config";
+import type { InternalLabDeliveryBinding } from "@/application/conversation-v2/internal-lab-delivery-guard";
 
 export type OutboundDeliveryPart =
   | { type: "text"; content: string }
@@ -25,7 +26,7 @@ export type PipelineAdvance =
       expectedStepIndex?: number;
     };
 
-export type ConversationOutboundPayload = {
+type ConversationOutboundPayloadBase = {
   version: 1;
   kind: "conversation_reply";
   /** Correlaciona ingress → decisão → outbox → entrega. Opcional para payloads legados. */
@@ -41,6 +42,30 @@ export type ConversationOutboundPayload = {
   leadId: string;
   pipelineAdvance: PipelineAdvance | null;
 };
+
+export type ConversationOutboundPayload = ConversationOutboundPayloadBase & (
+  | Readonly<{
+      agentMessagePersistence?: never;
+      internalLabBinding?: never;
+    }>
+  | Readonly<{
+      /** V2 live delegates the idempotent Inbox placeholder to the existing sender. */
+      agentMessagePersistence: "sender";
+      /** V2-only non-secret binding revalidated by the existing sender. */
+      internalLabBinding: InternalLabDeliveryBinding;
+    }>
+);
+
+const conversationPayloadKeys = new Set([
+  "version", "kind", "turnId", "to", "agentMessageId",
+  "agentMessagePersistence", "internalLabBinding", "replyText", "intent",
+  "useVoice", "ttsConfig", "interleavedParts", "mediaParts", "leadId",
+  "pipelineAdvance",
+]);
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
+  return Object.keys(value).every((key) => allowed.has(key));
+}
 
 export type AutomationOutboundPayload = {
   version: 1;
@@ -81,18 +106,37 @@ export function isConversationOutboundPayload(
 ): payload is ConversationOutboundPayload {
   if (!payload || typeof payload !== "object") return false;
   const value = payload as Record<string, unknown>;
+  const hasSenderMarker = value.agentMessagePersistence !== undefined;
+  const hasBinding = value.internalLabBinding !== undefined;
   return (
+    hasOnlyKeys(value, conversationPayloadKeys) &&
     value.version === 1 &&
     value.kind === "conversation_reply" &&
     (value.turnId === undefined || typeof value.turnId === "string") &&
     typeof value.to === "string" &&
     typeof value.agentMessageId === "string" &&
+    hasSenderMarker === hasBinding &&
+    (!hasSenderMarker || value.agentMessagePersistence === "sender") &&
+    (!hasBinding || isInternalLabDeliveryBinding(value.internalLabBinding)) &&
     typeof value.replyText === "string" &&
     typeof value.useVoice === "boolean" &&
     Array.isArray(value.interleavedParts) &&
     Array.isArray(value.mediaParts) &&
     typeof value.leadId === "string"
   );
+}
+
+function isInternalLabDeliveryBinding(input: unknown): input is InternalLabDeliveryBinding {
+  if (!input || typeof input !== "object") return false;
+  const value = input as Record<string, unknown>;
+  const digest = /^sha256:[a-f0-9]{64}$/;
+  return hasOnlyKeys(value, new Set([
+    "schemaVersion", "tenantDigest", "channelDigest", "configDigest",
+  ]))
+    && value.schemaVersion === "conversation-v2.internal-lab-delivery-binding.v1"
+    && typeof value.tenantDigest === "string" && digest.test(value.tenantDigest)
+    && typeof value.channelDigest === "string" && digest.test(value.channelDigest)
+    && typeof value.configDigest === "string" && digest.test(value.configDigest);
 }
 
 export function isAutomationOutboundPayload(

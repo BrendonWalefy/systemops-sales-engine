@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "personaId": "booking-revalidation",
+  "displayName": "Pessoa pronta para fechar que muda o horário",
+  "scenario": "booking_revalidation",
+  "turns": [
+    {
+      "leadText": "Quero agendar uma avaliação para facetas em resina amanhã.",
+      "expected": ["scheduling_correctness", "journey_advancement", "relevance"]
+    },
+    {
+      "leadText": "O primeiro horário serve.",
+      "expected": ["scheduling_correctness", "outcome_inversion", "safety"]
+    },
+    {
+      "leadText": "Antes de confirmar, consegue trocar para o horário seguinte?",
+      "expected": ["scheduling_correctness", "outcome_inversion", "journey_advancement", "safety"]
+    }
+  ]
+}

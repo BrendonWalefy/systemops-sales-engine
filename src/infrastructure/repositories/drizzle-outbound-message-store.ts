@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, count, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, count, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type {
   CreateOutboundMessageInput,
   CreateOutboundMessageAndEnqueueResult,
@@ -168,6 +168,23 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
     return message ? mapOutboundMessage(message) : null;
   }
 
+  async findConversationReplyByTurnId(input: {
+    clinicId: string;
+    turnId: string;
+  }): Promise<OutboundMessage | null> {
+    const [message] = await db
+      .select()
+      .from(outboundMessages)
+      .where(and(
+        eq(outboundMessages.clinicId, input.clinicId),
+        eq(outboundMessages.category, "reply"),
+        sql`${outboundMessages.payload}->>'turnId' = ${input.turnId}`,
+      ))
+      .orderBy(asc(outboundMessages.createdAt))
+      .limit(1);
+    return message ? mapOutboundMessage(message) : null;
+  }
+
   async hasEarlierActiveMessage(message: OutboundMessage): Promise<boolean> {
     const [earlier] = await db
       .select({ id: outboundMessages.id })
@@ -199,7 +216,10 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
     await db
       .update(outboundMessages)
       .set({ status: "pending", lastError: error })
-      .where(and(eq(outboundMessages.id, id), eq(outboundMessages.status, "processing")));
+      .where(and(
+        eq(outboundMessages.id, id),
+        inArray(outboundMessages.status, ["pending", "processing"]),
+      ));
   }
 
   async markOutboundDelivered(input: MarkOutboundDeliveredInput): Promise<void> {

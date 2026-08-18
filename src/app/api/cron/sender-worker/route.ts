@@ -8,6 +8,7 @@ import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizz
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 import { createLogger } from "@/infrastructure/logging/logger";
 import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
+import { createInternalLabDeliveryGuard } from "@/infrastructure/conversation-v2/create-conversation-v2-runtime";
 import { reconcileMessageJobOrphans } from "@/application/jobs/reconcile-message-job-orphans";
 import { DrizzleMessageJobOrphanReader } from "@/infrastructure/repositories/drizzle-message-job-orphan-reader";
 import {
@@ -54,6 +55,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         outboundMessageStore,
         safetyContextReader,
         decisionTraceSink,
+        internalLabDeliveryGuard: createInternalLabDeliveryGuard(),
       }),
       workerId,
       maxJobs: MAX_JOBS_PER_RUN,

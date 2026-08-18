@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "@/infrastructure/db/client";
+import { resolveTestDatabaseAccess } from "@/infrastructure/db/test-database-policy";
 import { organizations, leads, appointments, professionals } from "@/infrastructure/db/schema";
 import { eq, and } from "drizzle-orm";
 import { parseIcs } from "@/application/calendar/parse-ics";
@@ -140,50 +142,63 @@ describe("Google Calendar event id normalization", () => {
   });
 });
 
-// Teste de integração: grava de verdade numa clínica demo no banco real.
-// Nenhum outro teste da suíte depende de DATABASE_URL (todos usam mocks) —
-// esse é o único, então roda só quando a env var está disponível (ambiente
-// local com .env.local). CI não tem DATABASE_URL configurada de propósito,
-// para não gravar/rodar contra um banco real a cada push.
-describe.skipIf(!process.env.DATABASE_URL)("Calendar Import — Parse + DB", () => {
+// Teste de integração: grava de verdade no banco apontado por DATABASE_URL.
+// Nenhum outro teste da suíte toca banco real (todos mockam o cliente) — esse é
+// o único, e por isso é o único guardado por `resolveTestDatabaseAccess`.
+//
+// A regra não é mais "existe DATABASE_URL?" e sim "esse banco foi autorizado a
+// ser sujado?". Sem DATABASE_URL (CI e `npm run verify`) o bloco é pulado; com
+// DATABASE_URL mas sem TEST_DATABASE_HOST/PRODUCTION_DATABASE_HOST declarados, a
+// política lança e o arquivo falha alto. O silêncio antigo é o que produziu 16
+// linhas de `professionals` órfãs no banco compartilhado.
+const databaseAccess = resolveTestDatabaseAccess(process.env);
+
+describe.skipIf(databaseAccess.mode !== "authorized")("Calendar Import — Parse + DB", () => {
+  // Tenant efêmero por execução: nada é reaproveitado entre runs, então nenhum
+  // teste pode depender de resíduo anterior nem herdar linhas duplicadas. O
+  // sufixo aleatório também deixa duas execuções simultâneas conviverem.
+  const runId = randomUUID().slice(0, 8);
+  const clinicSlug = `test-calendar-import-${runId}`;
   let demoClinicId: string;
 
   beforeAll(async () => {
-    // Criar clínica demo para testes
-    const existingDemo = await db.query.organizations.findFirst({
-      where: eq(organizations.slug, "demo-vitalli-test"),
-      columns: { id: true },
-    });
+    const result = await db
+      .insert(organizations)
+      .values({
+        name: `Calendar Import Test ${runId}`,
+        slug: clinicSlug,
+        specialty: "dental",
+        city: "São Paulo",
+        autoReplyEnabled: false,
+        isTest: true,
+        operationalStatus: "test",
+      })
+      .returning({ id: organizations.id });
 
-    if (existingDemo) {
-      demoClinicId = existingDemo.id;
-      // Limpar dados anteriores
-      await db.delete(appointments).where(eq(appointments.clinicId, demoClinicId));
-      await db.delete(leads).where(eq(leads.clinicId, demoClinicId));
-    } else {
-      // Criar clínica demo
-      const result = await db
-        .insert(organizations)
-        .values({
-          name: "Demo Vitalli Test",
-          slug: "demo-vitalli-test",
-          specialty: "dental",
-          city: "São Paulo",
-          autoReplyEnabled: false,
-          isTest: true,
-          operationalStatus: "test",
-        })
-        .returning({ id: organizations.id });
-
-      demoClinicId = result[0].id;
-    }
-
-    console.log("✅ Demo clinic created/reused:", demoClinicId);
+    demoClinicId = result[0].id;
   });
 
   afterAll(async () => {
-    // Cleanup após testes (opcional — manter dados para inspecionar)
-    console.log("✅ Tests completed. Demo clinic ID:", demoClinicId);
+    // Limpa exatamente o que este teste criou, e nada além: tudo é filtrado pelo
+    // id da clínica efêmera. Ordem obrigatória — `professionals`, `leads` e
+    // `appointments` referenciam `organizations` sem ON DELETE CASCADE.
+    if (!demoClinicId) return;
+    await db.delete(appointments).where(eq(appointments.clinicId, demoClinicId));
+    await db.delete(leads).where(eq(leads.clinicId, demoClinicId));
+    await db.delete(professionals).where(eq(professionals.clinicId, demoClinicId));
+    await db.delete(organizations).where(eq(organizations.id, demoClinicId));
+  });
+
+  it("roda contra um tenant efêmero, nunca contra um tenant real", async () => {
+    // Trava o contrato de isolamento: se alguém reintroduzir a clínica fixa
+    // compartilhada, este teste acusa antes de o resíduo voltar a crescer.
+    const clinic = await db.query.organizations.findFirst({
+      where: eq(organizations.id, demoClinicId),
+      columns: { slug: true, isTest: true },
+    });
+
+    expect(clinic?.slug).toBe(clinicSlug);
+    expect(clinic?.isTest).toBe(true);
   });
 
   it("deve parsear arquivo .ics corretamente", async () => {

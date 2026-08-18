@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { createHash } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { organizations, conversations, messages } from "@/infrastructure/db/schema";
+import { organizations, conversations, messages, treatments } from "@/infrastructure/db/schema";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
@@ -16,10 +16,25 @@ import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactId
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import OpenAI from "openai";
+import { ConversationResponsePlanner } from "@/core/conversation/ConversationResponsePlanner";
+import { buildAuthorizedServices } from "@/core/conversation/response-plan-builder";
+import { recordAutomationResponseTrace } from "@/core/conversation/automation-response-trace";
+import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
+import type { ComposedResponse } from "@/core/intelligence/ResponseComposer";
+import {
+  RECOVERY_MAX_CHARACTERS,
+  buildRecoveryComposerInput,
+  buildRecoveryPlanInput,
+} from "@/app/api/cron/recovery-campaign/recovery-response";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+// Versão do prompt da campanha, registrada no trace junto do modelo. Mudou o
+// texto do prompt? Suba a versão, senão o trace passa a mentir.
+const RECOVERY_MODEL = "gpt-4o-mini";
+const RECOVERY_PROMPT_VERSION = "recovery-campaign.v1";
 
 type UnattendedLead = {
   lead_id: string;
@@ -99,7 +114,7 @@ async function composeRecoveryMessage(
   treatmentNames: string[],
   leadName: string | null,
   convId: string,
-): Promise<string | null> {
+): Promise<ComposedResponse | null> {
   const history = await db.execute(sql`
     SELECT author, body, sent_at
     FROM messages
@@ -117,7 +132,7 @@ async function composeRecoveryMessage(
     .join("\n");
 
   const resp = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: RECOVERY_MODEL,
     temperature: 0.7,
     max_tokens: 200,
     messages: [
@@ -146,7 +161,17 @@ Responda APENAS com o texto da mensagem, sem aspas.`,
     ],
   });
 
-  return resp.choices[0]?.message?.content?.trim() ?? null;
+  const text = resp.choices[0]?.message?.content?.trim();
+  if (!text) return null;
+  return {
+    text,
+    parts: [{ type: "text", content: text }],
+    mediaIds: [],
+    model: resp.model ?? RECOVERY_MODEL,
+    promptVersion: RECOVERY_PROMPT_VERSION,
+    inputTokens: resp.usage?.prompt_tokens ?? 0,
+    outputTokens: resp.usage?.completion_tokens ?? 0,
+  };
 }
 
 // dayBucket torna o dedupeKey único por tentativa (recovery reincide após 7
@@ -225,6 +250,18 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
   const receptionistName = inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? "Marina";
   const specialty = editorial?.specialty ?? clinic.specialty ?? "odontologia estética";
   const treatmentNames = (editorial?.procedures ?? []).map((p) => p.name);
+  // O catálogo entra no plano com aliases e preço cotável: é o que permite ao
+  // validador recusar "lentes de contato dental" onde só existe "Lentes de resina".
+  const clinicTreatments = await db
+    .select({
+      name: treatments.name,
+      aliases: treatments.aliases,
+      priceCents: treatments.priceCents,
+      priceQuotableInChat: treatments.priceQuotableInChat,
+    })
+    .from(treatments)
+    .where(eq(treatments.clinicId, clinicId));
+  const authorizedServices = buildAuthorizedServices(clinicTreatments);
   const now = new Date();
 
   // Quiet hours: reengajamento fora da janela de contato local é adiado —
@@ -235,6 +272,7 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
     return { clinicId, sent: 0, skipped: 0, failed: 0 };
   }
 
+  const traceSink = createRuntimeDecisionTraceSink();
   const unattended = await findUnattendedLeads(clinicId);
   console.log(`[RecoveryCampaign] clinic=${clinicId} elegíveis=${unattended.length}`);
 
@@ -260,21 +298,64 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
     }
 
     try {
-      const message = await composeRecoveryMessage(
-        openai,
-        receptionistName,
-        clinic.name,
-        specialty,
-        treatmentNames,
-        lead.name,
-        lead.conv_id,
-      );
+      // O gerador é a LLM ("COMO dizer"); o plano é o sistema ("O QUE pode ser
+      // dito"). O planner encaixa um no outro: plano → gerador → validador →
+      // fallback determinístico. As regras que viviam em prosa dentro do prompt
+      // ("não prometa agendamento", "não liste horários") passam a ser
+      // verificadas depois da geração, não pedidas antes dela.
+      let generated: ComposedResponse | null = null;
+      const planner = new ConversationResponsePlanner({
+        compose: async () => {
+          generated = await composeRecoveryMessage(
+            openai,
+            receptionistName,
+            clinic.name,
+            specialty,
+            treatmentNames,
+            lead.name,
+            lead.conv_id,
+          );
+          if (!generated) throw new Error("no_conversation_history");
+          return generated;
+        },
+      });
 
-      if (!message) {
+      const planned = await planner.execute({
+        composerInput: buildRecoveryComposerInput({
+          treatmentNames,
+          clinic: {
+            name: clinic.name,
+            plan: clinic.plan,
+            specialty,
+            toneOfVoice: editorial?.toneOfVoice ?? null,
+            playbook: editorial?.playbookText ?? null,
+            commercialPolicy: null,
+            receptionistName,
+          },
+          leadName: lead.name,
+          timezone: clinic.timezone,
+        }),
+        planInput: buildRecoveryPlanInput({
+          maxCharacters: RECOVERY_MAX_CHARACTERS,
+          authorizedServices,
+        }),
+      });
+
+      // Sem histórico não há o que retomar: o gerador lançou, o planner devolveu
+      // fallback. Enviar a cópia genérica aqui seria abordar quem nunca falou.
+      if (!generated) {
         console.log(`[RecoveryCampaign] SKIP lead=${lead.lead_id} motivo="sem histórico"`);
         skipped++;
         continue;
       }
+
+      const message = planned.response.text;
+      await recordAutomationResponseTrace(traceSink, {
+        turnId: `recovery:${lead.lead_id}:${now.toISOString().slice(0, 10)}`,
+        clinicId,
+        conversationId: lead.conv_id,
+        planned,
+      });
 
       // Reengajamento passa pela outbox → Safety Gate (opt-out, caps, quiet
       // hours) antes de chegar ao provider.

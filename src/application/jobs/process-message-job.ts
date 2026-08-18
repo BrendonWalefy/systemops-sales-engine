@@ -1,4 +1,5 @@
 import type { ClinicAutomationPolicyReader } from "@/application/ports/clinic-automation-policy-reader";
+import type { ConversationHandler } from "@/application/ports/conversation-handler";
 import type { InboundEventStore } from "@/application/ports/inbound-event-store";
 import type { JobRecord } from "@/application/ports/job-queue";
 import {
@@ -12,24 +13,7 @@ import {
   recordDecisionTrace,
   type DecisionTraceSink,
 } from "@/core/observability/DecisionTrace";
-
-type ConversationHandler = {
-  handle(input: {
-    clinicId: string;
-    phone: string;
-    whatsappLid?: string | null;
-    messageText: string;
-    messageId: string;
-    senderName?: string;
-    senderPhoto?: string | null;
-    timestamp: Date;
-    turnId?: string;
-    replyEnabled?: boolean;
-    observationOnly?: boolean;
-    mediaUrl?: string;
-    mediaType?: "image" | "video" | "audio" | "document";
-  }): Promise<{ replied: boolean; reason?: string }>;
-};
+import { recordV1TurnObservation, type V1TurnObservationSink } from "@/core/observability/V1TurnObservation";
 
 export type JobResult = {
   outcome: "processed" | "ignored";
@@ -48,6 +32,11 @@ export type ProcessMessageJobDependencies = {
   }) => Promise<ResolvedLeadInboundContent>;
   transcribeAudio: (audioUrl: string, mimeType: string) => Promise<string>;
   decisionTraceSink?: DecisionTraceSink;
+  createTurnObservationSink?: (input: {
+    turnId: string;
+    clinicId: string;
+    automationMode: "live";
+  }) => V1TurnObservationSink | undefined;
 };
 
 export class ProcessMessageJobHandler {
@@ -150,6 +139,26 @@ export class ProcessMessageJobHandler {
       },
     });
 
+    let turnObservationSink: V1TurnObservationSink | undefined;
+    if (automationMode === "live" && this.deps.createTurnObservationSink) {
+      try {
+        turnObservationSink = this.deps.createTurnObservationSink({
+          turnId: inboundEventId,
+          clinicId: event.clinicId,
+          automationMode,
+        });
+      } catch {
+        turnObservationSink = undefined;
+      }
+    }
+    recordV1TurnObservation(turnObservationSink, {
+      kind: "turn_gate_fact",
+      turnId: inboundEventId,
+      field: "automationEnabled",
+      value: automationMode === "live" && content.shouldReply,
+      source: "job_automation",
+    });
+
     let handleResult: { replied: boolean; reason?: string };
     try {
       handleResult = await this.deps.conversationHandler.handle({
@@ -166,6 +175,8 @@ export class ProcessMessageJobHandler {
         observationOnly: automationMode === "observe",
         mediaUrl: content.mediaUrl,
         mediaType: content.mediaType,
+        automationMode,
+        ...(turnObservationSink ? { turnObservationSink } : {}),
       });
       await this.deps.inboundEventStore.markInboundEventProcessed(event.id);
     } catch (error) {
@@ -198,6 +209,13 @@ export class ProcessMessageJobHandler {
       });
       return { outcome: "processed", inboundEventId: event.id };
     }
+
+    recordV1TurnObservation(turnObservationSink, {
+      kind: "turn_terminal",
+      turnId: inboundEventId,
+      replied: handleResult.replied,
+      reason: handleResult.reason ?? null,
+    });
 
     await recordDecisionTrace(this.deps.decisionTraceSink, {
       turnId: inboundEventId,

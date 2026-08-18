@@ -6,6 +6,30 @@ import {
 } from "@/core/pipeline/outbound-message-persistence";
 
 describe("Outbound message persistence helpers", () => {
+  it("rebuilds the same sender placeholder identity on an outbox retry", () => {
+    const input = {
+      id: "conversation-v2-agent-turn-1",
+      conversationId: "conversation-1",
+      replyText: "Posso confirmar o horário?",
+      sentAt: new Date("2026-08-17T15:02:00.000Z"),
+      intent: "book_appointment" as const,
+      hasInterleavedMedia: false,
+      outboundParts: [],
+    };
+
+    const firstAttempt = buildInitialAgentMessage(input);
+    const retry = buildInitialAgentMessage(input);
+
+    expect(retry).toEqual(firstAttempt);
+    expect(retry).toMatchObject({
+      id: "conversation-v2-agent-turn-1",
+      conversationId: "conversation-1",
+      author: "agent",
+      body: "Posso confirmar o horário?",
+      externalId: null,
+    });
+  });
+
   it("usa a primeira parte exata quando a resposta é intercalada", () => {
     const message = buildInitialAgentMessage({
       id: "msg-1",

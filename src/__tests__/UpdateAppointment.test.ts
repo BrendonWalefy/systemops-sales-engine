@@ -79,6 +79,8 @@ function makeApptRepo(appt: Appointment | null = makeAppointment()): Appointment
   return {
     save: vi.fn().mockResolvedValue(undefined),
     findById: vi.fn().mockResolvedValue(appt),
+    findByIdForClinicAndLead: vi.fn().mockResolvedValue(appt),
+    confirmScheduledForClinicAndLead: vi.fn().mockResolvedValue(appt),
     findByLeadId: vi.fn().mockResolvedValue(appt),
     findActiveByLeadId: vi.fn().mockResolvedValue(appt),
     findAllActiveByLeadId: vi.fn().mockResolvedValue(appt ? [appt] : []),
@@ -96,6 +98,7 @@ function makeLeadRepo(lead: Lead | null = makeLead()): LeadRepository {
     findByPhone: vi.fn().mockResolvedValue(null),
     findByWhatsAppLid: vi.fn().mockResolvedValue(null),
     findInactiveLeads: vi.fn().mockResolvedValue([]),
+    ensureWhatsAppIdentity: vi.fn().mockResolvedValue(lead ?? makeLead()),
     mergeDuplicateLeads: vi.fn().mockResolvedValue(lead),
   };
 }

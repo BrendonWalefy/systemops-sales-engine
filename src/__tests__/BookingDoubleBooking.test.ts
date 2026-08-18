@@ -180,6 +180,8 @@ class FakeReservationService implements BookingReservationService {
 class FakeAppointmentRepository implements AppointmentRepository {
   saved: Appointment[] = [];
   saveError: Error | null = null;
+  authoritative: Appointment | null = appointment();
+  confirmationAttempts = 0;
 
   constructor(private readonly order: string[]) {}
 
@@ -191,6 +193,31 @@ class FakeAppointmentRepository implements AppointmentRepository {
 
   async findById(): Promise<Appointment | null> {
     return null;
+  }
+
+  async findByIdForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+  ): Promise<Appointment | null> {
+    const candidate = this.authoritative;
+    return candidate?.clinicId === clinicId &&
+      candidate.leadId === leadId && candidate.id === appointmentId
+      ? candidate
+      : null;
+  }
+
+  async confirmScheduledForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+    updatedAt: Date,
+  ): Promise<Appointment | null> {
+    this.confirmationAttempts += 1;
+    const candidate = await this.findByIdForClinicAndLead(clinicId, leadId, appointmentId);
+    if (!candidate || candidate.status !== "scheduled") return null;
+    this.authoritative = { ...candidate, status: "confirmed", updatedAt };
+    return this.authoritative;
   }
 
   async findByLeadId(): Promise<Appointment | null> {
@@ -209,8 +236,16 @@ class FakeAppointmentRepository implements AppointmentRepository {
     return [];
   }
 
-  async findByPeriod(): Promise<Appointment[]> {
-    return [];
+  async findByPeriod(
+    clinicId: string,
+    startsAt: Date,
+    endsAt: Date,
+  ): Promise<Appointment[]> {
+    return this.saved.filter((candidate) =>
+      candidate.clinicId === clinicId
+      && candidate.startsAt < endsAt
+      && candidate.endsAt > startsAt,
+    );
   }
 
   async findDueReminders(): Promise<Appointment[]> {
@@ -241,6 +276,10 @@ class FakeLeadRepository implements LeadRepository {
 
   async findInactiveLeads(): Promise<Lead[]> {
     return [];
+  }
+
+  async ensureWhatsAppIdentity(): Promise<Lead> {
+    return lead;
   }
 
   async mergeDuplicateLeads(): Promise<Lead> {
@@ -290,6 +329,18 @@ describe("BookingService — título do evento no Calendar", () => {
 });
 
 describe("BookingService — double-booking guards", () => {
+  it("keeps one appointment when the same conversation retries the exact booking", async () => {
+    const { appointmentRepo, calendar, service } = setup();
+
+    const first = await bookWith(service, "Clareamento");
+    const retry = await bookWith(service, "Clareamento");
+
+    expect(first.success).toBe(true);
+    expect(retry).toEqual({ success: false, reason: "slot_taken" });
+    expect(appointmentRepo.saved).toHaveLength(1);
+    expect(calendar.createAppointmentCalls).toBe(1);
+  });
+
   it("revalidates the Calendar after reserving and before creating the appointment", async () => {
     const { appointmentRepo, calendar, leadRepo, order, reservations, service } = setup();
 
@@ -334,7 +385,7 @@ describe("BookingService — double-booking guards", () => {
   });
 
   it("assume slot livre e conclui o booking quando isSlotFree falha (GCal indisponível)", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { calendar, order, service } = setup();
     calendar.isSlotFreeError = new Error("calendar unavailable");
 
@@ -347,7 +398,7 @@ describe("BookingService — double-booking guards", () => {
     expect(order).toContain("isSlotFree");
     expect(calendar.createAppointmentCalls).toBe(1);
 
-    consoleError.mockRestore();
+    consoleWarn.mockRestore();
   });
 
   it("saves the appointment without calendarEventId when event creation fails", async () => {
@@ -374,4 +425,83 @@ describe("BookingService — double-booking guards", () => {
 
     consoleError.mockRestore();
   });
+});
+
+describe("BookingService — tenant-scoped appointment confirmation", () => {
+  it("confirms a scheduled appointment through the existing appointment repository", async () => {
+    const { appointmentRepo, service } = setup();
+    const scheduled = appointment();
+    appointmentRepo.authoritative = scheduled;
+
+    const result = await service.confirmAppointment({ clinic, lead, appointmentId: scheduled.id });
+
+    expect(result.success).toBe(true);
+    expect(appointmentRepo.authoritative).toEqual(
+      expect.objectContaining({ id: scheduled.id, status: "confirmed" }),
+    );
+    expect(appointmentRepo.confirmationAttempts).toBe(1);
+  });
+
+  it("returns an already-confirmed same-lead appointment without writing again", async () => {
+    const { appointmentRepo, service } = setup();
+    const confirmed = appointment();
+    confirmed.status = "confirmed";
+    appointmentRepo.authoritative = confirmed;
+
+    const result = await service.confirmAppointment({ clinic, lead, appointmentId: confirmed.id });
+
+    expect(result).toEqual({ success: true, appointment: confirmed });
+    expect(appointmentRepo.confirmationAttempts).toBe(0);
+  });
+
+  it("rejects a foreign tenant or lead before writing", async () => {
+    const { appointmentRepo, service } = setup();
+
+    appointmentRepo.authoritative = { ...appointment(), clinicId: "other-clinic" };
+    await expect(service.confirmAppointment({
+      clinic,
+      lead,
+      appointmentId: "appointment-1",
+    })).resolves.toEqual({ success: false, reason: "appointment_not_found" });
+    appointmentRepo.authoritative = { ...appointment(), leadId: "other-lead" };
+    await expect(service.confirmAppointment({
+      clinic,
+      lead,
+      appointmentId: "appointment-1",
+    })).resolves.toEqual({ success: false, reason: "appointment_not_found" });
+    expect(appointmentRepo.confirmationAttempts).toBe(0);
+  });
+
+  it("does not resurrect an appointment cancelled between authoritative read and CAS", async () => {
+    const { appointmentRepo, service } = setup();
+    appointmentRepo.authoritative = appointment();
+    const original = appointmentRepo.confirmScheduledForClinicAndLead.bind(appointmentRepo);
+    vi.spyOn(appointmentRepo, "confirmScheduledForClinicAndLead").mockImplementation(async (...args) => {
+      appointmentRepo.authoritative = { ...appointmentRepo.authoritative!, status: "cancelled" };
+      return original(...args);
+    });
+
+    await expect(service.confirmAppointment({
+      clinic,
+      lead,
+      appointmentId: "appointment-1",
+    })).resolves.toEqual({ success: false, reason: "appointment_not_active" });
+    expect(appointmentRepo.authoritative?.status).toBe("cancelled");
+  });
+
+  it.each(["cancelled", "completed", "no_show"] as const)(
+    "does not confirm an appointment already marked %s",
+    async (status) => {
+      const { appointmentRepo, service } = setup();
+      appointmentRepo.authoritative = { ...appointment(), status };
+
+      await expect(service.confirmAppointment({
+        clinic,
+        lead,
+        appointmentId: "appointment-1",
+      })).resolves.toEqual({ success: false, reason: "appointment_not_active" });
+      expect(appointmentRepo.confirmationAttempts).toBe(0);
+      expect(appointmentRepo.authoritative.status).toBe(status);
+    },
+  );
 });

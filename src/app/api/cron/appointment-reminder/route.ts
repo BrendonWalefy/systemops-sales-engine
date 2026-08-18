@@ -13,9 +13,15 @@ import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/driz
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
-import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
+import { ConversationResponsePlanner } from "@/core/conversation/ConversationResponsePlanner";
+import { recordAutomationResponseTrace } from "@/core/conversation/automation-response-trace";
+import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
+import {
+  REMINDER_MAX_CHARACTERS,
+  buildReminderComposerInput,
+  buildReminderPlanInput,
+} from "@/app/api/cron/appointment-reminder/reminder-response";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
-import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import {
   normalizeManualWhatsAppPhone,
   resolveWhatsAppChannelAddress,
@@ -23,6 +29,7 @@ import {
 import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { resolveClinicVoiceConfig } from "@/lib/tts-send";
+import { extractFirstName } from "@/core/intelligence/lead-display-name";
 
 export const dynamic = "force-dynamic";
 
@@ -98,8 +105,8 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   const leadRepository = new DrizzleLeadRepository();
   const conversationRepository = new DrizzleConversationRepository();
   const stateMachine = new ConversationStateMachine();
-  const composer = new ResponseComposer();
-  const timezone = new ClinicTimezone(clinic.timezone);
+  const planner = new ConversationResponsePlanner();
+  const traceSink = createRuntimeDecisionTraceSink();
 
   const now = new Date();
   const windowStart = new Date(now.getTime() + WINDOW_START_HOURS * 60 * 60 * 1000);
@@ -155,22 +162,34 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
         minute: "2-digit",
       }).format(appointment.startsAt);
 
-      const composed = await composer.compose({
-        actionResult: { type: "appointment_reminder_with_confirmation", appointmentLabel },
-        conversationHistory: [],
-        clinic: {
-          name: clinic.name,
-          plan: clinic.plan,
-          specialty: editorial?.specialty ?? clinic.specialty,
-          toneOfVoice: editorial?.toneOfVoice ?? null,
-          playbook: editorial?.playbookText ?? null,
-          commercialPolicy: editorial?.commercialPolicy ?? null,
-          receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
-        },
-        leadName: lead.name,
-        timezone,
-        isFirstMessage: false,
+      // Plano → composer → validador → fallback. O texto do lembrete não vai
+      // para a outbox sem antes provar que só afirma o horário real da consulta.
+      const planned = await planner.execute({
+        composerInput: buildReminderComposerInput({
+          appointmentLabel,
+          clinic: {
+            name: clinic.name,
+            plan: clinic.plan,
+            specialty: editorial?.specialty ?? clinic.specialty,
+            toneOfVoice: editorial?.toneOfVoice ?? null,
+            playbook: editorial?.playbookText ?? null,
+            commercialPolicy: editorial?.commercialPolicy ?? null,
+            receptionistName: inferReceptionistNameFromGreeting(clinic.greetingMessage) ?? undefined,
+          },
+          leadName: extractFirstName(lead.name),
+          timezone: clinic.timezone,
+        }),
+        planInput: buildReminderPlanInput({
+          maxCharacters: REMINDER_MAX_CHARACTERS,
+        }),
       });
+      await recordAutomationResponseTrace(traceSink, {
+        turnId: `reminder:${appointment.id}`,
+        clinicId,
+        conversationId: conversation.id,
+        planned,
+      });
+      const composed = planned.response;
 
       const { agentMessageId, outbound } = buildReminderOutboxInput({
         clinicId,

@@ -2,12 +2,14 @@
 // organizações nem entre procedimentos. Ver docs/features.md.
 import { describe, expect, it, vi } from "vitest";
 import {
+  collectPipelineStepMediaIds,
   filterMediaLibraryForComposer,
   filterMediaLibraryForTreatment,
   mergeDeliveryMediaLibrary,
   resolveOutboundParts,
 } from "@/core/pipeline/ConversationOrchestrator";
 import type { ResponsePart } from "@/core/intelligence/ResponseComposer";
+import type { Treatment } from "@/domain/entities/treatment";
 import type { Logger } from "@/infrastructure/logging/logger";
 
 function fakeLogger(): Logger & { errors: { message: string; extra?: Record<string, unknown> }[] } {
@@ -107,6 +109,113 @@ describe("filterMediaLibraryForComposer — mídia adequada por intenção", () 
     );
 
     expect(result.map((m) => m.id)).toEqual(["old-result-estratificada", "new-price-premium"]);
+  });
+});
+
+// Regressão de 28/07: "quanto custa?" sem arte de valores caía no fallback da
+// lista inteira, então a LLM anexava o card de "envie sua foto para
+// pré-avaliação" e reenviava vídeos de técnica que o pipeline já havia mostrado.
+describe("collectPipelineStepMediaIds — mídia que o pipeline entrega no ritmo dele", () => {
+  function treatment(overrides: Partial<Treatment> & { id: string }): Treatment {
+    return {
+      clinicId: "clinic-1",
+      name: overrides.id,
+      durationMinutes: 60,
+      description: null,
+      requiresEvaluationFirst: false,
+      keywordMatchEnabled: true,
+      aliases: [],
+      isAesthetic: false,
+      pipelineSteps: null,
+      pipelineSourceTreatmentId: null,
+      priceCents: null,
+      minPriceCents: null,
+      maxPriceCents: null,
+      priceQuotableInChat: false,
+      priceKind: "from",
+      priceUnit: null,
+      priceDeductible: false,
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      ...overrides,
+    } as Treatment;
+  }
+
+  const LENTES = treatment({
+    id: "treatment-lentes",
+    pipelineSteps: [
+      {
+        type: "content",
+        label: "Técnicas",
+        blocks: [
+          { kind: "text", content: "Temos duas técnicas." },
+          { kind: "media", mediaId: "video-tecnica" },
+        ],
+      },
+      { type: "qa", label: "Dúvidas", mediaOnKeywords: [{ keywords: ["cor"], mediaId: "tabela-cores" }] },
+      { type: "photo", label: "Foto", message: "Manda uma foto do seu sorriso?", required: false },
+    ],
+  });
+
+  it("coleta mídia de bloco de conteúdo e de mediaOnKeywords da Q&A", () => {
+    const ids = collectPipelineStepMediaIds(LENTES, [LENTES]);
+    expect([...ids].sort()).toEqual(["tabela-cores", "video-tecnica"]);
+  });
+
+  it("variação herda a mídia do pipeline do tratamento-fonte", () => {
+    const variacao = treatment({
+      id: "treatment-lentes-premium",
+      pipelineSourceTreatmentId: "treatment-lentes",
+    });
+    const ids = collectPipelineStepMediaIds(variacao, [LENTES, variacao]);
+    expect([...ids].sort()).toEqual(["tabela-cores", "video-tecnica"]);
+  });
+
+  it("sem tratamento ativo, não exclui nada", () => {
+    expect(collectPipelineStepMediaIds(null, [LENTES]).size).toBe(0);
+  });
+
+  it("no preço sem arte de valores, o fallback não devolve mídia de passo do pipeline", () => {
+    const library: LibItem[] = [
+      { id: "video-tecnica", title: "Como funciona a lente", type: "video", url: "u1", treatmentId: "treatment-lentes" },
+      { id: "vitrine-sorriso", title: "Sorriso antes e depois", type: "image", url: "u2", treatmentId: "treatment-lentes" },
+    ];
+    const result = filterMediaLibraryForComposer(
+      library,
+      "treatment-lentes",
+      { type: "price_inquiry" },
+      collectPipelineStepMediaIds(LENTES, [LENTES]),
+    );
+
+    expect(result.map((m) => m.id)).toEqual(["vitrine-sorriso"]);
+  });
+
+  it("arte de valores vence mesmo sendo mídia de passo do pipeline — clínica que cota por imagem", () => {
+    const library: LibItem[] = [
+      { id: "video-tecnica", title: "Valores das lentes", type: "image", url: "u1", treatmentId: "treatment-lentes" },
+    ];
+    const result = filterMediaLibraryForComposer(
+      library,
+      "treatment-lentes",
+      { type: "price_inquiry" },
+      collectPipelineStepMediaIds(LENTES, [LENTES]),
+    );
+
+    expect(result.map((m) => m.id)).toEqual(["video-tecnica"]);
+  });
+
+  it("fora de preço, a exclusão não se aplica — o pipeline segue dono do próprio ritmo", () => {
+    const library: LibItem[] = [
+      { id: "video-tecnica", title: "Como funciona a lente", type: "video", url: "u1", treatmentId: "treatment-lentes" },
+    ];
+    const result = filterMediaLibraryForComposer(
+      library,
+      "treatment-lentes",
+      { type: "general_question", clinicContext: "Lead perguntou sobre lentes." },
+      collectPipelineStepMediaIds(LENTES, [LENTES]),
+    );
+
+    expect(result.map((m) => m.id)).toEqual(["video-tecnica"]);
   });
 });
 

@@ -530,6 +530,7 @@ describe("selectSegmentedConversationIds", () => {
       paused: ["paused-1"],
       cold: ["cold-1"],
       recovery: ["recovery-1"],
+      closed: [],
     },
     idsByScope: {
       sales: ["scope-sales-1"],

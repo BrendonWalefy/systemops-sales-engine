@@ -1,0 +1,114 @@
+{
+  "reviewedCases": 20,
+  "byField": {
+    "factuallyCorrect": {
+      "compared": 24,
+      "agreed": 22,
+      "rate": 0.9166666666666666
+    },
+    "addressedWhatTheLeadRaised": {
+      "compared": 24,
+      "agreed": 22,
+      "rate": 0.9166666666666666
+    },
+    "advancedTheJourney": {
+      "compared": 24,
+      "agreed": 21,
+      "rate": 0.875
+    },
+    "wouldRepeatToday": {
+      "compared": 24,
+      "agreed": 21,
+      "rate": 0.875
+    }
+  },
+  "disagreements": [
+    {
+      "caseId": "availability-0002",
+      "responder": "ai",
+      "field": "advancedTheJourney",
+      "firstReviewer": true,
+      "secondReviewer": false,
+      "cause": "julgamento-humano-legítimo (clarificação necessária embrulhada em disponibilidade não verificada)"
+    },
+    {
+      "caseId": "procedure-0001",
+      "responder": "ai",
+      "field": "addressedWhatTheLeadRaised",
+      "firstReviewer": false,
+      "secondReviewer": true,
+      "cause": "julgamento-humano-legítimo (filler que cita o tema: engaja ou ignora?)"
+    },
+    {
+      "caseId": "procedure-0001",
+      "responder": "human",
+      "field": "factuallyCorrect",
+      "firstReviewer": true,
+      "secondReviewer": false,
+      "cause": "erro-de-R1 (promessa de ação futura sem lastro, mesma regra aplicada em audio-0001 e handoff-0003)"
+    },
+    {
+      "caseId": "procedure-0001",
+      "responder": "human",
+      "field": "wouldRepeatToday",
+      "firstReviewer": true,
+      "secondReviewer": false,
+      "cause": "erro-de-R1 (promessa de ação futura sem lastro, mesma regra aplicada em audio-0001 e handoff-0003)"
+    },
+    {
+      "caseId": "media-0002",
+      "responder": "human",
+      "field": "factuallyCorrect",
+      "firstReviewer": true,
+      "secondReviewer": false,
+      "cause": "erro-de-R1 (\"realizamos uma pré-avaliação\" é ação afirmada sem side effect; exceção que a rubrica não concede)"
+    },
+    {
+      "caseId": "media-0002",
+      "responder": "human",
+      "field": "advancedTheJourney",
+      "firstReviewer": true,
+      "secondReviewer": false,
+      "cause": "erro-de-R1 (\"realizamos uma pré-avaliação\" é ação afirmada sem side effect; exceção que a rubrica não concede)"
+    },
+    {
+      "caseId": "media-0002",
+      "responder": "human",
+      "field": "wouldRepeatToday",
+      "firstReviewer": true,
+      "secondReviewer": false,
+      "cause": "erro-de-R1 (\"realizamos uma pré-avaliação\" é ação afirmada sem side effect; exceção que a rubrica não concede)"
+    },
+    {
+      "caseId": "first-contact-0001",
+      "responder": "human",
+      "field": "advancedTheJourney",
+      "firstReviewer": true,
+      "secondReviewer": false,
+      "cause": "julgamento-humano-legítimo (pergunta genérica de abertura coleta o que falta?)"
+    },
+    {
+      "caseId": "first-contact-0001",
+      "responder": "human",
+      "field": "wouldRepeatToday",
+      "firstReviewer": true,
+      "secondReviewer": false,
+      "cause": "julgamento-humano-legítimo (pergunta genérica de abertura coleta o que falta?)"
+    },
+    {
+      "caseId": "price-0002",
+      "responder": "human",
+      "field": "addressedWhatTheLeadRaised",
+      "firstReviewer": false,
+      "secondReviewer": true,
+      "cause": "julgamento-humano-legítimo (condição de pagamento é o assunto do preço ou é assunto adjacente?)"
+    }
+  ],
+  "round": "C.9-final",
+  "note": "Rodada final. R1 = corpus re-derivado no C.9; R2 = revisor independente de outra família de modelo sobre amostra cega com 16 de 20 casos inéditos. Nenhum julgamento alterado dos dois lados. Os 4 casos mantidos de propósito eram os que as correções do C.9 decidem: other-0001, price-0005 e objection-0005 passaram a concordar integralmente; price-0002 diverge só na pergunta 2.",
+  "ruler": {
+    "version": "review-checklist.v2-calibrada",
+    "digest": "93882ca73baa8c3c08576995fbf4ef4cb4babe507dcb7eabc2c88a176d3a58ed",
+    "frozen": true
+  }
+}

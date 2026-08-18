@@ -35,6 +35,7 @@ export type ClaimNextJobInput = {
   queues: JobQueueName[];
   workerId: string;
   now?: Date;
+  dedupeKey?: string;
 };
 
 export type FailJobInput = {

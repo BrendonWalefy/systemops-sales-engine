@@ -13,6 +13,8 @@ import {
   hasExplicitPipelineTreatmentTrigger,
   isBusinessHoursQuestion,
   isSimplePaymentPolicyQuestion,
+  resolveInformationalTreatmentTarget,
+  resolveOfferedPipelineTreatment,
   resolvePipelineSourceTreatment,
   resolvePipelineEntryBehavior,
   shouldDeferTreatmentPipelineEntry,
@@ -299,6 +301,91 @@ describe("hasExplicitPipelineTreatmentTrigger", () => {
         treatment: lenses,
       }),
     ).toBe(false);
+  });
+
+  // "Sim" seco após a saudação que oferece a jornada ("quer conhecer nossas
+  // lentes?") é gatilho — antes ficava refém do classificador acertar o
+  // tratamento e o pipeline (com os vídeos) nunca iniciava (caso Lukinha, 27/07).
+  it("permite pipeline quando o lead aceita ('Sim') um opener que oferece a jornada", () => {
+    const lenses = treatment("Lentes de resina composta", {
+      aliases: ["lentes", "faceta"],
+      pipelineSteps: [{ type: "content", label: "Vídeos das Técnicas", blocks: [] }],
+    });
+    expect(
+      hasExplicitPipelineTreatmentTrigger({
+        message: "Sim",
+        treatments: [lenses, ...treatments.slice(1)],
+        lastAgentMessage:
+          "Você gostaria de conhecer melhor nossas lentes, consultar os valores ou já verificar um horário para sua avaliação?",
+        treatment: lenses,
+      }),
+    ).toBe(true);
+  });
+
+  it("aceite sem tratamento com pipeline na oferta não força pipeline", () => {
+    const lenses = treatment("Lentes de resina composta", {
+      aliases: ["lentes", "faceta"],
+      pipelineSteps: [{ type: "content", label: "Vídeos das Técnicas", blocks: [] }],
+    });
+    expect(
+      hasExplicitPipelineTreatmentTrigger({
+        message: "Sim",
+        treatments: [lenses, ...treatments.slice(1)],
+        lastAgentMessage:
+          "Me conta o que você gostaria de ver hoje: valores, agendamento ou algum serviço específico?",
+        treatment: lenses,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("resolveOfferedPipelineTreatment (aceite de oferta de jornada)", () => {
+  const lenses = treatment("Lentes de resina composta", {
+    aliases: ["lentes", "faceta"],
+    pipelineSteps: [{ type: "content", label: "Vídeos das Técnicas", blocks: [] }],
+  });
+  const clareamento = treatment("Clareamento dental", { aliases: ["clareamento"] });
+  const catalog = [lenses, clareamento];
+  const offer =
+    "Você gostaria de conhecer melhor nossas lentes, consultar os valores ou já verificar um horário para sua avaliação?";
+
+  it("'Sim' a um opener que oferece lentes resolve o tratamento com pipeline", () => {
+    expect(
+      resolveOfferedPipelineTreatment({ message: "Sim", treatments: catalog, lastAgentMessage: offer })?.id,
+    ).toBe(lenses.id);
+  });
+
+  it("ignora tratamento citado na oferta que não tem pipeline (clareamento)", () => {
+    const offerClareamento = "Quer saber mais sobre o clareamento dental?";
+    expect(
+      resolveOfferedPipelineTreatment({ message: "Sim", treatments: catalog, lastAgentMessage: offerClareamento }),
+    ).toBeNull();
+  });
+
+  it("não dispara sem oferta na última fala do agente", () => {
+    expect(
+      resolveOfferedPipelineTreatment({ message: "Sim", treatments: catalog, lastAgentMessage: null }),
+    ).toBeNull();
+  });
+
+  it("não dispara quando a mensagem do lead não é um aceite curto", () => {
+    expect(
+      resolveOfferedPipelineTreatment({
+        message: "Na verdade prefiro entender o processo todo antes de decidir qualquer coisa",
+        treatments: catalog,
+        lastAgentMessage: offer,
+      }),
+    ).toBeNull();
+  });
+
+  it("resolveInformationalTreatmentTarget resolve a lente a partir do aceite seco", () => {
+    expect(
+      resolveInformationalTreatmentTarget({
+        message: "Sim",
+        treatments: catalog,
+        lastAgentMessage: offer,
+      })?.id,
+    ).toBe(lenses.id);
   });
 });
 

@@ -1,0 +1,206 @@
+{
+  "investigation": "D0 — measurement stability",
+  "question": "a diferença de 4,7 pontos vem de casos específicos ou de variância estocástica?",
+  "answer": "ambos, e em proporção medida: ~2 casos de regressão estável e ~1 de churn estocástico",
+  "conditionsCompared": {
+    "codigoV1": "src/core/ sem nenhuma alteração entre fc66ec97 e HEAD (git diff --stat vazio)",
+    "evaluator": "scripts/eval-corpus.ts sem alteração",
+    "modelo": "gpt-5.4-mini nas duas medidas",
+    "temperatura": 0,
+    "sdkOpenai": "6.39.0, sem alteração de package.json/lock no intervalo",
+    "entradaDosCasos": "input byte-idêntico nos dois casos estáveis-diferentes",
+    "nomesDeServico": "lista e ordem idênticas na fixture demo-dental",
+    "rotulosEsperados": "understanding.request inalterado pelo C.8 e pelo C.9",
+    "dataset": "os mesmos 66 casos, 64 comparáveis, 2 pulados"
+  },
+  "historical": {
+    "samples": 1,
+    "accuracy": 73.44,
+    "confusions": 17
+  },
+  "current": {
+    "samples": 6,
+    "accuracies": [
+      68.75,
+      68.75,
+      68.75,
+      68.75,
+      70.31,
+      68.75
+    ],
+    "mean": 69.01,
+    "stdev": 0.64,
+    "range": 1.56,
+    "min": 68.75,
+    "max": 70.31
+  },
+  "unstableAcrossRuns": [
+    "burst-0003",
+    "discount-0001",
+    "first-contact-0003",
+    "objection-0005",
+    "price-0003"
+  ],
+  "stableButDifferentFromHistorical": [
+    "first-contact-0005",
+    "objection-0006"
+  ],
+  "rootCause": "NÃO DETERMINADA. Tudo sob controle do repositório é idêntico. Restam hipóteses fora dele: mudança de serving do mesmo model id no provedor, ou taxa de flip baixa demais para 6 amostras enxergarem.",
+  "perCase": [
+    {
+      "caseId": "audio-0001",
+      "oldV1": "general_question",
+      "currentV1": "general_question",
+      "changed": false,
+      "evidence": "estável e igual"
+    },
+    {
+      "caseId": "audio-0002",
+      "oldV1": "unclear",
+      "currentV1": "unclear",
+      "changed": false,
+      "evidence": "estável e igual"
+    },
+    {
+      "caseId": "availability-0001",
+      "oldV1": "check_availability",
+      "currentV1": "check_availability",
+      "changed": false,
+      "evidence": "estável e igual"
+    },
+    {
+      "caseId": "burst-0001",
+      "oldV1": "acknowledgment",
+      "currentV1": "acknowledgment",
+      "changed": false,
+      "evidence": "estável e igual"
+    },
+    {
+      "caseId": "burst-0003",
+      "oldV1": "acknowledgment",
+      "currentV1": "greeting",
+      "changed": true,
+      "evidence": "oscila entre execuções de hoje"
+    },
+    {
+      "caseId": "discount-0001",
+      "oldV1": "correto",
+      "currentV1": "price_inquiry",
+      "changed": true,
+      "evidence": "oscila entre execuções de hoje"
+    },
+    {
+      "caseId": "discount-0003",
+      "oldV1": "acknowledgment",
+      "currentV1": "acknowledgment",
+      "changed": false,
+      "evidence": "estável e igual"
+    },
+    {
+      "caseId": "first-contact-0003",
+      "oldV1": "acknowledgment",
+      "currentV1": "correto",
+      "changed": true,
+      "evidence": "oscila entre execuções de hoje"
+    },
+    {
+      "caseId": "first-contact-0005",
+      "oldV1": "correto",
+      "currentV1": "greeting",
+      "changed": true,
+      "evidence": "estável nas 6 execuções e diferente do histórico"
+    },
+    {
+      "caseId": "handoff-0001",
+      "oldV1": "unclear",
+      "currentV1": "unclear",
+      "changed": false,
+      "evidence": "estável e igual"
+    },
+    {
+      "caseId": "handoff-0002",
+      "oldV1": "general_question",
+      "currentV1": "general_question",
+      "changed": false,
+      "evidence": "estável e igual"
+    },
+    {
+      "caseId": "media-0001",
+      "oldV1": "unclear",
+      "currentV1": "unclear",
+      "changed": false,
+      "evidence": "estável e igual"
+    },
+    {
+      "caseId": "media-0002",
+      "oldV1": "acknowledgment",
+      "currentV1": "acknowledgment",
+      "changed": false,
+      "evidence": "estável e igual"
+    },
+    {
+      "caseId": "media-0003",
+      "oldV1": "acknowledgment",
+      "currentV1": "acknowledgment",
+      "changed": false,
+      "evidence": "estável e igual"
+    },
+    {
+      "caseId": "objection-0002",
+      "oldV1": "general_question",
+      "currentV1": "general_question",
+      "changed": false,
+      "evidence": "estável e igual"
+    },
+    {
+      "caseId": "objection-0003",
+      "oldV1": "general_question",
+      "currentV1": "general_question",
+      "changed": false,
+      "evidence": "estável e igual"
+    },
+    {
+      "caseId": "objection-0005",
+      "oldV1": "correto",
+      "currentV1": "clinical_urgency",
+      "changed": true,
+      "evidence": "oscila entre execuções de hoje"
+    },
+    {
+      "caseId": "objection-0006",
+      "oldV1": "correto",
+      "currentV1": "acknowledgment",
+      "changed": true,
+      "evidence": "estável nas 6 execuções e diferente do histórico"
+    },
+    {
+      "caseId": "objection-0008",
+      "oldV1": "acknowledgment",
+      "currentV1": "acknowledgment",
+      "changed": false,
+      "evidence": "estável e igual"
+    },
+    {
+      "caseId": "price-0003",
+      "oldV1": "correto",
+      "currentV1": "correto",
+      "changed": false,
+      "evidence": "oscila entre execuções de hoje"
+    },
+    {
+      "caseId": "price-0004",
+      "oldV1": "general_question",
+      "currentV1": "general_question",
+      "changed": false,
+      "evidence": "estável e igual"
+    },
+    {
+      "caseId": "scheduling-0002",
+      "oldV1": "book_appointment",
+      "currentV1": "book_appointment",
+      "changed": false,
+      "evidence": "estável e igual"
+    }
+  ],
+  "note": "Percentuais arredondados a duas casas de propósito: a precisão de ponto flutuante não acrescenta informação, e a média sem arredondar produzia uma sequência de catorze dígitos que o detector de CNPJ do auditor de PII casava."
+}

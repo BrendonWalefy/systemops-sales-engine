@@ -136,4 +136,22 @@ describe("DrizzleLeadRepository", () => {
 
     expect(bumpInboxVersionMock).toHaveBeenCalledWith("clinic-42");
   });
+
+  it("não limpa consentimento durável ao salvar um Lead legado sem os campos opcionais", async () => {
+    const existing = lead({ id: "lead-existing" });
+    const update = updateChain();
+    dbMock.query.leads.findFirst
+      .mockResolvedValueOnce(existing)
+      .mockResolvedValueOnce(existing);
+    dbMock.update.mockReturnValue(update);
+    const legacy = lead({ id: existing.id }) as Lead;
+    delete legacy.contactConsentRevokedAt;
+    delete legacy.contactConsentSource;
+
+    await new DrizzleLeadRepository().save(legacy);
+
+    expect(update.set).toHaveBeenCalledOnce();
+    expect(update.set.mock.calls[0]![0]).not.toHaveProperty("contactConsentRevokedAt");
+    expect(update.set.mock.calls[0]![0]).not.toHaveProperty("contactConsentSource");
+  });
 });
