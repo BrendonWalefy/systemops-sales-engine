@@ -43,6 +43,46 @@ export type InternalLabApprovalCriterion =
   | "observability_green"
   | "lab_final_engine_v2_internal";
 
+export type DeploymentRuntime = Readonly<{
+  nodeVersion: string;
+  platform: NodeJS.Platform;
+  arch: string;
+}>;
+
+export type DeploymentRuntimeIdentity = DeploymentRuntime & Readonly<{
+  runtimeDigest: string;
+  commit: string | null;
+}>;
+
+/**
+ * A approval é vinculada ao runtime exato em que ela será verificada. Assinar
+ * localmente é impossível sem conhecer esse runtime, e só o próprio deploy pode
+ * informá-lo. Expõe apenas identidade de execução — nunca segredo, conexão ou
+ * dado de tenant.
+ */
+export function describeDeploymentRuntimeIdentity(
+  source: Readonly<{
+    nodeVersion: string;
+    platform: NodeJS.Platform;
+    arch: string;
+    commit?: string | null;
+  }>,
+): DeploymentRuntimeIdentity {
+  const runtime = Object.freeze({
+    nodeVersion: source.nodeVersion,
+    platform: source.platform,
+    arch: source.arch,
+  }) satisfies DeploymentRuntime;
+  const commit = typeof source.commit === "string" && /^[a-f0-9]{40,64}$/.test(source.commit)
+    ? source.commit
+    : null;
+  return Object.freeze({
+    ...runtime,
+    runtimeDigest: computeInternalLabRuntimeDigest(runtime),
+    commit,
+  });
+}
+
 export type InternalLabApprovalClaims = Readonly<{
   schemaVersion: 1;
   decision: InternalLabApprovalDecision;

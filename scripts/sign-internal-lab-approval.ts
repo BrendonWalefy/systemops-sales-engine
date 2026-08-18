@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   computeInternalLabRuntimeDigest,
   serializeInternalLabApprovalClaims,
+  type DeploymentRuntime,
   type InternalLabApprovalClaims,
 } from "../src/application/conversation-v2/internal-lab-approval";
 import { createConfiguredCycleIRuntimeBuildIdentity } from "../src/application/conversation-v2/configured-cycle-i-authority";
@@ -131,12 +132,16 @@ function assertExactBuild(
   claims: InternalLabApprovalClaims,
   build: ReturnType<typeof createGitCycleIBuildAttestation>,
   runtime: ReturnType<typeof createConfiguredCycleIRuntimeBuildIdentity>,
+  deploymentRuntime: DeploymentRuntime | null,
 ): void {
+  // A approval é verificada no runtime do deploy, não no da máquina que assina.
+  // Sem o runtime declarado do alvo, o campo ficaria preso ao runtime local e a
+  // approval nasceria incapaz de passar em produção.
   const expected = {
     commitSha: build.commit,
     treeSha: build.tree,
     sourceDigest: build.sourceDigest,
-    runtimeDigest: computeInternalLabRuntimeDigest(build.runtime),
+    runtimeDigest: computeInternalLabRuntimeDigest(deploymentRuntime ?? build.runtime),
     cycleIGateDigest: runtime.reportDigest,
   } as const;
   if (runtime.commit !== build.commit) {
@@ -147,6 +152,25 @@ function assertExactBuild(
       throw new Error(`Internal Lab approval claims do not match current ${field}`);
     }
   }
+}
+
+function parseDeploymentRuntime(serialized: string): DeploymentRuntime {
+  const parsed = JSON.parse(serialized) as Partial<DeploymentRuntime>;
+  if (
+    typeof parsed?.nodeVersion !== "string"
+    || !/^v\d+\.\d+\.\d+/.test(parsed.nodeVersion)
+    || typeof parsed.platform !== "string"
+    || parsed.platform.length === 0
+    || typeof parsed.arch !== "string"
+    || parsed.arch.length === 0
+  ) {
+    throw new Error("--deployment-runtime-file must declare nodeVersion, platform and arch");
+  }
+  return Object.freeze({
+    nodeVersion: parsed.nodeVersion,
+    platform: parsed.platform as NodeJS.Platform,
+    arch: parsed.arch,
+  });
 }
 
 async function main(): Promise<void> {
@@ -173,6 +197,10 @@ async function main(): Promise<void> {
   } finally {
     resolvedArtifactBytes.fill(0);
   }
+  const deploymentRuntimeValue = optionalValue(argv, "--deployment-runtime-file");
+  const deploymentRuntime = deploymentRuntimeValue === null
+    ? null
+    : parseDeploymentRuntime(await readFile(await realpath(deploymentRuntimeValue), "utf8"));
   const authority = loadConfiguredInternalLabAuthority();
   assertConfiguredInternalLabAuthorityBindings(authority, {
     tenantDigest: claims.tenantDigest,
@@ -187,7 +215,7 @@ async function main(): Promise<void> {
   const canonicalPayload = serializeInternalLabApprovalClaims(claims, new Date());
   const build = createGitCycleIBuildAttestation();
   const runtime = createConfiguredCycleIRuntimeBuildIdentity();
-  assertExactBuild(claims, build, runtime);
+  assertExactBuild(claims, build, runtime, deploymentRuntime);
   const privateKeyBytes = await readOwnerControlledFileOutsideWorktree(
     privateKeyPath,
     "--private-key-file",
