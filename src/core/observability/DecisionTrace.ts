@@ -104,6 +104,10 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     "durationMs",
     "modelId",
     "request",
+    // Código fechado da falha (understanding-failure-code.ts). Nunca o texto do
+    // erro: sem ele a operação não distingue chave inválida de cota ou de saída
+    // inutilizável, que exigem ações diferentes.
+    "errorCode",
   ],
   "v2.decision": [
     "status",
