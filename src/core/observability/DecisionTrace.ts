@@ -66,6 +66,13 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     "allowedMediaCount",
     "maxCharacters",
     "expectedState",
+    "outcomeRefs",
+    "evidenceRefs",
+    "outcomeCount",
+    "factCount",
+    "optionCount",
+    "subjectCount",
+    "evidenceCount",
   ],
   "response.validated": [
     "action",
@@ -84,6 +91,8 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     "inputTokens",
     "outputTokens",
     "latencyMs",
+    "source",
+    "costMicros",
   ],
   "response.fallback_applied": [
     "action",
@@ -101,6 +110,9 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     "durationMs",
     "decisionCount",
     "executeCount",
+    "capabilityIds",
+    "decisionKinds",
+    "intendedEffects",
   ],
   "v2.action_result": [
     "status",
@@ -108,6 +120,8 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     "resultCount",
     "completedEffectCount",
     "failedEffectCount",
+    "outcomeTypes",
+    "semanticClasses",
   ],
   "v2.outbox": [
     "status",

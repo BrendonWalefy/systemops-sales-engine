@@ -1,3 +1,7 @@
+import { link, lstat, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,7 +12,9 @@ import {
 } from "@/application/labs/systemops-lab-persona";
 import {
   parseSystemOpsLabPersonaCommandArgs,
+  reserveSystemOpsLabRunResultFile,
   runSystemOpsLabPersonaCommand,
+  writeSystemOpsLabRunResultFile,
 } from "../../scripts/run-systemops-lab-personas";
 import type { InboundEvent, InboundEventStore } from "@/application/ports/inbound-event-store";
 import type { JobQueue, JobRecord } from "@/application/ports/job-queue";
@@ -31,6 +37,29 @@ const twoTurnPersona: SystemOpsLabPersona = Object.freeze({
     Object.freeze({
       leadText: "Pode marcar às 15?",
       expected: Object.freeze(["journey_advancement", "safety"] as const),
+    }),
+  ]),
+});
+
+const completedRunResult = Object.freeze({
+  runId,
+  clinicId: labId,
+  personaId: "price-scheduling",
+  conversationId: "conversation-1",
+  turns: Object.freeze([
+    Object.freeze({
+      turnId: "turn-1",
+      leadMessageId: "lead-message-1",
+      outboundMessageId: "outbound-1",
+      persistedAgentMessageId: "agent-message-1",
+      captured: true as const,
+    }),
+    Object.freeze({
+      turnId: "turn-2",
+      leadMessageId: "lead-message-2",
+      outboundMessageId: "outbound-2",
+      persistedAgentMessageId: "agent-message-2",
+      captured: true as const,
     }),
   ]),
 });
@@ -316,6 +345,18 @@ describe("SystemOps Lab persona parser", () => {
       "--approval-file", "/dev/null",
     ])).toMatchObject({ mode: "dry-run", runId, clinicId: labId });
 
+    expect(parseSystemOpsLabPersonaCommandArgs([
+      "--execute",
+      "--run-id", runId,
+      "--clinic-id", labId,
+      "--persona", "evals/systemops-lab/personas/price-scheduling.json",
+      "--approval-file", "/approval.json",
+      "--result-file", "/tmp/systemops-lab-run-result.json",
+    ])).toMatchObject({
+      mode: "execute",
+      resultFile: "/tmp/systemops-lab-run-result.json",
+    });
+
     expect(() => parseSystemOpsLabPersonaCommandArgs([
       "--execute", "--dry-run",
       "--run-id", runId,
@@ -330,6 +371,76 @@ describe("SystemOps Lab persona parser", () => {
       "--persona", "persona.json",
       "--approval-file", "/approval.json",
     ])).toThrow(/numeric|E\.164/i);
+    expect(() => parseSystemOpsLabPersonaCommandArgs([
+      "--execute",
+      "--run-id", runId,
+      "--clinic-id", labId,
+      "--persona", "persona.json",
+      "--approval-file", "/approval.json",
+    ])).toThrow(/result-file/i);
+    expect(() => parseSystemOpsLabPersonaCommandArgs([
+      "--execute",
+      "--run-id", runId,
+      "--clinic-id", labId,
+      "--persona", "persona.json",
+      "--approval-file", "/approval.json",
+      "--result-file", "relative-result.json",
+    ])).toThrow(/absolute/i);
+    expect(() => parseSystemOpsLabPersonaCommandArgs([
+      "--execute",
+      "--run-id", runId,
+      "--clinic-id", labId,
+      "--persona", "persona.json",
+      "--approval-file", "/approval.json",
+      "--result-file", path.resolve("evals/systemops-lab/intermediate.json"),
+    ])).toThrow(/outside|repository|evidence/i);
+    expect(() => parseSystemOpsLabPersonaCommandArgs([
+      "--execute",
+      "--run-id", runId,
+      "--clinic-id", labId,
+      "--persona", "persona.json",
+      "--approval-file", "/approval.json",
+      "--result-file", path.resolve("..outside/run.json"),
+    ])).toThrow(/outside|repository/i);
+  });
+
+  it("atomically writes one protected full run envelope and refuses overwrite aliases", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "systemops-lab-run-result-"));
+    const resultFile = path.join(directory, "run.json");
+    try {
+      await writeSystemOpsLabRunResultFile(resultFile, completedRunResult);
+
+      expect(JSON.parse(await readFile(resultFile, "utf8"))).toEqual(completedRunResult);
+      expect((await lstat(resultFile)).mode & 0o777).toBe(0o600);
+      await expect(writeSystemOpsLabRunResultFile(resultFile, completedRunResult))
+        .rejects.toThrow(/exists|overwrite/i);
+
+      const symbolicAlias = path.join(directory, "symbolic.json");
+      await symlink(resultFile, symbolicAlias);
+      await expect(writeSystemOpsLabRunResultFile(symbolicAlias, completedRunResult))
+        .rejects.toThrow(/exists|symlink|overwrite/i);
+
+      const hardAlias = path.join(directory, "hard.json");
+      await link(resultFile, hardAlias);
+      await expect(writeSystemOpsLabRunResultFile(hardAlias, completedRunResult))
+        .rejects.toThrow(/exists|hardlink|overwrite/i);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("holds an exclusive reservation across execution and refuses an occupied destination", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "systemops-lab-run-reservation-"));
+    const resultFile = path.join(directory, "run.json");
+    const first = await reserveSystemOpsLabRunResultFile(resultFile);
+    try {
+      await expect(reserveSystemOpsLabRunResultFile(resultFile)).rejects.toThrow(/reserved|exists/i);
+      await first.publish(completedRunResult);
+      expect(JSON.parse(await readFile(resultFile, "utf8"))).toEqual(completedRunResult);
+    } finally {
+      await first.release();
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
 
@@ -457,12 +568,68 @@ describe("SystemOps Lab durable persona runner", () => {
       clinicId: labId,
       personaPath: "evals/systemops-lab/personas/price-scheduling.json",
       approvalFile: "/dev/null",
-    }, { loadPersona, execute, readApproval, write });
+      resultFile: null,
+    }, {
+      loadPersona,
+      execute,
+      readApproval,
+      reserveResultFile: vi.fn(),
+      write,
+    });
 
     expect(loadPersona).toHaveBeenCalledOnce();
     expect(execute).not.toHaveBeenCalled();
     expect(readApproval).not.toHaveBeenCalled();
     expect(write).toHaveBeenCalledWith(expect.stringMatching(/"turnCount":2/));
     expect(write.mock.calls.flat().join("\n")).not.toMatch(/Quanto|5511|@lid|approval/i);
+  });
+
+  it("writes the full execute result only to the protected handoff file", async () => {
+    const write = vi.fn();
+    const publish = vi.fn().mockResolvedValue(undefined);
+    const release = vi.fn().mockResolvedValue(undefined);
+    const reserveResultFile = vi.fn().mockResolvedValue({ publish, release });
+    const result = await runSystemOpsLabPersonaCommand({
+      mode: "execute",
+      runId,
+      clinicId: labId,
+      personaPath: "evals/systemops-lab/personas/price-scheduling.json",
+      approvalFile: "/approval.json",
+      resultFile: "/tmp/systemops-lab-run-result.json",
+    }, {
+      loadPersona: vi.fn().mockResolvedValue(twoTurnPersona),
+      readApproval: vi.fn().mockResolvedValue("signed-approval"),
+      execute: vi.fn().mockResolvedValue(completedRunResult),
+      reserveResultFile,
+      write,
+    });
+
+    expect(result).toEqual(completedRunResult);
+    expect(reserveResultFile).toHaveBeenCalledWith("/tmp/systemops-lab-run-result.json");
+    expect(publish).toHaveBeenCalledWith(completedRunResult);
+    expect(release).toHaveBeenCalledOnce();
+    const stdout = write.mock.calls.flat().join("\n");
+    expect(stdout).toContain('"turnCount":2');
+    expect(stdout).not.toMatch(/lead-message|agent-message|outbound-|conversation-|"turns"/i);
+  });
+
+  it("does not execute when the protected handoff destination cannot be reserved", async () => {
+    const execute = vi.fn();
+    await expect(runSystemOpsLabPersonaCommand({
+      mode: "execute",
+      runId,
+      clinicId: labId,
+      personaPath: "evals/systemops-lab/personas/price-scheduling.json",
+      approvalFile: "/approval.json",
+      resultFile: "/tmp/systemops-lab-run-result.json",
+    }, {
+      loadPersona: vi.fn().mockResolvedValue(twoTurnPersona),
+      readApproval: vi.fn().mockResolvedValue("signed-approval"),
+      execute,
+      reserveResultFile: vi.fn().mockRejectedValue(new Error("run result destination reserved")),
+      write: vi.fn(),
+    })).rejects.toThrow(/reserved/i);
+
+    expect(execute).not.toHaveBeenCalled();
   });
 });

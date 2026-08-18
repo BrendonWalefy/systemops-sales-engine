@@ -1,6 +1,10 @@
-import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { constants } from "node:fs";
+import { link, lstat, open, readFile, realpath, unlink } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { z } from "zod";
 
 import {
   assertSystemOpsLabRunId,
@@ -16,6 +20,7 @@ export type SystemOpsLabPersonaCommand = Readonly<{
   clinicId: string;
   personaPath: string;
   approvalFile: string;
+  resultFile: string | null;
 }>;
 
 type SystemOpsLabPersonaCommandDependencies = Readonly<{
@@ -26,10 +31,17 @@ type SystemOpsLabPersonaCommandDependencies = Readonly<{
     persona: SystemOpsLabPersona;
     serializedApproval: string;
   }>): Promise<SystemOpsLabRunResult>;
+  reserveResultFile(path: string): Promise<SystemOpsLabRunResultReservation>;
   write(line: string): void;
 }>;
 
+export type SystemOpsLabRunResultReservation = Readonly<{
+  publish(result: SystemOpsLabRunResult): Promise<void>;
+  release(): Promise<void>;
+}>;
+
 const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function flagValue(argv: readonly string[], flag: string): string | null {
   const indexes = argv.flatMap((value, index) => value === flag ? [index] : []);
@@ -49,6 +61,7 @@ export function parseSystemOpsLabPersonaCommandArgs(
   const clinicId = flagValue(argv, "--clinic-id");
   const personaPath = flagValue(argv, "--persona");
   const approvalFile = flagValue(argv, "--approval-file");
+  const resultFile = flagValue(argv, "--result-file");
   if (!runId) throw new Error("--run-id is required");
   assertSystemOpsLabRunId(runId);
   if (!clinicId || !uuidPattern.test(clinicId)) {
@@ -58,8 +71,27 @@ export function parseSystemOpsLabPersonaCommandArgs(
     throw new Error("--persona must point to a JSON file");
   }
   if (!approvalFile) throw new Error("--approval-file is required");
+  const mode = modes[0] === "--dry-run" ? "dry-run" : "execute";
+  if (mode === "execute" && !resultFile) {
+    throw new Error("--result-file is required in execute mode");
+  }
+  if (mode === "dry-run" && resultFile) {
+    throw new Error("--result-file is not accepted in dry-run mode");
+  }
+  if (resultFile) {
+    if (!path.isAbsolute(resultFile)) throw new Error("--result-file must be absolute");
+    if (!outsideRepository(path.resolve(resultFile))) {
+      throw new Error("--result-file must be outside the repository and final evidence root");
+    }
+  }
 
-  const valueFlags = new Set(["--run-id", "--clinic-id", "--persona", "--approval-file"]);
+  const valueFlags = new Set([
+    "--run-id",
+    "--clinic-id",
+    "--persona",
+    "--approval-file",
+    "--result-file",
+  ]);
   const booleanFlags = new Set(["--dry-run", "--execute"]);
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index]!;
@@ -68,12 +100,201 @@ export function parseSystemOpsLabPersonaCommandArgs(
     index += 1;
   }
   return Object.freeze({
-    mode: modes[0] === "--dry-run" ? "dry-run" : "execute",
+    mode,
     runId,
     clinicId,
     personaPath,
     approvalFile,
+    resultFile,
   });
+}
+
+const runResultSchema = z.object({
+  runId: z.string().min(4).max(64),
+  clinicId: z.string().regex(uuidPattern),
+  personaId: z.string().min(1).max(48),
+  conversationId: z.string().min(1).max(240),
+  turns: z.array(z.object({
+    turnId: z.string().min(1).max(240),
+    leadMessageId: z.string().min(1).max(240),
+    outboundMessageId: z.string().min(1).max(240),
+    persistedAgentMessageId: z.string().min(1).max(240),
+    captured: z.literal(true),
+  }).strict()).min(1).max(8),
+}).strict();
+
+function canonicalizeRunResult(result: SystemOpsLabRunResult): SystemOpsLabRunResult {
+  const parsed = runResultSchema.parse(result);
+  assertSystemOpsLabRunId(parsed.runId);
+  const identities = parsed.turns.flatMap((turn) => [
+    turn.turnId,
+    turn.leadMessageId,
+    turn.outboundMessageId,
+    turn.persistedAgentMessageId,
+  ]);
+  if (new Set(identities).size !== identities.length) {
+    throw new Error("SystemOps Lab run result contains duplicate persistence identities");
+  }
+  return Object.freeze({
+    ...parsed,
+    turns: Object.freeze(parsed.turns.map((turn) => Object.freeze({ ...turn }))),
+  });
+}
+
+function outsideRepository(target: string): boolean {
+  const relative = path.relative(repositoryRoot, target);
+  return relative === ".."
+    || relative.startsWith(`..${path.sep}`)
+    || path.isAbsolute(relative);
+}
+
+export async function writeSystemOpsLabRunResultFile(
+  resultFile: string,
+  result: SystemOpsLabRunResult,
+): Promise<void> {
+  if (!path.isAbsolute(resultFile)) throw new Error("run result file path must be absolute");
+  const canonicalParent = await realpath(path.dirname(resultFile));
+  const target = path.join(canonicalParent, path.basename(resultFile));
+  if (!outsideRepository(target)) {
+    throw new Error("run result file must remain outside the repository and final evidence root");
+  }
+  try {
+    await lstat(target);
+    throw new Error("SystemOps Lab run result already exists; overwrite refused");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  const canonical = canonicalizeRunResult(result);
+  const serialized = `${JSON.stringify(canonical, null, 2)}\n`;
+  const temporary = path.join(
+    canonicalParent,
+    `.${path.basename(resultFile)}.tmp-${process.pid}-${randomUUID()}`,
+  );
+  let handle: Awaited<ReturnType<typeof open>> | null = null;
+  let published = false;
+  try {
+    handle = await open(
+      temporary,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+      0o600,
+    );
+    await handle.writeFile(serialized, "utf8");
+    await handle.sync();
+    const beforeLink = await handle.stat();
+    if (!beforeLink.isFile() || beforeLink.nlink !== 1) {
+      throw new Error("SystemOps Lab run result temporary file is not nominal");
+    }
+    await link(temporary, target);
+    published = true;
+    const linked = await lstat(target);
+    if (
+      !linked.isFile()
+      || linked.isSymbolicLink()
+      || linked.dev !== beforeLink.dev
+      || linked.ino !== beforeLink.ino
+      || linked.nlink !== 2
+    ) throw new Error("SystemOps Lab run result publication identity changed");
+    await unlink(temporary);
+    await handle.close();
+    handle = null;
+    const finalStat = await lstat(target);
+    if (!finalStat.isFile() || finalStat.isSymbolicLink() || finalStat.nlink !== 1) {
+      throw new Error("SystemOps Lab run result final file is not nominal");
+    }
+  } catch (error) {
+    if (published) await unlink(target).catch(() => undefined);
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new Error("SystemOps Lab run result already exists; overwrite refused");
+    }
+    throw error;
+  } finally {
+    if (handle) await handle.close().catch(() => undefined);
+    await unlink(temporary).catch(() => undefined);
+  }
+}
+
+export async function reserveSystemOpsLabRunResultFile(
+  resultFile: string,
+): Promise<SystemOpsLabRunResultReservation> {
+  if (!path.isAbsolute(resultFile)) throw new Error("run result file path must be absolute");
+  const canonicalParent = await realpath(path.dirname(resultFile));
+  const target = path.join(canonicalParent, path.basename(resultFile));
+  if (!outsideRepository(target)) {
+    throw new Error("run result file must remain outside the repository and final evidence root");
+  }
+  try {
+    await lstat(target);
+    throw new Error("SystemOps Lab run result already exists; overwrite refused");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  const reservationPath = `${target}.reservation`;
+  let handle: Awaited<ReturnType<typeof open>> | null = null;
+  let reservationIdentity: Readonly<{ dev: number; ino: number }> | null = null;
+  try {
+    handle = await open(
+      reservationPath,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+      0o600,
+    );
+    const reservedStat = await handle.stat();
+    if (!reservedStat.isFile() || reservedStat.nlink !== 1) {
+      throw new Error("SystemOps Lab run result reservation is not nominal");
+    }
+    reservationIdentity = { dev: reservedStat.dev, ino: reservedStat.ino };
+    try {
+      await lstat(target);
+      throw new Error("SystemOps Lab run result already exists; overwrite refused");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+
+    let released = false;
+    let published = false;
+    const release = async (): Promise<void> => {
+      if (released) return;
+      released = true;
+      await handle?.close();
+      handle = null;
+      const current = await lstat(reservationPath).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+      if (
+        current
+        && current.isFile()
+        && !current.isSymbolicLink()
+        && current.dev === reservedStat.dev
+        && current.ino === reservedStat.ino
+      ) await unlink(reservationPath);
+    };
+    return Object.freeze({
+      publish: async (result: SystemOpsLabRunResult): Promise<void> => {
+        if (released) throw new Error("SystemOps Lab run result reservation was released");
+        if (published) throw new Error("SystemOps Lab run result was already published");
+        await writeSystemOpsLabRunResultFile(target, result);
+        published = true;
+      },
+      release,
+    });
+  } catch (error) {
+    await handle?.close().catch(() => undefined);
+    if (reservationIdentity) {
+      const current = await lstat(reservationPath).catch(() => null);
+      if (
+        current?.isFile()
+        && !current.isSymbolicLink()
+        && current.dev === reservationIdentity.dev
+        && current.ino === reservationIdentity.ino
+      ) await unlink(reservationPath).catch(() => undefined);
+    }
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new Error("SystemOps Lab run result destination is already reserved");
+    }
+    throw error;
+  }
 }
 
 async function loadPersonaFile(personaPath: string): Promise<SystemOpsLabPersona> {
@@ -117,17 +338,29 @@ export async function runSystemOpsLabPersonaCommand(
   }
   const serializedApproval = await dependencies.readApproval(command.approvalFile);
   if (!serializedApproval.trim()) throw new Error("Internal Lab approval file is empty");
-  const result = await dependencies.execute({ command, persona, serializedApproval });
-  dependencies.write(JSON.stringify({
-    schemaVersion: 1,
-    mode: command.mode,
-    runId: result.runId,
-    personaId: result.personaId,
-    conversationId: result.conversationId,
-    turnCount: result.turns.length,
-    capturedCount: result.turns.filter((turn) => turn.captured).length,
-  }));
-  return result;
+  const reservation = await dependencies.reserveResultFile(command.resultFile!);
+  try {
+    const result = await dependencies.execute({ command, persona, serializedApproval });
+    const canonicalResult = canonicalizeRunResult(result);
+    if (
+      canonicalResult.runId !== command.runId
+      || canonicalResult.clinicId !== command.clinicId
+      || canonicalResult.personaId !== persona.personaId
+      || canonicalResult.turns.length !== persona.turns.length
+    ) throw new Error("SystemOps Lab run result does not match the execute command");
+    await reservation.publish(canonicalResult);
+    dependencies.write(JSON.stringify({
+      schemaVersion: 1,
+      mode: command.mode,
+      runId: canonicalResult.runId,
+      personaId: canonicalResult.personaId,
+      turnCount: canonicalResult.turns.length,
+      capturedCount: canonicalResult.turns.filter((turn) => turn.captured).length,
+    }));
+    return canonicalResult;
+  } finally {
+    await reservation.release();
+  }
 }
 
 function requiredEnvironment(name: string): string {
@@ -305,6 +538,7 @@ const defaultDependencies: SystemOpsLabPersonaCommandDependencies = {
   loadPersona: loadPersonaFile,
   readApproval: (approvalPath) => readFile(approvalPath, "utf8"),
   execute: executeDurablePersona,
+  reserveResultFile: reserveSystemOpsLabRunResultFile,
   write: (line) => process.stdout.write(`${line}\n`),
 };
 

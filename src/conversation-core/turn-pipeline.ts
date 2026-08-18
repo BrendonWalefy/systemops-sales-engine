@@ -15,6 +15,26 @@ export type TurnPipelineResult<Schema extends OutcomeSchema = OutcomeSchema> =
   | { status: "delivered"; capabilityIds: readonly string[]; actionResults: readonly ActionResult<Schema>[]; response: CoreResponse };
 
 export type PreparedDecision = Readonly<{ capabilityId: string; decision: Decision }>;
+export type TurnResponseAudit = Readonly<{
+  plan: Readonly<{
+    version: "authorized-response-plan.v2";
+    outcomeRefs: readonly string[];
+    evidenceRefs: readonly string[];
+    outcomeCount: number;
+    factCount: number;
+    optionCount: number;
+    subjectCount: number;
+    evidenceCount: number;
+    allowedFactKeys: readonly string[];
+  }>;
+  validation: Readonly<{
+    valid: boolean;
+    violations: readonly string[];
+    source: "draft" | "repair" | "fallback" | "none";
+    requiresHandoff: boolean;
+    latencyMs: number;
+  }>;
+}>;
 declare const preparedTurnTypes: unique symbol;
 export type PreparedTurn<Request extends string, Policy extends object, ClaimPayload extends object, Schema extends OutcomeSchema> = Readonly<{
   capabilityIds: readonly string[];
@@ -187,6 +207,7 @@ export async function completeTurnPipeline<Request extends string, Policy extend
   prepared: PreparedTurn<Request, Policy, ClaimPayload, Schema>;
   outcomeSchema: Schema;
   onActionResults?: (actionResults: readonly ActionResult<Schema>[]) => void | Promise<void>;
+  onResponseAudit?: (audit: TurnResponseAudit) => void | Promise<void>;
   response: { style: ComposerStyle; composer: ResponseComposerPort<OutcomeTypeOf<Schema>> };
 }): Promise<TurnPipelineResult<Schema>> {
   const executions = preparedTurnRegistry.get(input.prepared);
@@ -206,7 +227,37 @@ export async function completeTurnPipeline<Request extends string, Policy extend
   });
   await input.onActionResults?.(actionResults);
   const plan = buildV2AuthorizedResponsePlan(input.outcomeSchema, actionResults);
+  const responseStartedAt = performance.now();
   const responseResult = await runV2ResponsePipeline({ plan, style: input.response.style, composer: input.response.composer });
+  await input.onResponseAudit?.(Object.freeze({
+    plan: Object.freeze({
+      version: plan.version,
+      outcomeRefs: Object.freeze(plan.outcomes.map(({ ref }) => ref)),
+      evidenceRefs: Object.freeze(plan.evidence.map(({ ref }) => ref)),
+      outcomeCount: plan.outcomes.length,
+      factCount: plan.facts.length,
+      optionCount: plan.options.length,
+      subjectCount: plan.subjects.length,
+      evidenceCount: plan.evidence.length,
+      allowedFactKeys: Object.freeze(plan.facts
+        .filter(({ disclosure }) => disclosure === "allowed")
+        .map(({ key }) => key)),
+    }),
+    validation: Object.freeze({
+      valid: responseResult.status === "rendered",
+      violations: Object.freeze(responseResult.status === "no_safe_response"
+        ? [...new Set([
+            ...responseResult.violations.map(({ code }) => code),
+            responseResult.reason,
+          ])]
+        : []),
+      source: responseResult.status === "rendered" ? responseResult.source : "none",
+      requiresHandoff: plan.outcomes.some(
+        ({ semanticClass }) => semanticClass === "human_action_required",
+      ),
+      latencyMs: Math.max(0, Math.round(performance.now() - responseStartedAt)),
+    }),
+  }));
   if (responseResult.status === "no_safe_response") return { status: "rejected", actionResults };
   return { status: "delivered", capabilityIds: input.prepared.capabilityIds, actionResults, response: responseResult.response };
 }

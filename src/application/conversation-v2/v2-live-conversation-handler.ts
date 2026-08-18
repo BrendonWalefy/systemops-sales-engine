@@ -33,6 +33,7 @@ import {
   DENTAL_OUTCOME_SCHEMA,
   type DentalPolicy,
 } from "@/domain-packs/dental";
+import { dentalEffectDecisionIdentity } from "@/application/conversation-v2/dental-intended-effects";
 import {
   assertRegisteredLiveDentalUnderstanding,
   type LiveDentalUnderstanding,
@@ -167,7 +168,9 @@ export class V2LiveConversationHandler implements ConversationHandler {
     let turnNow: Date | null = null;
 
     const trace = async (
-      stage: "v2.understanding" | "v2.decision" | "v2.action_result" | "v2.outbox" | "turn.failed",
+      stage: "v2.understanding" | "v2.decision" | "v2.action_result"
+        | "response.plan_built" | "response.validated" | "response.fallback_applied"
+        | "v2.outbox" | "turn.failed",
       metadata: Record<string, string | number | boolean | null>,
     ) => recordDecisionTrace(this.deps.decisionTraceSink, {
       turnId: context.turnId,
@@ -321,6 +324,16 @@ export class V2LiveConversationHandler implements ConversationHandler {
         durationMs: Math.max(0, Math.round(performance.now() - understandingStartedAt)),
         decisionCount,
         executeCount,
+        capabilityIds: preparation.status === "prepared"
+          ? preparation.prepared.capabilityIds.join(",")
+          : "",
+        decisionKinds: preparation.status === "prepared"
+          ? preparation.prepared.decisions.map(({ decision }) => decision.kind).join(",")
+          : "",
+        intendedEffects: preparation.status === "prepared"
+          ? preparation.prepared.decisions.map(({ capabilityId, decision }) =>
+            dentalEffectDecisionIdentity({ capabilityId, decision })?.action ?? "none").join(",")
+          : "",
       });
       if (preparation.status !== "prepared") {
         const reason = preparation.status === "suppressed"
@@ -360,8 +373,44 @@ export class V2LiveConversationHandler implements ConversationHandler {
             resultCount: actionResults.length,
             completedEffectCount: completedEffectCount + persistedOfferCount,
             failedEffectCount,
+            outcomeTypes: actionResults.map(({ type }) => type).join(","),
+            semanticClasses: actionResults.map(({ semanticClass }) => semanticClass).join(","),
           });
           phase = "response";
+        },
+        onResponseAudit: async ({ plan, validation }) => {
+          await trace("response.plan_built", {
+            action: "v2_response",
+            planVersion: plan.version,
+            outcomeRefs: plan.outcomeRefs.join(","),
+            evidenceRefs: plan.evidenceRefs.join(","),
+            outcomeCount: plan.outcomeCount,
+            factCount: plan.factCount,
+            optionCount: plan.optionCount,
+            subjectCount: plan.subjectCount,
+            evidenceCount: plan.evidenceCount,
+            allowedPriceCount: plan.allowedFactKeys.filter((key) => key === "price_cents").length,
+            allowedScheduleFactCount: plan.allowedFactKeys.filter((key) =>
+              key === "slot_label" || key === "appointment_label").length,
+            allowedMediaCount: 0,
+          });
+          await trace("response.validated", {
+            action: "v2_response",
+            valid: validation.valid,
+            violationCount: validation.violations.length,
+            violations: validation.violations.join(","),
+            requiresHandoff: validation.requiresHandoff,
+            source: validation.source,
+            model: "deterministic-v2",
+            latencyMs: validation.latencyMs,
+          });
+          if (validation.source === "fallback") {
+            await trace("response.fallback_applied", {
+              action: "v2_response",
+              fallbackReason: "safe_fallback",
+              requiresHandoff: validation.requiresHandoff,
+            });
+          }
         },
         response: {
           style: configuration.style,

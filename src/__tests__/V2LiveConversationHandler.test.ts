@@ -642,5 +642,44 @@ describe("V2LiveConversationHandler", () => {
         appointmentId: expect.anything(),
       }),
     })));
+
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "v2.decision",
+        metadata: expect.objectContaining({
+          capabilityIds: "dental-catalog",
+          decisionKinds: "answer",
+          intendedEffects: "none",
+        }),
+      }),
+      expect.objectContaining({
+        stage: "v2.action_result",
+        metadata: expect.objectContaining({
+          outcomeTypes: "catalog_answered",
+          semanticClasses: "information_authorized",
+        }),
+      }),
+      expect.objectContaining({
+        stage: "response.plan_built",
+        metadata: expect.objectContaining({
+          action: "v2_response",
+          planVersion: "authorized-response-plan.v2",
+          outcomeRefs: "outcome-0",
+          evidenceRefs: "evidence-0",
+          allowedPriceCount: 1,
+        }),
+      }),
+      expect.objectContaining({
+        stage: "response.validated",
+        metadata: expect.objectContaining({
+          action: "v2_response",
+          valid: true,
+          violationCount: 0,
+          violations: "",
+          source: "draft",
+          model: "deterministic-v2",
+        }),
+      }),
+    ]));
   });
 });

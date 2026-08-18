@@ -43,6 +43,7 @@ export type SystemOpsLabPersona = Readonly<{
 
 export type SystemOpsLabRunResult = Readonly<{
   runId: string;
+  clinicId: string;
   personaId: string;
   conversationId: string;
   turns: readonly Readonly<{
@@ -526,6 +527,7 @@ export async function runSystemOpsLabPersona(input: Readonly<{
 
   return Object.freeze({
     runId: input.runId,
+    clinicId: input.clinicId,
     personaId: persona.personaId,
     conversationId,
     turns: Object.freeze([...completedTurns]),
