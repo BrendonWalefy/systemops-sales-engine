@@ -33,6 +33,7 @@
     "lab:sign-approval": "tsx scripts/sign-internal-lab-approval.ts",
     "lab:config": "tsx scripts/configure-systemops-dental-lab.ts",
     "lab:verify": "tsx scripts/verify-systemops-lab.ts",
+    "lab:personas": "tsx scripts/run-systemops-lab-personas.ts",
     "report:predicates": "tsx scripts/report-predicate-overrides.ts",
     "replay:export": "dotenv -e .env.local -- tsx scripts/export-sanitized-replay-corpus.ts",
     "replay:review": "tsx scripts/render-replay-review.ts",

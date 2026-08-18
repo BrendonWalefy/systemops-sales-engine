@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "personaId": "price-scheduling",
+  "displayName": "Pessoa decidida e sensível a preço",
+  "scenario": "price_scheduling",
+  "turns": [
+    {
+      "leadText": "Quanto custa o clareamento e tem horário amanhã?",
+      "expected": ["price_subject_binding", "scheduling_correctness", "relevance"]
+    },
+    {
+      "leadText": "Pode marcar às 15?",
+      "expected": ["journey_advancement", "scheduling_correctness", "safety"]
+    }
+  ]
+}
