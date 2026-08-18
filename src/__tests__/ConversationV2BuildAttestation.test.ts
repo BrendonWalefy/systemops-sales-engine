@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   computeCycleIImplementationSourceDigest,
@@ -38,6 +39,10 @@ vi.mock("node:fs", async (importOriginal) => {
   };
 });
 const git = vi.mocked(execFileSync);
+// The attestation must pin Git to the repository that owns the module, whatever the
+// checkout is named. Derived here from this file's own location, exactly as the module
+// derives it from its own — never from a directory name, which differs on CI.
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const commit = "a".repeat(40);
 const tree = "b".repeat(40);
 const statusEnd = "--CYCLE-I-STATUS-END--";
@@ -68,7 +73,7 @@ describe("Cycle I build attestation", () => {
     expect(Object.isFrozen(attestation)).toBe(true);
     expect(git).toHaveBeenCalledOnce();
     const options = git.mock.calls[0]![2] as { cwd: string };
-    expect(options.cwd).toMatch(/systemops-sales-engine-v2$/);
+    expect(options.cwd).toBe(repositoryRoot);
   });
 
   it("does not resolve Git or repository controls from the caller environment", () => {
@@ -101,7 +106,7 @@ describe("Cycle I build attestation", () => {
         GIT_CONFIG_GLOBAL: "/dev/null",
         GIT_CONFIG_NOSYSTEM: "1",
         GIT_OPTIONAL_LOCKS: "0",
-        GIT_WORK_TREE: expect.stringMatching(/systemops-sales-engine-v2$/),
+        GIT_WORK_TREE: repositoryRoot,
         LANG: "C",
         LC_ALL: "C",
         PATH: "/usr/bin:/bin",
