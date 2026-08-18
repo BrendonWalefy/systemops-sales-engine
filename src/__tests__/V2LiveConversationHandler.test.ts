@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { V2_SAFE_FAILURE_REPLY_TEXT } from "@/application/conversation-v2/v2-safe-failure-reply";
 import type { LiveTurnContext, LiveTurnSnapshot } from "@/application/conversation/live-turn-lifecycle";
 import { V2LiveConversationHandler } from "@/application/conversation-v2/v2-live-conversation-handler";
 import { UNDERSTANDING_VERSION } from "@/conversation-core/understanding/schema";
@@ -431,7 +432,11 @@ describe("V2LiveConversationHandler", () => {
       reason: "understanding_failed",
     });
     expect(harness.booking.book).not.toHaveBeenCalled();
-    expect(harness.createOutboundMessageAndEnqueue).not.toHaveBeenCalled();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledTimes(1);
+    expect(harness.createOutboundMessageAndEnqueue.mock.calls[0]?.[0]).toMatchObject({
+      dedupeKey: `conversation-reply:${turnId}`,
+      payload: expect.objectContaining({ replyText: V2_SAFE_FAILURE_REPLY_TEXT }),
+    });
     expect(harness.lifecycle.fail).toHaveBeenCalledTimes(1);
     expect(harness.releaseLease).toHaveBeenCalledTimes(1);
     expect(harness.trace.getEvents(turnId).at(-1)).toMatchObject({
@@ -454,7 +459,11 @@ describe("V2LiveConversationHandler", () => {
       reason: "decision_failed",
     });
     expect(harness.understand).not.toHaveBeenCalled();
-    expect(harness.createOutboundMessageAndEnqueue).not.toHaveBeenCalled();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledTimes(1);
+    expect(harness.createOutboundMessageAndEnqueue.mock.calls[0]?.[0]).toMatchObject({
+      dedupeKey: `conversation-reply:${turnId}`,
+      payload: expect.objectContaining({ replyText: V2_SAFE_FAILURE_REPLY_TEXT }),
+    });
     expect(harness.trace.getEvents(turnId).at(-1)).toMatchObject({
       stage: "turn.failed",
       metadata: expect.objectContaining({ phase: "decision", reason: "decision_failed" }),
@@ -495,13 +504,18 @@ describe("V2LiveConversationHandler", () => {
       replied: false,
       reason: "understanding_failed",
     });
-    expect(harness.createOutboundMessageAndEnqueue).not.toHaveBeenCalled();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledTimes(1);
+    expect(harness.createOutboundMessageAndEnqueue.mock.calls[0]?.[0]).toMatchObject({
+      dedupeKey: `conversation-reply:${turnId}`,
+      payload: expect.objectContaining({ replyText: V2_SAFE_FAILURE_REPLY_TEXT }),
+    });
     expect(harness.lifecycle.fail).toHaveBeenCalledTimes(1);
     expect(harness.trace.getEvents(turnId).at(-1)).toMatchObject({
       stage: "turn.failed",
       metadata: expect.objectContaining({
         phase: "understanding",
         reason: "understanding_failed",
+        safeReplyEnqueued: true,
       }),
     });
   });
