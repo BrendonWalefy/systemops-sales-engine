@@ -460,6 +460,25 @@ próprio `--clinic-id` como alvo esperado, enquanto o runtime usa
 readiness verde, a causa é essa variável ausente no deploy — verifique-a antes de
 investigar approval, digests ou canal.
 
+## 21-A. Todo deploy invalida a approval
+
+**Precondition:** qualquer deploy novo em produção, inclusive redeploy que troque o commit.
+
+A approval é vinculada ao commit exato (`claims.commitSha` contra
+`deploymentIdentity.commit`). Um deploy novo muda o commit e a approval deixa de
+valer. Como o Lab tem `operationalStatus=test`, a automação só é concedida pela
+exceção que a approval sustenta: sem ela o turno não vira resposta e o trace
+mostra `engine.selected` com `reason: "automation_not_live"`.
+
+**Expected:** depois de cada deploy, repetir as seções 18, 20 e 21 — recapturar
+bindings, reassinar com o novo `commitSha`/`treeSha`/`sourceDigest` e republicar
+`CONVERSATION_V2_INTERNAL_LAB_APPROVAL_JSON`. Um redeploy do mesmo commit não
+exige reassinatura.
+
+**Retorna a V1 se:** o commit implantado divergir do commit das claims. É
+silencioso: nenhum erro aparece, apenas o Lab para de responder. Ao investigar
+ausência de resposta, confira este ponto antes de qualquer outra hipótese.
+
 ## 22. Smoke pelo número real do owner
 
 **Precondition:** seção 21 verde.
