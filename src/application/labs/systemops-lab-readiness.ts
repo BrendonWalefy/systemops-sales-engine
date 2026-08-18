@@ -1,3 +1,8 @@
+import {
+  assertConversationEngineActivationProof,
+  type ConversationEngineActivation,
+} from "@/application/conversation-v2/engine-selection";
+
 export type SystemOpsLabReadinessReport = {
   readyForControlledInbound: boolean;
   readyForAutomation: boolean;
@@ -40,7 +45,7 @@ export type SystemOpsLabReadinessInput = {
   ownerMembershipMatches: boolean;
   webhookSecretConfigured: boolean;
   remoteConnected: boolean | null;
-  conversationEngine?: string;
+  engineActivationProof: unknown;
   configDigest?: string | null;
   expectedConfigDigest?: string | null;
   approvalDecision?: "INTERNAL_LAB_SMOKE_AUTHORIZED" | "INTERNAL_LAB_READY" | null;
@@ -52,16 +57,29 @@ export function evaluateSystemOpsLabReadiness(
 ): SystemOpsLabReadinessReport {
   const blockers: SystemOpsLabReadinessReport["blockers"] = [];
   const phase = input.phase ?? "preactivation";
+  const requiredActivation: ConversationEngineActivation = phase === "preactivation"
+    ? "preactivation_v1"
+    : "internal_live_v2";
+  let engineActivationMatches = false;
+  try {
+    assertConversationEngineActivationProof(input.engineActivationProof, {
+      clinicId: input.clinicId,
+      activation: requiredActivation,
+    });
+    engineActivationMatches = true;
+  } catch {
+    engineActivationMatches = false;
+  }
 
   if (!input.isTest) blockers.push("target_not_test");
   if (input.isDemo) blockers.push("target_is_demo");
   if (input.operationalStatus !== "test") blockers.push("status_not_test");
   if (phase === "preactivation") {
     if (input.autoReplyEnabled) blockers.push("automation_must_remain_disabled");
-    if ((input.conversationEngine ?? "v1") !== "v1") blockers.push("engine_must_be_v1");
+    if (!engineActivationMatches) blockers.push("engine_must_be_v1");
   } else {
     if (!input.autoReplyEnabled) blockers.push("automation_must_be_enabled");
-    if (input.conversationEngine !== "v2_internal") blockers.push("engine_must_be_v2_internal");
+    if (!engineActivationMatches) blockers.push("engine_must_be_v2_internal");
     if (
       !input.configDigest
       || !input.expectedConfigDigest

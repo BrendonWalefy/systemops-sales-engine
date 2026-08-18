@@ -295,7 +295,7 @@ implements SystemOpsDentalLabConfigTransaction {
 
   writeOrganization(
     clinicId: string,
-    organization: Omit<SystemOpsDentalLabOrganizationSnapshot, "id" | "autoReplyEnabled" | "shadowModeEnabled" | "conversationEngine" | "updatedAt">,
+    organization: Omit<SystemOpsDentalLabOrganizationSnapshot, "id" | "autoReplyEnabled" | "shadowModeEnabled" | "updatedAt">,
   ): Promise<void> {
     return this.database
       .update(organizations)
@@ -675,7 +675,6 @@ async function readDatabaseSnapshot(
       calendarMode: organization.calendarMode,
       autoReplyEnabled: organization.autoReplyEnabled,
       shadowModeEnabled: organization.shadowModeEnabled,
-      conversationEngine: organization.conversationEngine,
       updatedAt: organization.updatedAt.toISOString(),
     },
     professionals: professionalRows.map((row) => ({

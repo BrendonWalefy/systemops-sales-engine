@@ -11,6 +11,10 @@ import {
   parseAndRegisterDeployedInternalLabApproval,
 } from "@/application/conversation-v2/internal-lab-approval";
 import { createConfiguredCycleIRuntimeBuildIdentity } from "@/application/conversation-v2/configured-cycle-i-authority";
+import {
+  resolveConversationEngineActivationProof,
+  type ConversationEngineActivationProof,
+} from "@/application/conversation-v2/engine-selection";
 import { resolveClinicByZapiInstance } from "@/application/tenancy/resolve-clinic";
 import { getZApiInstanceStatus, type ZApiInstanceStatus } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
 import {
@@ -24,6 +28,7 @@ import {
   loadConfiguredInternalLabDeploymentIdentity,
 } from "@/infrastructure/conversation-v2/configured-internal-lab-authority";
 import { DrizzleInternalLabRuntimeBindingsReader } from "@/infrastructure/conversation-v2/drizzle-internal-lab-runtime-bindings-reader";
+import { DrizzleConversationEnginePolicyReader } from "@/infrastructure/repositories/drizzle-conversation-engine-policy-reader";
 import { and, eq } from "drizzle-orm";
 
 export type SystemOpsLabReadinessVerifierEnv = Record<string, string | undefined>;
@@ -39,7 +44,6 @@ type SystemOpsLabReadinessSnapshot = {
   operationalStatus: string;
   autoReplyEnabled: boolean;
   shadowModeEnabled: boolean;
-  conversationEngine?: string;
   channelProvider: "z_api" | "meta_cloud_api" | null;
   zapiInstanceId: string | null;
   zapiToken: string | null;
@@ -52,6 +56,10 @@ type SystemOpsLabReadinessVerifierDependencies = {
   resolveClinicByInstance(instanceId: string | null): Promise<string | null>;
   resolveChannel(snapshot: SystemOpsLabReadinessSnapshot): ClinicChannelConfig;
   getRemoteStatus(creds: NonNullable<ClinicChannelConfig["zapi"]>): Promise<ZApiInstanceStatus>;
+  resolveEngineActivation(input: {
+    clinicId: string;
+    phase: SystemOpsLabReadinessPhase;
+  }): Promise<ConversationEngineActivationProof | null>;
   resolveApproval?(input: {
     clinicId: string;
     phase: SystemOpsLabReadinessPhase;
@@ -134,6 +142,7 @@ export async function runSystemOpsLabReadinessVerifier(
       : Promise.resolve(false)
     : Promise.resolve(null);
   const resolvedClinicId = await deps.resolveClinicByInstance(snapshot.zapiInstanceId);
+  const engineActivationProof = await deps.resolveEngineActivation({ clinicId, phase });
   const approval = phase === "preactivation"
     ? {
         configDigest: null,
@@ -157,7 +166,7 @@ export async function runSystemOpsLabReadinessVerifier(
     operationalStatus: snapshot.operationalStatus,
     autoReplyEnabled: snapshot.autoReplyEnabled,
     shadowModeEnabled: snapshot.shadowModeEnabled,
-    conversationEngine: snapshot.conversationEngine,
+    engineActivationProof,
     channelProvider: channel.provider,
     zapiInstanceId: channel.zapi?.instanceId ?? snapshot.zapiInstanceId,
     hasEncryptedToken: Boolean(snapshot.zapiToken?.trim()),
@@ -208,6 +217,7 @@ export async function runSystemOpsLabReadinessCommand(
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const enginePolicyReader = new DrizzleConversationEnginePolicyReader();
   void runSystemOpsLabReadinessCommand(process.env, {
     readSnapshot: async (clinicId) => {
       const [row, ownerMembership] = await Promise.all([
@@ -219,7 +229,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
             operationalStatus: organizations.operationalStatus,
             autoReplyEnabled: organizations.autoReplyEnabled,
             shadowModeEnabled: organizations.shadowModeEnabled,
-            conversationEngine: organizations.conversationEngine,
             channelProvider: organizations.channelProvider,
             zapiInstanceId: organizations.zapiInstanceId,
             zapiToken: organizations.zapiToken,
@@ -248,6 +257,11 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
         : null;
     },
     resolveClinicByInstance: resolveClinicByZapiInstance,
+    resolveEngineActivation: ({ clinicId, phase }) =>
+      resolveConversationEngineActivationProof(enginePolicyReader, {
+        clinicId,
+        activation: phase === "preactivation" ? "preactivation_v1" : "internal_live_v2",
+      }),
     resolveChannel: resolveChannelConfig,
     getRemoteStatus: getZApiInstanceStatus,
     resolveApproval: async ({ clinicId }) => {

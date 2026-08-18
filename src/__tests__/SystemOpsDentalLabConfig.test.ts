@@ -53,7 +53,6 @@ function emptySnapshot(clinicId = labId): SystemOpsDentalLabConfigSnapshot {
       calendarMode: "internal",
       autoReplyEnabled: false,
       shadowModeEnabled: false,
-      conversationEngine: "v1",
       updatedAt: timestamp,
     },
     professionals: [],

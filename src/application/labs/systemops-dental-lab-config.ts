@@ -137,7 +137,6 @@ export type SystemOpsDentalLabOrganizationSnapshot = {
   calendarMode: string | null;
   autoReplyEnabled: boolean;
   shadowModeEnabled: boolean;
-  conversationEngine: string;
   updatedAt: string;
 };
 
@@ -211,7 +210,7 @@ export type SystemOpsDentalLabConfigSnapshot = {
 
 type DesiredOrganization = Omit<
   SystemOpsDentalLabOrganizationSnapshot,
-  "id" | "autoReplyEnabled" | "shadowModeEnabled" | "conversationEngine" | "updatedAt"
+  "id" | "autoReplyEnabled" | "shadowModeEnabled" | "updatedAt"
 >;
 type DesiredProfessional = Omit<SystemOpsDentalLabProfessionalSnapshot, "id" | "clinicId" | "updatedAt">;
 type DesiredTreatment = Omit<SystemOpsDentalLabTreatmentSnapshot, "id" | "clinicId" | "updatedAt">;
