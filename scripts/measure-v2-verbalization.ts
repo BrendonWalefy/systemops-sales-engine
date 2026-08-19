@@ -108,6 +108,32 @@ const scenarios: readonly Readonly<{ name: string; results: Results }>[] = Objec
     }],
   },
   {
+    name: "não encontrei o procedimento",
+    results: [{
+      type: "clarification_required", semanticClass: "clarification_required",
+      origin: { capabilityId: "dental-catalog" }, subject: null, evidence: [], facts: [],
+    }],
+  },
+  {
+    name: "escolha entre dois procedimentos",
+    results: [{
+      type: "service_options_offered", semanticClass: "options_found",
+      origin: { capabilityId: "dental-catalog" }, subject: null, evidence: [read], facts: [],
+      options: [
+        {
+          id: "t1",
+          subject: service,
+          facts: [{ key: "service_name", value: { kind: "display_text", value: service.displayName }, subject: service, evidence: read, disclosure: "allowed" as const }],
+        },
+        {
+          id: "t2",
+          subject: packaged,
+          facts: [{ key: "service_name", value: { kind: "display_text", value: packaged.displayName }, subject: packaged, evidence: read, disclosure: "allowed" as const }],
+        },
+      ],
+    }],
+  },
+  {
     name: "handoff humano",
     results: [{
       type: "escalation_required", semanticClass: "human_action_required",

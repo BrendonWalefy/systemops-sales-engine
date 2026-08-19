@@ -61,6 +61,16 @@ const provenanceRules = [
     outcomes: [outcome("clarification_required")],
   },
   {
+    capabilityId: "dental-explanation",
+    decisionKind: "offer",
+    outcomes: [outcome("service_options_offered")],
+  },
+  {
+    capabilityId: "dental-reception",
+    decisionKind: "escalate",
+    outcomes: [outcome("escalation_required")],
+  },
+  {
     capabilityId: "dental-reception",
     decisionKind: "ask",
     outcomes: [outcome("reception_answered")],
@@ -79,6 +89,11 @@ const provenanceRules = [
     capabilityId: "dental-catalog",
     decisionKind: "escalate",
     outcomes: [outcome("escalation_required")],
+  },
+  {
+    capabilityId: "dental-catalog",
+    decisionKind: "offer",
+    outcomes: [outcome("service_options_offered")],
   },
   {
     capabilityId: "dental-scheduling",
