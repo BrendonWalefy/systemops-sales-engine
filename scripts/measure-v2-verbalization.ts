@@ -27,10 +27,13 @@ import { createLiveResponseVerbalizer } from "../src/infrastructure/adapters/ai/
 type Results = ActionResult<typeof DENTAL_OUTCOME_SCHEMA>[];
 
 const service = { type: "service", id: "service-1", displayName: "Lentes de resina" };
+const packaged = { type: "service", id: "service-3", displayName: "Clareamento 3 sessões" };
 const evaluation = { type: "service", id: "service-2", displayName: "Avaliação" };
-const slotA = { type: "slot", id: "slot-1", displayName: "quarta às 15h" };
-const slotB = { type: "slot", id: "slot-2", displayName: "quinta às 9h" };
-const appointment = { type: "appointment", id: "appointment-1", displayName: "quarta às 15h" };
+// Formato real de `ClinicTimezone.formatForHuman`, e não um rótulo idealizado:
+// é ele que a verbalização precisa atravessar inteiro.
+const slotA = { type: "slot", id: "slot-1", displayName: "Qua 20/08 às 15h30" };
+const slotB = { type: "slot", id: "slot-2", displayName: "Qui 21/08 às 9h" };
+const appointment = { type: "appointment", id: "appointment-1", displayName: "Qua 20/08 às 15h30" };
 const read = { source: "read", reference: "catalog-1" } as const;
 const write = { source: "write", reference: "booking-1" } as const;
 
@@ -81,8 +84,19 @@ const scenarios: readonly Readonly<{ name: string; results: Results }>[] = Objec
       type: "appointment_created", semanticClass: "effect_completed",
       origin: { capabilityId: "dental-scheduling" }, subject: appointment, evidence: [write],
       facts: [{
-        key: "appointment_label", value: { kind: "display_text", value: "quarta às 15h" },
+        key: "appointment_label", value: { kind: "display_text", value: appointment.displayName },
         subject: appointment, evidence: write, disclosure: "allowed",
+      }],
+    }],
+  },
+  {
+    name: "preço de item com número no nome",
+    results: [{
+      type: "catalog_answered", semanticClass: "information_authorized",
+      origin: { capabilityId: "dental-catalog" }, subject: packaged, evidence: [read],
+      facts: [{
+        key: "price_cents", value: { kind: "money", amountInMinor: 120_000, currency: "BRL" },
+        subject: packaged, evidence: read, disclosure: "allowed",
       }],
     }],
   },
@@ -161,7 +175,7 @@ async function main(): Promise<void> {
           statements: authorizedStatementsFor(validation.draft),
           style: { tone: "warm", verbosity: "concise", greeting: "omit", emoji: "none" },
           speaker,
-        }) as string;
+        }, { signal: AbortSignal.timeout(20_000) }) as string;
       } catch (error) {
         console.log(`  falhou: ${error instanceof Error ? error.message : "erro"}`);
         rejections.set("provider_error", (rejections.get("provider_error") ?? 0) + 1);
