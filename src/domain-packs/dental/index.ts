@@ -2,6 +2,7 @@ import type { DomainPack } from "@/domain-packs/contract";
 import {
   createDentalCatalogCapability,
   createDentalEscalationCapability,
+  createDentalReceptionCapability,
   createDentalSchedulingCapability,
   DENTAL_OUTCOME_SCHEMA,
   type DentalClaimPayload,
@@ -56,6 +57,7 @@ export function createDentalPack(ports: {
         ports.schedulingWrite,
       ),
       createDentalEscalationCapability(),
+      createDentalReceptionCapability(),
     ],
     journeys: [
       { id: "price", capabilityIds: ["dental-catalog", "dental-escalation"] },

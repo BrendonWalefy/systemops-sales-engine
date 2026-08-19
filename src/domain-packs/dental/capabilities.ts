@@ -52,6 +52,11 @@ export type DentalSchedulingClaimPayload =
       pendingStepId: string | null;
     };
 
+export type DentalReceptionClaimPayload = {
+  kind: "reception";
+  request: "greeting" | "other";
+};
+
 export type DentalEscalationClaimPayload = {
   kind: "escalation";
   emergency: boolean;
@@ -61,7 +66,8 @@ export type DentalEscalationClaimPayload = {
 export type DentalClaimPayload =
   | DentalCatalogClaimPayload
   | DentalSchedulingClaimPayload
-  | DentalEscalationClaimPayload;
+  | DentalEscalationClaimPayload
+  | DentalReceptionClaimPayload;
 
 export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
   catalog_answered: {
@@ -101,6 +107,11 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
   },
   escalation_required: {
     semanticClass: "human_action_required",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "optional",
+  },
+  reception_answered: {
+    semanticClass: "engagement_invited",
     subjectRequirement: "forbidden",
     evidenceRequirement: "optional",
   },
@@ -589,6 +600,47 @@ export function createDentalEscalationCapability(): Capability<
         type: "escalation_required",
         semanticClass: "human_action_required",
         origin: { capabilityId: "dental-escalation" },
+        subject: null,
+        evidence: [],
+        facts: [],
+      };
+    },
+  };
+}
+
+
+/**
+ * Abertura social e pedido fora do catálogo transacional.
+ *
+ * Sem esta capability nenhuma outra reivindica o turno, o coordinator não tem o
+ * que decidir e o lead fica sem resposta — que era o comportamento observado
+ * para "oi", "bom dia" e qualquer mensagem que não fosse preço, disponibilidade
+ * ou agendamento.
+ */
+export function createDentalReceptionCapability(): Capability<
+  DentalRequest,
+  DentalPolicy,
+  DentalClaimPayload,
+  typeof DENTAL_OUTCOME_SCHEMA
+> {
+  return {
+    id: "dental-reception",
+    claim(understanding) {
+      if (understanding.request !== "greeting" && understanding.request !== "other") return null;
+      if (understanding.safety.emergency || understanding.safety.requestsHuman) return null;
+      return ownedClaim("dental-reception", understanding.confidence, {
+        kind: "reception",
+        request: understanding.request,
+      });
+    },
+    async decide(): Promise<Decision> {
+      return { kind: "ask", questionId: "reception-how-can-i-help" };
+    },
+    async execute(): Promise<ActionResult<typeof DENTAL_OUTCOME_SCHEMA>> {
+      return {
+        type: "reception_answered",
+        semanticClass: "engagement_invited",
+        origin: { capabilityId: "dental-reception" },
         subject: null,
         evidence: [],
         facts: [],

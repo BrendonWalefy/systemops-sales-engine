@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "personaId": "out-of-scope",
+  "displayName": "Pergunta fora do catálogo transacional",
+  "scenario": "out_of_scope",
+  "turns": [
+    {
+      "leadText": "vocês atendem sábado?",
+      "expected": ["relevance", "unauthorized_facts", "invented_commitment"]
+    },
+    {
+      "leadText": "vocês vendem plano de saúde?",
+      "expected": ["relevance", "unauthorized_facts", "factual_correctness"]
+    },
+    {
+      "leadText": "obrigado!",
+      "expected": ["relevance", "safety"]
+    }
+  ]
+}
