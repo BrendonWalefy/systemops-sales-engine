@@ -124,8 +124,8 @@ function deepFreeze(value: unknown, seen = new WeakSet<object>()): void {
 }
 
 function dentalService(value: unknown): DentalService {
-  const source = record(value, ["id", "name", "priceCents", "priceDisclosable"]);
-  return { id: string(source.id), name: string(source.name), priceCents: source.priceCents === null ? null : finiteNumber(source.priceCents), priceDisclosable: boolean(source.priceDisclosable) };
+  const source = record(value, ["id", "name", "priceCents", "priceDisclosable", "description"]);
+  return { id: string(source.id), name: string(source.name), priceCents: source.priceCents === null ? null : finiteNumber(source.priceCents), priceDisclosable: boolean(source.priceDisclosable), description: nullableString(source.description) };
 }
 
 function boolean(value: unknown): boolean {

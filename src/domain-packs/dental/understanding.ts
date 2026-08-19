@@ -15,7 +15,9 @@ const schema = z.object({
   confidence: z.number().min(0).max(1),
   ambiguity: z.object({ kind: z.string().min(1), candidates: z.array(z.string()).min(2) }).strict().nullable(),
 }).strict().superRefine((value, context) => {
-  if ((value.request === "price-of-service" || value.request === "service-availability")
+  if ((value.request === "price-of-service"
+    || value.request === "service-availability"
+    || value.request === "explain-service")
     && typeof value.entities.service !== "string") {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["entities", "service"], message: "service is required for this request" });
   }

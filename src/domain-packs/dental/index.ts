@@ -8,6 +8,7 @@ import {
   type DentalClaimPayload,
   type DentalPolicy,
 } from "@/domain-packs/dental/capabilities";
+import { createDentalExplanationCapability } from "@/domain-packs/dental/explanation-capability";
 import type {
   DentalCatalogReadPort,
   DentalSchedulingReadPort,
@@ -51,6 +52,7 @@ export function createDentalPack(ports: {
     id: "dental",
     outcomeSchema: DENTAL_OUTCOME_SCHEMA,
     capabilities: [
+      createDentalExplanationCapability(ports.catalogRead),
       createDentalCatalogCapability(ports.catalogRead),
       createDentalSchedulingCapability(
         ports.schedulingRead,
@@ -60,6 +62,7 @@ export function createDentalPack(ports: {
       createDentalReceptionCapability(),
     ],
     journeys: [
+      { id: "explanation", capabilityIds: ["dental-explanation", "dental-escalation"] },
       { id: "price", capabilityIds: ["dental-catalog", "dental-escalation"] },
       {
         id: "availability",

@@ -41,6 +41,7 @@ export type V1TurnObservationEvent =
         name: string;
         priceCents: number | null;
         priceDisclosable: boolean;
+        description: string | null;
       }>[];
     }>
   | Readonly<{
@@ -61,6 +62,7 @@ export type V1TurnObservationEvent =
               name: string;
               priceCents: number | null;
               priceDisclosable: boolean;
+              description: string | null;
             }>;
             evidenceRef: string;
           }>
@@ -322,12 +324,13 @@ export function snapshotV1TurnObservation(
           };
         }),
         catalog: array(source.catalog).map((entry) => {
-          const item = plainRecord(entry, ["id", "name", "priceCents", "priceDisclosable"]);
+          const item = plainRecord(entry, ["id", "name", "priceCents", "priceDisclosable", "description"]);
           return {
             id: nonEmptyString(item.id),
             name: nonEmptyString(item.name),
             priceCents: nullableNumber(item.priceCents),
             priceDisclosable: boolean(item.priceDisclosable),
+            description: nullableString(item.description),
           };
         }),
       };
@@ -341,7 +344,7 @@ export function snapshotV1TurnObservation(
       const resultKind = string(result.kind);
       if (resultKind === "exact") {
         const exact = plainRecord(result, ["kind", "service", "evidenceRef"]);
-        const service = plainRecord(exact.service, ["id", "name", "priceCents", "priceDisclosable"]);
+        const service = plainRecord(exact.service, ["id", "name", "priceCents", "priceDisclosable", "description"]);
         snapshot = {
           kind,
           turnId,
@@ -353,6 +356,7 @@ export function snapshotV1TurnObservation(
               name: nonEmptyString(service.name),
               priceCents: nullableNumber(service.priceCents),
               priceDisclosable: boolean(service.priceDisclosable),
+              description: nullableString(service.description),
             },
             evidenceRef: nonEmptyString(exact.evidenceRef),
           },

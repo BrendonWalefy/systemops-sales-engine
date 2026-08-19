@@ -17,7 +17,7 @@ const understanding = (request: DentalRequest, service: string): Understanding<D
 describe("Dental Catalog capability", () => {
   it("amarra preço autorizado ao serviço resolvido e só lê durante decide", async () => {
     const resolveService = vi.fn<DentalCatalogReadPort["resolveService"]>().mockResolvedValue({
-      kind: "exact", service: { id: "svc-1", name: "Clareamento", priceCents: 29_000, priceDisclosable: true },
+      kind: "exact", service: { id: "svc-1", name: "Clareamento", priceCents: 29_000, priceDisclosable: true, description: null },
       evidenceRef: "catalog-revision-7",
     });
     const capability = createDentalCatalogCapability({ resolveService });
@@ -47,7 +47,7 @@ describe("Dental Catalog capability", () => {
 
   it("não divulga preço quando policy proíbe", async () => {
     const capability = createDentalCatalogCapability({ resolveService: async () => ({
-      kind: "exact", service: { id: "svc-1", name: "Clareamento", priceCents: 29_000, priceDisclosable: true }, evidenceRef: "catalog-1",
+      kind: "exact", service: { id: "svc-1", name: "Clareamento", priceCents: 29_000, priceDisclosable: true, description: null }, evidenceRef: "catalog-1",
     }) });
     const claim = capability.claim(understanding("price-of-service", "clareamento"), state)!;
     const decision = await capability.decide(claim, { state, policy: { ...policy, priceDisclosureEnabled: false }, now: new Date(0) });
@@ -56,7 +56,7 @@ describe("Dental Catalog capability", () => {
 
   it("escala preço bloqueado somente quando policy exige humano", async () => {
     const capability = createDentalCatalogCapability({ resolveService: async () => ({
-      kind: "exact", service: { id: "svc-1", name: "Clareamento", priceCents: 29_000, priceDisclosable: false }, evidenceRef: "catalog-1",
+      kind: "exact", service: { id: "svc-1", name: "Clareamento", priceCents: 29_000, priceDisclosable: false, description: null }, evidenceRef: "catalog-1",
     }) });
     const claim = capability.claim(understanding("price-of-service", "clareamento"), state)!;
     const blockedPolicy = { ...policy, humanEscalationRequired: true };

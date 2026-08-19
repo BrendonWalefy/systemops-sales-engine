@@ -16,7 +16,9 @@ const treatment = (overrides: Partial<{
   priceCents: number | null;
   minPriceCents: number | null;
   priceQuotableInChat: boolean;
+  description: string | null;
 }> = {}) => ({
+  description: overrides.description ?? null,
   id: overrides.id ?? "treatment-fixed",
   name: overrides.name ?? "Avaliação",
   priceCents: overrides.priceCents === undefined ? 25_000 : overrides.priceCents,
@@ -51,8 +53,8 @@ describe("ConversationOrchestrator V1 observation builders", () => {
 
     expect(event.policy).toEqual({ status: "unavailable", reason: "not_read_by_v1" });
     expect(event.catalog).toEqual([
-      { id: "treatment-fixed", name: "Avaliação", priceCents: 25_000, priceDisclosable: true },
-      { id: "treatment-from", name: "Lentes", priceCents: null, priceDisclosable: false },
+      { id: "treatment-fixed", name: "Avaliação", priceCents: 25_000, priceDisclosable: true, description: null },
+      { id: "treatment-from", name: "Lentes", priceCents: null, priceDisclosable: false, description: null },
     ]);
     expect(JSON.stringify(event)).not.toContain("requiresEvaluationFirst");
   });
@@ -107,7 +109,7 @@ describe("ConversationOrchestrator V1 observation builders", () => {
 
     expect(exact.result).toEqual({
       kind: "exact",
-      service: { id: "lentes", name: "Lentes", priceCents: null, priceDisclosable: false },
+      service: { id: "lentes", name: "Lentes", priceCents: null, priceDisclosable: false, description: null },
       evidenceRef: "v1-service:turn-price:lentes",
     });
     expect(ambiguous.result).toEqual({

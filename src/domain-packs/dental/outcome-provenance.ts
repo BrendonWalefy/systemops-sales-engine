@@ -5,6 +5,7 @@ import {
 } from "@/domain-packs/dental/capabilities";
 
 export type DentalCapabilityId =
+  | "dental-explanation"
   | "dental-catalog"
   | "dental-scheduling"
   | "dental-escalation"
@@ -49,6 +50,16 @@ function outcome<const Type extends DentalOutcomeType>(
 }
 
 const provenanceRules = [
+  {
+    capabilityId: "dental-explanation",
+    decisionKind: "answer",
+    outcomes: [outcome("service_explained")],
+  },
+  {
+    capabilityId: "dental-explanation",
+    decisionKind: "ask",
+    outcomes: [outcome("clarification_required")],
+  },
   {
     capabilityId: "dental-reception",
     decisionKind: "ask",

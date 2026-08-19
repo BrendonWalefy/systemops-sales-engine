@@ -1,4 +1,11 @@
-export type DentalService = { id: string; name: string; priceCents: number | null; priceDisclosable: boolean };
+export type DentalService = {
+  id: string;
+  name: string;
+  priceCents: number | null;
+  priceDisclosable: boolean;
+  /** Texto cadastrado que explica o procedimento. Null quando ninguém preencheu. */
+  description: string | null;
+};
 
 export type ServiceResolution =
   | { kind: "exact"; service: DentalService; evidenceRef: string }
