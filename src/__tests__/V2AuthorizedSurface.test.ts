@@ -130,6 +130,20 @@ describe("superfície autorizada de um plano", () => {
     expect(surface.maxQuestions).toBe(1);
   });
 
+  it("autoriza uma pergunta quando o plano oferece opções, porque escolher é a resposta", () => {
+    const surface = surfaceOf([{
+      type: "options_ready",
+      semanticClass: "options_found",
+      origin: { capabilityId: "agenda" },
+      subject: item,
+      evidence: [evidence],
+      facts: [],
+      options: [slot("w", "Qua 20/08 às 15h30"), slot("t", "Qui 21/08 às 9h")],
+    }]);
+
+    expect(surface.maxQuestions).toBe(1);
+  });
+
   it("não autoriza pergunta quando o plano só informa um fato", () => {
     const surface = surfaceOf([{
       type: "quote_ready",

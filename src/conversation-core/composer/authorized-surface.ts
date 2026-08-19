@@ -20,8 +20,9 @@ function digitRunsIn(text: string): readonly string[] {
  * cada valor divulgável na forma exata em que o leitor deve lê-lo. Fato interno
  * não entra — ele existe para a decisão, não para o leitor.
  *
- * Pergunta é autorizada apenas quando algum ato pede: informar um fato não dá
- * ao modelo a liberdade de propor um próximo passo que ninguém decidiu.
+ * Pergunta é autorizada apenas quando algum ato pede resposta: informar um fato
+ * ou confirmar uma ação não dá ao modelo a liberdade de propor um próximo passo
+ * que ninguém decidiu.
  */
 export function authorizedSurfaceFor<OutcomeType extends string>(
   draft: ValidatedDraftResponse<OutcomeType>,
@@ -74,9 +75,11 @@ export function authorizedSurfaceFor<OutcomeType extends string>(
     moneyValues: Object.freeze(moneyValues),
     numbers: Object.freeze([...numbers]),
     currencyAllowed: moneyValues.length > 0,
-    maxQuestions: draft.acts.some(
-      (act) => act.kind === "ask_clarification" || act.kind === "invite_engagement",
-    ) ? 1 : 0,
+    maxQuestions: draft.acts.some((act) => act.kind === "ask_clarification"
+      || act.kind === "invite_engagement"
+      // Oferecer opções é pedir uma escolha: a pergunta pertence ao próprio ato,
+      // e não é um próximo passo que o modelo inventou.
+      || act.kind === "offer_options") ? 1 : 0,
     maxCharacters: Math.min(
       MAX_CHARACTERS,
       BASE_CHARACTERS + CHARACTERS_PER_ACT * draft.acts.length,

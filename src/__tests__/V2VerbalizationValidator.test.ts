@@ -201,4 +201,28 @@ describe("validador do texto verbalizado", () => {
 
     expect(result).toEqual({ valid: false, violations: ["empty_text"] });
   });
+
+  it("recusa retorno prometido, que nenhuma capability decidiu fazer", () => {
+    for (const text of [
+      "Vou passar para a equipe e te aviso assim que tiver retorno.",
+      "Entramos em contato com você em breve.",
+      "Assim que souber, eu retorno para você.",
+    ]) {
+      const result = validateVerbalizedText({
+        text,
+        surface: surfaceWith({ values: [], moneyValues: [], currencyAllowed: false }),
+      });
+
+      expect(result.valid === false && result.violations).toContain("unauthorized_commitment");
+    }
+  });
+
+  it("aceita convidar o lead a avisar, que é o contrário de prometer retorno", () => {
+    const text = "Se precisar de mais alguma coisa, é só me avisar.";
+
+    expect(validateVerbalizedText({
+      text,
+      surface: surfaceWith({ values: [], moneyValues: [], currencyAllowed: false }),
+    })).toEqual({ valid: true, text });
+  });
 });

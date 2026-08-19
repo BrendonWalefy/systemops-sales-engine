@@ -44,8 +44,13 @@ export type VerbalizationValidationResult =
 const DIGIT_RUN = /\p{Nd}[\p{Nd}.,:/h  -]*\p{Nd}|\p{Nd}/gu;
 const MONEY_LEXEME = /R\$|\bBRL\b|\breais?\b|\bcontos?\b/i;
 const LINK = /https?:\/\/|\bwww\.|@[a-z0-9_.]{3,}|\b[a-z0-9-]+\.(?:com|br|net|org|io)\b/i;
-/** Compromisso pessoal: o sistema nunca decidiu prometer, garantir ou jurar nada. */
-const COMMITMENT = /\b(?:garant|promet|assegur|jur)\w*/;
+/**
+ * Compromisso pessoal: o sistema nunca decidiu prometer, garantir ou jurar nada.
+ * Prometer retorno é o caso mais comum e o menos evidente — "te aviso" soa
+ * gentil e cria uma obrigação que nenhuma capability assumiu. Convidar o lead a
+ * avisar é o contrário disso e continua permitido.
+ */
+const COMMITMENT = /\b(?:garant|promet|assegur|jur)\w*|\b(?:te|lhe|voce)\s+(?:aviso|avisamos|retorno|retornamos|informo|informamos)\b|\b(?:aviso|avisamos|retorno|retornamos)\s+(?:voce|para voce|assim que)\b|\bentr(?:o|amos|aremos)\s+em\s+contato\b/;
 /**
  * Numeral escrito por extenso só é fato quando encosta em dinheiro ou em tempo.
  * "um instante" é conversa; "trezentos reais" e "oito da manhã" são afirmações
