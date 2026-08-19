@@ -141,6 +141,25 @@ export function TreatmentRow({
               />
             </div>
 
+            <input type="hidden" name="descriptionPresent" value="1" />
+            <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              <span style={{ fontSize: "12px", color: S.textSec }}>
+                O que é, em uma ou duas frases faladas
+              </span>
+              <textarea
+                name="description"
+                defaultValue={treatment.description ?? ""}
+                rows={3}
+                maxLength={240}
+                placeholder="Camadas finas de resina aplicadas na frente dos dentes para mudar cor, formato e fechar pequenos espaços. Quantas sessões depende da avaliação."
+                style={{ ...inputStyle, height: "auto", padding: "8px 10px", lineHeight: 1.45, resize: "vertical" }}
+              />
+              <span style={{ fontSize: "11px", color: S.textMuted }}>
+                É o texto que a IA usa para explicar o procedimento. Descreva, não prometa: sem
+                preço, sem prazo de duração, sem garantia. Máximo de 240 caracteres.
+              </span>
+            </label>
+
             <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
               <SaveButton />
               {cancelBtn}
