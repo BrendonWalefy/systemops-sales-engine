@@ -27,7 +27,7 @@ describe("pipeline de resposta V2", () => {
     await expect(runV2ResponsePipeline({
       plan: responsePlanFixture, style, composer: composer(validDraft),
     })).resolves.toEqual({
-      status: "rendered", source: "draft",
+      status: "rendered", source: "draft", verbalization: { status: "absent" },
       response: { text: "Informação: 1200.", parts: [] },
     });
   });
@@ -39,7 +39,7 @@ describe("pipeline de resposta V2", () => {
     });
 
     expect(result).toEqual({
-      status: "rendered", source: "repair",
+      status: "rendered", source: "repair", verbalization: { status: "absent" },
       response: { text: "Informação: 1200.", parts: [] },
     });
   });
@@ -51,7 +51,7 @@ describe("pipeline de resposta V2", () => {
     });
 
     expect(result).toEqual({
-      status: "rendered", source: "repair",
+      status: "rendered", source: "repair", verbalization: { status: "absent" },
       response: { text: "Informação: 1200.", parts: [] },
     });
   });
@@ -62,7 +62,7 @@ describe("pipeline de resposta V2", () => {
     });
 
     expect(result).toEqual({
-      status: "rendered", source: "fallback",
+      status: "rendered", source: "fallback", verbalization: { status: "absent" },
       response: { text: "Informação: 1200. Não foi possível concluir a ação.", parts: [] },
     });
   });

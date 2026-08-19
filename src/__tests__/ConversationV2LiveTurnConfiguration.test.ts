@@ -101,4 +101,70 @@ describe("Internal Lab live turn configuration", () => {
     expect(expired.gateInput.humanControlled).toBe(false);
     expect(manual.gateInput.humanControlled).toBe(true);
   });
+
+  it("leva a voz da empresa para dentro da resposta, sem levar fato que ninguém autorizou", async () => {
+    const configuration = await resolveInternalLabLiveTurnConfiguration({
+      context: context({
+        clinic: { id: "clinic-lab", name: "SystemOps Dental Lab" },
+        editorial: {
+          toneOfVoice: "acolhedor e objetivo",
+          receptionistName: "Marina",
+          specialty: "odontologia estética",
+          commercialPolicy: "Lentes de resina: R$ 4.000. Avaliação sempre gratuita.",
+          differentials: ["Atendimento no mesmo dia"],
+          objections: [{ objection: "está caro", response: "temos parcelamento em 10x" }],
+          playbookText: [
+            "Responder primeiro, perguntar depois.",
+            "PROCEDIMENTOS OFERECIDOS:\n• Lentes de resina",
+            "DIFERENCIAIS:\n• Atendimento no mesmo dia",
+            "GARANTIA:\n- troca em 12 meses",
+            "COMO LIDAR COM OBJEÇÕES:\n- \"está caro\" → temos parcelamento em 10x",
+          ].join("\n\n"),
+        },
+      }),
+      turnInput: turnInput(),
+      now,
+    }, {
+      resolveVoice: vi.fn().mockResolvedValue({
+        voiceEnabled: false,
+        ttsConfig: { provider: "nova", speed: 0.92 },
+      }),
+      resumeExpiredTakeover: vi.fn(),
+      resolveDeliveryBinding,
+    });
+
+    expect(configuration.speaker).toEqual({
+      agentName: "Marina",
+      organizationName: "SystemOps Dental Lab",
+      specialty: "odontologia estética",
+      toneOfVoice: "acolhedor e objetivo",
+      guidelines: ["Responder primeiro, perguntar depois."],
+    });
+  });
+
+  it("não inventa voz quando a organização ainda não publicou playbook", async () => {
+    const configuration = await resolveInternalLabLiveTurnConfiguration({
+      context: context({
+        clinic: { id: "clinic-lab", name: "SystemOps Dental Lab" },
+        editorial: null,
+      }),
+      turnInput: turnInput(),
+      now,
+    }, {
+      resolveVoice: vi.fn().mockResolvedValue({
+        voiceEnabled: false,
+        ttsConfig: { provider: "nova", speed: 0.92 },
+      }),
+      resumeExpiredTakeover: vi.fn(),
+      resolveDeliveryBinding,
+    });
+
+    expect(configuration.speaker).toEqual({
+      agentName: null,
+      organizationName: "SystemOps Dental Lab",
+      specialty: null,
+      toneOfVoice: null,
+      guidelines: [],
+    });
+  });
 });

@@ -9,6 +9,7 @@ import type { Conversation, Message } from "@/domain/entities/conversation";
 import type { Lead } from "@/domain/entities/lead";
 import type { Treatment } from "@/domain/entities/treatment";
 import { createLiveDentalUnderstanding } from "@/infrastructure/adapters/ai/live-dental-understanding";
+import { createLiveResponseVerbalizer } from "@/infrastructure/adapters/ai/live-response-verbalizer";
 
 const now = new Date("2026-08-17T12:00:00.000Z");
 const turnId = "turn-v2-live-1";
@@ -100,6 +101,8 @@ function makeHarness(options: {
   nonPreparedStatus?: "suppressed" | "needs_clarification" | "escalated";
   deriveReplyGate?: boolean;
   safetyOptOut?: boolean;
+  verbalizedText?: string;
+  verbalizerFailure?: boolean;
 } = {}) {
   const releaseLease = vi.fn().mockResolvedValue(undefined);
   const context: LiveTurnContext = Object.freeze({
@@ -232,9 +235,25 @@ function makeHarness(options: {
         understand,
       } as never)
     : registeredUnderstanding;
+  const verbalize = vi.fn(async () => {
+    if (options.verbalizerFailure) throw new Error("provider down");
+    return options.verbalizedText;
+  });
+  const verbalizer = options.verbalizedText !== undefined || options.verbalizerFailure
+    ? createLiveResponseVerbalizer({
+        chat: {
+          completions: {
+            create: vi.fn(async () => ({
+              choices: [{ message: { content: JSON.stringify({ text: await verbalize() }) } }],
+            })),
+          },
+        },
+      })
+    : undefined;
   const handler = new V2LiveConversationHandler({
     lifecycle,
     understanding: understandingBoundary,
+    verbalizer,
     dental: {
       treatments: {
         listByClinic: options.decisionFailure
@@ -292,6 +311,13 @@ function makeHarness(options: {
         greeting: "omit",
         emoji: "none",
       },
+      speaker: {
+        agentName: "Marina",
+        organizationName: clinic.name,
+        specialty: null,
+        toneOfVoice: "acolhedor",
+        guidelines: [],
+      },
       useVoice: false,
       ttsConfig: { provider: "nova", speed: 0.92 },
       deliveryBinding: {
@@ -323,6 +349,7 @@ function makeHarness(options: {
     createOutboundMessageAndEnqueue,
     persistStopContact,
     trace,
+    verbalize,
   };
 }
 
@@ -695,5 +722,82 @@ describe("V2LiveConversationHandler", () => {
         }),
       }),
     ]));
+  });
+
+  it("entrega ao lead a prosa do modelo quando ela cabe no plano autorizado", async () => {
+    const harness = makeHarness({
+      verbalizedText: "O clareamento fica R$ 800,00.",
+    });
+
+    await harness.handler.handle(handleInput());
+
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          replyText: "O clareamento fica R$ 800,00.",
+        }),
+      }),
+      expect.anything(),
+    );
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "response.validated",
+        metadata: expect.objectContaining({
+          valid: true,
+          model: "gpt-4o-mini",
+          verbalizationViolations: "",
+        }),
+      }),
+    ]));
+  });
+
+  it("recusa a prosa que inventa preço e responde com o texto autorizado", async () => {
+    const harness = makeHarness({
+      verbalizedText: "Fecho para você por R$ 199,00 hoje.",
+    });
+
+    await harness.handler.handle(handleInput());
+
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          replyText: expect.stringContaining("R$ 800,00"),
+        }),
+      }),
+      expect.anything(),
+    );
+    expect(harness.createOutboundMessageAndEnqueue).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({ replyText: expect.stringContaining("199") }),
+      }),
+      expect.anything(),
+    );
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "response.validated",
+        metadata: expect.objectContaining({
+          valid: true,
+          model: "deterministic-fallback",
+          promptVersion: "deterministic-renderer.v1",
+          verbalizationViolations: "missing_authorized_value,unauthorized_number",
+        }),
+      }),
+    ]));
+  });
+
+  it("responde mesmo quando o verbalizador quebra", async () => {
+    const harness = makeHarness({ verbalizerFailure: true });
+
+    const result = await harness.handler.handle(handleInput());
+
+    expect(result).toEqual({ replied: true });
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          replyText: expect.stringContaining("R$ 800,00"),
+        }),
+      }),
+      expect.anything(),
+    );
   });
 });
