@@ -57,6 +57,9 @@ export const SYSTEMOPS_DENTAL_LAB_CONFIG = deepFreeze({
   treatments: [
     {
       name: "Avaliação odontológica",
+      aliases: ["avaliação", "avaliacao", "consulta", "primeira consulta", "orçamento", "orcamento", "diagnóstico"],
+      description:
+        "Uma consulta para examinar sua boca, entender o que você quer mudar e montar um plano com as opções e os valores. Dura cerca de uma hora e é o que define o que dá para fazer no seu caso.",
       priceCents: 10_000,
       priceKind: "fixed",
       priceQuotableInChat: true,
@@ -72,6 +75,9 @@ export const SYSTEMOPS_DENTAL_LAB_CONFIG = deepFreeze({
     },
     {
       name: "Lentes/facetas em resina",
+      aliases: ["lente", "lentes", "lente de contato", "lente de contato dental", "faceta", "facetas", "faceta de resina", "resina", "lente dental"],
+      description:
+        "Camadas finas de resina aplicadas na frente dos dentes para mudar cor, formato e fechar pequenos espaços. É feito no consultório, sem cirurgia. Quantos dentes e quantas sessões depende da avaliação.",
       priceCents: 250_000,
       priceKind: "from",
       priceQuotableInChat: true,
@@ -93,6 +99,9 @@ export const SYSTEMOPS_DENTAL_LAB_CONFIG = deepFreeze({
     },
     {
       name: "Clareamento dental",
+      aliases: ["clareamento", "clarear", "clareamento dental", "branqueamento", "dente amarelo", "deixar os dentes brancos"],
+      description:
+        "Tratamento que clareia a cor natural dos dentes com gel aplicado no consultório. São cerca de 90 minutos por sessão. O quanto clareia varia de pessoa para pessoa e é avaliado antes.",
       priceCents: 90_000,
       priceKind: "fixed",
       priceQuotableInChat: true,
@@ -162,9 +171,11 @@ export type SystemOpsDentalLabTreatmentSnapshot = {
   priceDeductible: boolean;
   durationMinutes: number;
   requiresEvaluationFirst: boolean;
-  description?: string | null;
+  // Obrigatórios: são os dois insumos que o modelo usa para reconhecer o pedido
+  // e para explicar o procedimento. Opcionais, eles ficavam nulos para sempre.
+  description: string | null;
+  aliases: string[];
   keywordMatchEnabled?: boolean;
-  aliases?: string[];
   isAesthetic?: boolean;
   pipelineSteps?: PipelineStep[] | null;
   pipelineSourceTreatmentId?: string | null;
@@ -493,6 +504,11 @@ export function validateSystemOpsDentalLabSnapshot(snapshot: unknown): ReadonlyA
     const actual = matches[0];
     if (!same({
       name: actual.name,
+      // Apelido e descrição entram na verificação porque são insumo do modelo:
+      // o apelido é o que faz "lente de contato" achar o tratamento, e a
+      // descrição é o único texto autorizado que explica o procedimento.
+      aliases: actual.aliases,
+      description: actual.description,
       priceCents: actual.priceCents,
       priceKind: actual.priceKind,
       priceQuotableInChat: actual.priceQuotableInChat,
@@ -560,6 +576,7 @@ export async function applySystemOpsDentalLabConfig(
     for (const treatment of SYSTEMOPS_DENTAL_LAB_CONFIG.treatments) {
       await transaction.upsertTreatment(target.clinicId, {
         ...treatment,
+        aliases: [...treatment.aliases],
         pipelineSteps: [...treatment.pipelineSteps],
       });
     }
