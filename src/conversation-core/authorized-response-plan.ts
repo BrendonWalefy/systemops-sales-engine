@@ -8,6 +8,7 @@ import type {
   OutcomeSemanticClass,
   Subject,
 } from "@/conversation-core/decision";
+import { OUTCOME_SEMANTIC_CLASSES } from "@/conversation-core/decision";
 import {
   assertActionResultMatchesOutcomeSchema,
   assertOutcomeSchema,
@@ -143,14 +144,7 @@ function assertActionResultRuntimeShape(value: unknown): void {
   }
 }
 
-const semanticClassValues: ReadonlySet<unknown> = new Set<OutcomeSemanticClass>([
-  "information_authorized",
-  "options_found",
-  "effect_completed",
-  "effect_failed",
-  "human_action_required",
-  "clarification_required",
-]);
+const semanticClassValues: ReadonlySet<unknown> = new Set<string>(OUTCOME_SEMANTIC_CLASSES);
 
 export function canonicalizeActionResults<Schema extends OutcomeSchema>(
   schema: Schema,

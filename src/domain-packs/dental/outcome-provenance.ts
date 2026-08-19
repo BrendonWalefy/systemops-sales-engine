@@ -52,7 +52,7 @@ const provenanceRules = [
   {
     capabilityId: "dental-reception",
     decisionKind: "ask",
-    outcomes: [outcome("clarification_required")],
+    outcomes: [outcome("reception_answered")],
   },
   {
     capabilityId: "dental-catalog",

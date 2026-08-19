@@ -80,6 +80,9 @@ export function renderDeterministicResponse<OutcomeType extends string>(input: {
     if (act.kind === "communicate_failure") {
       return qualify(act.subjectRef, "Não foi possível concluir a ação.");
     }
+    if (act.kind === "invite_engagement") {
+      return qualify(act.subjectRef, "Como posso ajudar?");
+    }
     if (act.kind === "inform_required_action") {
       return qualify(act.subjectRef, "É necessário atendimento humano.");
     }

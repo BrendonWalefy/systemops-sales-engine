@@ -43,8 +43,8 @@ describe("dental reception coverage", () => {
 
     const result = await capability.execute(decision, {} as never);
     expect(result).toMatchObject({
-      type: "clarification_required",
-      semanticClass: "clarification_required",
+      type: "reception_answered",
+      semanticClass: "engagement_invited",
       origin: { capabilityId: "dental-reception" },
     });
   });

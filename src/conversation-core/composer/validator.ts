@@ -108,7 +108,8 @@ function copyAct(value: unknown): DraftSpeechAct | null {
   if (
     kind === "communicate_failure" ||
     kind === "inform_required_action" ||
-    kind === "ask_clarification"
+    kind === "ask_clarification" ||
+    kind === "invite_engagement"
   ) {
     const outcomeRef: unknown = value.outcomeRef;
     const subjectRef: unknown = value.subjectRef;
@@ -152,6 +153,7 @@ const compatibleClass: Record<DraftSpeechAct["kind"], OutcomeSemanticClass> = {
   communicate_failure: "effect_failed",
   inform_required_action: "human_action_required",
   ask_clarification: "clarification_required",
+  invite_engagement: "engagement_invited",
 };
 
 function push(

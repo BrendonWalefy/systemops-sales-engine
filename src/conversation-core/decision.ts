@@ -43,13 +43,27 @@ export type Decision =
   | { kind: "close" }
   | { kind: "suppress"; reason: string };
 
-export type OutcomeSemanticClass =
-  | "information_authorized"
-  | "options_found"
-  | "effect_completed"
-  | "effect_failed"
-  | "human_action_required"
-  | "clarification_required";
+/**
+ * Vocabulário fechado das classes semânticas de outcome.
+ *
+ * Fonte única: o tipo, a validação de schema e a validação de action result
+ * derivam desta lista. Quando ela existia copiada em três lugares, acrescentar
+ * uma classe compilava e só falhava em runtime, no meio do turno.
+ */
+export const OUTCOME_SEMANTIC_CLASSES = Object.freeze([
+  "information_authorized",
+  "options_found",
+  "effect_completed",
+  "effect_failed",
+  "human_action_required",
+  "clarification_required",
+  // Turno social ou fora do escopo transacional: o sistema não tem fato a
+  // informar nem dado a confirmar, e convidar o lead a dizer o que precisa é a
+  // única resposta verdadeira disponível.
+  "engagement_invited",
+] as const);
+
+export type OutcomeSemanticClass = typeof OUTCOME_SEMANTIC_CLASSES[number];
 
 export type OutcomeDefinition = Readonly<{
   semanticClass: OutcomeSemanticClass;
@@ -66,14 +80,7 @@ export type OutcomeSchema<
 
 const outcomeSchemas = new WeakSet<object>();
 
-const semanticClasses: ReadonlySet<string> = new Set<OutcomeSemanticClass>([
-  "information_authorized",
-  "options_found",
-  "effect_completed",
-  "effect_failed",
-  "human_action_required",
-  "clarification_required",
-]);
+const semanticClasses: ReadonlySet<string> = new Set<string>(OUTCOME_SEMANTIC_CLASSES);
 const subjectRequirements: ReadonlySet<string> = new Set([
   "required", "optional", "forbidden",
 ]);

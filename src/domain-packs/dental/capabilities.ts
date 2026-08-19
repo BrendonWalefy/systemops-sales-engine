@@ -110,6 +110,11 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
     subjectRequirement: "forbidden",
     evidenceRequirement: "optional",
   },
+  reception_answered: {
+    semanticClass: "engagement_invited",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "optional",
+  },
   clarification_required: {
     semanticClass: "clarification_required",
     subjectRequirement: "forbidden",
@@ -633,8 +638,8 @@ export function createDentalReceptionCapability(): Capability<
     },
     async execute(): Promise<ActionResult<typeof DENTAL_OUTCOME_SCHEMA>> {
       return {
-        type: "clarification_required",
-        semanticClass: "clarification_required",
+        type: "reception_answered",
+        semanticClass: "engagement_invited",
         origin: { capabilityId: "dental-reception" },
         subject: null,
         evidence: [],
