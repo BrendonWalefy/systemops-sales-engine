@@ -60,6 +60,7 @@ export type DentalSchedulingClaimPayload =
 export type DentalReceptionClaimPayload = {
   kind: "reception";
   request: "greeting" | "other";
+  repeating: boolean;
 };
 
 export type DentalEscalationClaimPayload = {
@@ -76,6 +77,13 @@ export type DentalClaimPayload =
   | DentalReceptionClaimPayload;
 
 export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
+  // Ambiguidade resolvida pelo catálogo vira escolha real. Sem isso, dois
+  // tratamentos casando com "lente" viravam "Pode confirmar os dados?".
+  service_options_offered: {
+    semanticClass: "options_found",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "required",
+  },
   service_explained: {
     semanticClass: "information_authorized",
     subjectRequirement: "required",
@@ -196,14 +204,11 @@ export function createDentalCatalogCapability(
       const resolution = await readPort.resolveService(
         claim.payload.serviceQuery,
       );
+      if (resolution.kind === "ambiguous") {
+        return serviceChoice(resolution.candidates, resolution.evidenceRef);
+      }
       if (resolution.kind !== "exact") {
-        return {
-          kind: "ask",
-          questionId:
-            resolution.kind === "ambiguous"
-              ? "choose-service"
-              : "clarify-service",
-        };
+        return { kind: "ask", questionId: "clarify-service" };
       }
       if (claim.payload.request === "service-availability") {
         return {
@@ -256,6 +261,8 @@ export function createDentalCatalogCapability(
       };
     },
     async execute(decision): Promise<ActionResult<typeof DENTAL_OUTCOME_SCHEMA>> {
+      const choice = serviceChoiceResult("dental-catalog", decision);
+      if (choice) return choice;
       if (decision.kind === "answer") {
         const firstFact = decision.facts[0];
         if (!firstFact?.subject) {
@@ -296,6 +303,52 @@ export function createDentalCatalogCapability(
       };
     },
   };
+}
+
+/**
+ * Uma escolha entre serviços que existem no catálogo. Os nomes são fato do
+ * tenant, não texto do modelo — por isso podem ser ditos.
+ */
+export function serviceChoice(
+  candidates: readonly { id: string; name: string }[],
+  evidenceRef: string,
+): Decision {
+  return {
+    kind: "offer",
+    subject: { type: "service_choice", id: evidenceRef, displayName: "opções" },
+    options: candidates.map((candidate) => ({
+      id: candidate.id,
+      facts: [{
+        key: "service_name",
+        value: { kind: "display_text", value: candidate.name },
+        subject: { type: "service", id: candidate.id, displayName: candidate.name },
+        evidence: { source: "read", reference: evidenceRef },
+        disclosure: "allowed",
+      }],
+    })),
+    nextBestStep: null,
+  };
+}
+
+export function serviceChoiceResult(
+  capabilityId: string,
+  decision: Decision,
+): ActionResult<typeof DENTAL_OUTCOME_SCHEMA> | null {
+  if (decision.kind !== "offer") return null;
+  const options = decision.options.map((option) => {
+    const fact = option.facts[0]!;
+    return { id: option.id, subject: fact.subject!, facts: [...option.facts] };
+  });
+  if (options.length === 0) return null;
+  return {
+    type: "service_options_offered",
+    semanticClass: "options_found",
+    origin: { capabilityId },
+    subject: null,
+    evidence: [options[0]!.facts[0]!.evidence],
+    facts: [],
+    options: options as unknown as ActionResult<typeof DENTAL_OUTCOME_SCHEMA>["options"],
+  } as ActionResult<typeof DENTAL_OUTCOME_SCHEMA>;
 }
 
 const schedulingRequests = new Set<DentalRequest>([
@@ -642,12 +695,28 @@ export function createDentalReceptionCapability(): Capability<
       return ownedClaim("dental-reception", understanding.confidence, {
         kind: "reception",
         request: understanding.request,
+        // O modelo já disse que o lead está repetindo. Repetir o convite em cima
+        // disso é a forma mais rápida de perder a conversa.
+        repeating: understanding.dialogueMove === "repeats",
       });
     },
-    async decide(): Promise<Decision> {
+    async decide(claim): Promise<Decision> {
+      if (claim.payload.kind === "reception" && claim.payload.repeating) {
+        return { kind: "escalate", reason: "lead_repeated_after_unanswered_turn" };
+      }
       return { kind: "ask", questionId: "reception-how-can-i-help" };
     },
-    async execute(): Promise<ActionResult<typeof DENTAL_OUTCOME_SCHEMA>> {
+    async execute(decision): Promise<ActionResult<typeof DENTAL_OUTCOME_SCHEMA>> {
+      if (decision.kind === "escalate") {
+        return {
+          type: "escalation_required",
+          semanticClass: "human_action_required",
+          origin: { capabilityId: "dental-reception" },
+          subject: null,
+          evidence: [],
+          facts: [],
+        };
+      }
       return {
         type: "reception_answered",
         semanticClass: "engagement_invited",

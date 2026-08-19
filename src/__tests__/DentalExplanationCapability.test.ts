@@ -102,7 +102,7 @@ describe("capability de explicação dental", () => {
     expect(decision).toMatchObject({ kind: "ask" });
   });
 
-  it("pede esclarecimento quando o pedido casa com mais de um tratamento", async () => {
+  it("oferece a escolha quando o pedido casa com mais de um tratamento", async () => {
     const capability = createDentalExplanationCapability(catalog({
       kind: "ambiguous",
       candidates: [{ id: "a", name: "Lentes de resina" }, { id: "b", name: "Clareamento" }],
@@ -110,7 +110,7 @@ describe("capability de explicação dental", () => {
     }));
     const claim = capability.claim(understanding(), state)!;
 
-    expect(await capability.decide(claim, context)).toMatchObject({ kind: "ask" });
+    expect(await capability.decide(claim, context)).toMatchObject({ kind: "offer" });
   });
 
   it("aceita explain-service no vocabulário fechado, exigindo o serviço", () => {

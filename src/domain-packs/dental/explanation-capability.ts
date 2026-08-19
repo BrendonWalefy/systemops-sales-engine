@@ -3,6 +3,8 @@ import type { ActionResult, Decision } from "@/conversation-core/decision";
 import type { Understanding } from "@/conversation-core/understanding/schema";
 import {
   DENTAL_OUTCOME_SCHEMA,
+  serviceChoice,
+  serviceChoiceResult,
   type DentalClaimPayload,
   type DentalPolicy,
 } from "@/domain-packs/dental/capabilities";
@@ -48,6 +50,9 @@ export function createDentalExplanationCapability(
         return { kind: "ask", questionId: "explanation-which-service" };
       }
       const resolution = await catalog.resolveService(payload.serviceQuery);
+      if (resolution.kind === "ambiguous") {
+        return serviceChoice(resolution.candidates, resolution.evidenceRef);
+      }
       if (resolution.kind !== "exact") {
         return { kind: "ask", questionId: "explanation-which-service" };
       }
@@ -75,6 +80,8 @@ export function createDentalExplanationCapability(
     },
 
     async execute(decision): Promise<ActionResult<typeof DENTAL_OUTCOME_SCHEMA>> {
+      const choice = serviceChoiceResult(CAPABILITY_ID, decision);
+      if (choice) return choice;
       if (decision.kind === "answer") {
         const fact = decision.facts[0];
         if (!fact?.subject) throw new Error("service_explained requires a subject");
