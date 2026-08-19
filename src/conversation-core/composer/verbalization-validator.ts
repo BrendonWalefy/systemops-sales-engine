@@ -6,6 +6,8 @@
  */
 export type AuthorizedSurface = Readonly<{
   numbers: readonly string[];
+  /** Subconjunto de `numbers` que só pode aparecer como dinheiro. */
+  moneyNumbers: readonly string[];
   currencyAllowed: boolean;
   maxQuestions: number;
   maxCharacters: number;
@@ -17,6 +19,7 @@ export const VERBALIZATION_VIOLATION_CODES = [
   "too_many_questions",
   "unauthorized_number",
   "unauthorized_currency",
+  "money_without_currency",
   "unauthorized_link",
   "unauthorized_commitment",
 ] as const;
@@ -30,6 +33,7 @@ export type VerbalizationValidationResult =
 const GROUPED_NUMBER = /\d{1,3}(?:[.\u00a0\u202f ]\d{3})+/g;
 const NUMBER_TOKEN = /\d+(?:,\d+)?/g;
 const CURRENCY = /R\$|\bBRL\b/i;
+const CURRENCY_AMOUNT = /R\$\s*(\d[\d.\u00a0\u202f ]*(?:,\d+)?)/g;
 const LINK = /https?:\/\/|\bwww\.|\b[a-z0-9-]+\.(?:com|br|net|org|io)\b/i;
 /** Compromisso em primeira pessoa: o sistema nunca decidiu prometer nada. */
 const COMMITMENT = /\b(?:garanto|garantimos|prometo|prometemos|asseguro|asseguramos|juro|juramos)\b/;
@@ -48,6 +52,24 @@ export function numbersIn(text: string): readonly string[] {
 
 function withoutAccents(text: string): string {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+/**
+ * Um valor em dinheiro escrito como número solto vira ambiguidade na tela do
+ * leitor: "290" nao diz reais, nem parcela, nem quantidade.
+ */
+function mentionsMoneyWithoutCurrency(
+  text: string,
+  moneyNumbers: readonly string[],
+): boolean {
+  if (moneyNumbers.length === 0) return false;
+  const asMoney = new Set(
+    [...text.matchAll(CURRENCY_AMOUNT)].flatMap(([, amount]) => numbersIn(amount!)),
+  );
+  const mentioned = new Set(numbersIn(text));
+  return moneyNumbers
+    .map(canonicalNumber)
+    .some((value) => mentioned.has(value) && !asMoney.has(value));
 }
 
 export function validateVerbalizedText(input: Readonly<{
@@ -71,6 +93,9 @@ export function validateVerbalizedText(input: Readonly<{
   }
   if (!input.surface.currencyAllowed && CURRENCY.test(text)) {
     violations.push("unauthorized_currency");
+  }
+  if (mentionsMoneyWithoutCurrency(text, input.surface.moneyNumbers)) {
+    violations.push("money_without_currency");
   }
   if (LINK.test(text)) violations.push("unauthorized_link");
   if (COMMITMENT.test(withoutAccents(text))) violations.push("unauthorized_commitment");

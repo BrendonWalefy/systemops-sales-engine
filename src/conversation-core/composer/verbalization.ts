@@ -16,12 +16,30 @@ export type SpeakerProfile = Readonly<{
   guidelines: readonly string[];
 }>;
 
+/**
+ * O sentido de cada ato autorizado, separado da frase crua que o representa.
+ * Sem isto o modelo so tem uma frase de maquina para imitar.
+ */
+export type AuthorizedStatement = Readonly<{
+  meaning:
+    | "inform_fact"
+    | "offer_options"
+    | "confirm_effect"
+    | "communicate_failure"
+    | "inform_required_action"
+    | "invite_engagement"
+    | "ask_clarification";
+  subject: string | null;
+  values: readonly string[];
+}>;
+
 export type VerbalizationRequest<OutcomeType extends string> = Readonly<{
   plan: V2AuthorizedResponsePlan<OutcomeType>;
   draft: ValidatedDraftResponse<OutcomeType>;
   surface: AuthorizedSurface;
   /** O mesmo conteudo, ja autorizado, na forma mais crua possivel. */
   authorizedText: string;
+  statements: readonly AuthorizedStatement[];
   style: ComposerStyle;
   speaker: SpeakerProfile;
 }>;

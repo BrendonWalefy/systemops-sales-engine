@@ -2,7 +2,10 @@ import {
   snapshotV2AuthorizedResponsePlan,
   type V2AuthorizedResponsePlan,
 } from "@/conversation-core/authorized-response-plan";
-import { authorizedSurfaceFor } from "@/conversation-core/composer/authorized-surface";
+import {
+  authorizedStatementsFor,
+  authorizedSurfaceFor,
+} from "@/conversation-core/composer/authorized-surface";
 import { validateVerbalizedText } from "@/conversation-core/composer/verbalization-validator";
 import type {
   ResponseVerbalizerPort,
@@ -91,6 +94,7 @@ export async function runV2ResponsePipeline<OutcomeType extends string>(input: {
         draft,
         surface: authorizedSurfaceFor(draft),
         authorizedText,
+        statements: authorizedStatementsFor(draft),
         style,
         speaker: requested.speaker,
       }));

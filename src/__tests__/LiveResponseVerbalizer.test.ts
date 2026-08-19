@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
-import { authorizedSurfaceFor } from "@/conversation-core/composer/authorized-surface";
+import {
+  authorizedStatementsFor,
+  authorizedSurfaceFor,
+} from "@/conversation-core/composer/authorized-surface";
 import { buildDeterministicDraft } from "@/conversation-core/composer/deterministic-composer";
 import { validateDraft } from "@/conversation-core/composer/validator";
 import type { SpeakerProfile, VerbalizationRequest } from "@/conversation-core/composer/verbalization";
@@ -53,6 +56,7 @@ function request(): VerbalizationRequest<"quote_ready"> {
     draft: validation.draft,
     surface: authorizedSurfaceFor(validation.draft),
     authorizedText: 'Para "Item A", valor: R$ 290,00.',
+    statements: authorizedStatementsFor(validation.draft),
     style: { tone: "warm", verbosity: "concise", greeting: "omit", emoji: "none" } as const,
     speaker,
   });
@@ -75,7 +79,7 @@ describe("verbalizador vivo de resposta", () => {
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ model: "gpt-4o-mini" }));
   });
 
-  it("entrega ao modelo o texto autorizado, os números permitidos e a voz da empresa", async () => {
+  it("entrega ao modelo as intenções, os números permitidos e a voz da empresa", async () => {
     const create = clientReturning("Fica R$ 290,00.");
     const verbalizer = createLiveResponseVerbalizer({ chat: { completions: { create } } });
 
@@ -83,8 +87,9 @@ describe("verbalizador vivo de resposta", () => {
 
     const payload = JSON.parse(create.mock.calls[0]![0].messages[1].content) as Record<string, unknown>;
     expect(payload).toMatchObject({
-      authorizedText: 'Para "Item A", valor: R$ 290,00.',
+      statements: [{ meaning: "inform_fact", subject: "Item A", values: ["R$ 290,00"] }],
       allowedNumbers: ["290"],
+      moneyNumbers: ["290"],
       maxQuestions: 1,
       speaker: {
         agentName: "Marina",
@@ -94,6 +99,17 @@ describe("verbalizador vivo de resposta", () => {
         guidelines: ["Responder primeiro, perguntar depois."],
       },
     });
+  });
+
+  it("não manda a frase da máquina, para o modelo escrever do sentido e não copiar", async () => {
+    const create = clientReturning("Fica R$ 290,00.");
+    const verbalizer = createLiveResponseVerbalizer({ chat: { completions: { create } } });
+
+    await verbalizer.verbalize(request());
+
+    const raw = create.mock.calls[0]![0].messages[1].content as string;
+    expect(raw).not.toContain("Para \\\"Item A\\\", valor");
+    expect(Object.keys(JSON.parse(raw) as Record<string, unknown>)).not.toContain("authorizedText");
   });
 
   it("falha quando o modelo não devolve texto, em vez de inventar um", async () => {

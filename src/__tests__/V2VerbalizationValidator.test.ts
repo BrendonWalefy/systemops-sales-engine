@@ -7,6 +7,7 @@ import {
 function surfaceWith(overrides: Partial<AuthorizedSurface> = {}): AuthorizedSurface {
   return Object.freeze({
     numbers: Object.freeze(["290"]),
+    moneyNumbers: Object.freeze(["290"]),
     currencyAllowed: true,
     maxQuestions: 1,
     maxCharacters: 600,
@@ -123,5 +124,32 @@ describe("validador do texto verbalizado", () => {
     });
 
     expect(result).toEqual({ valid: false, violations: ["empty_text"] });
+  });
+
+  it("recusa um valor autorizado escrito sem moeda, que o lead leria como número solto", () => {
+    const result = validateVerbalizedText({
+      text: "O valor é 290.",
+      surface: surfaceWith(),
+    });
+
+    expect(result).toEqual({ valid: false, violations: ["money_without_currency"] });
+  });
+
+  it("aceita o mesmo valor quando ele vem como dinheiro", () => {
+    const result = validateVerbalizedText({
+      text: "O valor é R$ 290,00.",
+      surface: surfaceWith(),
+    });
+
+    expect(result).toEqual({ valid: true, text: "O valor é R$ 290,00." });
+  });
+
+  it("não exige moeda para número que não é dinheiro", () => {
+    const result = validateVerbalizedText({
+      text: "Consigo quarta às 15h.",
+      surface: surfaceWith({ numbers: ["15"], moneyNumbers: [], currencyAllowed: false }),
+    });
+
+    expect(result).toEqual({ valid: true, text: "Consigo quarta às 15h." });
   });
 });

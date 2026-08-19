@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
-import { authorizedSurfaceFor } from "@/conversation-core/composer/authorized-surface";
+import {
+  authorizedStatementsFor,
+  authorizedSurfaceFor,
+} from "@/conversation-core/composer/authorized-surface";
 import { buildDeterministicDraft } from "@/conversation-core/composer/deterministic-composer";
 import { validateDraft } from "@/conversation-core/composer/validator";
 import { defineOutcomeSchema, type ActionResult } from "@/conversation-core/decision";
@@ -27,11 +30,15 @@ const item = { type: "item", id: "a", displayName: "Item A" } as const;
 const window = { type: "window", id: "w", displayName: "quarta às 15h" } as const;
 const evidence = { source: "read", reference: "snapshot" } as const;
 
-function surfaceOf(results: ActionResult<typeof SCHEMA>[]) {
+function draftOf(results: ActionResult<typeof SCHEMA>[]) {
   const plan = buildV2AuthorizedResponsePlan(SCHEMA, results);
   const validation = validateDraft(plan, buildDeterministicDraft(plan));
   if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
-  return authorizedSurfaceFor(validation.draft);
+  return validation.draft;
+}
+
+function surfaceOf(results: ActionResult<typeof SCHEMA>[]) {
+  return authorizedSurfaceFor(draftOf(results));
 }
 
 describe("superfície autorizada de um plano", () => {
@@ -52,6 +59,7 @@ describe("superfície autorizada de um plano", () => {
     }]);
 
     expect(surface.numbers).toEqual(["290"]);
+    expect(surface.moneyNumbers).toEqual(["290"]);
     expect(surface.currencyAllowed).toBe(true);
   });
 
@@ -77,6 +85,7 @@ describe("superfície autorizada de um plano", () => {
     }]);
 
     expect(surface.numbers).toEqual(["15"]);
+    expect(surface.moneyNumbers).toEqual([]);
     expect(surface.currencyAllowed).toBe(false);
   });
 
@@ -158,4 +167,73 @@ describe("superfície autorizada de um plano", () => {
     expect(richer.maxCharacters).toBeGreaterThan(opener.maxCharacters);
     expect(opener.maxCharacters).toBeGreaterThan(120);
   });
+
+  it("declara o sentido de cada ato, para o texto final não repetir a frase da máquina", () => {
+    const statements = authorizedStatementsFor(draftOf([{
+      type: "quote_ready",
+      semanticClass: "information_authorized",
+      origin: { capabilityId: "quote" },
+      subject: item,
+      evidence: [evidence],
+      facts: [{
+        key: "price_cents",
+        value: { kind: "money", amountInMinor: 29000, currency: "BRL" },
+        subject: item,
+        evidence,
+        disclosure: "allowed",
+      }],
+    }]));
+
+    expect(statements).toEqual([{
+      meaning: "inform_fact",
+      subject: "Item A",
+      values: ["R$ 290,00"],
+    }]);
+  });
+
+  it("lista cada opção como um valor próprio", () => {
+    const statements = authorizedStatementsFor(draftOf([{
+      type: "options_ready",
+      semanticClass: "options_found",
+      origin: { capabilityId: "agenda" },
+      subject: item,
+      evidence: [evidence],
+      facts: [],
+      options: [slot("w", "quarta às 15h"), slot("t", "quinta às 9h")],
+    }]));
+
+    expect(statements).toEqual([{
+      meaning: "offer_options",
+      subject: "Item A",
+      values: ["quarta às 15h", "quinta às 9h"],
+    }]);
+  });
+
+  it("declara o convite de abertura sem valor nenhum", () => {
+    const statements = authorizedStatementsFor(draftOf([{
+      type: "engagement",
+      semanticClass: "engagement_invited",
+      origin: { capabilityId: "reception" },
+      subject: null,
+      evidence: [],
+      facts: [],
+    }]));
+
+    expect(statements).toEqual([{ meaning: "invite_engagement", subject: null, values: [] }]);
+  });
 });
+
+function slot(id: string, label: string) {
+  const subject = { type: "window", id, displayName: label } as const;
+  return {
+    id,
+    subject,
+    facts: [{
+      key: "slot_label",
+      value: { kind: "display_text", value: label },
+      subject,
+      evidence,
+      disclosure: "allowed",
+    }],
+  } as const;
+}

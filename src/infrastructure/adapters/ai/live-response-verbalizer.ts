@@ -39,9 +39,16 @@ export class LiveResponseVerbalizer implements ResponseVerbalizerPort<string> {
     options?: Readonly<{ signal?: AbortSignal }>,
   ): Promise<string> {
     assertRegisteredLiveResponseVerbalizer(this);
+    // A frase determinística existe como saída segura, não como rascunho: mandá-la
+    // ao modelo faz ele copiar o vocabulário da máquina em vez de dizer o sentido.
     const payload = {
-      authorizedText: request.authorizedText,
+      statements: request.statements.map((statement) => ({
+        meaning: statement.meaning,
+        subject: statement.subject,
+        values: [...statement.values],
+      })),
       allowedNumbers: [...request.surface.numbers],
+      moneyNumbers: [...request.surface.moneyNumbers],
       allowedCurrency: request.surface.currencyAllowed,
       maxQuestions: request.surface.maxQuestions,
       maxCharacters: request.surface.maxCharacters,
