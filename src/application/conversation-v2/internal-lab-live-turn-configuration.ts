@@ -1,4 +1,6 @@
+import type { EditorialConfig } from "@/application/config/editorial-config";
 import type { LiveTurnContext, LiveTurnSnapshot } from "@/application/conversation/live-turn-lifecycle";
+import type { SpeakerProfile } from "@/conversation-core/composer/verbalization";
 import type { V2LiveTurnConfiguration } from "@/application/conversation-v2/v2-live-conversation-handler";
 import type { ConversationHandleInput } from "@/application/ports/conversation-handler";
 import { SCHEDULING_MINIMUM_LEAD_TIME_HOURS } from "@/core/scheduling/scheduling-policy";
@@ -23,6 +25,41 @@ export type InternalLabLiveTurnConfigurationDependencies = Readonly<{
 
 function toneFromEditorial(toneOfVoice: string | null | undefined): "neutral" | "warm" {
   return toneOfVoice?.trim() ? "warm" : "neutral";
+}
+
+function trimmedOrNull(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * A voz da empresa dentro da resposta. Cada campo continua com o dono declarado
+ * em AGENTS.md: conteúdo editorial vem da versão ativa do playbook, o nome de
+ * apresentação vem do tenant. Nada é redigitado aqui, e ausência vira ausência
+ * — nunca um valor inventado para preencher a lacuna.
+ */
+function speakerFromEditorial(
+  organizationName: string | null | undefined,
+  editorial: EditorialConfig | null,
+): SpeakerProfile {
+  const guidelines = [
+    trimmedOrNull(editorial?.playbookText),
+    trimmedOrNull(editorial?.commercialPolicy),
+    ...(editorial?.differentials ?? []).map(trimmedOrNull),
+    ...(editorial?.objections ?? []).map(({ objection, response }) => {
+      const question = trimmedOrNull(objection);
+      const answer = trimmedOrNull(response);
+      return question && answer ? `Se o lead disser "${question}": ${answer}` : null;
+    }),
+  ].filter((item): item is string => item !== null);
+
+  return Object.freeze({
+    agentName: trimmedOrNull(editorial?.receptionistName),
+    organizationName: trimmedOrNull(organizationName),
+    specialty: trimmedOrNull(editorial?.specialty),
+    toneOfVoice: trimmedOrNull(editorial?.toneOfVoice),
+    guidelines: Object.freeze(guidelines),
+  });
 }
 
 export async function resolveInternalLabLiveTurnConfiguration(
@@ -56,6 +93,7 @@ export async function resolveInternalLabLiveTurnConfiguration(
       // Exact treatment ownership is enforced by the dental scheduling read.
       schedulingRequiresEvaluationFirst: false,
     }),
+    speaker: speakerFromEditorial(input.context.clinic.name, input.context.editorial),
     style: Object.freeze({
       tone: toneFromEditorial(input.context.editorial?.toneOfVoice),
       verbosity: "concise",

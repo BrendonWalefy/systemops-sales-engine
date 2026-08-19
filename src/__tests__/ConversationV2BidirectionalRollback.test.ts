@@ -580,6 +580,13 @@ function createHarness(options: { approvalPresent?: boolean } = {}) {
         schedulingRequiresEvaluationFirst: false,
       },
       style: { tone: "warm", verbosity: "concise", greeting: "omit", emoji: "none" },
+      speaker: {
+        agentName: null,
+        organizationName: clinic.name,
+        specialty: null,
+        toneOfVoice: null,
+        guidelines: [],
+      },
       useVoice: false,
       ttsConfig: { provider: "nova", speed: 0.92 },
       deliveryBinding: {

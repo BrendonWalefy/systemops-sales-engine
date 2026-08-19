@@ -20,6 +20,20 @@ import {
 } from "@/application/labs/systemops-lab-persona";
 import { isDentalOutcomeStructuralSummary } from "@/domain-packs/dental/outcome-provenance";
 
+/**
+ * Quem pode assinar as palavras entregues no estágio `response.validated` de um
+ * turno do Lab: um modelo vivo, o renderizador determinístico, ou o mesmo
+ * renderizador depois de o texto do modelo ser recusado. Uma identidade nova
+ * precisa entrar aqui — o parser do evidence recusa qualquer outra.
+ */
+export const RESPONSE_VALIDATED_MODEL_IDS = [
+  "gpt-4o-mini",
+  "deterministic-v2",
+  "deterministic-fallback",
+] as const;
+
+export type ResponseValidatedModelId = (typeof RESPONSE_VALIDATED_MODEL_IDS)[number];
+
 export type SanitizedTranscriptMessage = Readonly<{
   turnId: string;
   messageId: string;
@@ -123,7 +137,7 @@ type ResponseValidatedTrace = Readonly<{
     violationCount: number;
     violations: string;
     requiresHandoff: boolean;
-    model?: "gpt-4o-mini" | "deterministic-v2" | "deterministic-fallback";
+    model?: ResponseValidatedModelId;
     promptVersion?: string;
     inputTokens?: number | null;
     outputTokens?: number | null;
@@ -332,7 +346,7 @@ const traceSchema = z.discriminatedUnion("stage", [
       violationCount: nonNegativeInteger,
       violations: z.string().max(1_000),
       requiresHandoff: z.boolean(),
-      model: z.enum(["gpt-4o-mini", "deterministic-v2", "deterministic-fallback"]).optional(),
+      model: z.enum(RESPONSE_VALIDATED_MODEL_IDS).optional(),
       promptVersion: nonEmptySafeString.optional(),
       inputTokens: nonNegativeInteger.nullable().optional(),
       outputTokens: nonNegativeInteger.nullable().optional(),

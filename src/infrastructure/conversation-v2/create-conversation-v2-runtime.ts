@@ -46,6 +46,7 @@ import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-
 import { DentalUnderstandingProvider } from "@/infrastructure/adapters/ai/DentalUnderstandingProvider";
 import { OpenAIDentalUnderstandingModel } from "@/infrastructure/adapters/ai/OpenAIDentalUnderstandingModel";
 import { createLiveDentalUnderstanding } from "@/infrastructure/adapters/ai/live-dental-understanding";
+import { createLiveResponseVerbalizer } from "@/infrastructure/adapters/ai/live-response-verbalizer";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import {
   loadConfiguredInternalLabAuthority,
@@ -212,9 +213,11 @@ function createLiveHandler(input: {
     },
   };
   const booking = new BookingService(calendar, appointmentRepository, leadRepository, reservations, followUps);
+  const client = new OpenAI({ apiKey: input.apiKey });
   return new V2LiveConversationHandler({
     lifecycle,
-    understanding: createLiveDentalUnderstanding(new OpenAI({ apiKey: input.apiKey })),
+    understanding: createLiveDentalUnderstanding(client),
+    verbalizer: createLiveResponseVerbalizer(client),
     dental: { treatments: new DrizzleTreatmentRepository(), calendar, state, appointments: appointmentRepository, reservations, booking },
     resolveTurnConfiguration: (configurationInput) =>
       resolveInternalLabLiveTurnConfiguration(configurationInput, {
