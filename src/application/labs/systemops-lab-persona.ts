@@ -34,7 +34,10 @@ export type SystemOpsLabPersona = Readonly<{
   schemaVersion: 1;
   personaId: string;
   displayName: string;
-  scenario: "price_scheduling" | "objection_escalation" | "booking_revalidation";
+  scenario: "price_scheduling" | "objection_escalation" | "booking_revalidation"
+    // Abertura social e turno fora do catálogo transacional: era exatamente a
+    // classe que nenhuma persona cobria e que a V2 não sabia responder.
+    | "reception_opening" | "out_of_scope";
   turns: readonly Readonly<{
     leadText: string;
     expected: readonly SystemOpsLabPersonaExpectation[];
@@ -112,7 +115,7 @@ const personaSchema = z.object({
     .regex(componentPattern)
     .refine((value) => !value.includes("--") && !numericOrE164Pattern.test(value)),
   displayName: z.string().trim().min(1).max(120),
-  scenario: z.enum(["price_scheduling", "objection_escalation", "booking_revalidation"]),
+  scenario: z.enum(["price_scheduling", "objection_escalation", "booking_revalidation", "reception_opening", "out_of_scope"]),
   turns: z.array(z.object({
     leadText: z.string().trim().min(1).max(1_000),
     expected: z.array(z.enum(SYSTEMOPS_LAB_PERSONA_EXPECTATIONS))

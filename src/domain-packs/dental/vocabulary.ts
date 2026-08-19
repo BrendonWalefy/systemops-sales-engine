@@ -1,4 +1,10 @@
 export const DENTAL_REQUESTS = [
+  // Sem uma categoria para abertura social e para o que não é transacional, o
+  // schema obriga o modelo a escolher um pedido que o lead não fez, e a
+  // validação seguinte rejeita o turno inteiro. "oi" é a primeira mensagem da
+  // maioria dos leads.
+  "greeting",
+  "other",
   "price-of-service",
   "service-availability",
   "book-appointment",

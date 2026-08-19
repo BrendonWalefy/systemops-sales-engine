@@ -36,6 +36,10 @@ import {
 import { dentalEffectDecisionIdentity } from "@/application/conversation-v2/dental-intended-effects";
 import { classifyUnderstandingFailure } from "@/application/conversation-v2/understanding-failure-code";
 import {
+  V2_SAFE_FAILURE_REPLY_TEXT,
+  shouldEnqueueSafeFailureReply,
+} from "@/application/conversation-v2/v2-safe-failure-reply";
+import {
   assertRegisteredLiveDentalUnderstanding,
   type LiveDentalUnderstanding,
 } from "@/infrastructure/adapters/ai/live-dental-understanding";
@@ -167,6 +171,9 @@ export class V2LiveConversationHandler implements ConversationHandler {
     let terminalHandled = false;
     let stopContactConfirmationEnqueued = false;
     let turnNow: Date | null = null;
+    let deliveryConfiguration: Awaited<
+      ReturnType<V2LiveConversationHandlerDependencies["resolveTurnConfiguration"]>
+    > | null = null;
 
     const trace = async (
       stage: "v2.understanding" | "v2.decision" | "v2.action_result"
@@ -198,6 +205,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
         turnInput: input,
         now: new Date(turnNow.getTime()),
       });
+      deliveryConfiguration = configuration;
       const state = coreState(snapshot);
       const treatments = scopedTreatments(
         await this.deps.dental.treatments.listByClinic(context.clinicId),
@@ -468,11 +476,19 @@ export class V2LiveConversationHandler implements ConversationHandler {
       return { replied: true };
     } catch (error) {
       const reason = failureReason(phase);
+      const safeReplyEnqueued = await this.enqueueSafeFailureReply({
+        reason,
+        effectAttempted,
+        replyAlreadyEnqueued: stopContactConfirmationEnqueued,
+        configuration: deliveryConfiguration,
+        context,
+      });
       await trace("turn.failed", {
         phase,
         reason,
         effectAttempted,
         effectCompleted,
+        safeReplyEnqueued,
       });
       if (!terminalHandled) {
         terminalHandled = true;
@@ -482,6 +498,61 @@ export class V2LiveConversationHandler implements ConversationHandler {
       return { replied: false, reason };
     } finally {
       await context.releaseLease();
+    }
+  }
+
+  /**
+   * Silêncio é o pior resultado possível para o lead: ele não sabe se a mensagem
+   * chegou. Quando o turno morre antes de qualquer efeito, uma cópia determinística
+   * confirma recebimento sem afirmar nada que o sistema não decidiu. A falha de
+   * entrega desta cópia nunca substitui o erro original.
+   */
+  private async enqueueSafeFailureReply(input: Readonly<{
+    reason: V2SafeFailureReason;
+    effectAttempted: boolean;
+    replyAlreadyEnqueued: boolean;
+    configuration: Awaited<
+      ReturnType<V2LiveConversationHandlerDependencies["resolveTurnConfiguration"]>
+    > | null;
+    context: LiveTurnContext;
+  }>): Promise<boolean> {
+    if (!shouldEnqueueSafeFailureReply({
+      reason: input.reason,
+      effectAttempted: input.effectAttempted,
+      replyAlreadyEnqueued: input.replyAlreadyEnqueued,
+      configurationResolved: input.configuration !== null,
+    })) return false;
+    const configuration = input.configuration!;
+    const context = input.context;
+    try {
+      await enqueueOutboundMessage({
+        clinicId: context.clinicId,
+        conversationId: context.conversationId,
+        channel: "whatsapp",
+        deliveryKind: "text",
+        category: "reply",
+        dedupeKey: `conversation-reply:${context.turnId}`,
+        payload: {
+          version: 1,
+          kind: "conversation_reply",
+          turnId: context.turnId,
+          to: context.outboundAddress,
+          agentMessageId: deterministicUuid(`conversation-v2-agent:${context.turnId}`),
+          agentMessagePersistence: "sender",
+          replyText: V2_SAFE_FAILURE_REPLY_TEXT,
+          intent: "safe_failure",
+          useVoice: false,
+          ttsConfig: configuration.ttsConfig,
+          interleavedParts: [],
+          mediaParts: [],
+          leadId: context.leadId,
+          pipelineAdvance: null,
+          internalLabBinding: configuration.deliveryBinding,
+        },
+      }, this.deps.outbound);
+      return true;
+    } catch {
+      return false;
     }
   }
 }

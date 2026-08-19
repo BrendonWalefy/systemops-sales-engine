@@ -58,6 +58,11 @@ export function buildDeterministicDraft<OutcomeType extends string>(
       continue;
     }
 
+    if (outcome.semanticClass === "engagement_invited") {
+      acts.push({ kind: "invite_engagement", outcomeRef: outcome.ref, subjectRef: outcome.subjectRef });
+      continue;
+    }
+
     if (outcome.semanticClass === "human_action_required") {
       acts.push({ kind: "inform_required_action", outcomeRef: outcome.ref, subjectRef: outcome.subjectRef });
       continue;

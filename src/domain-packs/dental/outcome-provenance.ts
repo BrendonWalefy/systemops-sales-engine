@@ -7,7 +7,8 @@ import {
 export type DentalCapabilityId =
   | "dental-catalog"
   | "dental-scheduling"
-  | "dental-escalation";
+  | "dental-escalation"
+  | "dental-reception";
 
 export type DentalExecuteAction = "book_slot" | "confirm_appointment";
 
@@ -48,6 +49,11 @@ function outcome<const Type extends DentalOutcomeType>(
 }
 
 const provenanceRules = [
+  {
+    capabilityId: "dental-reception",
+    decisionKind: "ask",
+    outcomes: [outcome("reception_answered")],
+  },
   {
     capabilityId: "dental-catalog",
     decisionKind: "answer",

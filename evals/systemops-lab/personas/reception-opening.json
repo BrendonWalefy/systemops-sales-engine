@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "personaId": "reception-opening",
+  "displayName": "Primeiro contato que só cumprimenta",
+  "scenario": "reception_opening",
+  "turns": [
+    {
+      "leadText": "Oi",
+      "expected": ["relevance", "unauthorized_facts", "safety"]
+    },
+    {
+      "leadText": "Boa tarde, tudo bem?",
+      "expected": ["relevance", "journey_advancement", "safety"]
+    },
+    {
+      "leadText": "queria saber sobre lentes",
+      "expected": ["relevance", "journey_advancement", "price_subject_binding"]
+    }
+  ]
+}
