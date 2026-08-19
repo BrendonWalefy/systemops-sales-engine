@@ -19,6 +19,8 @@ import {
   type SystemOpsLabRunResult,
 } from "@/application/labs/systemops-lab-persona";
 import { isDentalOutcomeStructuralSummary } from "@/domain-packs/dental/outcome-provenance";
+import { DENTAL_OUTCOME_SCHEMA } from "@/domain-packs/dental/capabilities";
+import { DENTAL_REQUESTS, type DentalRequest } from "@/domain-packs/dental/vocabulary";
 
 /**
  * Quem pode assinar as palavras entregues no estágio `response.validated` de um
@@ -64,8 +66,7 @@ type UnderstandingTrace = Readonly<{
     status: "completed" | "failed";
     durationMs: number;
     modelId: "gpt-4o-mini";
-    request: "price-of-service" | "service-availability" | "book-appointment"
-      | "confirm-slot" | "confirm-appointment" | null;
+    request: DentalRequest | null;
   }>;
 }>;
 
@@ -250,11 +251,16 @@ const decisionKindsCsv = closedCsv([
 const intendedEffectsCsv = closedCsv([
   "none", "book_slot", "confirm_appointment", "persist_slot_offer",
 ], true);
-const outcomeTypesCsv = closedCsv([
-  "catalog_answered", "slots_found", "appointment_created", "appointment_confirmed",
-  "appointment_create_failed", "appointment_confirmation_failed", "scheduling_failed",
-  "escalation_required", "clarification_required",
-], true);
+/**
+ * Derivados do pack. Copiados à mão, ficaram sem `reception_answered` e sem
+ * `greeting`/`other` assim que o turno de abertura entrou — e um trace de
+ * abertura passava a ser recusado por este parser, em silêncio.
+ */
+export const EVIDENCE_OUTCOME_TYPES = Object.freeze(
+  Object.keys(DENTAL_OUTCOME_SCHEMA),
+) as readonly string[];
+export const EVIDENCE_REQUESTS = DENTAL_REQUESTS;
+const outcomeTypesCsv = closedCsv([...EVIDENCE_OUTCOME_TYPES], true);
 const semanticClassesCsv = closedCsv([
   "information_authorized", "options_found", "effect_completed", "effect_failed",
   "human_action_required", "clarification_required",
@@ -285,13 +291,7 @@ const traceSchema = z.discriminatedUnion("stage", [
       status: z.enum(["completed", "failed"]),
       durationMs: nonNegativeInteger,
       modelId: z.literal("gpt-4o-mini"),
-      request: z.enum([
-        "price-of-service",
-        "service-availability",
-        "book-appointment",
-        "confirm-slot",
-        "confirm-appointment",
-      ]).nullable(),
+      request: z.enum(EVIDENCE_REQUESTS).nullable(),
     }).strict(),
   }).strict(),
   z.object({

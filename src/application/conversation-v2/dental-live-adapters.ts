@@ -112,6 +112,7 @@ function toDentalService(treatment: Treatment): DentalService {
     name: treatment.name,
     priceCents: treatment.priceCents,
     priceDisclosable: treatment.priceQuotableInChat,
+    description: treatment.description,
   };
 }
 

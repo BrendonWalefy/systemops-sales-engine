@@ -24,6 +24,11 @@ export type DentalPolicy = {
   schedulingRequiresEvaluationFirst: boolean;
 };
 
+export type DentalExplanationClaimPayload = {
+  kind: "explanation";
+  serviceQuery: string;
+};
+
 export type DentalCatalogClaimPayload = {
   kind: "catalog";
   request: "price-of-service" | "service-availability";
@@ -64,12 +69,18 @@ export type DentalEscalationClaimPayload = {
 };
 
 export type DentalClaimPayload =
+  | DentalExplanationClaimPayload
   | DentalCatalogClaimPayload
   | DentalSchedulingClaimPayload
   | DentalEscalationClaimPayload
   | DentalReceptionClaimPayload;
 
 export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
+  service_explained: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "required",
+    evidenceRequirement: "required",
+  },
   catalog_answered: {
     semanticClass: "information_authorized",
     subjectRequirement: "required",
