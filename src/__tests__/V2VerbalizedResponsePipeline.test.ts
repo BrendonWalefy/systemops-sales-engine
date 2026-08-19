@@ -202,4 +202,30 @@ describe("verbalização com modelo dentro do pipeline V2", () => {
 
     expect(observed?.aborted).toBe(true);
   });
+
+  it("não deixa a chamada abandonada derrubar o processo depois do prazo", async () => {
+    const rejections: unknown[] = [];
+    const collect = (reason: unknown) => { rejections.push(reason); };
+    process.on("unhandledRejection", collect);
+    const abandoned: ResponseVerbalizerPort = {
+      modelId: "model-x",
+      verbalize: (_request, options) => new Promise((_resolve, reject) => {
+        options?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+      }),
+    };
+
+    try {
+      await runV2ResponsePipeline({
+        plan: responsePlanFixture,
+        style,
+        composer,
+        verbalization: { verbalizer: abandoned, speaker, timeoutMs: 20 },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    } finally {
+      process.off("unhandledRejection", collect);
+    }
+
+    expect(rejections).toEqual([]);
+  });
 });

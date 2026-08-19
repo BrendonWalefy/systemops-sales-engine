@@ -225,4 +225,17 @@ describe("validador do texto verbalizado", () => {
       surface: surfaceWith({ values: [], moneyValues: [], currencyAllowed: false }),
     })).toEqual({ valid: true, text });
   });
+
+  it("aceita o valor autorizado repetido, que é ênfase e não fato novo", () => {
+    const text = "Confirmei Qua 20/08 às 15h30. Anota aí: Qua 20/08 às 15h30.";
+
+    expect(validateVerbalizedText({
+      text,
+      surface: surfaceWith({
+        values: ["Qua 20/08 às 15h30"],
+        moneyValues: [],
+        currencyAllowed: false,
+      }),
+    })).toEqual({ valid: true, text });
+  });
 });

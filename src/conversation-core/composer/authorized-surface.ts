@@ -1,6 +1,6 @@
 import { authorizedPlanFor, type ValidatedDraftResponse } from "@/conversation-core/composer/validator";
 import type { AuthorizedFact } from "@/conversation-core/authorized-response-plan";
-import type { AuthorizedSurface } from "@/conversation-core/composer/verbalization-validator";
+import { DIGIT_RUN, type AuthorizedSurface } from "@/conversation-core/composer/verbalization-validator";
 import type { AuthorizedStatement } from "@/conversation-core/composer/verbalization";
 import { formatFactValue } from "@/conversation-core/composer/fact-format";
 
@@ -8,7 +8,6 @@ const BASE_CHARACTERS = 160;
 const CHARACTERS_PER_ACT = 220;
 const MAX_CHARACTERS = 900;
 
-const DIGIT_RUN = /\p{Nd}[\p{Nd}.,:/h -]*\p{Nd}|\p{Nd}/gu;
 
 function digitRunsIn(text: string): readonly string[] {
   return Object.freeze([...(text.match(DIGIT_RUN) ?? [])]

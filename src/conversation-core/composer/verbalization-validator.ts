@@ -41,7 +41,7 @@ export type VerbalizationValidationResult =
   | { valid: true; text: string }
   | { valid: false; violations: readonly VerbalizationViolationCode[] };
 
-const DIGIT_RUN = /\p{Nd}[\p{Nd}.,:/h  -]*\p{Nd}|\p{Nd}/gu;
+export const DIGIT_RUN = /\p{Nd}[\p{Nd}.,:/h\u00a0\u202f -]*\p{Nd}|\p{Nd}/gu;
 const MONEY_LEXEME = /R\$|\bBRL\b|\breais?\b|\bcontos?\b/i;
 const LINK = /https?:\/\/|\bwww\.|@[a-z0-9_.]{3,}|\b[a-z0-9-]+\.(?:com|br|net|org|io)\b/i;
 /**
@@ -62,12 +62,12 @@ const SPELLED_MONEY = new RegExp(`\\b${CARDINAL_WORDS}(?:\\s+(?:e|de)\\s+${CARDI
 const SPELLED_TIME = new RegExp(`\\b${CARDINAL_WORDS}(?:\\s+(?:e|da|de)\\s+${CARDINAL_WORDS})*\\s+(?:da|de|as|às)?\\s*${TIME_LEXEME}\\b`, "i");
 
 function withoutAccents(text: string): string {
-  return text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLocaleLowerCase("pt-BR");
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
 }
 
 /** Compara valor e texto pela mesma forma: sem acento, sem caixa, sem espaço duplo. */
 function comparable(text: string): string {
-  return withoutAccents(text).replace(/[  \s]+/g, " ").trim();
+  return withoutAccents(text).replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -84,12 +84,14 @@ function consumeAuthorizedValues(
   for (const value of longestFirst) {
     const needle = comparable(value);
     if (needle.length === 0) continue;
-    const at = remainder.indexOf(needle);
-    if (at < 0) {
-      missing.push(value);
-      continue;
+    // Todas as ocorrências, e não só a primeira: repetir um valor autorizado é
+    // ênfase, e cobrar por isso mandaria a frase inteira para o texto de máquina.
+    let consumed = false;
+    for (let at = remainder.indexOf(needle); at >= 0; at = remainder.indexOf(needle)) {
+      remainder = `${remainder.slice(0, at)} ${remainder.slice(at + needle.length)}`;
+      consumed = true;
     }
-    remainder = `${remainder.slice(0, at)} ${remainder.slice(at + needle.length)}`;
+    if (!consumed) missing.push(value);
   }
   return Object.freeze({ remainder, missing: Object.freeze(missing) });
 }
