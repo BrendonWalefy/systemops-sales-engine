@@ -6,68 +6,154 @@ import {
 
 function surfaceWith(overrides: Partial<AuthorizedSurface> = {}): AuthorizedSurface {
   return Object.freeze({
-    numbers: Object.freeze(["290"]),
-    moneyNumbers: Object.freeze(["290"]),
+    values: Object.freeze(["R$ 290,00"]),
+    moneyValues: Object.freeze(["R$ 290,00"]),
+    numbers: Object.freeze([]),
     currencyAllowed: true,
-    maxQuestions: 1,
+    maxQuestions: 0,
     maxCharacters: 600,
     ...overrides,
   });
 }
 
+const twoSlots = surfaceWith({
+  values: Object.freeze(["Qua 20/08 às 15h30", "Qui 21/08 às 9h"]),
+  moneyValues: Object.freeze([]),
+  currencyAllowed: false,
+  maxQuestions: 1,
+});
+
 describe("validador do texto verbalizado", () => {
-  it("recusa um valor que o plano não autorizou", () => {
+  it("aceita a prosa que carrega o valor autorizado inteiro", () => {
     const result = validateVerbalizedText({
-      text: "O valor é R$ 2.000,00.",
+      text: "As lentes custam R$ 290,00.",
       surface: surfaceWith(),
     });
 
-    expect(result).toEqual({ valid: false, violations: ["unauthorized_number"] });
+    expect(result).toEqual({ valid: true, text: "As lentes custam R$ 290,00." });
   });
 
-  it("aceita o mesmo valor autorizado escrito em prosa", () => {
+  it("recusa um valor que o plano não autorizou", () => {
     const result = validateVerbalizedText({
-      text: "Fica R$ 290,00 e podemos combinar o melhor dia.",
+      text: "As lentes custam R$ 2.000,00.",
+      surface: surfaceWith(),
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.valid === false && result.violations).toContain("unauthorized_number");
+  });
+
+  it("recusa a prosa que troca o fato autorizado por outra coisa", () => {
+    const result = validateVerbalizedText({
+      text: "Consigo te passar esse valor certinho, posso te ligar depois",
       surface: surfaceWith(),
     });
 
     expect(result).toEqual({
-      valid: true,
-      text: "Fica R$ 290,00 e podemos combinar o melhor dia.",
+      valid: false,
+      violations: ["missing_authorized_value"],
     });
   });
 
-  it("recusa um horário que o plano não ofereceu", () => {
+  it("recusa o horário recombinado a partir de dois horários autorizados", () => {
     const result = validateVerbalizedText({
-      text: "Consigo te encaixar quarta às 14h.",
-      surface: surfaceWith({ numbers: ["15"], currencyAllowed: false }),
+      text: "Consigo Qua 21/08 às 15h, pode ser?",
+      surface: twoSlots,
     });
 
-    expect(result).toEqual({ valid: false, violations: ["unauthorized_number"] });
+    expect(result.valid).toBe(false);
+    expect(result.valid === false && result.violations).toEqual([
+      "missing_authorized_value",
+      "unauthorized_number",
+    ]);
+  });
+
+  it("aceita os dois horários autorizados escritos por inteiro", () => {
+    const text = "Tenho Qua 20/08 às 15h30 e Qui 21/08 às 9h. Qual fica melhor?";
+
+    expect(validateVerbalizedText({ text, surface: twoSlots })).toEqual({ valid: true, text });
+  });
+
+  it("recusa um horário extra ao lado dos autorizados", () => {
+    const result = validateVerbalizedText({
+      text: "Tenho Qua 20/08 às 15h30, Qui 21/08 às 9h e também 18/08 às 10h.",
+      surface: twoSlots,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.valid === false && result.violations).toEqual(["unauthorized_number"]);
+  });
+
+  it("aceita número que vem do nome do próprio assunto", () => {
+    const text = "O clareamento 3 sessões custa R$ 290,00.";
+
+    expect(validateVerbalizedText({
+      text,
+      surface: surfaceWith({ numbers: ["3"] }),
+    })).toEqual({ valid: true, text });
+  });
+
+  it("recusa desconto inventado com o número de um horário autorizado", () => {
+    const result = validateVerbalizedText({
+      text: "Tenho Qua 20/08 às 15h30 e Qui 21/08 às 9h, com 20% de desconto.",
+      surface: twoSlots,
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.valid === false && result.violations).toEqual(["unauthorized_number"]);
+  });
+
+  it("recusa dinheiro por extenso quando nenhum valor foi autorizado", () => {
+    const result = validateVerbalizedText({
+      text: "O clareamento sai por trezentos e cinquenta reais.",
+      surface: surfaceWith({ values: [], moneyValues: [], currencyAllowed: false }),
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.valid === false && result.violations).toContain("unauthorized_currency");
+  });
+
+  it("recusa horário por extenso, que nenhum plano ofereceu", () => {
+    const result = validateVerbalizedText({
+      text: "Atendemos das oito da manhã às seis da tarde.",
+      surface: surfaceWith({ values: [], moneyValues: [], currencyAllowed: false }),
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.valid === false && result.violations).toContain("unauthorized_number");
+  });
+
+  it("aceita palavra comum que também é numeral, quando não fala de tempo nem de dinheiro", () => {
+    const text = "Vou te ajudar com isso agora mesmo, um instante.";
+
+    expect(validateVerbalizedText({
+      text,
+      surface: surfaceWith({ values: [], moneyValues: [], currencyAllowed: false }),
+    })).toEqual({ valid: true, text });
   });
 
   it("recusa duas perguntas no mesmo texto", () => {
     const result = validateVerbalizedText({
-      text: "Você prefere manhã? Qual seu nome?",
-      surface: surfaceWith({ numbers: [] }),
+      text: "Prefere manhã? Qual seu nome?",
+      surface: surfaceWith({ values: [], moneyValues: [], maxQuestions: 1, currencyAllowed: false }),
     });
 
     expect(result).toEqual({ valid: false, violations: ["too_many_questions"] });
   });
 
-  it("recusa moeda quando nenhum valor foi autorizado", () => {
+  it("recusa pergunta quando o plano não autorizou nenhuma", () => {
     const result = validateVerbalizedText({
-      text: "Sobre investimento, R$ falamos depois.",
-      surface: surfaceWith({ numbers: [], currencyAllowed: false }),
+      text: "As lentes custam R$ 290,00. Quer que eu veja um horário?",
+      surface: surfaceWith(),
     });
 
-    expect(result).toEqual({ valid: false, violations: ["unauthorized_currency"] });
+    expect(result).toEqual({ valid: false, violations: ["too_many_questions"] });
   });
 
   it("recusa texto vazio", () => {
     const result = validateVerbalizedText({
       text: "   ",
-      surface: surfaceWith({ numbers: [] }),
+      surface: surfaceWith({ values: [], moneyValues: [] }),
     });
 
     expect(result).toEqual({ valid: false, violations: ["empty_text"] });
@@ -76,7 +162,7 @@ describe("validador do texto verbalizado", () => {
   it("recusa texto acima do limite de caracteres", () => {
     const result = validateVerbalizedText({
       text: "a".repeat(41),
-      surface: surfaceWith({ numbers: [], maxCharacters: 40 }),
+      surface: surfaceWith({ values: [], moneyValues: [], maxCharacters: 40 }),
     });
 
     expect(result).toEqual({ valid: false, violations: ["too_long"] });
@@ -85,36 +171,26 @@ describe("validador do texto verbalizado", () => {
   it("recusa link, porque nenhuma mídia é autorizada", () => {
     const result = validateVerbalizedText({
       text: "Veja em https://exemplo.com.br",
-      surface: surfaceWith({ numbers: [] }),
+      surface: surfaceWith({ values: [], moneyValues: [] }),
     });
 
     expect(result).toEqual({ valid: false, violations: ["unauthorized_link"] });
   });
 
-  it("recusa promessa que o sistema não decidiu", () => {
-    const result = validateVerbalizedText({
-      text: "Garanto o resultado que você espera.",
-      surface: surfaceWith({ numbers: [] }),
-    });
+  it("recusa promessa em qualquer conjugação", () => {
+    for (const text of [
+      "Garanto o resultado que você espera.",
+      "A gente garante o resultado.",
+      "Garantido que você vai amar.",
+      "A garantia cobre a troca.",
+    ]) {
+      const result = validateVerbalizedText({
+        text,
+        surface: surfaceWith({ values: [], moneyValues: [] }),
+      });
 
-    expect(result).toEqual({ valid: false, violations: ["unauthorized_commitment"] });
-  });
-
-  it("acumula todas as violações do mesmo texto", () => {
-    const result = validateVerbalizedText({
-      text: "Garanto R$ 90 na terça às 9h? Qual seu nome?",
-      surface: surfaceWith({ numbers: [], currencyAllowed: false }),
-    });
-
-    expect(result).toEqual({
-      valid: false,
-      violations: [
-        "too_many_questions",
-        "unauthorized_number",
-        "unauthorized_currency",
-        "unauthorized_commitment",
-      ],
-    });
+      expect(result.valid === false && result.violations).toContain("unauthorized_commitment");
+    }
   });
 
   it("recusa valor não textual sem deixar exceção escapar", () => {
@@ -124,32 +200,5 @@ describe("validador do texto verbalizado", () => {
     });
 
     expect(result).toEqual({ valid: false, violations: ["empty_text"] });
-  });
-
-  it("recusa um valor autorizado escrito sem moeda, que o lead leria como número solto", () => {
-    const result = validateVerbalizedText({
-      text: "O valor é 290.",
-      surface: surfaceWith(),
-    });
-
-    expect(result).toEqual({ valid: false, violations: ["money_without_currency"] });
-  });
-
-  it("aceita o mesmo valor quando ele vem como dinheiro", () => {
-    const result = validateVerbalizedText({
-      text: "O valor é R$ 290,00.",
-      surface: surfaceWith(),
-    });
-
-    expect(result).toEqual({ valid: true, text: "O valor é R$ 290,00." });
-  });
-
-  it("não exige moeda para número que não é dinheiro", () => {
-    const result = validateVerbalizedText({
-      text: "Consigo quarta às 15h.",
-      surface: surfaceWith({ numbers: ["15"], moneyNumbers: [], currencyAllowed: false }),
-    });
-
-    expect(result).toEqual({ valid: true, text: "Consigo quarta às 15h." });
   });
 });

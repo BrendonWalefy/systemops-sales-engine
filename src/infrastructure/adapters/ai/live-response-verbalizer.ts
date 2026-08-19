@@ -21,7 +21,7 @@ const responseSchema = {
   required: ["text"],
 } as const;
 
-export class LiveResponseVerbalizer implements ResponseVerbalizerPort<string> {
+export class LiveResponseVerbalizer implements ResponseVerbalizerPort {
   readonly modelId = LIVE_MODEL_ID;
   readonly promptVersion = RESPONSE_VERBALIZATION_PROMPT_VERSION;
 
@@ -35,7 +35,7 @@ export class LiveResponseVerbalizer implements ResponseVerbalizerPort<string> {
   }
 
   async verbalize(
-    request: VerbalizationRequest<string>,
+    request: VerbalizationRequest,
     options?: Readonly<{ signal?: AbortSignal }>,
   ): Promise<string> {
     assertRegisteredLiveResponseVerbalizer(this);
@@ -47,8 +47,9 @@ export class LiveResponseVerbalizer implements ResponseVerbalizerPort<string> {
         subject: statement.subject,
         values: [...statement.values],
       })),
+      allowedValues: [...request.surface.values],
+      moneyValues: [...request.surface.moneyValues],
       allowedNumbers: [...request.surface.numbers],
-      moneyNumbers: [...request.surface.moneyNumbers],
       allowedCurrency: request.surface.currencyAllowed,
       maxQuestions: request.surface.maxQuestions,
       maxCharacters: request.surface.maxCharacters,

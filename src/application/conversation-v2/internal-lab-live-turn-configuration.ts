@@ -33,25 +33,33 @@ function trimmedOrNull(value: string | null | undefined): string | null {
 }
 
 /**
+ * Seções do playbook cuja primeira linha declara conteúdo, não maneira. Elas
+ * afirmam procedimento, diferencial, garantia e condição comercial — fatos que
+ * só podem chegar ao lead por uma capability, dentro do plano autorizado.
+ */
+const CONTENT_SECTION_HEADING = /^(?:PROCEDIMENTOS OFERECIDOS|DIFERENCIAIS|GARANTIA|COMO LIDAR COM OBJEÇÕES|PREÇOS?)\b/;
+const MAX_GUIDELINES = 12;
+
+/**
  * A voz da empresa dentro da resposta. Cada campo continua com o dono declarado
  * em AGENTS.md: conteúdo editorial vem da versão ativa do playbook, o nome de
  * apresentação vem do tenant. Nada é redigitado aqui, e ausência vira ausência
  * — nunca um valor inventado para preencher a lacuna.
+ *
+ * O que atravessa é maneira de falar. Preço, diferencial, garantia e resposta a
+ * objeção ficam de fora de propósito: o verbalizador não pode afirmar fato, e
+ * dar-lhe um preço em prosa é convidá-lo a afirmar. Esses dados chegam ao lead
+ * como fato autorizado, decidido por uma capability.
  */
 function speakerFromEditorial(
   organizationName: string | null | undefined,
   editorial: EditorialConfig | null,
 ): SpeakerProfile {
-  const guidelines = [
-    trimmedOrNull(editorial?.playbookText),
-    trimmedOrNull(editorial?.commercialPolicy),
-    ...(editorial?.differentials ?? []).map(trimmedOrNull),
-    ...(editorial?.objections ?? []).map(({ objection, response }) => {
-      const question = trimmedOrNull(objection);
-      const answer = trimmedOrNull(response);
-      return question && answer ? `Se o lead disser "${question}": ${answer}` : null;
-    }),
-  ].filter((item): item is string => item !== null);
+  const guidelines = (editorial?.playbookText ?? "")
+    .split(/\n{2,}/)
+    .map((section) => section.trim())
+    .filter((section) => section.length > 0 && !CONTENT_SECTION_HEADING.test(section))
+    .slice(0, MAX_GUIDELINES);
 
   return Object.freeze({
     agentName: trimmedOrNull(editorial?.receptionistName),

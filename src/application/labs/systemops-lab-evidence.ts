@@ -144,6 +144,7 @@ type ResponseValidatedTrace = Readonly<{
     latencyMs?: number;
     costMicros?: number | null;
     source: "draft" | "repair" | "fallback" | "none";
+    verbalizationViolations?: string;
   }>;
 }>;
 
@@ -353,6 +354,7 @@ const traceSchema = z.discriminatedUnion("stage", [
       latencyMs: nonNegativeInteger.optional(),
       costMicros: nonNegativeInteger.nullable().optional(),
       source: z.enum(["draft", "repair", "fallback", "none"]),
+      verbalizationViolations: z.string().max(500).optional(),
     }).strict(),
   }).strict(),
   z.object({

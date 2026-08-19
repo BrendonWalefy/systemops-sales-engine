@@ -29,7 +29,7 @@ const composer: ResponseComposerPort<FixtureOutcomeType> = { compose: async () =
 
 function verbalizer(
   text: unknown,
-): ResponseVerbalizerPort<FixtureOutcomeType> & { verbalize: ReturnType<typeof vi.fn> } {
+): ResponseVerbalizerPort & { verbalize: ReturnType<typeof vi.fn> } {
   return { modelId: "model-x", verbalize: vi.fn(async () => text) };
 }
 
@@ -39,13 +39,13 @@ describe("verbalização com modelo dentro do pipeline V2", () => {
       plan: responsePlanFixture,
       style,
       composer,
-      verbalization: { verbalizer: verbalizer("Fica em 1200, combinamos assim?"), speaker },
+      verbalization: { verbalizer: verbalizer("Fica em 1200, e podemos combinar assim."), speaker },
     });
 
     expect(result).toMatchObject({
       status: "rendered",
       source: "draft",
-      response: { text: "Fica em 1200, combinamos assim?" },
+      response: { text: "Fica em 1200, e podemos combinar assim." },
       verbalization: { status: "accepted", modelId: "model-x" },
     });
   });
@@ -55,7 +55,7 @@ describe("verbalização com modelo dentro do pipeline V2", () => {
       plan: responsePlanFixture,
       style,
       composer,
-      verbalization: { verbalizer: verbalizer("Sai por R$ 2.000, pode ser?"), speaker },
+      verbalization: { verbalizer: verbalizer("Sai por R$ 2.000,00 hoje."), speaker },
     });
 
     expect(result).toMatchObject({
@@ -65,7 +65,7 @@ describe("verbalização com modelo dentro do pipeline V2", () => {
       verbalization: {
         status: "rejected",
         modelId: "model-x",
-        violations: ["unauthorized_number", "unauthorized_currency"],
+        violations: ["missing_authorized_value", "unauthorized_number", "unauthorized_currency"],
       },
     });
   });
@@ -75,7 +75,7 @@ describe("verbalização com modelo dentro do pipeline V2", () => {
       plan: responsePlanFixture,
       style,
       composer,
-      verbalization: { verbalizer: verbalizer("Consigo quarta às 15h."), speaker },
+      verbalization: { verbalizer: verbalizer("Fica em 1200, e consigo quarta às 15h."), speaker },
     });
 
     expect(result).toMatchObject({
@@ -99,7 +99,7 @@ describe("verbalização com modelo dentro do pipeline V2", () => {
   });
 
   it("responde mesmo quando o modelo quebra", async () => {
-    const failing: ResponseVerbalizerPort<FixtureOutcomeType> = {
+    const failing: ResponseVerbalizerPort = {
       modelId: "model-x",
       verbalize: async () => { throw new Error("provider down"); },
     };
@@ -145,17 +145,61 @@ describe("verbalização com modelo dentro do pipeline V2", () => {
   });
 
   it("entrega ao modelo o texto autorizado e a superfície do plano, nunca o plano cru sozinho", async () => {
-    const spy = verbalizer("Fica em 1200, combinamos assim?");
+    const spy = verbalizer("Fica em 1200, e podemos combinar assim.");
 
     await runV2ResponsePipeline({
       plan: responsePlanFixture, style, composer, verbalization: { verbalizer: spy, speaker },
     });
 
-    expect(spy.verbalize).toHaveBeenCalledWith(expect.objectContaining({
-      authorizedText: "Informação: 1200.",
-      surface: expect.objectContaining({ numbers: ["1200"], currencyAllowed: false }),
+    expect(spy.verbalize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        statements: [{ meaning: "inform_fact", subject: "Item A", values: ["1200"] }],
+        surface: expect.objectContaining({ values: ["1200"], currencyAllowed: false }),
+        style,
+        speaker,
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("desiste da verbalização no prazo e responde com o texto autorizado", async () => {
+    const stalled: ResponseVerbalizerPort = {
+      modelId: "model-x",
+      verbalize: () => new Promise(() => {}),
+    };
+
+    const result = await runV2ResponsePipeline({
+      plan: responsePlanFixture,
       style,
-      speaker,
-    }));
+      composer,
+      verbalization: { verbalizer: stalled, speaker, timeoutMs: 20 },
+    });
+
+    expect(result).toMatchObject({
+      status: "rendered",
+      response: { text: "Informação: 1200." },
+      verbalization: { status: "failed", modelId: "model-x" },
+    });
+  });
+
+  it("avisa o modelo para parar quando o prazo estoura", async () => {
+    let observed: AbortSignal | undefined;
+    const stalled: ResponseVerbalizerPort = {
+      modelId: "model-x",
+      verbalize: (_request, options) => {
+        observed = options?.signal;
+        return new Promise(() => {});
+      },
+    };
+
+    await runV2ResponsePipeline({
+      plan: responsePlanFixture,
+      style,
+      composer,
+      verbalization: { verbalizer: stalled, speaker, timeoutMs: 20 },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    expect(observed?.aborted).toBe(true);
   });
 });

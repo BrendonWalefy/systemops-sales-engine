@@ -150,18 +150,18 @@ async function main(): Promise<void> {
     const surface = authorizedSurfaceFor(validation.draft);
     console.log(`\n### ${scenario.name}`);
     console.log(`autorizado: ${authorizedText}`);
-    console.log(`números permitidos: [${surface.numbers.join(", ")}] · moeda: ${surface.currencyAllowed}`);
+    console.log(`valores: [${surface.values.join(" | ")}] · moeda: ${surface.currencyAllowed} · perguntas: ${surface.maxQuestions}`);
 
     for (let attempt = 0; attempt < repetitions; attempt += 1) {
       total += 1;
       let text: string;
       try {
         text = await verbalizer.verbalize({
-          plan, draft: validation.draft, surface, authorizedText,
+          surface,
           statements: authorizedStatementsFor(validation.draft),
           style: { tone: "warm", verbosity: "concise", greeting: "omit", emoji: "none" },
           speaker,
-        });
+        }) as string;
       } catch (error) {
         console.log(`  falhou: ${error instanceof Error ? error.message : "erro"}`);
         rejections.set("provider_error", (rejections.get("provider_error") ?? 0) + 1);

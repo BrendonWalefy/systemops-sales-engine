@@ -156,7 +156,8 @@ function historyForUnderstanding(
 /**
  * O trace declara quem escolheu as palavras entregues. Recusa e falha do modelo
  * caem no mesmo valor porque o texto entregue foi o determinístico nos dois
- * casos; o `violations` do estágio distingue o motivo.
+ * casos; `verbalizationViolations` distingue recusa (com os códigos) de falha
+ * do provedor (vazio).
  */
 function verbalizationTraceModel(outcome: VerbalizationOutcome): string {
   if (outcome.status === "accepted") return outcome.modelId;
@@ -435,7 +436,12 @@ export class V2LiveConversationHandler implements ConversationHandler {
             requiresHandoff: validation.requiresHandoff,
             source: validation.source,
             model: verbalizationTraceModel(validation.verbalization),
-            promptVersion: this.deps.verbalizer?.promptVersion ?? "deterministic-renderer.v1",
+            promptVersion: validation.verbalization.status === "accepted"
+              ? this.deps.verbalizer!.promptVersion
+              : "deterministic-renderer.v1",
+            verbalizationViolations: validation.verbalization.status === "rejected"
+              ? validation.verbalization.violations.join(",")
+              : "",
             latencyMs: validation.latencyMs,
           });
           if (validation.source === "fallback") {

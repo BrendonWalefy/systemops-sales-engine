@@ -26,6 +26,9 @@ import {
   type ValidatedDraftResponse,
 } from "@/conversation-core/composer/validator";
 
+/** Prazo do turno para a verbalizacao. Estourou, a resposta autorizada sai. */
+export const DEFAULT_VERBALIZATION_TIMEOUT_MS = 6_000;
+
 export type V2ResponsePipelineResult =
   | {
       status: "rendered";
@@ -44,8 +47,9 @@ export async function runV2ResponsePipeline<OutcomeType extends string>(input: {
   style: ComposerStyle;
   composer: ResponseComposerPort<OutcomeType>;
   verbalization?: {
-    verbalizer: ResponseVerbalizerPort<OutcomeType>;
+    verbalizer: ResponseVerbalizerPort;
     speaker: SpeakerProfile;
+    timeoutMs?: number;
   };
 }): Promise<V2ResponsePipelineResult> {
   const plan = snapshotV2AuthorizedResponsePlan(input.plan);
@@ -62,7 +66,7 @@ export async function runV2ResponsePipeline<OutcomeType extends string>(input: {
     } catch {
       return { status: "no_safe_response", reason: "render_failed", violations };
     }
-    const spoken = await verbalize(draft, authorized.text);
+    const spoken = await verbalize(draft);
     return {
       status: "rendered",
       source,
@@ -80,31 +84,40 @@ export async function runV2ResponsePipeline<OutcomeType extends string>(input: {
    */
   const verbalize = async (
     draft: ValidatedDraftResponse<OutcomeType>,
-    authorizedText: string,
   ): Promise<{ outcome: VerbalizationOutcome; text: string | null }> => {
     const requested = input.verbalization;
     if (!requested) return { outcome: { status: "absent" }, text: null };
     const modelId = requested.verbalizer.modelId;
     const startedAt = performance.now();
     const elapsed = () => Math.max(0, Math.round(performance.now() - startedAt));
+    const surface = authorizedSurfaceFor(draft);
+    const controller = new AbortController();
+    const deadline = requested.timeoutMs ?? DEFAULT_VERBALIZATION_TIMEOUT_MS;
+    let expired: ReturnType<typeof setTimeout> | undefined;
     let candidate: unknown;
     try {
-      candidate = await requested.verbalizer.verbalize(Object.freeze({
-        plan,
-        draft,
-        surface: authorizedSurfaceFor(draft),
-        authorizedText,
-        statements: authorizedStatementsFor(draft),
-        style,
-        speaker: requested.speaker,
-      }));
+      // A corrida garante o prazo mesmo que a porta ignore o sinal: o turno tem
+      // orcamento de tempo, e uma chamada pendurada viraria silencio.
+      candidate = await Promise.race([
+        requested.verbalizer.verbalize(Object.freeze({
+          statements: authorizedStatementsFor(draft),
+          surface,
+          style,
+          speaker: requested.speaker,
+        }), { signal: controller.signal }),
+        new Promise<never>((_resolve, reject) => {
+          expired = setTimeout(() => {
+            controller.abort(new Error("verbalization_timeout"));
+            reject(new Error("verbalization_timeout"));
+          }, deadline);
+        }),
+      ]);
     } catch {
       return { outcome: { status: "failed", modelId, latencyMs: elapsed() }, text: null };
+    } finally {
+      if (expired !== undefined) clearTimeout(expired);
     }
-    const checked = validateVerbalizedText({
-      text: candidate,
-      surface: authorizedSurfaceFor(draft),
-    });
+    const checked = validateVerbalizedText({ text: candidate, surface });
     if (!checked.valid) {
       return {
         outcome: {
@@ -146,7 +159,11 @@ export async function runV2ResponsePipeline<OutcomeType extends string>(input: {
 
   const fallback = buildSafeFallback(plan);
   if (fallback) {
-    return await render(fallback, "fallback");
+    try {
+      return await render(fallback, "fallback");
+    } catch {
+      return { status: "no_safe_response", reason: "render_failed", violations };
+    }
   }
 
   return { status: "no_safe_response", reason: "no_valid_draft", violations };

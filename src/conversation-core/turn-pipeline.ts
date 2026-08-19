@@ -23,8 +23,9 @@ export type ResponseStageInput<OutcomeType extends string> = Readonly<{
   style: ComposerStyle;
   composer: ResponseComposerPort<OutcomeType>;
   verbalization?: Readonly<{
-    verbalizer: ResponseVerbalizerPort<OutcomeType>;
+    verbalizer: ResponseVerbalizerPort;
     speaker: SpeakerProfile;
+    timeoutMs?: number;
   }>;
 }>;
 

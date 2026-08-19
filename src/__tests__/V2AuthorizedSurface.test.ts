@@ -58,8 +58,8 @@ describe("superfície autorizada de um plano", () => {
       }],
     }]);
 
-    expect(surface.numbers).toEqual(["290"]);
-    expect(surface.moneyNumbers).toEqual(["290"]);
+    expect(surface.values).toEqual(["R$ 290,00"]);
+    expect(surface.moneyValues).toEqual(["R$ 290,00"]);
     expect(surface.currencyAllowed).toBe(true);
   });
 
@@ -84,8 +84,8 @@ describe("superfície autorizada de um plano", () => {
       }],
     }]);
 
-    expect(surface.numbers).toEqual(["15"]);
-    expect(surface.moneyNumbers).toEqual([]);
+    expect(surface.values).toEqual(["quarta às 15h"]);
+    expect(surface.moneyValues).toEqual([]);
     expect(surface.currencyAllowed).toBe(false);
   });
 
@@ -114,7 +114,7 @@ describe("superfície autorizada de um plano", () => {
       ],
     }]);
 
-    expect(surface.numbers).toEqual([]);
+    expect(surface.values).toEqual(["sem número"]);
   });
 
   it("autoriza no máximo uma pergunta", () => {
@@ -128,6 +128,45 @@ describe("superfície autorizada de um plano", () => {
     }]);
 
     expect(surface.maxQuestions).toBe(1);
+  });
+
+  it("não autoriza pergunta quando o plano só informa um fato", () => {
+    const surface = surfaceOf([{
+      type: "quote_ready",
+      semanticClass: "information_authorized",
+      origin: { capabilityId: "quote" },
+      subject: item,
+      evidence: [evidence],
+      facts: [{
+        key: "price_cents",
+        value: { kind: "money", amountInMinor: 29000, currency: "BRL" },
+        subject: item,
+        evidence,
+        disclosure: "allowed",
+      }],
+    }]);
+
+    expect(surface.maxQuestions).toBe(0);
+  });
+
+  it("autoriza os dígitos que vivem no nome do assunto, senão ele nunca poderia ser citado", () => {
+    const named = { type: "item", id: "b", displayName: "Clareamento 3 sessões" } as const;
+    const surface = surfaceOf([{
+      type: "quote_ready",
+      semanticClass: "information_authorized",
+      origin: { capabilityId: "quote" },
+      subject: named,
+      evidence: [evidence],
+      facts: [{
+        key: "price_cents",
+        value: { kind: "money", amountInMinor: 80000, currency: "BRL" },
+        subject: named,
+        evidence,
+        disclosure: "allowed",
+      }],
+    }]);
+
+    expect(surface.numbers).toEqual(["3"]);
   });
 
   it("dá mais espaço a um plano com mais atos do que a uma abertura", () => {

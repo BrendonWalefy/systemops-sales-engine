@@ -47,15 +47,12 @@ const speaker: SpeakerProfile = Object.freeze({
   guidelines: Object.freeze(["Responder primeiro, perguntar depois."]),
 });
 
-function request(): VerbalizationRequest<"quote_ready"> {
+function request(): VerbalizationRequest {
   const plan = buildV2AuthorizedResponsePlan(SCHEMA, results);
   const validation = validateDraft(plan, buildDeterministicDraft(plan));
   if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
   return Object.freeze({
-    plan,
-    draft: validation.draft,
     surface: authorizedSurfaceFor(validation.draft),
-    authorizedText: 'Para "Item A", valor: R$ 290,00.',
     statements: authorizedStatementsFor(validation.draft),
     style: { tone: "warm", verbosity: "concise", greeting: "omit", emoji: "none" } as const,
     speaker,
@@ -88,9 +85,9 @@ describe("verbalizador vivo de resposta", () => {
     const payload = JSON.parse(create.mock.calls[0]![0].messages[1].content) as Record<string, unknown>;
     expect(payload).toMatchObject({
       statements: [{ meaning: "inform_fact", subject: "Item A", values: ["R$ 290,00"] }],
-      allowedNumbers: ["290"],
-      moneyNumbers: ["290"],
-      maxQuestions: 1,
+      allowedValues: ["R$ 290,00"],
+      moneyValues: ["R$ 290,00"],
+      maxQuestions: 0,
       speaker: {
         agentName: "Marina",
         organizationName: "Casa Exemplo",

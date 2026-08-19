@@ -726,7 +726,7 @@ describe("V2LiveConversationHandler", () => {
 
   it("entrega ao lead a prosa do modelo quando ela cabe no plano autorizado", async () => {
     const harness = makeHarness({
-      verbalizedText: "O clareamento fica R$ 800,00. Quer que eu veja um horário?",
+      verbalizedText: "O clareamento fica R$ 800,00.",
     });
 
     await harness.handler.handle(handleInput());
@@ -734,7 +734,7 @@ describe("V2LiveConversationHandler", () => {
     expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
       expect.objectContaining({
         payload: expect.objectContaining({
-          replyText: "O clareamento fica R$ 800,00. Quer que eu veja um horário?",
+          replyText: "O clareamento fica R$ 800,00.",
         }),
       }),
       expect.anything(),
@@ -742,7 +742,11 @@ describe("V2LiveConversationHandler", () => {
     expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
       expect.objectContaining({
         stage: "response.validated",
-        metadata: expect.objectContaining({ valid: true, model: "gpt-4o-mini" }),
+        metadata: expect.objectContaining({
+          valid: true,
+          model: "gpt-4o-mini",
+          verbalizationViolations: "",
+        }),
       }),
     ]));
   });
@@ -771,7 +775,12 @@ describe("V2LiveConversationHandler", () => {
     expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
       expect.objectContaining({
         stage: "response.validated",
-        metadata: expect.objectContaining({ valid: true, model: "deterministic-fallback" }),
+        metadata: expect.objectContaining({
+          valid: true,
+          model: "deterministic-fallback",
+          promptVersion: "deterministic-renderer.v1",
+          verbalizationViolations: "missing_authorized_value,unauthorized_number",
+        }),
       }),
     ]));
   });

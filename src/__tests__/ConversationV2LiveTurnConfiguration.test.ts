@@ -102,7 +102,7 @@ describe("Internal Lab live turn configuration", () => {
     expect(manual.gateInput.humanControlled).toBe(true);
   });
 
-  it("leva a voz da empresa para dentro da resposta, com cada dado do seu dono", async () => {
+  it("leva a voz da empresa para dentro da resposta, sem levar fato que ninguém autorizou", async () => {
     const configuration = await resolveInternalLabLiveTurnConfiguration({
       context: context({
         clinic: { id: "clinic-lab", name: "SystemOps Dental Lab" },
@@ -110,10 +110,16 @@ describe("Internal Lab live turn configuration", () => {
           toneOfVoice: "acolhedor e objetivo",
           receptionistName: "Marina",
           specialty: "odontologia estética",
-          commercialPolicy: "Avaliação sempre gratuita.",
+          commercialPolicy: "Lentes de resina: R$ 4.000. Avaliação sempre gratuita.",
           differentials: ["Atendimento no mesmo dia"],
-          objections: [{ objection: "está caro", response: "temos parcelamento" }],
-          playbookText: "Responder primeiro, perguntar depois.",
+          objections: [{ objection: "está caro", response: "temos parcelamento em 10x" }],
+          playbookText: [
+            "Responder primeiro, perguntar depois.",
+            "PROCEDIMENTOS OFERECIDOS:\n• Lentes de resina",
+            "DIFERENCIAIS:\n• Atendimento no mesmo dia",
+            "GARANTIA:\n- troca em 12 meses",
+            "COMO LIDAR COM OBJEÇÕES:\n- \"está caro\" → temos parcelamento em 10x",
+          ].join("\n\n"),
         },
       }),
       turnInput: turnInput(),
@@ -132,12 +138,7 @@ describe("Internal Lab live turn configuration", () => {
       organizationName: "SystemOps Dental Lab",
       specialty: "odontologia estética",
       toneOfVoice: "acolhedor e objetivo",
-      guidelines: [
-        "Responder primeiro, perguntar depois.",
-        "Avaliação sempre gratuita.",
-        "Atendimento no mesmo dia",
-        "Se o lead disser \"está caro\": temos parcelamento",
-      ],
+      guidelines: ["Responder primeiro, perguntar depois."],
     });
   });
 

@@ -1,7 +1,5 @@
-import type { V2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
 import type { AuthorizedSurface } from "@/conversation-core/composer/verbalization-validator";
 import type { ComposerStyle } from "@/conversation-core/composer/contract";
-import type { ValidatedDraftResponse } from "@/conversation-core/composer/validator";
 
 /**
  * Quem fala, em nome de quem, com que voz e sob quais orientacoes editoriais.
@@ -33,20 +31,24 @@ export type AuthorizedStatement = Readonly<{
   values: readonly string[];
 }>;
 
-export type VerbalizationRequest<OutcomeType extends string> = Readonly<{
-  plan: V2AuthorizedResponsePlan<OutcomeType>;
-  draft: ValidatedDraftResponse<OutcomeType>;
-  surface: AuthorizedSurface;
-  /** O mesmo conteudo, ja autorizado, na forma mais crua possivel. */
-  authorizedText: string;
+/**
+ * Tudo que o verbalizador recebe, e nada alem disso. O plano completo carrega
+ * fato interno e referencia de evidencia: entregar o plano inteiro a uma porta
+ * externa seria dar acesso ao que a decisao usou, e nao ao que pode ser dito.
+ */
+export type VerbalizationRequest = Readonly<{
   statements: readonly AuthorizedStatement[];
+  surface: AuthorizedSurface;
   style: ComposerStyle;
   speaker: SpeakerProfile;
 }>;
 
-export interface ResponseVerbalizerPort<OutcomeType extends string> {
+export interface ResponseVerbalizerPort {
   readonly modelId: string;
-  verbalize(request: VerbalizationRequest<OutcomeType>): Promise<unknown>;
+  verbalize(
+    request: VerbalizationRequest,
+    options?: Readonly<{ signal?: AbortSignal }>,
+  ): Promise<unknown>;
 }
 
 export type VerbalizationOutcome =
