@@ -122,7 +122,7 @@ export type ActionResult =
   | { type: "no_appointments" }
   | { type: "clinical_urgency" }
   | { type: "handoff_requested"; handoffReason?: string | null }
-  | { type: "price_inquiry"; identifiedTreatment?: string | null; ambiguousTreatmentMatches?: string[] | null; quantityNote?: string | null; oldPriceObjection?: boolean }
+  | { type: "price_inquiry"; identifiedTreatment?: string | null; ambiguousTreatmentMatches?: string[] | null; quantityNote?: string | null; oldPriceObjection?: boolean; slotsWillFollow?: boolean }
   | { type: "general_question"; clinicContext: string }
   | { type: "greeting" }
   | { type: "acknowledgment" }
@@ -648,9 +648,6 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
       const installmentInstruction = installmentTable
         ? `SE O LEAD PERGUNTAR SOBRE PARCELAMENTO: use a TABELA DE PARCELAMENTO abaixo — os valores já incluem a taxa da operadora, apresente-os diretamente sem mencionar taxa adicional.\n${installmentTable}`
         : `SE O LEAD PERGUNTAR SOBRE PARCELAMENTO (ex: "12x quanto fica?", "parcela em quantas vezes?"): calcule a parcela base (valor ÷ número de parcelas), apresente como "Nx de R$X — a taxa da maquininha fica com a operadora, não entra no valor da clínica 😊". NÃO invente uma porcentagem de taxa.`;
-      const treatmentMediaInstruction = result.identifiedTreatment
-        ? `VÍDEOS PARA ESTE PROCEDIMENTO: se a Biblioteca de Mídia contiver vídeos relacionados a "${result.identifiedTreatment}", inclua TODOS os [MEDIA:id] correspondentes logo após apresentar o investimento — mostrar o resultado visual junto ao preço reforça o valor percebido e aumenta a conversão. Coloque os [MEDIA:id] antes do próximo passo.`
-        : `SE A CLÍNICA TIVER VÍDEOS NA BIBLIOTECA RELACIONADOS AO TRATAMENTO PERGUNTADO: inclua os [MEDIA:id] relevantes logo após apresentar o investimento — mostrar o resultado visual junto ao preço reforça o valor percebido do procedimento.`;
       const ambiguousMatches = result.ambiguousTreatmentMatches?.filter(Boolean) ?? [];
       const ambiguityInstruction = ambiguousMatches.length > 1
         ? `REGRA CRÍTICA — LEAD NÃO ESPECIFICOU A VARIAÇÃO: o termo usado corresponde a mais de uma opção do catálogo (${ambiguousMatches.map((n) => `"${n}"`).join(", ")}). Apresente o valor e as condições de TODAS essas opções na mesma resposta, deixando claro o que diferencia cada uma — NUNCA responda com apenas uma delas e omita as demais. Só aprofunde em uma única opção se o lead perguntar especificamente por ela depois.`
@@ -664,17 +661,22 @@ REGRAS: Seja caloroso e específico. Diga que a equipe já foi avisada e irá re
       const oldPriceInstruction = result.oldPriceObjection
         ? `O LEAD CITOU UM PREÇO NOSSO ANTERIOR (mais barato): reconheça com naturalidade que ele lembra de uma cotação anterior; explique gentilmente que aquele valor era de uma promoção com validade que já passou; apresente o valor VIGENTE (o dos dados da clínica) como o atual. NUNCA repita nem confirme o valor antigo que o lead citou — você não tem esse número; não o invente. Conduza para a avaliação.`
         : "";
+      const nextStepInstruction = result.slotsWillFollow
+        ? "HORÁRIOS REAIS SERÃO ANEXADOS LOGO DEPOIS DESTA RESPOSTA. Portanto, NÃO pergunte se pode ver horários, NÃO ofereça agenda e NÃO antecipe datas; termine após informar o preço."
+        : isConcierge
+          ? "Depois do preço, faça no máximo UMA pergunta curta e relevante. Se ainda falta saber técnica, quantidade ou variação, pergunte isso. Só ofereça avaliação quando nenhuma informação comercial necessária estiver pendente."
+          : "Depois do preço, ofereça no máximo um próximo passo objetivo; não reapresente o menu.";
       return `AÇÃO EXECUTADA: Lead perguntou sobre preço${result.identifiedTreatment ? ` de "${result.identifiedTreatment}"` : ""}.
-Apresente os valores e condições descritos na política comercial do sistema. NÃO entregue uma lista seca de preços: explique em linguagem natural o que o valor cobre ou por que o valor final depende da avaliação, usando apenas fatos disponíveis. Se houver avaliação, explique o que ela entrega na prática (ex: planejamento, análise, orçamento fechado, condições, próximos passos) em vez de apenas dizer "avaliação detalhada". REGRA CRÍTICA: se o lead perguntar sobre um serviço ou valor que a política NÃO menciona, reconheça a pergunta com empatia e explique que a clínica disponibiliza valores apenas para os procedimentos descritos — qualquer outra informação de preço pode ser obtida diretamente com a equipe. NÃO invente valores nem diga "não temos" para serviços não listados. Isso inclui manutenção/ajuste de trabalho já realizado (polimento, retoque, reparo, troca): nesses casos NUNCA responda com o preço do procedimento base do catálogo — o lead não está comprando o procedimento, está mantendo um que já fez.
+Comece pelo valor solicitado e use no máximo 3 frases curtas (ou linhas curtas quando houver mais de uma opção). Não acrescente uma aula sobre técnica de venda, valor percebido, qualidade, planejamento ou avaliação se isso não for necessário para responder à pergunta atual. Explique uma condição apenas quando ela muda o preço ou o próximo passo. REGRA CRÍTICA: se o lead perguntar sobre um serviço ou valor que a política NÃO menciona, reconheça a pergunta e diga objetivamente que a equipe confirma o valor. NÃO invente valores nem diga "não temos" para serviços não listados. Isso inclui manutenção/ajuste de trabalho já realizado (polimento, retoque, reparo, troca): nesses casos NUNCA responda com o preço do procedimento base do catálogo — o lead não está comprando o procedimento, está mantendo um que já fez.
 REGRA CRÍTICA — FOCO NO ASSUNTO DA MENSAGEM ATUAL: responda especificamente sobre o procedimento perguntado agora. Se a conversa mencionou outro procedimento antes (inclusive se o lead rejeitou ou corrigiu esse procedimento anterior, ex: "não é isso", "não é X"), NÃO volte a falar dele nem misture os dois — a menos que o lead peça explicitamente uma comparação entre ambos.
 ${quantityInstruction}
 ${oldPriceInstruction}
 ${ambiguityInstruction}
 ${installmentInstruction}
-${treatmentMediaInstruction}
+MÍDIA: NÃO inclua [MEDIA:id] por iniciativa própria nesta resposta. Cards, fotos e vídeos são enviados apenas quando uma regra determinística do pipeline os seleciona; não repita mídia só porque o lead perguntou preço.
 SE O LEAD MENCIONAR UM PREÇO QUE VIU EM OUTRO LUGAR ("minha amiga pagou X", "vi em outro lugar por Y"): reconheça com empatia sem ser defensivo; mencione brevemente que técnica, material e experiência do profissional influenciam o resultado — sem criticar concorrentes. Em seguida, traga de volta para o degrau seguro: avaliação para ver o que o caso realmente precisa e quais condições fazem sentido.
 SE O LEAD MENCIONAR QUE ESTÁ COMPRANDO PARA OUTRA PESSOA ("meu marido", "minha esposa", "quero presentear"): trate com naturalidade; fale sobre o serviço como se o destinatário fosse o cliente; sugira uma visita presencial para que a equipe avalie o caso da pessoa real.
-${isConcierge ? "Depois de responder o investimento, conduza ativamente para o próximo passo — não espere o lead pedir. Prefira um fechamento confiante e humano: 'posso ver os horários para sua avaliação?' Evite encerramentos passivos como 'caso tenha interesse'." : "Depois de responder, ofereça um próximo passo objetivo; não reapresente o menu."}`;
+${nextStepInstruction}`;
     }
 
 case "general_question":
@@ -685,7 +687,7 @@ PRIORIDADE DE PLAYBOOK: Antes de responder, verifique se as ORIENTAÇÕES DA CL�
 REGRA DE SEQUÊNCIA: quando houver uma jornada consultiva definida (ex: explicação técnica → mídia → tirar dúvidas → eventual convite opcional de foto → só depois agenda), NÃO compacte etapas em uma única resposta. NÃO misture explicação técnica, pedido de foto e pergunta de agendamento no mesmo turno.
 PROIBIDO ABSOLUTO: NÃO liste horários disponíveis, NÃO mencione datas ou horários específicos (ex: "segunda às 10h", "dia 23/06"), NÃO confirme agendamento. Para encaminhar para avaliação, use apenas uma pergunta consultiva ("que tal uma avaliação?") sem especificar slots.
 SE O LEAD EXPRESSAR MEDO DE RESULTADO ARTIFICIAL: acolha o receio e fale de naturalidade/harmonia sem inventar processos específicos. Só diga que escolhe cor/transparência, mostra casos anteriores ou faz simulação se isso estiver nas ORIENTAÇÕES DA CLÍNICA.
-Responda de forma informativa e acolhedora. ${isConcierge ? "Após responder a dúvida, conduza ativamente para o próximo passo: se o assunto for um procedimento estético ou de alto valor e o lead demonstrou interesse genuíno, ofereça gentilmente uma avaliação presencial como próximo passo natural — sem pressionar, sem mencionar horários específicos. Só pule esta etapa se as ORIENTAÇÕES DA CLÍNICA definirem uma sequência diferente para este momento." : "Não reapresente menu quando a pergunta do lead for clara."}`;
+Responda primeiro e diretamente à mensagem atual, em no máximo 2 parágrafos curtos. Não repita explicações, benefícios ou mídias já apresentados no histórico. ${isConcierge ? "Use no máximo UMA pergunta de continuidade e somente quando ela for consequência natural da dúvida atual. Para perguntas autocontidas como localização, rede social, identificação de foto/card, cor ou confirmação simples, encerre após responder — não ofereça avaliação nem agenda." : "Não reapresente menu quando a pergunta do lead for clara."}`;
 
 
     case "greeting":

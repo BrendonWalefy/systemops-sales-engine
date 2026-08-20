@@ -41,7 +41,7 @@ import { ResponseComposer } from "@/core/intelligence/ResponseComposer";
 import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseComposer";
 import { buildPromptContext } from "@/core/intelligence/PromptContextBuilder";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
-import { resolveQuantityPriceQuery } from "@/core/intelligence/quantity-price";
+import { extractQuantity, resolveQuantityPriceQuery } from "@/core/intelligence/quantity-price";
 import { detectAtypicalClinicalCase, detectOldPriceObjection } from "@/core/intelligence/objection-triage";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "@/application/config/price-campaigns";
@@ -500,6 +500,73 @@ function resolveMenuSelection(message: string, items: MenuItem[]): MenuResolutio
 function isLocationRequest(message: string): boolean {
   const n = message.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
   return n.includes("localizacao") || n.includes("endereco") || n.includes("onde") || n.includes("fica");
+}
+
+export function isSocialMediaRequest(message: string): boolean {
+  const n = normalizeFreeText(message);
+  return (
+    n.includes("instagram") ||
+    n.includes("insta ") ||
+    n === "insta" ||
+    n.includes("rede social") ||
+    n.includes("perfil da clinica")
+  );
+}
+
+export function isRecentMediaIdentificationRequest(message: string): boolean {
+  const n = normalizeFreeText(message);
+  const asksWhich = /\b(qual|quais)\b/.test(n);
+  const referencesMedia = /\b(foto|fotos|imagem|imagens|card|cards|primeira|segunda|delas|dessas|essa|essa daqui)\b/.test(n);
+  const referencesKnownVariation = /\b(premium|estratificada|simplificada)\b/.test(n);
+  return asksWhich && (referencesMedia || referencesKnownVariation);
+}
+
+export function buildRecentMediaIdentificationContext(messages: Message[]): string {
+  const recentMedia = messages
+    .filter(
+      (message) =>
+        (message.author === "agent" || message.author === "clinic_user") &&
+        (message.mediaType === "image" || message.mediaType === "video") &&
+        !message.simulated,
+    )
+    .slice(-6)
+    .map((message, index) => `${index + 1}. ${message.body?.trim() || "mídia sem título"}`);
+
+  if (recentMedia.length === 0) {
+    return "O lead pediu para identificar uma mídia, mas não há mídia identificável no histórico recente. Diga isso em uma frase e peça que ele encaminhe a imagem. Não reinicie o fluxo, não apresente técnicas e não ofereça agenda.";
+  }
+
+  return [
+    "O lead quer identificar uma mídia que já foi enviada.",
+    "MÍDIAS RECENTES, NA ORDEM EM QUE FORAM ENVIADAS:",
+    recentMedia.join("\n"),
+    "Responda diretamente em no máximo 2 frases, indicando a posição e o título corretos. Não reenvie mídia, não repita explicações do procedimento e não ofereça agenda.",
+  ].join("\n");
+}
+
+export function isQuantityFollowupToPriceQuestion(params: {
+  message: string;
+  incomingMessageId: string;
+  history: Message[];
+}): boolean {
+  if (extractQuantity(params.message) === null) return false;
+  const previousLeadMessage = [...params.history]
+    .reverse()
+    .find((message) => message.author === "lead" && message.id !== params.incomingMessageId);
+  return previousLeadMessage
+    ? isPriceRequestText(normalizeFreeText(previousLeadMessage.body))
+    : false;
+}
+
+export function shouldSuppressSupersededConversationalReply(params: {
+  intent: IntentType;
+  incomingMessageId: string;
+  latestLeadMessage: Pick<Message, "id" | "sentAt"> | null;
+}): boolean {
+  if (params.intent !== "acknowledgment" && params.intent !== "farewell") return false;
+  return Boolean(
+    params.latestLeadMessage && params.latestLeadMessage.id !== params.incomingMessageId,
+  );
 }
 
 function isProcedureCatalogRequest(message: string): boolean {
@@ -1759,6 +1826,42 @@ function nextActivePipelineStep(
   return null;
 }
 
+export function shouldDeferFirstContactContent(params: {
+  isFirstMessage: boolean;
+  experience: ConversationExperience;
+  step: PipelineStep;
+}): boolean {
+  return (
+    params.isFirstMessage &&
+    params.experience === "concierge" &&
+    params.step.type === "content" &&
+    params.step.deliverOnFirstContact !== true
+  );
+}
+
+export function resolveImmediateFirstContactContent(
+  message: string,
+  treatments: Treatment[],
+): { treatment: Treatment; step: Extract<PipelineStep, { type: "content" }>; index: number } | null {
+  const optedInTreatments = treatments.filter((treatment) => {
+    const firstActive = treatment.pipelineSteps
+      ? nextActivePipelineStep(treatment.pipelineSteps, 0)
+      : null;
+    return firstActive?.step.type === "content" && firstActive.step.deliverOnFirstContact === true;
+  });
+  const treatment = matchTreatmentByNormalizedMessage(
+    normalizeFreeText(message),
+    optedInTreatments,
+    TREATMENT_MENTION_STOPWORDS,
+  );
+  if (!treatment?.pipelineSteps) return null;
+  const firstActive = nextActivePipelineStep(treatment.pipelineSteps, 0);
+  if (firstActive?.step.type !== "content" || firstActive.step.deliverOnFirstContact !== true) {
+    return null;
+  }
+  return { treatment, step: firstActive.step, index: firstActive.index };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class ConversationOrchestrator {
@@ -2526,12 +2629,6 @@ export class ConversationOrchestrator {
     const clinicTreatments = await this.treatmentRepo.listByClinic(clinicId);
     const experience = clinicExperience;
 
-    // A3 — Qualificar antes do pitch: no 1º contato em modo concierge, o opener curado
-    // da clínica já faz a pergunta de qualificação (padrão da operadora humana). Nesse
-    // caso não despejamos explicação + mídia do pipeline junto; posicionamos o pipeline
-    // no passo de conteúdo (deferido) e ele dispara na resposta seguinte do lead.
-    const deferFirstContactPitch = isFirstMessage && experience === "concierge";
-
     // A9 — Reenvio idêntico do lead (duplo clique no anúncio CTWA dispara o mesmo texto
     // 2x com horas de intervalo; a janela de dedup de 2min lá em cima não pega). Sem
     // pipeline ativo, reprocessar geraria um SEGUNDO pitch, possivelmente diferente do
@@ -2833,7 +2930,7 @@ export class ConversationOrchestrator {
     // MÍDIA do prompt e (b) bloquear no envio qualquer [MEDIA:id] cujo
     // treatmentId divirja deste (ver resolveOutboundParts). null = sem
     // isolamento aplicável nesta virada (comportamento de hoje, sem filtro).
-    const activeTreatmentId: string | null =
+    let activeTreatmentId: string | null =
       pipelineState?.treatmentId ??
       findTreatmentByIdOrName(clinicTreatments, { treatmentName: slotPreference.identifiedTreatment })?.id ??
       null;
@@ -2955,6 +3052,22 @@ export class ConversationOrchestrator {
         effectiveIntent = "check_availability";
         clarificationTreatmentName = matchedFromClarification.name;
       }
+    }
+
+    // Rajadas comuns chegam como duas frases: "qual o valor para tirar?" e, logo
+    // depois, "tenho 13 lentes". A segunda mensagem isolada parece uma pergunta
+    // geral para o classificador, mas é uma continuação inequívoca de preço. O
+    // sistema mantém o assunto atual e ativa o guard de quantidade, sem depender
+    // de a LLM reconstruir essa relação.
+    if (
+      effectiveIntent === "general_question" &&
+      isQuantityFollowupToPriceQuestion({
+        message: messageText,
+        incomingMessageId: incomingMessage.id,
+        history: allMessagesForContext,
+      })
+    ) {
+      effectiveIntent = "price_inquiry";
     }
 
     // ── Guard: preço de manutenção não catalogada → equipe ──
@@ -3822,6 +3935,42 @@ export class ConversationOrchestrator {
 
       // ── Preço ──
       case "price_inquiry": {
+        // Alguns pipelines começam com cards que já contêm as opções e os
+        // valores. Quando a etapa optou por entrega imediata, ela é a melhor
+        // resposta inclusive para "qual o valor?" no primeiro contato: evita
+        // uma cotação textual longa e já posiciona o lead na comparação certa.
+        const immediateFirstContact = isFirstMessage && !pipelineState
+          ? resolveImmediateFirstContactContent(messageText, clinicTreatments)
+          : null;
+        if (immediateFirstContact) {
+          await this.stateMachine.startTreatmentPipeline(
+            conversation.id,
+            immediateFirstContact.treatment.id,
+            immediateFirstContact.treatment.name,
+            clinic.staleConversationHours * 60,
+            immediateFirstContact.index,
+          );
+          activeTreatmentId = immediateFirstContact.treatment.id;
+          const parts = buildPipelineContentParts(immediateFirstContact.step.blocks);
+          triggerPartsOverride = parts;
+          composedParts = parts;
+          composedMediaIds = parts
+            .filter((part): part is { type: "media"; id: string } => part.type === "media")
+            .map((part) => part.id);
+          replyText = parts
+            .filter((part): part is { type: "text"; content: string } => part.type === "text")
+            .map((part) => part.content)
+            .join("\n\n");
+          const next = nextActivePipelineStep(
+            immediateFirstContact.treatment.pipelineSteps!,
+            immediateFirstContact.index + 1,
+          );
+          pendingPipelineAdvance = next
+            ? { action: "advance", nextStepIndex: next.index }
+            : { action: "exit" };
+          break;
+        }
+
         // Guard de ambiguidade tem precedência sobre a escolha da LLM: termo
         // genérico → nenhum tratamento único, todas as variações apresentadas.
         const priceIdentifiedTreatment = ambiguousTreatmentOverride
@@ -3877,17 +4026,6 @@ export class ConversationOrchestrator {
             .where(eq(conversationsTable.id, conversation.id));
         }
 
-        replyText = await compose({
-          type: "price_inquiry",
-          identifiedTreatment: priceIdentifiedTreatment,
-          ambiguousTreatmentMatches:
-            ambiguousTreatmentOverride ??
-            classification.slotPreference.ambiguousTreatmentMatches ??
-            null,
-          quantityNote,
-          oldPriceObjection: oldPriceObjectionDetected,
-        });
-
         // ── Item 1 (reunião 17/07): fechar como o operador faz — depois de cotar
         // um único tratamento (sem ambiguidade, sem escalonamento pendente, sem
         // objeção de preço em curso), já oferta horários reais em vez de só
@@ -3899,6 +4037,10 @@ export class ConversationOrchestrator {
         // Vitalli — outras clínicas concierge (ex.: Ximendes) têm padrões reais
         // de price_inquiry com objeção/terceiro/especificação técnica onde essa
         // antecipação de horário não foi validada. Não generalizar sem opt-in.
+        let priceFollowup: {
+          slots: FormattedSlot[];
+          evaluationTreatment: Treatment | null;
+        } | null = null;
         if (
           clinic.offerSlotsAfterPriceEnabled &&
           experience === "concierge" &&
@@ -3922,19 +4064,45 @@ export class ConversationOrchestrator {
           );
 
           if (priceFollowSlots.length > 0 && !priceFollowEmpty) {
-            // compose() sobrescreve composedParts/composedMediaIds a cada chamada —
-            // preserva o que a resposta de preço já anexou (ex.: vídeo do resultado)
-            // e concatena com o que a 2ª chamada (só texto) produzir.
-            const priceReplyParts = composedParts;
-            const priceMediaIds = composedMediaIds;
-            const slotsText = evalTreatment
-              ? await compose({ type: "evaluation_redirect", treatmentName: matchedPriceTreatment.name, evaluationSlots: priceFollowSlots })
-              : await compose({ type: "slots_found", slots: priceFollowSlots, askedForPreference: false });
-            if (slotsText) {
-              replyText = `${replyText}\n\n${slotsText}`;
-              composedParts = [...priceReplyParts, ...composedParts];
-              composedMediaIds = [...priceMediaIds, ...composedMediaIds];
-            }
+            priceFollowup = {
+              slots: priceFollowSlots,
+              evaluationTreatment: evalTreatment ?? null,
+            };
+          }
+        }
+
+        replyText = await compose({
+          type: "price_inquiry",
+          identifiedTreatment: priceIdentifiedTreatment,
+          ambiguousTreatmentMatches:
+            ambiguousTreatmentOverride ??
+            classification.slotPreference.ambiguousTreatmentMatches ??
+            null,
+          quantityNote,
+          oldPriceObjection: oldPriceObjectionDetected,
+          slotsWillFollow: priceFollowup !== null,
+        });
+
+        if (priceFollowup && matchedPriceTreatment) {
+          // compose() sobrescreve composedParts/composedMediaIds a cada chamada;
+          // preserva a resposta curta de preço e concatena a lista real de slots.
+          const priceReplyParts = composedParts;
+          const priceMediaIds = composedMediaIds;
+          const slotsText = priceFollowup.evaluationTreatment
+            ? await compose({
+                type: "evaluation_redirect",
+                treatmentName: matchedPriceTreatment.name,
+                evaluationSlots: priceFollowup.slots,
+              })
+            : await compose({
+                type: "slots_found",
+                slots: priceFollowup.slots,
+                askedForPreference: false,
+              });
+          if (slotsText) {
+            replyText = `${replyText}\n\n${slotsText}`;
+            composedParts = [...priceReplyParts, ...composedParts];
+            composedMediaIds = [...priceMediaIds, ...composedMediaIds];
           }
         }
 
@@ -3966,8 +4134,20 @@ export class ConversationOrchestrator {
                 greetingTreatment.id,
                 greetingTreatment.name,
                 clinic.staleConversationHours * 60,
+                firstActive.index,
               );
+              activeTreatmentId = greetingTreatment.id;
               if (firstActive.step.type === "content") {
+                if (
+                  shouldDeferFirstContactContent({
+                    isFirstMessage,
+                    experience,
+                    step: firstActive.step,
+                  })
+                ) {
+                  replyText = greetingText;
+                  break;
+                }
                 const pipelineParts = buildPipelineContentParts(firstActive.step.blocks);
                 const pipelineText = pipelineParts
                   .filter((p): p is { type: "text"; content: string } => p.type === "text")
@@ -4020,6 +4200,36 @@ export class ConversationOrchestrator {
         const directProcedureCatalogRequested = !menuResolution && !procedureSelection && isProcedureCatalogRequest(messageText);
         const directLocationRequested = !menuResolution && !procedureSelection && isLocationRequest(messageText);
         const menuGeneralSubtype = menuResolution?.intent === "general_question" ? menuResolution.subtype : null;
+        const directSocialRequested = !menuResolution && !procedureSelection && isSocialMediaRequest(messageText);
+        const recentMediaIdentificationRequested =
+          !menuResolution && !procedureSelection && isRecentMediaIdentificationRequest(messageText);
+
+        // A pergunta atual vence o estágio do funil. Localização, rede social e
+        // identificação de uma mídia já enviada são dúvidas autocontidas; não
+        // devem reiniciar a apresentação, repetir cards nem despejar a explicação
+        // do Q&A ativo antes de responder o que o lead acabou de perguntar.
+        if (menuGeneralSubtype === "location" || directLocationRequested) {
+          replyText = await compose({
+            type: "general_question",
+            clinicContext: buildLocationClinicContext(clinic.address),
+          });
+          break;
+        }
+        if (directSocialRequested) {
+          replyText = await compose({
+            type: "general_question",
+            clinicContext:
+              "O lead pediu a rede social da clínica. Responda somente com o link exato disponível nas ORIENTAÇÕES DA CLÍNICA. Se nenhum link estiver cadastrado, diga em uma frase que a equipe pode enviá-lo. Não reinicie o tratamento, não reenvie mídia e não ofereça agenda.",
+          });
+          break;
+        }
+        if (recentMediaIdentificationRequested) {
+          replyText = await compose({
+            type: "general_question",
+            clinicContext: buildRecentMediaIdentificationContext(allMessagesForContext),
+          });
+          break;
+        }
 
         // ── Pipeline continuação ──
         // Se há pipeline ativo, ele tem prioridade sobre a lógica normal de contexto.
@@ -4148,7 +4358,13 @@ export class ConversationOrchestrator {
               // emiti-lo). A explicação + mídia dispara na continuação, quando o lead
               // responde — espelhando o ritmo da operadora humana (qualifica, depois
               // apresenta). Passos que começam com "qa" não têm mídia e seguem normais.
-              if (deferFirstContactPitch && firstActive.step.type === "content") {
+              if (
+                shouldDeferFirstContactContent({
+                  isFirstMessage,
+                  experience,
+                  step: firstActive.step,
+                })
+              ) {
                 await this.stateMachine.startTreatmentPipeline(
                   conversation.id,
                   matchedTreatment.id,
@@ -4156,6 +4372,7 @@ export class ConversationOrchestrator {
                   clinic.staleConversationHours * 60,
                   firstActive.index,
                 );
+                activeTreatmentId = matchedTreatment.id;
                 replyText = buildConciergeStarter(clinic, timezone, lead.name, editorial?.receptionistName);
                 clinicContext = "";
                 break;
@@ -4166,6 +4383,7 @@ export class ConversationOrchestrator {
                 matchedTreatment.name,
                 clinic.staleConversationHours * 60,
               );
+              activeTreatmentId = matchedTreatment.id;
               if (firstActive.step.type === "content") {
                 // Blocos crus: a saudação da primeira mensagem é aplicada UMA vez
                 // pelo bloco pós-switch (prependPipelineIntroGreeting). Saudar aqui
@@ -4339,6 +4557,26 @@ export class ConversationOrchestrator {
         .filter((p): p is { type: "text"; content: string } => p.type === "text")
         .map((p) => p.content)
         .join("\n\n");
+    }
+
+    // Segunda janela de rajada: uma nova mensagem pode chegar depois da
+    // classificação e enquanto o composer escreve. Respostas puramente sociais
+    // ("blz", despedida) não têm efeito de negócio e podem ser descartadas com
+    // segurança; a mensagem mais nova será processada com o histórico completo.
+    if (effectiveIntent === "acknowledgment" || effectiveIntent === "farewell") {
+      const latestBeforePersist = await this.conversationRepo.findLatestLeadMessage(conversation.id);
+      if (
+        shouldSuppressSupersededConversationalReply({
+          intent: effectiveIntent,
+          incomingMessageId: incomingMessage.id,
+          latestLeadMessage: latestBeforePersist,
+        })
+      ) {
+        console.log(
+          `[Orchestrator] Rajada pós-composição: resposta ${effectiveIntent} da msg ${incomingMessage.id} descartada em favor de ${latestBeforePersist?.id} (conv=${conversation.id})`,
+        );
+        return { replied: false };
+      }
     }
 
     // ── 8. Atualiza contador de unclear e flag needsAttention ──

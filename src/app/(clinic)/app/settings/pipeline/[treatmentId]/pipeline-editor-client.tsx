@@ -328,6 +328,23 @@ function StepCard({
       {/* Body — type-specific fields */}
       {step.type === "content" && (
         <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px" }}>
+          <label
+            className="pipeline-checkbox-row"
+            style={{ display: "flex", alignItems: "flex-start", gap: "10px", cursor: "pointer", userSelect: "none", marginBottom: "8px" }}
+          >
+            <input
+              type="checkbox"
+              checked={step.deliverOnFirstContact ?? false}
+              onChange={(e) => onChange({ ...step, deliverOnFirstContact: e.target.checked })}
+              style={{ width: "16px", height: "16px", cursor: "pointer", marginTop: "2px" }}
+            />
+            <span style={{ fontSize: "13px", lineHeight: 1.4 }}>
+              Enviar já no primeiro contato
+              <span style={{ display: "block", fontSize: "11px", color: "var(--muted)", marginTop: "2px" }}>
+                Use para cards autoexplicativos. Desmarcado, o concierge qualifica o lead antes de apresentar esta etapa.
+              </span>
+            </span>
+          </label>
           <p style={{ fontSize: "11px", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
             Blocos
           </p>

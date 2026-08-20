@@ -35,6 +35,11 @@ export type PipelineStep =
   | {
       type: "content";
       label: string;
+      // Opt-in editorial: entrega este conteúdo já no primeiro contato quando a
+      // mensagem menciona o tratamento. Útil para cards autoexplicativos que
+      // respondem a dúvida inicial; ausente/false preserva a qualificação antes
+      // do pitch no modo concierge.
+      deliverOnFirstContact?: boolean;
       // Blocos entregues em mensagens separadas: texto, vídeo, texto, vídeo...
       blocks: ContentBlock[];
     }
