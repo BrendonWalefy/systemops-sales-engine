@@ -27,14 +27,27 @@ deixa o Lab mudo.
 
 ## Estado no momento em que este plano foi escrito
 
-| | |
+> **Este bloco é um snapshot e vai estar errado quando você ler.** Cada merge em
+> `develop` o invalida. **Resolva em runtime antes de executar qualquer passo:**
+>
+> ```bash
+> git fetch origin --prune
+> git rev-parse origin/main origin/develop
+> git rev-list --left-right --count origin/main...origin/develop
+> git log --oneline --first-parent origin/main..origin/develop   # o que entra
+> gh api repos/BrendonWalefy/systemops-sales-engine/deployments \
+>   -q '.[] | select(.environment=="Production") | "\(.sha[0:8])  \(.created_at)"' | head -1
+> ```
+>
+> O último comando devolve o commit **efetivamente em produção**. É esse valor,
+> e não `origin/main`, que a approval precisa citar.
+
+| | Snapshot em 2026-08-20 |
 |---|---|
 | `main` HEAD | `0d0015cfef0c0a13db92e4211b5f72739137133f` |
-| `develop` HEAD | `2fd5591b68e8385f7550dbcd04145f7e2e381999` |
-| Divergência `main...develop` | **0 / 24** — `main` não tem nada que `develop` não tenha |
-
-Confirme os HEADs antes de usar este plano; ele envelhece a cada merge em
-`develop`.
+| Produção implantada | `0d0015cf` (2026-08-19T03:52:05Z) — igual a `main` |
+| `develop` HEAD | `3833eab7ddd5f040068de8d31d88b712ab6e4d9e` |
+| Divergência `main...develop` | **0 / 26** — `main` não tem nada que `develop` não tenha |
 
 ### PRs incluídas na promoção
 
@@ -45,8 +58,7 @@ Confirme os HEADs antes de usar este plano; ele envelhece a cada merge em
 | #292 | Lab para de apagar os dois campos que o modelo precisa; descrição no settings | **sim** |
 | #293 | serviço ambíguo vira escolha real; medição dos dois turnos mudos | **sim** |
 | #294 | developer onboarding (docs, Makefile, scripts, `.vscode`) | **não** |
-| #295 | registro do housekeeping, este plano, triagem de branches, inventário pré-Harness | **não** |
-| #296 | duas correções de precisão em documentação | **não** |
+| #295 – #298 | documentação: housekeeping, este plano, triagem de branches, inventário e input do Harness | **não** |
 
 As quatro primeiras são o núcleo de verbalização da V2: 53 arquivos,
 +2846/−93, incluindo `authorized-surface.ts`, `verbalization-validator.ts`,

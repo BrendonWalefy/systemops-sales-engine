@@ -65,6 +65,15 @@ production `DATABASE_URL`, and the wrapped form is what let the integration test
 shared database. `npm run verify` deliberately runs with no database, so the tests that touch one
 are skipped. See [`docs/operations/test-database-safety.md`](docs/operations/test-database-safety.md).
 
+The suite requires a **clean git tree**. Some tests measure the deployed build against the
+repository state, and a dirty tree fails them with
+`Cycle I productive measurement requires a clean repository tree`. Staged-but-uncommitted work
+produces dozens of failures that have nothing to do with your change. Commit first, then verify —
+and never "fix" a regression you have not reproduced on a clean tree.
+
+CI runs only on `pull_request`, and skips `docs/**` and `**/*.md`. A branch that never opens a PR
+is never verified by CI, so the local `npm run verify` is the only gate it gets.
+
 To run the database integration tests on purpose, use the separate command and its own env file:
 
 ```bash

@@ -10,12 +10,24 @@ recomendação. Tudo o mais é verificável com os comandos e caminhos citados.
 
 ## Repository state
 
-| | |
+> **Snapshot de 2026-08-20.** Os SHAs abaixo envelhecem a cada merge em
+> `develop`. **Não os copie para lugar nenhum; resolva em runtime:**
+>
+> ```bash
+> git fetch origin --prune
+> git rev-parse origin/main origin/develop
+> git rev-list --left-right --count origin/main...origin/develop
+> gh api repos/BrendonWalefy/systemops-sales-engine/deployments \
+>   -q '.[] | select(.environment=="Production") | "\(.sha[0:8])  \(.created_at)"' | head -1
+> ```
+
+| | Snapshot em 2026-08-20 |
 |---|---|
 | `main` (produção) | `0d0015cf` |
-| `develop` (integração) | `2fd5591b` |
-| Divergência `main...develop` | 0 / 24 — `main` não tem nada exclusivo |
-| Worktrees | 3 |
+| **Produção implantada** | `0d0015cf`, deploy em 2026-08-19T03:52:05Z — **igual a `main`**, confirmado pela API de deployments |
+| `develop` (integração) | `3833eab7` |
+| Divergência `main...develop` | 0 / 26 — `main` não tem nada exclusivo |
+| Worktrees | 3, todas limpas |
 | PRs abertas | nenhuma |
 
 Worktrees: a canônica; `systemops-sales-engine-template`
@@ -245,9 +257,12 @@ Observáveis, sem propor solução:
    começa do zero, com `AGENTS.md` como única herança.
 2. **O formato de decisão morreu sem substituto nomeado.** ADRs foram apagados em
    `3115cefd`; `docs/architecture/current.md` absorveu parte, mas não há um lugar
-   declarado para registrar decisões novas.
-3. **O par spec/plan não tem índice.** 29 arquivos nomeados por data, sem um
-   documento que diga qual está vivo, superado ou abandonado.
+   declarado para registrar decisões novas. Levantado em
+   `decision-recording-today.md` — o gap continua aberto; só foi descrito.
+3. ~~**O par spec/plan não tem índice.**~~ Endereçado em 20/08 por
+   `document-status-index.md`, que classifica os 29 arquivos por evidência. É um
+   índice **mantido à mão**, portanto envelhece — manter índice sincronizado é,
+   ele próprio, um requisito para o Harness.
 4. **A suíte exige árvore limpa** e falha de forma enganosa quando não está.
    Não há aviso no `AGENTS.md`.
 5. **Handoff depende de prosa.** Não existe formato estruturado nem máquina de
@@ -262,6 +277,55 @@ Observáveis, sem propor solução:
    dependa de `PASS`.
 
 ---
+
+## Local-only state — o inventário do problema
+
+Varredura de 2026-08-20 na worktree canônica. Nada disto foi versionado nem
+apagado nesta sessão: o objetivo é dimensionar o problema que o Harness precisa
+resolver, não improvisar solução.
+
+| Item | Classe | Tamanho | Nota |
+|---|---|---|---|
+| `.env.local`, `.env.bak`, `.env.local.bak` | `SECRET` | ~15 KB | credenciais de produção; os dois `.bak` são cópias, mantidas por decisão do dono |
+| `vitalli_messages.json`, `ximendes_messages.json`, `mensagens_operador_vitalli.txt`, `*_replay_results*`, `*_cases.json` | `SECRET` | ~840 KB | exports de conversa real de 23/07. Conferido: **zero números de telefone**; é texto de conversa |
+| `public/dental.luxe98@gmail.com.ical.zip` | `SECRET` | 76 KB | export de agenda de cliente, com e-mail no nome do arquivo, dentro de `public/`. Está gitignorado, então **não é servido** — mas o diretório é o de estáticos do Next |
+| `scripts/scratch/` | `UNKNOWN` | 9.2 MB, 44 `.ts` | scripts de uso único de investigações passadas, vários com prefixo `claude-`. Nunca promovidos, nunca descartados |
+| `.claude/` | `PRIVATE_TOOL_CONFIG` | 144 KB, 12 arquivos | gitignorado por decisão |
+| `.superpowers/brainstorm/` | `PRIVATE_TOOL_CONFIG` | 124 KB, 13 arquivos | idem |
+| `reports/`, `tmp/`, `.site-build/`, `.vercel/`, `.DS_Store` | `DISPOSABLE` | ~1.3 MB | reconstruível |
+| `.env.dev.example`, `.env.prod.example` | `REQUIRED_SOURCE` | ~1 KB | são exemplos e **não** estão versionados; provável candidato a versionar |
+
+Fora do repositório, em `~/Dev/Projetos/_systemops-archive/`, há 9 JSONs de
+backup de configuração de clínica (23/07), movidos deliberadamente para lá em
+12/08 e explicados por um `MANIFESTO.md` no mesmo diretório. **São configuração
+de tratamento e pipeline — preços, aliases, steps — e não dados de paciente**:
+os campos são `pipelineSteps`, `priceCents`, `bookingWindows`, `aliases`. Por
+checksum, apenas **um** par é duplicata exata
+(`ximendes_lente_pipeline_backup_*`, hash `9782b554a842`); os dois arquivos
+`vitalli_pipelines_backup*` têm o mesmo tamanho mas hashes diferentes. Nada foi
+apagado: só a duplicata exata é comprovadamente redundante, e mesmo ela é
+material de cliente que merece decisão humana.
+
+## Identificadores de cliente no código versionado
+
+Achado de 20/08, relevante para qualquer harness que envie contexto do
+repositório a um provedor externo.
+
+- Nomes de clínicas reais aparecem em **56** e **68** arquivos sob `src/`, e em
+  13 e 9 arquivos sob `docs/`.
+- **Nomes pessoais de leads reais** aparecem em 5 arquivos versionados:
+  `XimendesConversationPatterns.test.ts`, `ResolveWhatsAppLead.test.ts`,
+  `RegisterIncomingMessageRace.test.ts`, `AgentResponseThrottle.test.ts`, e um
+  comentário em `src/application/calendar/import-calendar-events.ts`.
+- A fixture `vitalli-agenda-exemplo.ts` versionada na raiz **é sintética**
+  (João Silva, Maria Santos…) — essa está limpa.
+- A branch `chore/investor-readiness` (PR #257, fechada sem merge) era
+  exatamente a tentativa de sanitizar isso.
+
+Não foi corrigido nesta sessão: a correção completa é o escopo daquela PR
+fechada e precisa de decisão humana sobre até onde sanitizar. Corrigir 5
+arquivos enquanto 100+ carregam identificadores daria falsa sensação de
+resolvido.
 
 ## Candidate assets to reuse
 
@@ -308,6 +372,8 @@ Componentes existentes que provavelmente servem a um Harness futuro:
 
 Em ordem. Os cinco primeiros bastam para entender as restrições.
 
+0. `docs/engineering/HARNESS-DESIGN-INPUT.md` — a especificação do problema.
+   Se você só vai ler um arquivo antes de desenhar, é este.
 1. `AGENTS.md` — o contrato de agente. Regras de verificação, teste, branch e
    guardrails.
 2. `docs/architecture/current.md` — o que o sistema é hoje.
@@ -323,3 +389,7 @@ Em ordem. Os cinco primeiros bastam para entender as restrições.
    medida, e por que o gate termina em `NO_GO`.
 9. `package.json` (bloco `scripts`) — o vocabulário de execução existente.
 10. `.github/workflows/ci.yml` — o gate automatizado e as decisões por trás dele.
+11. `docs/engineering/document-status-index.md` — o que é ativo e o que é
+    história, com a evidência de cada classificação.
+12. `docs/engineering/decision-recording-today.md` — onde as decisões vivem hoje,
+    e o que se perdeu quando os ADRs foram apagados.

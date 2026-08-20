@@ -1,5 +1,10 @@
 # Triagem das branches remotas não mergeadas — 2026-08-20
 
+> **Documento histórico.** Triagem feita em 2026-08-20. Branches mudam:
+> revalide com `git fetch origin --prune` e
+> `git cherry origin/develop origin/<branch>` antes de agir sobre qualquer uma.
+
+
 **Nenhuma branch remota foi apagada.** Este documento existe para que a limpeza
 futura seja uma decisão informada, não uma contagem.
 
@@ -79,6 +84,120 @@ Arquivos ausentes da develop: a migration, mais
 ponto que merece um olhar** — podem ser cobertura que nunca entrou.
 
 **Recomendação:** revisar os dois testes especificamente. **F — incerta.**
+
+---
+
+## Resolução das duas categoria F — análise de 2026-08-20
+
+Feita depois da triagem inicial. **Nenhuma das duas foi mergeada, e nenhuma
+migration antiga foi ressuscitada.** A análise foi de requisito, não de rebase.
+
+### `chore/investor-readiness` — resolvido
+
+Os três arquivos "ausentes da develop" foram examinados um a um.
+
+**`ConversationPatternsRegression.test.ts` — `SUPERSEDED`, zero cobertura nova.**
+É `src/__tests__/XimendesConversationPatterns.test.ts` renomeado. Prova: 381
+linhas em ambos, 34 `it(...)` em ambos, e depois de normalizar o nome da clínica
+os arquivos diferem **apenas** em comentários de cabeçalho e em nomes próprios
+(`Gregorie` → `Silva`). Não há um único caso de teste novo. Não portar.
+
+**`fixtures/calendar-demo.ics` — `SUPERSEDED`.** É a versão anonimizada do
+`vitalli-agenda-exemplo.ics` que já está versionado na raiz — e o versionado já
+usa nomes sintéticos (João Silva, Maria Santos). Não portar.
+
+**`ResolveDefaultProfessional.test.ts` — `REQUISITO AINDA VÁLIDO`, e é o achado
+que importa.**
+
+O teste cobre `selectUnambiguousDefaultProfessionalId`, uma função que **não
+existe na `develop`**. O que existe é
+`src/application/calendar/resolve-default-professional.ts`, com isto:
+
+```ts
+const named = clinicProfessionals.find((p) => p.name.toLowerCase().includes("victor"));
+if (named) return named.id;
+```
+
+Dois problemas, ambos em código multi-tenant:
+
+1. **Nome de cliente hardcoded.** Qualquer clínica com um profissional cujo nome
+   contenha "victor" recebe automaticamente os agendamentos importados, seja
+   qual for a intenção daquele tenant. O comentário no arquivo assume a
+   responsabilidade ("Regra pragmática para o caso real (Vitalli)").
+2. **Não filtra `isActive`.** A consulta lê todos os profissionais. Um
+   profissional inativo conta para a checagem de "só existe um" e pode ser
+   devolvido como padrão. A coluna `professionals.is_active` existe no schema.
+
+`resolveDefaultProfessionalId` é chamada de **quatro** lugares, todos
+multi-tenant: o webhook do Google Calendar, o cron `calendar-watch-renew`, o
+import de calendário da clínica e o import do setup.
+
+A branch corrigia os dois: extraía uma função pura sem heurística de nome e
+filtrava `isActive`.
+
+**Não foi corrigido nesta sessão, por decisão.** A correção muda comportamento
+funcional de um cliente ativo — hoje a Vitalli depende dessa atribuição
+automática, e removê-la faria agendamentos importados passarem a ficar sem
+profissional. Isso é mudança de produto, não bug de proteção trivial, e o
+mandato desta sessão era explicitamente não alterar comportamento.
+
+**Backlog, com o requisito já formulado:** a escolha do profissional padrão não
+deve depender de nome de pessoa hardcoded, e deve ignorar profissional inativo.
+A branch mostra uma implementação possível; a decisão de produto é o que falta.
+
+### `chore/renomeia-operacao-custo` — resolvido
+
+**A renomeação proposta ficou `SUPERSEDED`; o problema que ela apontava continua
+`VÁLIDO`.**
+
+A branch queria renomear o valor de enum `sales_conversation_analysis` para
+`conversation_reply`, porque o nome sugere relatório em background quando na
+verdade é o custo de **toda resposta que a IA dá** — a linha de frente do
+produto.
+
+O diagnóstico continua correto: o valor ainda existe na `develop`, usado em 6
+arquivos de código (`usage-cost.ts`, `usage-cost-tracker.ts`, `schema.ts`,
+`ConversationOrchestrator.ts`, `actions.ts`,
+`analyze-sales-conversation.ts`), e o nome ainda engana.
+
+**Mas o nome proposto agora está ocupado.** `conversation_reply` passou a
+significar outra coisa na `develop`: é o `kind`/`category` de uma mensagem de
+saída no caminho da V2, presente em 13 arquivos
+(`SendMessageJob`, `ReplayOutboundCapture`, `InternalLabSyntheticDelivery`,
+`ConversationResponsePlanner`, …). Reaproveitar o termo para um valor de enum de
+custo criaria ambiguidade nova em vez de resolver a antiga.
+
+**Conhecimento a preservar do corpo do commit**, que não existe em nenhum outro
+lugar do repositório:
+
+- a medição que motivou — 871 registros, US$ 2,45, "mais que a feature de
+  reativação inteira";
+- que `analyze-sales-conversation` **não tem nenhum chamador** e
+  `agent_recommendations` está vazia;
+- **o gotcha de migração**: o `drizzle-kit` gera `DROP TYPE + CREATE TYPE + cast`
+  para renomear valor de enum, e isso falha, porque no momento do cast as linhas
+  existentes ainda contêm o valor antigo, ausente do tipo recriado. A saída é
+  `ALTER TYPE RENAME VALUE`, atômico e preservando a posição ordinal.
+
+Esse último item é operacionalmente relevante para qualquer automação que gere
+migrations. Está registrado em `../engineering/decision-recording-today.md` como
+exemplo de decisão que só vive em corpo de commit.
+
+**Recomendação:** manter a branch como referência; se a renomeação for retomada,
+escolher um nome novo (o proposto colide) e refazer sobre a `develop` atual. A
+migration `0083` da branch é `OBSOLETA` — colide com o `0083` já existente.
+
+### Classificação final
+
+| Artefato | Classe |
+|---|---|
+| `ConversationPatternsRegression.test.ts` | `SUPERSEDED` — rename puro |
+| `fixtures/calendar-demo.ics` | `SUPERSEDED` |
+| `ResolveDefaultProfessional.test.ts` | **requisito ainda válido** → backlog |
+| hardcode `"victor"` + `isActive` ausente | **bug de isolamento multi-tenant** → backlog, exige decisão de produto |
+| renomeação `sales_conversation_analysis` | problema válido, **nome proposto superseded** |
+| gotcha `ALTER TYPE RENAME VALUE` | **documentação histórica a preservar** |
+| migrations `0083` e `0095` das branches | `OBSOLETAS` — colidem |
 
 ## C. Superseded — conteúdo entrou por outro caminho
 

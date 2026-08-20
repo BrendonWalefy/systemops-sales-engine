@@ -1,5 +1,12 @@
 # Housekeeping do repositório — 2026-08-20
 
+> **Documento histórico.** É o registro de uma sessão: os SHAs, contagens e
+> estados abaixo são os de 2026-08-20 e **não** descrevem o repositório de hoje.
+> Nada aqui deve ser atualizado — para o estado atual, veja
+> [`../engineering/HARNESS-HANDOFF.md`](../engineering/HARNESS-HANDOFF.md) ou
+> resolva em runtime com `git rev-parse origin/main origin/develop`.
+
+
 Sessão exclusiva de organização. Nenhuma mudança de comportamento, nenhum
 deploy, nenhuma alteração em `main`, nenhum force-push, nenhuma linha de código
 de produto escrita.
