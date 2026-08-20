@@ -103,3 +103,7 @@ CI roda **só em `pull_request`**, ignorando `docs/**` e `**/*.md`.
    relevante para qualquer harness que envie contexto a um provedor externo.
 4. Estado local invisível: 9.2 MB de scripts de uso único e ~840 KB de exports
    de conversa fora do versionamento.
+5. **A rede de proteção da V2 tem prazo.** Hoje a resposta para "e se a V2
+   errar?" é cair para a V1. O passo 7 da Estratégia Strangler remove a V1, e
+   nenhum documento diz o que entra no lugar. Ver "Perguntas em aberto herdadas
+   do produto" em `HARNESS-DESIGN-INPUT.md`.
