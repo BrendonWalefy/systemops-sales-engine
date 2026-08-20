@@ -73,6 +73,17 @@ no histórico do git e na branch `feat/reativacao-motor`. Um Harness que assuma
 O par **spec + plan** em `docs/superpowers/` é o formato vivo: cada iniciativa
 tem um design e um plano, nomeados por data (`2026-08-17-...`).
 
+**Um plano descreve o estado pretendido, não o estado real.** Uma varredura de
+20/08 encontrou 8 planos citando caminhos que não existem no repositório — e na
+maioria dos casos isso está certo, não é apodrecimento. Exemplo: o plano do Cycle
+I cita `evals/cycle-i/human-review-r1.json` e `-r2.json`, que nunca foram criados
+justamente porque os dois revisores humanos calibrados não existem — é a mesma
+razão pela qual o gate termina em `NO_GO`. Um Harness que leia planos como
+verdade corrente vai se enganar; os caminhos precisam ser conferidos contra a
+árvore.
+
+A varredura não encontrou nenhum link markdown quebrado em `docs/`.
+
 ---
 
 ## Existing execution infrastructure
