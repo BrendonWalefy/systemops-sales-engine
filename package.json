@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
+    "dev:inspect": "NODE_OPTIONS='--inspect=9229' next dev",
     "build": "next build",
     "build:with-migrate": "tsx scripts/migrate.ts && next build",
     "vercel:build": "tsx scripts/vercel-build.ts",
