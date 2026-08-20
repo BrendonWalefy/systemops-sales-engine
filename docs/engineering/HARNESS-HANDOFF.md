@@ -1,139 +1,105 @@
 # Harness — handoff
 
-Mapa factual para um agente ou arquiteto que chega agora. Objetivo da próxima
-sessão: **desenhar o Harness Engineering do SystemOps.** Nada de Harness foi
-implementado ainda, de propósito.
+Mapa de entrada para quem chega agora. Objetivo da próxima sessão: **desenhar o
+Harness Engineering do SystemOps.** Nada de Harness foi implementado, de
+propósito.
 
-Escrito em 2026-08-20. Confira os HEADs antes de confiar nos números.
+Leia isto, depois `HARNESS-DESIGN-INPUT.md`. Os dois somam ~20 minutos.
 
-## O que é o SystemOps
+## O produto em cinco linhas
 
 Plataforma de inteligência comercial que opera pelo WhatsApp: recebe a mensagem,
-identifica a intenção do lead, aplica a estratégia da organização, conduz até o
-agendamento e devolve isso como contexto operacional. A equipe supervisiona
-exceções pelo Inbox.
+identifica a intenção do lead, aplica a estratégia da clínica, conduz até o
+agendamento. Clientes reais, dinheiro real.
 
-O princípio que governa o código inteiro:
+O princípio que governa o código:
 
 > **O LLM entende e verbaliza. O sistema decide.**
 
-Modelos classificam intenção, transcrevem áudio e compõem texto. Código
-determinístico decide tenant, autorização, disponibilidade, booking, estado,
-handoff, retry, limites e envio. `AGENTS.md` reforça: regra de negócio vive em
-código testado, **nunca** em texto de playbook ou instrução de LLM.
+Regra de negócio vive em código determinístico e testado — nunca em texto de
+playbook ou instrução de modelo.
 
-## Estado da V1 / V2
+## Resolva o estado em runtime, não neste documento
 
-- **V1** é o motor conversacional em produção. Está **congelada**:
-  `docs/ai-system/v1-freeze.md`, SHA `154a1263`, tag anotada `v1-frozen`. É o
-  ponto de retorno.
-- **V2** (`src/conversation-core/` + `src/domain-packs/`) é o reset em curso.
-  Passou pelos ciclos A→I, documentados em `docs/ai-system/`. Está ativa
-  **somente no Internal Lab**, um tenant de teste, e **fail-closed para V1** em
-  qualquer divergência.
-- A V2 mais recente (verbalização, PRs #290–#293) está em `develop` e **ainda não
-  foi promovida** para produção.
+Qualquer SHA escrito em documentação envelhece. Rode:
 
-## HEADs
+```bash
+git fetch origin --prune
+git rev-parse origin/main origin/develop
+git rev-list --left-right --count origin/main...origin/develop
+```
 
-| | |
-|---|---|
-| `main` (produção) | `0d0015cf` |
-| `develop` (integração) | `2fd5591b` |
-| divergência | 0 / 24 |
-| V1 congelada | `154a1263`, tag `v1-frozen` |
+Em 2026-08-20: `main` = `0d0015cf` (**é o commit em produção**, confirmado pela
+API de deployments), `develop` = `3833eab7`, divergência 0/26, 3 worktrees
+limpas, nenhuma PR aberta.
 
-## Produção
+## V1 e V2
 
-`main` deploya via Vercel para `app.systemops.com.br`. `vercel.json` registra 22
-crons (workers de mensagem e envio, sweeps, campanhas, agregações).
+- **V1** é o motor em produção, e está **congelada**: `docs/ai-system/v1-freeze.md`,
+  SHA `154a1263`, tag `v1-frozen`. É o ponto de retorno.
+- **V2** (`src/conversation-core/`, `src/domain-packs/`) é o reset em curso.
+  Ciclos A→I documentados em `docs/ai-system/`. Ativa **somente no Internal
+  Lab**, um tenant de teste, e **fail-closed para V1**.
+- A V2 mais recente (verbalização, PRs #290–#293) está em `develop` e **não foi
+  promovida**.
 
-**Não promova `develop` para `main` sem ler**
-`docs/operations/develop-to-main-promotion-plan.md`. A approval do Lab é assinada
-contra o commit implantado; um deploy novo a invalida e **o Lab para de responder
-sem emitir erro**.
-
-## Branch strategy
-
-- `main` = produção, nunca push direto (exceto hotfix aprovado);
-- `develop` = integração, destino de toda PR;
-- `feat/<área>-<mudança>`, `fix/<área>-<bug>`, `chore/<área>-<tarefa>`,
-  `docs/<assunto>`;
-- merge commits, não squash (30 dos últimos 30 merges);
-- worktrees são o padrão de isolamento.
-
-## Invariantes que não se negociam
+## As invariantes que não se quebram
 
 1. O sistema decide, o LLM verbaliza.
-2. Fail-closed para V1. O caminho seguro é o comportamento padrão.
-3. Approval vinculada ao commit implantado.
-4. Isolamento por tenant, com guarda arquitetural executável.
-5. `npm run verify` **sem** `dotenv -e .env.local` — envolver assim já fez teste
-   de integração escrever no banco compartilhado. Ver
-   `docs/operations/test-database-safety.md`.
-6. Segredos nunca no repositório; private key da authority só por
-   `--private-key-file`.
+2. `main` é produção; `develop` é integração; nunca push direto em `main`.
+3. Fail-closed para V1.
+4. A approval do Lab é assinada **contra o commit implantado**. Deploy novo a
+   invalida, e o Lab **para de responder sem emitir erro**. Runbook §21-A.
+5. `npm run verify` **nunca** dentro de `dotenv -e .env.local`.
+6. Segredo nunca no repositório.
+7. `NO_GO` no gate do Cycle I não é reinterpretável.
 
-## Comandos de verificação
+## Verificação
 
 ```bash
 npm run verify        # db:check + lint + typecheck + test  (~40s)
-npm run test:db       # integração, exige .env.test.local numa branch Neon de teste
-npm run verify:agenda # suíte de agenda/timezone
 ```
 
-Baseline atual em `develop`: **399 arquivos, 3589 testes, 11 skipped, 0 falhas.**
+Baseline em `develop`: **399 arquivos, 3589 testes, 11 skipped, 0 falhas.**
 
 > A suíte exige **árvore git limpa**. Com arquivos staged e não commitados ela
-> falha com `Cycle I productive measurement requires a clean repository tree` —
-> 32 falhas sem relação com o conteúdo. Commite antes de testar.
+> produz 32 falhas sem relação com a mudança. Commite antes de verificar. Já
+> está no `AGENTS.md`.
 
-## Onde as coisas ficam
+CI roda **só em `pull_request`**, ignorando `docs/**` e `**/*.md`.
 
-| O quê | Onde |
+## Onde ler o quê
+
+| Pergunta | Arquivo |
 |---|---|
-| Regras para agentes | `AGENTS.md` (canônico); `CLAUDE.md` é só um ponteiro |
-| Arquitetura | `docs/architecture/current.md`, `target-architecture.md`, `sources-of-truth.md` |
-| Runbooks | `docs/operations/` — o do Lab é o mais maduro |
-| Ciclos da IA conversacional | `docs/ai-system/` (C…I) |
-| Specs e planos | `docs/superpowers/specs/` (12) e `plans/` (17) |
-| Evals e corpus | `evals/corpus/` — 66 casos rotulados em 19 categorias |
-| Guardas arquiteturais | `src/__tests__/arch/` — 12 testes |
-| Observabilidade | `src/core/observability/` — DecisionTrace, V1TurnObservation |
-| Núcleo V2 | `src/conversation-core/`, `src/domain-packs/` |
+| Quais são as regras para agentes? | `AGENTS.md` |
+| Qual é o problema que o Harness resolve? | `HARNESS-DESIGN-INPUT.md` |
+| O que já existe para reaproveitar? | `harness-readiness-2026-08-20.md` |
+| Este documento está atual ou é história? | `document-status-index.md` |
+| Onde vivem as decisões de arquitetura? | `decision-recording-today.md` |
+| Como promover sem calar o Lab? | `../operations/develop-to-main-promotion-plan.md` |
+| Essa branch antiga serve? | `../operations/remote-branch-triage-2026-08-20.md` |
 
 ## O que NÃO assumir
 
-- **Não existem ADRs.** Todos foram apagados em `3115cefd` (06/08). Handoffs
-  antigos ainda os citam. `docs/product/` também foi consolidado e tem 1 arquivo.
+- **Não existem ADRs.** Todos apagados em `3115cefd` (06/08). Documentos
+  escritos *depois* ainda os citam.
 - **Não existe infraestrutura de agente versionada.** `.claude/` está no
-  `.gitignore`; não há MCP, hooks ou skills no repositório. `AGENTS.md` é a
-  única herança entre agentes.
-- **Não assuma que branch não-ancestral de `main` = trabalho perdido.** A maioria
-  teve PR mergeada e o tip virou snapshot morto. Use
+  `.gitignore`; sem MCP, hooks ou skills. `AGENTS.md` é a única herança.
+- **Plano ≠ estado.** 8 planos citam caminhos inexistentes, e na maioria dos
+  casos isso está certo — eles descrevem intenção.
+- **Branch não-ancestral de `main` ≠ trabalho perdido.** Use
   `git cherry origin/develop origin/<branch>`.
-- **Não interprete `NO_GO` do Cycle I como falha.** É o resultado correto: os dois
-  revisores humanos calibrados não existem, e nenhuma authority local promove
-  esse estado.
-- **Não assuma CI em `push`.** CI roda só em `pull_request`, ignorando
-  `docs/**` e `**/*.md`.
-- **Não confie no corpus para afirmar melhoria.** 66 casos detectam regressão;
-  são frágeis para provar ganho.
+- **`NO_GO` do Cycle I não é falha.** Os dois revisores humanos calibrados não
+  existem; é o resultado correto.
+- **Não confie no corpus para afirmar melhoria.** 66 casos detectam regressão.
 
 ## Riscos abertos
 
 1. Promoção `develop` → `main` pendente, com mudança real de comportamento.
-2. Duas branches com trabalho não mergeado e colisão de número de migration,
-   aguardando decisão humana:
-   `docs/operations/remote-branch-triage-2026-08-20.md`.
-3. Documentação superada não está marcada como tal.
-4. Estado local invisível: até 20/08 havia trabalho existindo só no disco.
-
-## Ler primeiro, nesta ordem
-
-1. `AGENTS.md`
-2. `docs/engineering/harness-readiness-2026-08-20.md` — o inventário completo
-   que acompanha este mapa
-3. `docs/architecture/current.md`
-4. `docs/operations/systemops-lab-runbook.md` (seções 13, 16, 18–21, 21-A, 23)
-5. `docs/operations/develop-to-main-promotion-plan.md`
+2. Bug de isolamento multi-tenant conhecido e **não corrigido**: nome de cliente
+   hardcoded na escolha de profissional padrão. Ver a triagem de branches.
+3. Identificadores de cliente espalhados por 100+ arquivos versionados —
+   relevante para qualquer harness que envie contexto a um provedor externo.
+4. Estado local invisível: 9.2 MB de scripts de uso único e ~840 KB de exports
+   de conversa fora do versionamento.
