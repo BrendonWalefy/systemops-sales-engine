@@ -13,10 +13,10 @@ recomendação. Tudo o mais é verificável com os comandos e caminhos citados.
 | | |
 |---|---|
 | `main` (produção) | `0d0015cf` |
-| `develop` (integração) | `7b624c83` |
-| Divergência `main...develop` | 0 / 18 — `main` não tem nada exclusivo |
+| `develop` (integração) | `2fd5591b` |
+| Divergência `main...develop` | 0 / 24 — `main` não tem nada exclusivo |
 | Worktrees | 3 |
-| PRs abertas | #295 (docs) |
+| PRs abertas | nenhuma |
 
 Worktrees: a canônica; `systemops-sales-engine-template`
 (`feat/dental-resin-template`); `systemops-sales-engine-v2`
