@@ -30,8 +30,8 @@ deixa o Lab mudo.
 | | |
 |---|---|
 | `main` HEAD | `0d0015cfef0c0a13db92e4211b5f72739137133f` |
-| `develop` HEAD | `7b624c836474193b2d3af39dca4b37edb4d6c631` |
-| Divergência `main...develop` | **0 / 18** — `main` não tem nada que `develop` não tenha |
+| `develop` HEAD | `2fd5591b68e8385f7550dbcd04145f7e2e381999` |
+| Divergência `main...develop` | **0 / 24** — `main` não tem nada que `develop` não tenha |
 
 Confirme os HEADs antes de usar este plano; ele envelhece a cada merge em
 `develop`.
@@ -45,6 +45,8 @@ Confirme os HEADs antes de usar este plano; ele envelhece a cada merge em
 | #292 | Lab para de apagar os dois campos que o modelo precisa; descrição no settings | **sim** |
 | #293 | serviço ambíguo vira escolha real; medição dos dois turnos mudos | **sim** |
 | #294 | developer onboarding (docs, Makefile, scripts, `.vscode`) | **não** |
+| #295 | registro do housekeeping, este plano, triagem de branches, inventário pré-Harness | **não** |
+| #296 | duas correções de precisão em documentação | **não** |
 
 As quatro primeiras são o núcleo de verbalização da V2: 53 arquivos,
 +2846/−93, incluindo `authorized-surface.ts`, `verbalization-validator.ts`,

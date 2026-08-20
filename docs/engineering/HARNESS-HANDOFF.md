@@ -39,8 +39,8 @@ código testado, **nunca** em texto de playbook ou instrução de LLM.
 | | |
 |---|---|
 | `main` (produção) | `0d0015cf` |
-| `develop` (integração) | `7b624c83` |
-| divergência | 0 / 18 |
+| `develop` (integração) | `2fd5591b` |
+| divergência | 0 / 24 |
 | V1 congelada | `154a1263`, tag `v1-frozen` |
 
 ## Produção
