@@ -136,6 +136,8 @@ Extraídos do sistema real. Um Harness que viole qualquer um destes é inaceitá
 2. **`main` é produção.** Nunca push direto, exceto hotfix aprovado
    explicitamente. `develop` é integração.
 3. **Fail-closed para V1.** Qualquer divergência mantém o tenant na V1.
+   *(Esta invariante tem prazo de validade — ver "Perguntas em aberto herdadas do
+   produto" abaixo.)*
 4. **A approval é vinculada ao commit implantado.** Deploy novo exige reassinar
    (runbook §18, §20, §21; §19 quando o commit é novo).
 5. **Isolamento por tenant**, garantido por guarda executável.
@@ -216,6 +218,47 @@ Formuladas como **necessidade**, não solução.
     irreversíveis — deploy, promoção, approval — sem virar gargalo no resto.
 
 ---
+
+## Perguntas em aberto herdadas do produto
+
+Não são decisões do Harness, mas o design precisa saber que existem, porque a
+resposta muda o que o Harness pode assumir sobre segurança.
+
+### A rede de proteção da V2 depois que a V1 sair
+
+Hoje a resposta para *"e se a V2 errar?"* é uma só: **cai para a V1**. É o
+colchão inteiro. O router é fail-closed, e a V1 está congelada com a tag
+`v1-frozen` exatamente para ser o ponto de retorno.
+
+O `target-architecture.md` descreve a saída pela **Estratégia Strangler**, em 7
+passos. O passo 4 é "rotear um tenant de teste para o novo worker" — é onde o
+projeto está hoje. O passo 6 é "ampliar por tenant". O passo 7 é **"remover o
+caminho antigo somente depois do rollback window"**.
+
+No passo 7, "cair para a V1" deixa de significar alguma coisa.
+
+**Nenhum documento diz o que entra no lugar.** Verificado em 2026-08-20: o
+desenho mestre de 09/08 tem 20 seções e nenhuma trata de aposentar a V1; o
+`target-architecture.md` diz "remover o caminho antigo" sem nomear a rede de
+proteção sucessora.
+
+Duas consequências para o design do Harness:
+
+1. A approval do Internal Lab **morre sozinha** e não precisa ser removida. Ela
+   só existe porque o Lab é `operationalStatus=test`, o que desliga a automação
+   por padrão — a approval é a exceção que religa. O reader curto-circuita na
+   primeira linha (`if (baseMode !== "disabled") return baseMode;`), então para
+   tenant com status normal ela nunca é consultada. Não desenhe nada em cima
+   dela como se fosse permanente.
+2. A coluna `conversation_engine` por tenant é o eixo do passo 6 e vive mais
+   tempo, mas também termina no passo 7.
+
+O que **não** tem sucessor definido é a garantia de rollback. Se o Harness for
+apoiar verificação e segurança de mudança conversacional, essa é a lacuna que
+ele encontra pela frente — e provavelmente a resposta se monta com o que já
+existe em replay, `DecisionTrace` e evals, não com um mecanismo novo.
+
+**Esta seção registra a pergunta. Não a responde.**
 
 ## Decisions intentionally left open
 
