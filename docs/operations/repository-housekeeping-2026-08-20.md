@@ -113,7 +113,8 @@ separadas.
 ### O que virou PR
 
 Branch `chore/developer-onboarding`, baseada na `develop` atual, commit
-`63d68052`, **PR #294 → `develop` (não mergeada)**.
+`63d68052`, **PR #294 → `develop`**. Revisada e **mergeada em 2026-08-20**, merge
+commit `7b624c83`. CI `Verify` verde (3m14s), `mergeable=CLEAN`, +259/−0.
 
 `DEVELOPER.md`, `Makefile`, `scripts/dev-setup.sh`, `scripts/validate-env.sh`,
 `.vscode/launch.json`, `.vscode/tasks.json`, `dev:inspect` no `package.json` e
@@ -376,9 +377,12 @@ em V1.
 
 ## 13. Próximo passo recomendado
 
-1. Revisar e mergear a **PR #294** — é isolada, verde e sem efeito em runtime.
+1. ~~Revisar e mergear a **PR #294**~~ — feito em 2026-08-20 (`7b624c83`).
 2. Decidir a promoção `develop` → `main` como tarefa própria, com o runbook
    aberto e as seções 18/19/20/21 planejadas na mesma janela. Não encaixar no
-   fim de outra sessão.
-3. Só então iniciar o Harness, a partir de uma `develop` limpa.
-4. Em algum momento, triar as 34 branches remotas não mergeadas.
+   fim de outra sessão. O plano operacional exato está em
+   [`develop-to-main-promotion-plan.md`](develop-to-main-promotion-plan.md).
+3. Só então iniciar o Harness, a partir de uma `develop` limpa. O inventário
+   pré-Harness está em [`../engineering/harness-readiness-2026-08-20.md`](../engineering/harness-readiness-2026-08-20.md).
+4. A triagem das 34 branches remotas não mergeadas foi feita em seguida:
+   [`remote-branch-triage-2026-08-20.md`](remote-branch-triage-2026-08-20.md).
