@@ -37,37 +37,53 @@ async function prepareConversationPage(
   conversationId: string,
   conv: typeof conversations.$inferSelect,
 ) {
-  const [lead] = await db.select().from(leads).where(eq(leads.id, conv.leadId)).limit(1);
+  // Um único round trip para tudo que só depende de `conv`.
+  //
+  // Estas cinco leituras eram cinco `await` em fila — lead → mensagens →
+  // agendamento → clínica → estado do sinal — e nenhuma delas lê o resultado
+  // da anterior: `appointments` filtra por `conv.leadId` (o mesmo id que
+  // seleciona o lead), `organizations` por `conv.clinicId`, e mensagens e
+  // estado do sinal só precisam do `conversationId` da URL. Em fila, a página
+  // pagava 5 idas ao Postgres antes de renderizar; em paralelo, paga 1.
+  // O ganho é proporcional ao RTT até o banco, então é grande exatamente onde
+  // dói: a função serverless e o Neon não estão na mesma região.
+  const [leadRows, conversationMessages, appointmentRows, clinicRows, depositState] =
+    await Promise.all([
+      db.select().from(leads).where(eq(leads.id, conv.leadId)).limit(1),
+      listConversationMessages({ conversationId, clinicId: conv.clinicId }),
+      db
+        .select()
+        .from(appointments)
+        .where(eq(appointments.leadId, conv.leadId))
+        .orderBy(desc(appointments.createdAt))
+        .limit(1),
+      db
+        .select({
+          timezone: organizations.timezone,
+          defaultAppointmentDurationMinutes: organizations.defaultAppointmentDurationMinutes,
+          autoReplyEnabled: organizations.autoReplyEnabled,
+        })
+        .from(organizations)
+        .where(eq(organizations.id, conv.clinicId))
+        .limit(1),
+      new ConversationStateMachine().getDepositState(conversationId),
+    ]);
+
+  const [lead] = leadRows;
   if (!lead) notFound();
 
-  const { messages: recentMsgs, hasMore: hasOlderMessages } = await listConversationMessages({
-    conversationId,
-    clinicId: conv.clinicId,
-  });
+  const { messages: recentMsgs, hasMore: hasOlderMessages } = conversationMessages;
+  // Depende das mensagens (lê o link no fim do corpo), então continua depois —
+  // e só vai ao banco quando alguma mensagem termina em URL.
   const msgs = await attachInboxPreviews(recentMsgs);
 
-  const [appointment] = await db
-    .select()
-    .from(appointments)
-    .where(eq(appointments.leadId, lead.id))
-    .orderBy(desc(appointments.createdAt))
-    .limit(1);
-
-  const [clinic] = await db
-    .select({
-      timezone: organizations.timezone,
-      defaultAppointmentDurationMinutes: organizations.defaultAppointmentDurationMinutes,
-      autoReplyEnabled: organizations.autoReplyEnabled,
-    })
-    .from(organizations)
-    .where(eq(organizations.id, conv.clinicId))
-    .limit(1);
+  const [appointment] = appointmentRows;
+  const [clinic] = clinicRows;
 
   // IA globalmente ligada para a clínica? (kill-switch em Configurações › IA)
   const clinicAutoReplyEnabled = clinic?.autoReplyEnabled ?? true;
 
   // Fluxo de sinal: se o comprovante foi recebido, mostra o banner de validação.
-  const depositState = await new ConversationStateMachine().getDepositState(conversationId);
   const depositProofPending =
     depositState?.state === "deposit_proof_received" ? depositState.payload : null;
 

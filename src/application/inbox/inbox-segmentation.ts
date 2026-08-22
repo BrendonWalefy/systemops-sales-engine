@@ -105,6 +105,42 @@ export type InboxSegmentIndex = {
   totalConversations: number;
 };
 
+/**
+ * Leituras clinic-wide que a varredura de segmentação já pagou e que a página
+ * reaproveita em vez de repetir restritas aos ids da página. Antes desta
+ * mudança, o Inbox pedia ao Postgres as MESMAS quatro agregações duas vezes
+ * por render: uma para decidir as abas, outra para desenhar as até 40 linhas.
+ */
+export type SegmentAppointmentRow = {
+  leadId: string;
+  status: string;
+  startsAt: Date;
+  updatedAt: Date;
+};
+
+export type InboxSegmentReads = {
+  /** convId → leadId, para a página resolver os leads sem reler conversas. */
+  leadIdByConversation: Map<string, string>;
+  /** `distinct on (leadId)` dos agendamentos futuros da clínica. */
+  upcomingAppointments: SegmentAppointmentRow[];
+  /** `distinct on (leadId)` do último desfecho (cancelado/concluído/no-show). */
+  latestOutcomeAppointments: SegmentAppointmentRow[];
+  /** Conversas da clínica com revisão humana pendente e não expirada. */
+  pendingReviewConversationIds: Set<string>;
+};
+
+export type InboxSegmentScan = InboxSegmentIndex & { reads: InboxSegmentReads };
+
+/** Fixture-friendly: um `reads` vazio para testes que só exercitam o índice. */
+export function emptyInboxSegmentReads(): InboxSegmentReads {
+  return {
+    leadIdByConversation: new Map(),
+    upcomingAppointments: [],
+    latestOutcomeAppointments: [],
+    pendingReviewConversationIds: new Set(),
+  };
+}
+
 type EnrichedRow = SegmentInputRow & {
   hoursWaiting: number;
   pendingAction: InboxPendingAction | null;
