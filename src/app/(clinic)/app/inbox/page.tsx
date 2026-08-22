@@ -15,7 +15,12 @@ import { measureServerOperation } from "@/infrastructure/observability/performan
 import { ContentReadyReporter } from "@/components/performance/content-ready-reporter";
 import { listClinicConversations } from "@/application/inbox/list-conversations";
 import { loadInboxSegmentIndex } from "@/application/inbox/segment-index";
-import { resolveActiveInboxTab, selectSegmentedConversationIds } from "@/application/inbox/inbox-segmentation";
+import {
+  INBOX_TAB_KEYS,
+  resolveActiveInboxTab,
+  selectSegmentedConversationIds,
+  type InboxTabKey,
+} from "@/application/inbox/inbox-segmentation";
 import { parseInboxPageParam, selectInboxPageWindow } from "@/application/inbox/inbox-page-window";
 
 type InboxSearchParams = Record<string, string | string[] | undefined>;
@@ -40,14 +45,17 @@ export async function prepareInboxPage(clinicId: string, params: InboxSearchPara
     scopeParam === "archived"
       ? scopeParam
       : "sales";
-  const initialTab =
-    filterParam === "attention" ||
-    filterParam === "pending" ||
-    filterParam === "hot" ||
-    filterParam === "paused" ||
-    filterParam === "cold" ||
-    filterParam === "recovery"
-      ? filterParam
+  // Contra INBOX_TAB_KEYS, não contra uma segunda lista escrita à mão.
+  //
+  // A lista anterior omitia "closed" — e a aba "Fechadas" EXISTE na interface
+  // (InboxClient.tsx), com a contagem certa vinda do índice. Clicar nela
+  // navegava para `?filter=closed`, este parser não reconhecia o valor e
+  // devolvia "all": na Vitalli, 1.024 conversas fechadas mostravam as 2 linhas
+  // de "Todas". A aba não estava quebrada; o leitor da URL é que era um
+  // segundo dono do conjunto de abas e ficou para trás.
+  const initialTab: InboxTabKey =
+    filterParam && (INBOX_TAB_KEYS as readonly string[]).includes(filterParam)
+      ? (filterParam as InboxTabKey)
       : "all";
   const activeTab = resolveActiveInboxTab(initialScope, initialTab);
   const requestedPage = parseInboxPageParam(firstParam(params.page));

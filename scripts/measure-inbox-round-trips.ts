@@ -15,7 +15,12 @@
  * Uso (leitura apenas — nenhuma escrita):
  *
  *   npm run measure:inbox -- --clinic <clinicId>
+ *   npm run measure:inbox -- --clinic <clinicId> --filter closed
  *   npm run measure:inbox -- --clinic <clinicId> --conversation <conversationId>
+ *
+ * `--filter`/`--scope` importam: a aba padrão de uma clínica com histórico
+ * pode ter 2 linhas enquanto "Fechadas" tem uma página cheia. Medir só a
+ * padrão esconde o custo do enriquecimento por linha.
  *
  * O script exige DATABASE_URL explícito e nunca escreve nada.
  */
@@ -97,10 +102,16 @@ async function main(): Promise<void> {
   installProbe();
 
   if (clinicId) {
+    const params: Record<string, string> = {};
+    for (const flag of ["filter", "scope", "q", "page"]) {
+      const value = argOf(`--${flag}`);
+      if (value) params[flag] = value;
+    }
     const { prepareInboxPage } = await import("@/app/(clinic)/app/inbox/page");
     const startedAt = performance.now();
-    await prepareInboxPage(clinicId, {});
-    report(`INBOX LIST — clinic ${clinicId}`, performance.now() - startedAt);
+    await prepareInboxPage(clinicId, params);
+    const label = Object.entries(params).map(([k, v]) => `${k}=${v}`).join(" ") || "aba padrão";
+    report(`INBOX LIST — clinic ${clinicId} (${label})`, performance.now() - startedAt);
     roundTrips.length = 0;
   }
 
