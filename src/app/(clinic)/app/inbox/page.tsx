@@ -3,8 +3,8 @@ export const dynamic = "force-dynamic";
 import { db } from "@/infrastructure/db/client";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { redirect } from "next/navigation";
-import { organizations, messages, appointments, conversationStates, humanReviewRequests } from "@/infrastructure/db/schema";
-import { and, eq, desc, inArray, gte, isNull, or } from "drizzle-orm";
+import { organizations, messages, conversationStates } from "@/infrastructure/db/schema";
+import { eq, desc, inArray } from "drizzle-orm";
 import { InboxPoller } from "./InboxPoller";
 import { InboxClient, type ConvRow, type InboxTabCounts } from "./InboxClient";
 import { getInboxVersion } from "./get-inbox-version";
@@ -70,6 +70,12 @@ export async function prepareInboxPage(clinicId: string, params: InboxSearchPara
     .where(eq(organizations.id, clinicId))
     .limit(1)
     .execute();
+  // A versão do read model só depende de `clinicId` — era a ÚLTIMA ida ao
+  // banco da página, sozinha na sua própria rodada, esperando um enriquecimento
+  // com que não tem relação nenhuma. Disparada aqui, viaja junto com a
+  // varredura e não custa rodada nenhuma.
+  const inboxVersionPromise = getInboxVersion(clinicId);
+  inboxVersionPromise.catch(() => {});
   // Sem isso, uma falha aqui vira unhandledRejection assim que a promise
   // rejeita — antes do Promise.all de inbox_base_query (lá embaixo) chegar a
   // dar `await` nela, já que o scan de segmentação pode levar um tempo.
@@ -113,7 +119,17 @@ export async function prepareInboxPage(clinicId: string, params: InboxSearchPara
   );
   const pageIds = pageWindow.ids;
 
-  const [clinicRows, page] = await measureServerOperation(
+  // Os ids da página já são conhecidos aqui — saíram do índice, em memória.
+  // Logo o enriquecimento NÃO precisa esperar a leitura cara voltar do banco
+  // para saber sobre quais conversas perguntar: as duas coisas dependem do
+  // mesmo `pageIds` e viajam na mesma rodada. Antes eram duas rodadas em fila.
+  const salesConversationIds = new Set(segmentIndex.idsByScope.sales);
+  const salesLeadIds = pageIds
+    .filter((convId) => salesConversationIds.has(convId))
+    .map((convId) => segmentIndex.reads.leadIdByConversation.get(convId))
+    .filter((leadId): leadId is string => Boolean(leadId));
+
+  const [clinicRows, page, lastMessageRows, latestStateRows] = await measureServerOperation(
     {
       clinicId,
       surface: "inbox_list",
@@ -125,26 +141,10 @@ export async function prepareInboxPage(clinicId: string, params: InboxSearchPara
       // conversas da aba/escopo (e, se houver busca, dos resultados dela),
       // na mesma ordem do índice de segmentação.
       listClinicConversations({ clinicId, ids: pageIds }),
-    ]),
-  );
-
-  const autoReplyEnabled = clinicRows[0]?.autoReplyEnabled ?? false;
-
-  const rows = page.rows;
-
-  const salesLeadIds = rows
-    .filter((row) => row.conversationCategory === "sales")
-    .map((row) => row.leadId);
-
-  const conversationIds = rows.map((row) => row.convId);
-  const [lastMessageRows, upcomingAppointmentRows, latestOutcomeRows, latestStateRows, pendingHumanReviewRows] = await measureServerOperation(
-    {
-      clinicId,
-      surface: "inbox_list",
-      operation: "inbox_enrichment_query",
-    },
-    () => Promise.all([
-      conversationIds.length > 0
+      // Corpo/autor/hora da última mensagem: é a única leitura de
+      // enriquecimento que a varredura NÃO paga (ela lê só o autor, sem corpo,
+      // para não trazer conversa inteira da clínica pra memória).
+      pageIds.length > 0
         ? db
           .selectDistinctOn([messages.conversationId], {
             conversationId: messages.conversationId,
@@ -154,45 +154,14 @@ export async function prepareInboxPage(clinicId: string, params: InboxSearchPara
             simulated: messages.simulated,
           })
           .from(messages)
-          .where(inArray(messages.conversationId, conversationIds))
+          .where(inArray(messages.conversationId, pageIds))
           .orderBy(messages.conversationId, desc(messages.sentAt))
         : Promise.resolve([]),
-      salesLeadIds.length > 0
-        ? db
-          .selectDistinctOn([appointments.leadId], {
-            leadId: appointments.leadId,
-            status: appointments.status,
-            startsAt: appointments.startsAt,
-            updatedAt: appointments.updatedAt,
-          })
-          .from(appointments)
-          .where(
-            and(
-              inArray(appointments.leadId, salesLeadIds),
-              inArray(appointments.status, ["scheduled", "confirmed"]),
-              gte(appointments.endsAt, now),
-            ),
-          )
-          .orderBy(appointments.leadId, appointments.startsAt)
-        : Promise.resolve([]),
-      salesLeadIds.length > 0
-        ? db
-          .selectDistinctOn([appointments.leadId], {
-            leadId: appointments.leadId,
-            status: appointments.status,
-            startsAt: appointments.startsAt,
-            updatedAt: appointments.updatedAt,
-          })
-          .from(appointments)
-          .where(
-            and(
-              inArray(appointments.leadId, salesLeadIds),
-              inArray(appointments.status, ["cancelled", "completed", "no_show"]),
-            ),
-          )
-          .orderBy(appointments.leadId, desc(appointments.updatedAt), desc(appointments.startsAt))
-        : Promise.resolve([]),
-      conversationIds.length > 0
+      // O estado mais recente a varredura só carrega para conversas
+      // comerciais; a página mostra também escopos não comerciais
+      // (operacional, fornecedor, spam, arquivadas), então esta continua
+      // sendo lida para os ids da página.
+      pageIds.length > 0
         ? db
           .selectDistinctOn([conversationStates.conversationId], {
             conversationId: conversationStates.conversationId,
@@ -200,27 +169,26 @@ export async function prepareInboxPage(clinicId: string, params: InboxSearchPara
             expiresAt: conversationStates.expiresAt,
           })
           .from(conversationStates)
-          .where(inArray(conversationStates.conversationId, conversationIds))
+          .where(inArray(conversationStates.conversationId, pageIds))
           .orderBy(conversationStates.conversationId, desc(conversationStates.createdAt))
-        : Promise.resolve([]),
-      conversationIds.length > 0
-        ? db
-          .select({ conversationId: humanReviewRequests.conversationId })
-          .from(humanReviewRequests)
-          .where(
-            and(
-              eq(humanReviewRequests.clinicId, clinicId),
-              eq(humanReviewRequests.status, "pending"),
-              inArray(humanReviewRequests.conversationId, conversationIds),
-              or(
-                isNull(humanReviewRequests.expiresAt),
-                gte(humanReviewRequests.expiresAt, now),
-              ),
-            ),
-          )
         : Promise.resolve([]),
     ]),
   );
+
+  const autoReplyEnabled = clinicRows[0]?.autoReplyEnabled ?? false;
+
+  const rows = page.rows;
+
+  // Agendamentos e revisões humanas vêm da varredura, que já os leu para a
+  // clínica inteira com os MESMOS filtros e a MESMA ordenação. As três
+  // consultas que estavam aqui eram o mesmo `distinct on`, só que restrito aos
+  // ids/leads da página — dado que já estava em memória.
+  const salesLeadIdSet = new Set(salesLeadIds);
+  const upcomingAppointmentRows = segmentIndex.reads.upcomingAppointments
+    .filter((appointment) => salesLeadIdSet.has(appointment.leadId));
+  const latestOutcomeRows = segmentIndex.reads.latestOutcomeAppointments
+    .filter((appointment) => salesLeadIdSet.has(appointment.leadId));
+  const pendingHumanReviewRows = segmentIndex.reads.pendingReviewConversationIds;
 
   const lastMsgMap: Record<string, { body: string; author: string; sentAt: Date | null; simulated: boolean }> = {};
   for (const msg of lastMessageRows) {
@@ -240,9 +208,7 @@ export async function prepareInboxPage(clinicId: string, params: InboxSearchPara
   const latestStateMap = new Map(
     latestStateRows.map((state) => [state.conversationId, state]),
   );
-  const pendingHumanReviewConversationIds = new Set(
-    pendingHumanReviewRows.map((review) => review.conversationId),
-  );
+  const pendingHumanReviewConversationIds = pendingHumanReviewRows;
 
   for (const appt of upcomingAppointmentRows) {
     if (appt.leadId && !appointmentMap[appt.leadId]) {
@@ -278,7 +244,7 @@ export async function prepareInboxPage(clinicId: string, params: InboxSearchPara
     };
   });
 
-  const initialVersion = await getInboxVersion(clinicId);
+  const initialVersion = await inboxVersionPromise;
 
   // Contagens/badges das abas: vêm do índice de segmentação (varredura
   // clinic-wide), nunca de `allRows` — que agora é só a página da aba ativa.

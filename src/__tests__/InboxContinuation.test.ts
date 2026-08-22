@@ -13,7 +13,10 @@
 // leitura cara para cada valor de `page`.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { InboxSegmentIndex } from "@/application/inbox/inbox-segmentation";
+import {
+  emptyInboxSegmentReads,
+  type InboxSegmentScan,
+} from "@/application/inbox/inbox-segmentation";
 import { INBOX_PAGE_SIZE } from "@/application/inbox/inbox-cursor";
 
 const CLINIC_ID = "00000000-0000-0000-0000-0000000000aa";
@@ -74,8 +77,12 @@ function conversationIds(count: number): string[] {
   return Array.from({ length: count }, (_, index) => `conv-${index + 1}`);
 }
 
-function segmentIndexWithLiveConversations(allIds: string[]): InboxSegmentIndex {
+function segmentIndexWithLiveConversations(allIds: string[]): InboxSegmentScan {
   return {
+    reads: {
+      ...emptyInboxSegmentReads(),
+      leadIdByConversation: new Map(allIds.map((id) => [id, `lead-of-${id}`])),
+    },
     counts: {
       all: allIds.length,
       hot: 0,
