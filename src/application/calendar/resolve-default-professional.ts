@@ -1,24 +1,27 @@
+import { and, eq } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 import { professionals } from "@/infrastructure/db/schema";
-import { eq } from "drizzle-orm";
 
 // Decide qual profissional cadastrado recebe os agendamentos importados que
-// não mencionam nenhum profissional no texto do evento. Regra pragmática
-// para o caso real (Vitalli): o dono da clínica é o profissional "padrão" —
-// se houver alguém com "victor" no nome, usa esse; senão, se só existir um
-// profissional ativo cadastrado, usa esse (nada para decidir); caso
-// contrário (múltiplos profissionais, nenhum "victor"), não arrisca um
-// palpite e retorna null — melhor sem profissional do que atribuído errado.
+// não mencionam nenhum profissional no texto do evento. Só considera
+// profissionais ativos: se existir exatamente um ativo na clínica, usa esse
+// (nada para decidir); caso contrário — nenhum ativo, ou vários ativos e
+// ambíguo — retorna null. Um agendamento sem profissional é preferível a um
+// atribuído ao profissional errado (isolamento entre tenants).
+
+type ProfessionalForSelection = { id: string; isActive: boolean };
+
+export function pickDefaultProfessional(candidates: ProfessionalForSelection[]): string | null {
+  const active = candidates.filter((p) => p.isActive);
+  if (active.length === 1) return active[0].id;
+  return null;
+}
+
 export async function resolveDefaultProfessionalId(clinicId: string): Promise<string | null> {
   const clinicProfessionals = await db.query.professionals.findMany({
-    where: eq(professionals.clinicId, clinicId),
-    columns: { id: true, name: true },
+    where: and(eq(professionals.clinicId, clinicId), eq(professionals.isActive, true)),
+    columns: { id: true, isActive: true },
   });
 
-  const named = clinicProfessionals.find((p) => p.name.toLowerCase().includes("victor"));
-  if (named) return named.id;
-
-  if (clinicProfessionals.length === 1) return clinicProfessionals[0].id;
-
-  return null;
+  return pickDefaultProfessional(clinicProfessionals);
 }
