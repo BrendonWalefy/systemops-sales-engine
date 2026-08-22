@@ -1,6 +1,6 @@
 // Thin adapter: valida, resolve tenant e persiste a entrada antes de enfileirar.
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { organizations, conversations, messages, leads } from "@/infrastructure/db/schema";
@@ -17,6 +17,7 @@ import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lea
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { resolveUnsupportedInboundPlaceholder } from "@/infrastructure/adapters/channels/whatsapp/zapi-webhook-content";
 import { persistInboundEventAndEnqueue } from "@/application/whatsapp/persist-inbound-event";
+import { scheduleMessageWorkerKick } from "@/application/jobs/request-message-worker-run";
 import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { buildZApiInboundEvent } from "@/infrastructure/adapters/channels/whatsapp/zapi-inbound-event";
@@ -577,6 +578,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       jobWasNew: result.jobWasNew,
       durationMs: Date.now() - startedAt,
     });
+    // Trabalho novo: acorda o worker agora em vez de esperar o cron.
+    // `after()` porque o lead não pode esperar esta chamada — a Z-API já
+    // recebeu o 200. Só quando o job era NOVO: webhook repetido (a Z-API
+    // reentrega) não acorda ninguém.
+    if (result.jobWasNew) {
+      scheduleMessageWorkerKick(after, (kick) => clinicLog.info("webhook.worker_kick", kick));
+    }
   } catch (error) {
     // Returning an error asks Z-API to retry. A duplicate event retries only
     // the idempotent enqueue, repairing a prior persistence/enqueue split.

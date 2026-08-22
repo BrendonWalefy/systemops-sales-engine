@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { drainMessageProcessQueue } from "@/application/jobs/drain-message-process-queue";
 import { drainMessageSendQueue } from "@/application/jobs/drain-message-send-queue";
@@ -40,6 +40,33 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const unauthorized = requireCronAuthorization(request);
   if (unauthorized) return unauthorized;
 
+  // `?ack=1` — chamada do webhook, não do cron.
+  //
+  // O webhook acorda o worker assim que grava o job, para a resposta ao lead
+  // não esperar o próximo tick. Mas ele não pode ficar preso até o drenar
+  // terminar: seria segurar duas invocações pelo mesmo trabalho, e um timeout
+  // do lado dele cortaria a conexão no meio do drenar. Então confirmamos o
+  // recebimento na hora e drenamos em `after()`, dentro do orçamento desta
+  // invocação (maxDuration 300) — que é exatamente o que o cron faria.
+  //
+  // O cron continua chamando sem `ack`: a resposta síncrona é o que dá ao log
+  // do run o resultado e a duração reais.
+  if (request.nextUrl.searchParams.get("ack") === "1") {
+    after(async () => {
+      await runMessageWorker();
+    });
+    return NextResponse.json({ accepted: true }, { status: 202 });
+  }
+
+  const outcome = await runMessageWorker();
+  return NextResponse.json(outcome.body, { status: outcome.status });
+}
+
+// O cron precisa continuar vendo 500 quando o run falha — é o sinal que a
+// Vercel usa para marcar a execução como falha.
+type MessageWorkerRunOutcome = { body: Record<string, unknown>; status: number };
+
+async function runMessageWorker(): Promise<MessageWorkerRunOutcome> {
   const workerId = `message-worker:${randomUUID()}`;
   const log = createLogger({
     scope: "MessageWorkerRoute",
@@ -140,9 +167,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       conversationV2Shadow,
       durationMs: Date.now() - startedAt,
     });
-    return NextResponse.json({ ...result, orphanReconciliation, sendDrain, conversationV2Shadow });
+    return { body: { ...result, orphanReconciliation, sendDrain, conversationV2Shadow }, status: 200 };
   } catch (error) {
     log.error("worker.run.failed", error, { durationMs: Date.now() - startedAt });
-    return NextResponse.json({ error: "message_worker_failed" }, { status: 500 });
+    return { body: { error: "message_worker_failed" }, status: 500 };
   }
 }

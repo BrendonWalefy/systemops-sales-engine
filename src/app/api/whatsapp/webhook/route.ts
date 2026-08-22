@@ -2,9 +2,10 @@
 import { resolveMetaWebhookTenant } from "@/application/tenancy/resolve-clinic";
 // GET: verificação do webhook Meta. POST: mensagens recebidas.
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { parseMetaInboundTextMessage } from "@/infrastructure/adapters/channels/whatsapp/meta-webhook-content";
 import { persistInboundEventAndEnqueue } from "@/application/whatsapp/persist-inbound-event";
+import { scheduleMessageWorkerKick } from "@/application/jobs/request-message-worker-run";
 import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import {
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    await persistInboundEventAndEnqueue({
+    const result = await persistInboundEventAndEnqueue({
       clinicId: tenant.clinicId,
       provider: "meta_cloud_api",
       providerMessageId: message.messageId,
@@ -76,6 +77,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       inboundEventStore: new DrizzleInboundEventStore(),
       jobQueue: new DrizzleJobQueue(),
     });
+
+    // Trabalho novo: acorda o worker agora em vez de esperar o cron.
+    // `after()` porque o lead não pode esperar esta chamada — a Z-API já
+    // recebeu o 200. Só quando o job era NOVO: webhook repetido (a Z-API
+    // reentrega) não acorda ninguém.
+    if (result.jobWasNew) {
+      scheduleMessageWorkerKick(after);
+    }
 
     return new NextResponse("OK", { status: 200 });
   } catch (error) {

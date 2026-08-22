@@ -45,6 +45,7 @@
     "replay:calendar": "dotenv -e .env.local -- tsx scripts/capture-replay-calendar-snapshot.ts",
     "replay:sandbox": "tsx scripts/manage-replay-sandbox.ts",
     "performance:summary": "tsx scripts/summarize-performance-logs.ts",
+    "measure:inbox": "dotenv -e .env.local -- tsx scripts/measure-inbox-round-trips.ts",
     "create-clinic": "dotenv -e .env.local -- tsx scripts/create-clinic.ts",
     "dev:workers": "dotenv -e .env.local -- ./scripts/dev-workers.sh",
     "db:backfill-schedule": "dotenv -e .env.local -- tsx scripts/backfill-business-schedule.ts"

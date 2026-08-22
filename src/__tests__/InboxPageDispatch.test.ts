@@ -8,7 +8,10 @@
 // pra provar que a consulta de organizations sai antes do scan resolver.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { InboxSegmentIndex } from "@/application/inbox/inbox-segmentation";
+import {
+  emptyInboxSegmentReads,
+  type InboxSegmentScan,
+} from "@/application/inbox/inbox-segmentation";
 
 const CLINIC_ID = "00000000-0000-0000-0000-0000000000aa";
 
@@ -51,8 +54,9 @@ vi.mock("@/components/performance/content-ready-reporter", () => ({
 
 import { prepareInboxPage } from "@/app/(clinic)/app/inbox/page";
 
-function fakeSegmentIndex(): InboxSegmentIndex {
+function fakeSegmentIndex(): InboxSegmentScan {
   return {
+    reads: emptyInboxSegmentReads(),
     counts: { all: 0, hot: 0, attention: 0, pending: 0, paused: 0, cold: 0, recovery: 0, closed: 0 },
     idsByTab: { all: [], hot: [], attention: [], pending: [], paused: [], cold: [], recovery: [], closed: [] },
     scopeCounts: { sales: 0, operational: 0, vendor: 0, spam: 0, archived: 0 },
@@ -110,7 +114,7 @@ describe("prepareInboxPage — dispatch da consulta de organizations (Fix round 
     const { chain, state } = makeOrgChain({ resolveWith: [{ autoReplyEnabled: true, updatedAt: new Date() }] });
     dbMock.select.mockReturnValue(chain);
 
-    const segmentDeferred = createDeferred<InboxSegmentIndex>();
+    const segmentDeferred = createDeferred<InboxSegmentScan>();
     loadInboxSegmentIndexMock.mockImplementation(() => segmentDeferred.promise);
 
     // prepareInboxPage roda de forma síncrona até o primeiro `await` real
@@ -142,7 +146,7 @@ describe("prepareInboxPage — dispatch da consulta de organizations (Fix round 
       const { chain, state } = makeOrgChain({ rejectWith: boom });
       dbMock.select.mockReturnValue(chain);
 
-      const segmentDeferred = createDeferred<InboxSegmentIndex>();
+      const segmentDeferred = createDeferred<InboxSegmentScan>();
       loadInboxSegmentIndexMock.mockImplementation(() => segmentDeferred.promise);
 
       const resultPromise = prepareInboxPage(CLINIC_ID, {});
