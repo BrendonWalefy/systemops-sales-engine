@@ -15,6 +15,34 @@
  * rede de segurança: quem cria trabalho é que anuncia o trabalho, e sem
  * trabalho o banco não é tocado.
  *
+ * PRECEDENTE QUE ESTE MÓDULO PRECISA RESPEITAR
+ *
+ * Já houve um incidente com "disparar worker por mensagem": o debounce de
+ * rajada é um `setTimeout` BLOQUEANTE de 15 s dentro do processamento
+ * (`ConversationOrchestrator`, passo 3.7), então uma invocação por mensagem
+ * multiplica invocações longas concorrentes. Foi o que tirou o projeto do
+ * modelo síncrono.
+ *
+ * O que é diferente aqui, e por que o risco não é o mesmo:
+ *  - o webhook NÃO espera. Ele responde 200 ao provedor antes do pedido sair
+ *    (`after()`), e o worker responde 202 em milissegundos (`ack=1`). No
+ *    modelo síncrono era o provedor que ficava pendurado no processamento —
+ *    daí o timeout dele, daí a reentrega, daí a amplificação. Esse laço não
+ *    existe neste desenho;
+ *  - cada worker drena um lote (até 10 jobs), não uma mensagem, e o
+ *    `FOR UPDATE SKIP LOCKED` impede dois workers de pegarem o mesmo job.
+ *
+ * O que CONTINUA verdade: numa rajada de N mensagens, até N invocações de
+ * worker podem coexistir dormindo os 15 s do debounce, contra 1 no modelo
+ * puramente de cron. É um múltiplo limitado pela taxa de chegada e por
+ * `maxDuration`, sem realimentação — mas é um múltiplo.
+ *
+ * Por isso: `DISABLE_WORKER_KICK=1` desliga o atalho sem desligar nada mais
+ * (o cron volta a ser o único caminho), e a correção que elimina o múltiplo de
+ * vez é trocar o debounce bloqueante por agendamento (`run_at = agora +
+ * debounce`), projeto à parte e pré-requisito reconhecido para acelerar este
+ * salto com folga.
+ *
  * Regras deste módulo:
  *  - nunca lança: uma falha aqui degrada para o cron, não derruba o webhook;
  *  - nunca espera a resposta importar: o resultado é só para log/teste;
