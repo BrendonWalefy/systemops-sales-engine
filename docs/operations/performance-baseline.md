@@ -133,3 +133,57 @@ Phase 1 cohort must **sum `inbox_base_query` and `inbox_segment_scan`** to
 represent the same work the Phase 1 number covered. Recording them separately
 is still correct and useful — it shows which half the cost sits in — but the
 sum is the only figure comparable to the earlier baseline.
+
+## Depois da colocação de região e do colapso do waterfall (22/08/2026)
+
+Duas coisas mudaram e as duas invalidam comparações ingênuas com qualquer
+coorte anterior.
+
+**A região mudou.** As funções rodavam em `iad1` e o Neon está em
+`aws-sa-east-1`. Toda ida ao banco atravessava São Paulo ↔ Virgínia. Medido em
+produção, com 25 amostras intercaladas entre duas rotas da mesma origem:
+
+| Rota | Rodadas sequenciais ao banco | p50 | p90 |
+| --- | --- | --- | --- |
+| `/api/cron/sender-worker` (401, não toca no banco) | 0 | 182 ms | 198 ms |
+| `/api/health` | 2 | 444 ms | 496 ms |
+
+A diferença — 262 ms para 2 rodadas — dá **~131 ms por ida e volta sequencial
+ao Postgres**. O mesmo endpoint, medido de um cliente em São Paulo, responde
+`select 1` em **11 ms** (mediana de 12 amostras). `vercel.json` passa a fixar
+`regions: ["gru1"]`.
+
+Consequência para a leitura de qualquer coorte: um número colhido antes de
+22/08 embute ~131 ms por rodada e um colhido depois embute ~11 ms. Coortes
+dos dois lados dessa mudança **não são comparáveis**, mesmo com a mesma
+operação e o mesmo dispositivo.
+
+**`inbox_base_query` mudou de escopo outra vez.** Assim como a Fase 3A tirou a
+parte clinic-wide de `inbox_base_query` e criou `inbox_segment_scan`, esta
+mudança faz o caminho inverso com o enriquecimento: as leituras que
+`inbox_enrichment_query` media passaram a viajar na mesma rodada da leitura
+paginada, e a operação **deixou de ter emissor** (o nome continua no contrato
+de telemetria, para o allowlist de ingestão não mudar). Uma comparação de
+`inbox_base_query` sozinho contra uma coorte anterior **superestima a
+regressão**, porque agora ele cobre trabalho que antes era medido à parte.
+
+Para comparar com qualquer coorte anterior a 22/08, **some
+`inbox_base_query` + `inbox_segment_scan` + `inbox_enrichment_query`** dos dois
+lados. Só a soma é comparável.
+
+**Profundidade do waterfall, medida com `npm run measure:inbox`** contra a base
+real (Clínica Vitalli, 1030 conversas). O relógio é de uma máquina em São
+Paulo, então **subestima** a produção; o número que se transporta entre
+ambientes é `rodadas × RTT_da_região`:
+
+| Superfície | Idas ao banco | Rodadas sequenciais | Payload |
+| --- | --- | --- | --- |
+| Lista do Inbox — antes | 14 | 5 | 247.001 B |
+| Lista do Inbox — depois | 11 | 2 | 246.714 B |
+| Conversa — antes | 6 | 6 | 34.556 B |
+| Conversa — depois | 6 | 2 | 34.556 B |
+
+`InboxReadWaterfall.test.ts` trava a profundidade: ele observa **quando** cada
+consulta é disparada, não o resultado dela. Uma leitura que volte para trás de
+um `await` que não a alimenta é uma regressão de UX invisível para todo teste
+de resultado.
