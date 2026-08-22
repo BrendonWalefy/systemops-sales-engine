@@ -1,6 +1,6 @@
 import { db } from "@/infrastructure/db/client";
 import { appointments, leads, treatments, professionals } from "@/infrastructure/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { CalendarEvent } from "./parse-ics";
 import { extractCalendarEventPhone } from "./extract-event-phone";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
@@ -95,9 +95,12 @@ export async function importCalendarEvents(
     hasPipeline: (t.pipelineSteps?.length ?? 0) > 0,
   }));
 
+  // Só profissionais ATIVOS entram no matcher de texto — mesma classe de defeito
+  // já fechada em resolve-default-professional.ts. O filtro vai na query, não em
+  // memória, para não trafegar profissionais que deixaram a clínica.
   const clinicProfessionals = await db.query.professionals.findMany({
-    where: eq(professionals.clinicId, clinicId),
-    columns: { id: true, name: true },
+    where: and(eq(professionals.clinicId, clinicId), eq(professionals.isActive, true)),
+    columns: { id: true, name: true, isActive: true },
   });
 
   // Uma marca ao final da importação inteira, não uma por evento — um
@@ -178,7 +181,6 @@ export async function importCalendarEvents(
       // Busca fuzzy em memória: qual tratamento cadastrado aparece dentro do
       // texto livre do evento (não o inverso — o SUMMARY não é um nome exato
       // de tratamento, é uma frase que pode mencioná-lo em qualquer posição).
-      const normalizedSummary = normalizeWord(treatmentName);
       const treatmentMatch = matchImportedTreatment(treatmentName, treatmentCandidates);
       const matchedTreatment = treatmentMatch.treatmentId
         ? clinicTreatments.find((t) => t.id === treatmentMatch.treatmentId)
@@ -192,10 +194,8 @@ export async function importCalendarEvents(
         );
       }
 
-      const matchedProfessional = clinicProfessionals.find((p) =>
-        matchesProfessionalMention(normalizedSummary, normalizeProfessionalName(p.name)),
-      );
-      const professionalId = matchedProfessional?.id ?? options.defaultProfessionalId ?? null;
+      const matchedProfessionalId = pickProfessionalForImportedEvent(treatmentName, clinicProfessionals);
+      const professionalId = matchedProfessionalId ?? options.defaultProfessionalId ?? null;
 
       const valueCents = extractEventValueCents(treatmentName);
 
@@ -238,7 +238,7 @@ export async function importCalendarEvents(
             // Google devolveria o bloco curto e a proteção se perderia.
             endsAt,
             status: updatedStatus,
-            professionalId: matchedProfessional?.id ?? existingAppointment.professionalId ?? options.defaultProfessionalId ?? null,
+            professionalId: matchedProfessionalId ?? existingAppointment.professionalId ?? options.defaultProfessionalId ?? null,
             treatmentId: matchedTreatment?.id ?? existingAppointment.treatmentId ?? null,
             // Não apaga valor já registrado quando o texto do evento perde a cifra.
             valueCents: valueCents ?? existingAppointment.valueCents ?? null,
@@ -508,6 +508,33 @@ function matchesProfessionalMention(normalizedSummary: string, professionalCore:
   if (!professionalCore) return false;
   if (normalizedSummary.includes(professionalCore)) return true;
   return professionalCore.length >= 5 && normalizedSummary.includes(professionalCore.slice(0, -1));
+}
+
+export type ProfessionalForImportMatch = {
+  id: string;
+  name: string;
+  isActive: boolean;
+};
+
+/**
+ * Qual profissional cadastrado o texto livre do evento menciona?
+ *
+ * Só profissionais ATIVOS podem casar — mesma classe de defeito já fechada em
+ * resolve-default-professional.ts. Profissional que deixou a clínica não pode
+ * receber consulta nova (nem numa inserção nem numa reimportação que atualiza
+ * um agendamento existente). A defesa também vive na query, para que a lista
+ * chegue aqui já filtrada; este filtro é o cinto de segurança para quem chamar
+ * a função com uma lista crua em teste.
+ */
+export function pickProfessionalForImportedEvent(
+  summary: string,
+  candidates: ProfessionalForImportMatch[],
+): string | null {
+  const normalizedSummary = normalizeWord(summary);
+  const match = candidates
+    .filter((p) => p.isActive)
+    .find((p) => matchesProfessionalMention(normalizedSummary, normalizeProfessionalName(p.name)));
+  return match?.id ?? null;
 }
 
 function toTitleCase(word: string): string {
