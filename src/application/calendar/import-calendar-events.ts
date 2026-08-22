@@ -1,6 +1,6 @@
 import { db } from "@/infrastructure/db/client";
 import { appointments, leads, treatments, professionals } from "@/infrastructure/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { CalendarEvent } from "./parse-ics";
 import { extractCalendarEventPhone } from "./extract-event-phone";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
@@ -95,9 +95,14 @@ export async function importCalendarEvents(
     hasPipeline: (t.pipelineSteps?.length ?? 0) > 0,
   }));
 
+  // Só profissionais ativos: um profissional desligado da clínica não pode
+  // ganhar consultas novas via import só porque o nome dele ainda aparece no
+  // texto do evento no Google Calendar. Mesma decisão de
+  // resolveDefaultProfessionalId — cada camada barra o inativo, então nenhuma
+  // sozinha carrega a responsabilidade.
   const clinicProfessionals = await db.query.professionals.findMany({
-    where: eq(professionals.clinicId, clinicId),
-    columns: { id: true, name: true },
+    where: and(eq(professionals.clinicId, clinicId), eq(professionals.isActive, true)),
+    columns: { id: true, name: true, isActive: true },
   });
 
   // Uma marca ao final da importação inteira, não uma por evento — um
@@ -192,10 +197,8 @@ export async function importCalendarEvents(
         );
       }
 
-      const matchedProfessional = clinicProfessionals.find((p) =>
-        matchesProfessionalMention(normalizedSummary, normalizeProfessionalName(p.name)),
-      );
-      const professionalId = matchedProfessional?.id ?? options.defaultProfessionalId ?? null;
+      const matchedProfessionalId = pickImportedProfessional(treatmentName, clinicProfessionals);
+      const professionalId = matchedProfessionalId ?? options.defaultProfessionalId ?? null;
 
       const valueCents = extractEventValueCents(treatmentName);
 
@@ -238,7 +241,16 @@ export async function importCalendarEvents(
             // Google devolveria o bloco curto e a proteção se perderia.
             endsAt,
             status: updatedStatus,
-            professionalId: matchedProfessional?.id ?? existingAppointment.professionalId ?? options.defaultProfessionalId ?? null,
+            // Só preserva o professionalId anterior se ele ainda estiver ativo;
+            // caso contrário, o update também precisa cair no default (ou null).
+            // Sem isso, o defeito voltaria pela porta do reimport.
+            professionalId: matchedProfessionalId
+              ?? (existingAppointment.professionalId
+                  && clinicProfessionals.some((p) => p.id === existingAppointment.professionalId)
+                  ? existingAppointment.professionalId
+                  : null)
+              ?? options.defaultProfessionalId
+              ?? null,
             treatmentId: matchedTreatment?.id ?? existingAppointment.treatmentId ?? null,
             // Não apaga valor já registrado quando o texto do evento perde a cifra.
             valueCents: valueCents ?? existingAppointment.valueCents ?? null,
@@ -508,6 +520,35 @@ function matchesProfessionalMention(normalizedSummary: string, professionalCore:
   if (!professionalCore) return false;
   if (normalizedSummary.includes(professionalCore)) return true;
   return professionalCore.length >= 5 && normalizedSummary.includes(professionalCore.slice(0, -1));
+}
+
+export type ProfessionalImportCandidate = {
+  id: string;
+  name: string;
+  isActive: boolean;
+};
+
+/**
+ * Regra pura: qual profissional cadastrado o texto livre do evento menciona?
+ *
+ * Ignora profissional inativo mesmo quando o nome ainda aparece no SUMMARY —
+ * quem saiu da clínica não pode ganhar consulta nova pelo import. A query
+ * de `importCalendarEvents` já filtra `isActive=true`, esta função faz a
+ * mesma trava em memória: se um caminho futuro carregar candidatos por outro
+ * meio, o inativo continua barrado sem depender só do SQL.
+ *
+ * Devolve null quando o texto não menciona ninguém ativo — o chamador cai no
+ * `options.defaultProfessionalId`.
+ */
+export function pickImportedProfessional(
+  summary: string,
+  candidates: ProfessionalImportCandidate[],
+): string | null {
+  const normalizedSummary = normalizeWord(summary);
+  const matched = candidates.find(
+    (p) => p.isActive && matchesProfessionalMention(normalizedSummary, normalizeProfessionalName(p.name)),
+  );
+  return matched?.id ?? null;
 }
 
 function toTitleCase(word: string): string {

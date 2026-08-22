@@ -10,6 +10,7 @@ import {
   importCalendarEvents,
   extractPatientName,
   normalizeCalendarEventId,
+  pickImportedProfessional,
 } from "@/application/calendar/import-calendar-events";
 import fs from "fs";
 import path from "path";
@@ -130,6 +131,61 @@ END:VCALENDAR`;
     // com os componentes locais corretos (hora 11, não deslocada).
     expect(result.events[0].startTime.getHours()).toBe(11);
     expect(result.events[0].startTime.getDate()).toBe(10);
+  });
+});
+
+// Regra pura de match de profissional no import — a query já filtra
+// isActive=true, mas a regra também filtra em memória (belt-and-suspenders):
+// se um dia alguém carregar candidatos por outro caminho, o profissional
+// desligado nunca pode acabar num agendamento importado.
+describe("pickImportedProfessional — só casa profissionais ativos", () => {
+  it("casa profissional ativo mencionado no texto pelo primeiro nome", () => {
+    const candidates = [
+      { id: "prof-1", name: "Dr. Gregorie", isActive: true },
+    ];
+    expect(pickImportedProfessional("Vilma avaliação gregorie", candidates)).toBe("prof-1");
+  });
+
+  it("ignora profissional inativo mesmo quando o nome dele aparece no texto", () => {
+    const candidates = [
+      { id: "prof-1", name: "Dr. Gregorie", isActive: false },
+    ];
+    expect(pickImportedProfessional("Vilma avaliação gregorie", candidates)).toBeNull();
+  });
+
+  it("com ativo e inativo homônimos, devolve o ativo", () => {
+    const candidates = [
+      { id: "inativo", name: "Dr. Gregorie", isActive: false },
+      { id: "ativo", name: "Dr. Gregorie", isActive: true },
+    ];
+    expect(pickImportedProfessional("Vilma avaliação gregorie", candidates)).toBe("ativo");
+  });
+
+  it("devolve null quando o texto não menciona ninguém — deixa o chamador cair no default", () => {
+    const candidates = [
+      { id: "prof-1", name: "Dr. Gregorie", isActive: true },
+    ];
+    expect(pickImportedProfessional("Pedro manutenção sem custo", candidates)).toBeNull();
+  });
+
+  it("tolera perda de última letra ('GREGORI' → Gregorie)", () => {
+    const candidates = [
+      { id: "prof-1", name: "Dr. Gregorie", isActive: true },
+    ];
+    expect(pickImportedProfessional("Polyane 20 lentes já pagou GREGORI", candidates)).toBe("prof-1");
+  });
+
+  it("comportamento inalterado quando todos os profissionais são ativos", () => {
+    const candidates = [
+      { id: "p-a", name: "Dr. Ana", isActive: true },
+      { id: "p-b", name: "Dr. Bruno", isActive: true },
+    ];
+    expect(pickImportedProfessional("consulta bruno", candidates)).toBe("p-b");
+    expect(pickImportedProfessional("consulta ana", candidates)).toBe("p-a");
+  });
+
+  it("sem candidatos, devolve null", () => {
+    expect(pickImportedProfessional("qualquer texto", [])).toBeNull();
   });
 });
 
