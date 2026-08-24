@@ -2,7 +2,9 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { PgDialect } from "drizzle-orm/pg-core";
 import type { PoolClient } from "pg";
+import { buildAuthorityBackfillEvidenceQuery } from "../../scripts/backfill-whatsapp-stream-authority";
 import {
   cleanupEmbeddedAuthorityDatabase,
   startEmbeddedAuthorityDatabase,
@@ -30,6 +32,8 @@ type ExplainDocument = {
 const AUTHORITY_TABLES = new Set([
   "inbound_events",
   "jobs",
+  "messages",
+  "conversations",
   "whatsapp_stream_aliases",
   "whatsapp_streams",
   "outbound_messages",
@@ -42,6 +46,7 @@ describe("WhatsApp stream authority performance and lock isolation", () => {
   let secondStreamId = "";
   let targetEventId = "";
   let targetJobId = "";
+  let backfillEvidenceEventId = "";
   const measurements: Array<Record<string, string | number>> = [];
 
   beforeAll(async () => {
@@ -176,6 +181,11 @@ describe("WhatsApp stream authority performance and lock isolation", () => {
                'unresolved:' || generation, 'processed', clock_timestamp()
         from generate_series(1, 600) generation
       `, [clinicId]);
+      const backfillEvidenceEvent = await client.query<{ id: string }>(`
+        select id::text from inbound_events
+        where organization_id = $1::uuid and provider_message_id = 'unresolved-1'
+      `, [clinicId]);
+      backfillEvidenceEventId = backfillEvidenceEvent.rows[0]!.id;
       await client.query(`
         insert into whatsapp_streams (
           organization_id, state, current_generation, retired_at,
@@ -227,6 +237,30 @@ describe("WhatsApp stream authority performance and lock isolation", () => {
           sharedBufferBlocks: bufferBlocks(document.Plan),
         });
       }
+      const dialect = new PgDialect();
+      const evidenceQuery = dialect.sqlToQuery(buildAuthorityBackfillEvidenceQuery({
+        clinicId,
+        candidates: [{
+          eventId: backfillEvidenceEventId,
+          providerMessageId: "unresolved-1",
+          aliases: [{
+            kind: "provider_thread",
+            providerScope: "z_api",
+            normalizedValue: "performance-thread-1",
+          }],
+        }],
+      }));
+      const evidencePlan = await explain(client, evidenceQuery.sql, evidenceQuery.params);
+      assertBoundedAuthorityPlan("backfill_evidence", evidencePlan.Plan, 50);
+      measurements.push({
+        query: "backfill_evidence",
+        executionMs: round(evidencePlan["Execution Time"]),
+        planningMs: round(evidencePlan["Planning Time"]),
+        actualRows: evidencePlan.Plan["Actual Rows"] ?? 0,
+        plannedRows: evidencePlan.Plan["Plan Rows"] ?? 0,
+        rowsInspected: inspectedRows(evidencePlan.Plan),
+        sharedBufferBlocks: bufferBlocks(evidencePlan.Plan),
+      });
     } finally {
       client.release();
     }
@@ -237,7 +271,7 @@ describe("WhatsApp stream authority performance and lock isolation", () => {
       executionMs: round(elapsedMs),
       processCpuMs: round((cpu.user + cpu.system) / 1000),
     });
-    expect(measurements).toHaveLength(10);
+    expect(measurements).toHaveLength(11);
   });
 
   it("isolates different streams while serializing the same stream", async () => {
