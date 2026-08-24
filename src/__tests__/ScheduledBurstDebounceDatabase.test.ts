@@ -1623,7 +1623,7 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
       await expect(store.getVersion(organization.id)).resolves.toBe(2);
     });
 
-    it("bounds ambiguous backfill and records conflicts without creating jobs", async () => {
+    it("bounds unresolved backfill without persisting ambiguity or creating jobs", async () => {
       const [organization] = await testDb().insert(organizations).values({
         name: "Authority Backfill", slug: `authority-backfill-${runId}`, specialty: "dental",
       }).returning();
@@ -1641,20 +1641,21 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
       const dryRun = await backfillWhatsAppStreamAuthority({
         clinicId: organization.id, apply: false, batchSize: 2, afterId: null,
       });
-      expect(dryRun).toMatchObject({ mode: "dry-run", selected: 2, conflicts: 2 });
+      expect(dryRun).toMatchObject({
+        mode: "dry-run", selected: 2, backfilled: 0, unresolved: 2, conflicts: 0,
+      });
       await expect(backfillWhatsAppStreamAuthority({
         clinicId: organization.id, apply: false, batchSize: 2,
         afterId: dryRun.nextAfterId,
-      })).resolves.toMatchObject({ selected: 1, conflicts: 1 });
-      const applied = await backfillWhatsAppStreamAuthority({
+      })).resolves.toMatchObject({ selected: 1, backfilled: 0, unresolved: 1, conflicts: 0 });
+      await expect(backfillWhatsAppStreamAuthority({
         clinicId: organization.id, apply: true, batchSize: 2, afterId: null,
-      });
-      expect(applied).toMatchObject({ mode: "apply", selected: 2, conflicts: 2 });
+      })).rejects.toThrow("authority backfill apply requires a fully resolved batch");
       const conflicts = await testDb().execute<{ count: string }>(sql`
         select count(*)::text as count from inbound_events
         where organization_id = ${organization.id}::uuid and processing_status = 'identity_conflict'
       `);
-      expect(conflicts.rows[0]?.count).toBe("2");
+      expect(conflicts.rows[0]?.count).toBe("0");
       const jobs = await testDb().execute<{ count: string }>(sql`
         select count(*)::text as count from jobs job
         join inbound_events event on event.id = job.inbound_event_id
