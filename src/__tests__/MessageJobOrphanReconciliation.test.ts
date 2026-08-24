@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { reconcileMessageJobOrphans } from "@/application/jobs/reconcile-message-job-orphans";
+import { DEFAULT_MESSAGE_DEBOUNCE_MS } from "@/core/pipeline/message-debounce";
 
 function enqueued(queue: "message.process" | "message.send", dedupeKey: string) {
   return {
@@ -24,8 +25,13 @@ function enqueued(queue: "message.process" | "message.send", dedupeKey: string) 
 
 describe("reconcileMessageJobOrphans", () => {
   it("recria jobs idempotentes para inbound e outbox preservando turnId", async () => {
+    // O caminho normal enfileira o inbound com run_at = recebimento + janela de
+    // rajada. Se o job nunca chegou a ser criado, o reconciler tem que agendar
+    // com a mesma aritmética — caso contrário órfãos "furam a fila" e respondem
+    // sem a espera de agrupamento.
+    const orphanReceivedAt = new Date("2026-07-26T11:58:30.000Z");
     const reader = {
-      listInboundWithoutJob: vi.fn().mockResolvedValue([{ id: "event-1" }]),
+      listInboundWithoutJob: vi.fn().mockResolvedValue([{ id: "event-1", receivedAt: orphanReceivedAt }]),
       listOutboundWithoutJob: vi.fn().mockResolvedValue([{
         id: "outbound-1",
         payload: { turnId: "turn-1" },
@@ -50,6 +56,7 @@ describe("reconcileMessageJobOrphans", () => {
       queue: "message.process",
       payload: { inboundEventId: "event-1" },
       dedupeKey: "inbound-event:event-1",
+      runAt: new Date(orphanReceivedAt.getTime() + DEFAULT_MESSAGE_DEBOUNCE_MS),
     });
     expect(enqueueJob).toHaveBeenNthCalledWith(2, {
       queue: "message.send",

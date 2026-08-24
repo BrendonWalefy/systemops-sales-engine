@@ -1,5 +1,6 @@
 export type OrphanedInboundEvent = {
   id: string;
+  receivedAt: Date;
 };
 
 export type OrphanedOutboundMessage = {

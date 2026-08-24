@@ -6,7 +6,7 @@ import { inboundEvents, jobs, outboundMessages } from "@/infrastructure/db/schem
 export class DrizzleMessageJobOrphanReader implements MessageJobOrphanReader {
   async listInboundWithoutJob(input: { olderThan: Date; limit: number }) {
     return db
-      .select({ id: inboundEvents.id })
+      .select({ id: inboundEvents.id, receivedAt: inboundEvents.receivedAt })
       .from(inboundEvents)
       .where(and(
         eq(inboundEvents.processingStatus, "pending"),

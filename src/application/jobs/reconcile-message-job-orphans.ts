@@ -1,5 +1,6 @@
 import type { JobQueue } from "@/application/ports/job-queue";
 import type { MessageJobOrphanReader } from "@/application/ports/message-job-orphan-reader";
+import { DEFAULT_MESSAGE_DEBOUNCE_MS } from "@/core/pipeline/message-debounce";
 
 export type MessageJobOrphanReconciliationResult = {
   inboundFound: number;
@@ -33,11 +34,15 @@ export async function reconcileMessageJobOrphans(input: {
     ? await input.reader.listOutboundWithoutJob({ olderThan, limit })
     : [];
 
+  // O caminho normal agenda o inbound com run_at = recebimento + janela padrão
+  // para o sono da rajada dormir na fila. Órfão precisa da mesma aritmética,
+  // senão "fura a fila" e responde sem agrupar (ver persist-inbound-event).
   const inboundResults = await Promise.all(inbound.map((event) =>
     input.jobQueue.enqueueJob({
       queue: "message.process",
       payload: { inboundEventId: event.id },
       dedupeKey: `inbound-event:${event.id}`,
+      runAt: new Date(event.receivedAt.getTime() + DEFAULT_MESSAGE_DEBOUNCE_MS),
     })
   ));
   const inboundRepaired = inboundResults.filter((result) => result.isNew).length;

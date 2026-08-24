@@ -351,7 +351,7 @@ const AD_MEDIA_BURST_WINDOW_MS = 2 * 60 * 1000;
  * fato, mas duplicado e sem origem documentada.
  */
 import { shouldDiscardComposedReply } from "@/core/pipeline/composed-reply-supersession";
-import { resolveMessageDebounceMs } from "@/core/pipeline/message-debounce";
+import { computeResidualDebounceMs, resolveMessageDebounceMs } from "@/core/pipeline/message-debounce";
 import { extractFirstName } from "@/core/intelligence/lead-display-name";
 import { buildComposerTelemetryMetadata } from "@/core/conversation/composer-telemetry";
 import { buildTurnFailureReport } from "@/core/pipeline/turn-failure-report";
@@ -3987,7 +3987,11 @@ export class ConversationOrchestrator {
           };
         }
 
-        if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, resolveMessageDebounceMs({ isReplayOfMessage: isReplay, clinicDebounceMs: clinic.messageDebounceMs, env: process.env }))) {
+        if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, computeResidualDebounceMs({
+          debounceMs: resolveMessageDebounceMs({ isReplayOfMessage: isReplay, clinicDebounceMs: clinic.messageDebounceMs, env: process.env }),
+          receivedAt: timestamp,
+          now: runtimeNow(),
+        }))) {
           return { replied: false, reason: "superseded_by_newer_message" };
         }
 
@@ -4133,7 +4137,11 @@ export class ConversationOrchestrator {
 
       // T1 — pausa/atenção acima permanecem (doutor assume); só a resposta é
       // suprimida quando outra mensagem do lead chegou na janela de burst.
-      if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, resolveMessageDebounceMs({ isReplayOfMessage: isReplay, clinicDebounceMs: clinic.messageDebounceMs, env: process.env }))) {
+      if (await this.mediaReplySuperseded(conversation.id, incomingMessage.id, computeResidualDebounceMs({
+        debounceMs: resolveMessageDebounceMs({ isReplayOfMessage: isReplay, clinicDebounceMs: clinic.messageDebounceMs, env: process.env }),
+        receivedAt: timestamp,
+        now: runtimeNow(),
+      }))) {
         return { replied: false, reason: "superseded_by_newer_message" };
       }
 
@@ -4190,23 +4198,33 @@ export class ConversationOrchestrator {
     }
 
     // ── 3.7. Debounce — aguarda burst de mensagens do lead ──
-    // Após registrar, espera N ms e verifica se chegou mensagem mais recente.
-    // Se sim, esta mensagem não gera resposta — a última do burst responde
-    // com o histórico completo (que já inclui todas as anteriores).
+    // A janela é medida desde o recebimento. O job foi agendado com run_at =
+    // recebimento + janela padrão, então a fila já segurou a maior parte da
+    // espera; aqui só sobra o resíduo (zero quando o worker acordou no
+    // run_at, o valor cheio quando a clínica configurou acima do default).
+    // Independentemente do resíduo, a checagem de supersessão continua sendo
+    // feita: a última do burst responde com o histórico completo.
     const debounceMs = resolveMessageDebounceMs({ isReplayOfMessage: isReplay, clinicDebounceMs: clinic.messageDebounceMs, env: process.env });
     if (debounceMs > 0) {
-      await new Promise((r) => setTimeout(r, debounceMs));
+      const residualMs = computeResidualDebounceMs({
+        debounceMs,
+        receivedAt: timestamp,
+        now: runtimeNow(),
+      });
+      if (residualMs > 0) {
+        await new Promise((r) => setTimeout(r, residualMs));
+      }
       const latest = await this.conversationRepo.findLatestLeadMessage(conversation.id);
       if (latest && latest.id !== incomingMessage.id) {
         console.log(
           `[Orchestrator] Debounce: msg ${incomingMessage.id} descartada` +
           ` (body="${incomingMessage.body?.slice(0, 60)}")` +
           ` — msg mais recente: ${latest.id} (body="${latest.body?.slice(0, 60)}")` +
-          ` conv=${conversation.id} lead=${lead.id}`,
+          ` conv=${conversation.id} lead=${lead.id} residualMs=${residualMs}`,
         );
         return { replied: false, reason: "superseded_by_newer_message" };
       }
-      console.log(`[Orchestrator] Debounce: msg ${incomingMessage.id} é a mais recente — prosseguindo (conv=${conversation.id})`);
+      console.log(`[Orchestrator] Debounce: msg ${incomingMessage.id} é a mais recente — prosseguindo (conv=${conversation.id} residualMs=${residualMs})`);
     }
 
     // Uma foto clínica com revisão Axx pendente é uma trava, não apenas um

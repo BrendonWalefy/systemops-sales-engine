@@ -7,6 +7,7 @@ import type {
   RecordInboundEventInput,
   RecordInboundEventResult,
 } from "@/application/ports/inbound-event-store";
+import { DEFAULT_MESSAGE_DEBOUNCE_MS } from "@/core/pipeline/message-debounce";
 import { db } from "@/infrastructure/db/client";
 import { inboundEvents } from "@/infrastructure/db/schema";
 
@@ -17,6 +18,10 @@ export class DrizzleInboundEventStore implements InboundEventStore {
     const inboundEventId = randomUUID();
     const jobId = randomUUID();
     const receivedAt = input.receivedAt ?? new Date();
+    // Move o sono da rajada para o schedule: run_at = recebimento + janela
+    // padrão. O claim (que já ordena por run_at asc e filtra run_at <= now)
+    // segura o job até essa hora, e o worker não fica dormindo antes disso.
+    const scheduledRunAt = new Date(receivedAt.getTime() + DEFAULT_MESSAGE_DEBOUNCE_MS);
     const result = await db.execute<{
       inbound_event_id: string;
       event_was_new: boolean;
@@ -50,12 +55,13 @@ export class DrizzleInboundEventStore implements InboundEventStore {
           set provider_message_id = excluded.provider_message_id
         returning id
       ), persisted_job as (
-        insert into jobs (id, queue, payload, dedupe_key)
+        insert into jobs (id, queue, payload, dedupe_key, run_at)
         select
           ${jobId}::uuid,
           'message.process',
           jsonb_build_object('inboundEventId', persisted_event.id::text),
-          'inbound-event:' || persisted_event.id::text
+          'inbound-event:' || persisted_event.id::text,
+          ${scheduledRunAt}::timestamptz
         from persisted_event
         on conflict (queue, dedupe_key) do update
           set dedupe_key = excluded.dedupe_key
