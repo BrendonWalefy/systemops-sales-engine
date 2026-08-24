@@ -18,7 +18,10 @@ export type ConversationHandleInput = {
   mediaType?: "image" | "video" | "audio" | "document";
   turnObservationSink?: V1TurnObservationSink;
   automationMode: ClinicAutomationMode;
-  inboundAuthority?: InboundAuthorityTuple;
+  inboundAuthority?: InboundAuthorityTuple & Readonly<{
+    claimJobId?: string;
+    claimToken?: string;
+  }>;
 };
 
 export type ConversationHandleResult = { replied: boolean; reason?: string };

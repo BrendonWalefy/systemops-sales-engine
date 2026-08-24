@@ -86,6 +86,48 @@ function makeHandler(overrides: Partial<ConstructorParameters<typeof ProcessMess
 }
 
 describe("ProcessMessageJobHandler", () => {
+  it("passes the settled token only in memory with the exact durable tuple", async () => {
+    const { handler, conversationHandler } = makeHandler();
+    const claimToken = "a".repeat(43);
+
+    await handler.processClaimedJob({
+      outcome: "claimed",
+      job,
+      streamId: "stream-1",
+      streamGeneration: 1,
+      inboundEventId: "event-1",
+      claimToken,
+    });
+
+    expect(conversationHandler.handle).toHaveBeenCalledWith(expect.objectContaining({
+      inboundAuthority: {
+        streamId: "stream-1",
+        streamGeneration: 1,
+        inboundEventId: "event-1",
+        claimJobId: "job-1",
+        claimToken,
+      },
+    }));
+    expect(JSON.stringify(job.payload)).not.toContain(claimToken);
+  });
+
+  it("terminates history-only work without reading content or invoking conversation effects", async () => {
+    const { handler, inboundEventStore, conversationHandler, resolveInboundContent } = makeHandler();
+
+    await expect(handler.processHistoryOnlyJob({
+      outcome: "history_only",
+      job,
+      streamId: "stream-1",
+      streamGeneration: 1,
+      inboundEventId: "event-1",
+      claimToken: null,
+    })).resolves.toEqual({ outcome: "ignored", inboundEventId: "event-1" });
+
+    expect(inboundEventStore.findInboundEvent).not.toHaveBeenCalled();
+    expect(resolveInboundContent).not.toHaveBeenCalled();
+    expect(conversationHandler.handle).not.toHaveBeenCalled();
+  });
+
   it("processa o evento persistido e só então marca a entrada como concluída", async () => {
     const { handler, inboundEventStore, conversationHandler, decisionTraceSink } = makeHandler();
 

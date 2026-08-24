@@ -1,7 +1,10 @@
 import type { ClinicAutomationPolicyReader } from "@/application/ports/clinic-automation-policy-reader";
 import type { ConversationHandler } from "@/application/ports/conversation-handler";
 import type { InboundEventStore } from "@/application/ports/inbound-event-store";
-import type { JobRecord } from "@/application/ports/job-queue";
+import type {
+  ClaimInboundWorkResult,
+  JobRecord,
+} from "@/application/ports/job-queue";
 import {
   resolveLeadInboundContent,
   type ResolvedLeadInboundContent,
@@ -48,7 +51,24 @@ export class ProcessMessageJobHandler {
     this.resolveInboundContent = deps.resolveInboundContent ?? resolveLeadInboundContent;
   }
 
-  async processJob(job: JobRecord): Promise<JobResult> {
+  async processClaimedJob(work: ClaimInboundWorkResult): Promise<JobResult> {
+    if (work.outcome !== "claimed" || !work.claimToken) {
+      throw new Error("claimed inbound work requires a durable claim token");
+    }
+    return this.processJob(work.job, work);
+  }
+
+  async processHistoryOnlyJob(work: ClaimInboundWorkResult): Promise<JobResult> {
+    if (work.outcome !== "history_only" || work.claimToken !== null) {
+      throw new Error("history-only inbound work cannot carry reply authority");
+    }
+    return { outcome: "ignored", inboundEventId: work.inboundEventId };
+  }
+
+  async processJob(
+    job: JobRecord,
+    settledAuthority?: ClaimInboundWorkResult,
+  ): Promise<JobResult> {
     if (job.queue !== "message.process") {
       throw new Error(`ProcessMessageJobHandler cannot process queue=${job.queue}`);
     }
@@ -182,6 +202,12 @@ export class ProcessMessageJobHandler {
                 streamId: event.streamId,
                 streamGeneration: event.streamGeneration,
                 inboundEventId: event.id,
+                ...(settledAuthority?.outcome === "claimed" && settledAuthority.claimToken
+                  ? {
+                      claimJobId: settledAuthority.job.id,
+                      claimToken: settledAuthority.claimToken,
+                    }
+                  : {}),
               },
             }
           : {}),

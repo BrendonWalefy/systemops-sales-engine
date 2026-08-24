@@ -183,6 +183,28 @@ function makeHarness(options: HarnessOptions = {}) {
       calls.push(job.queue === "message.process" ? `claim-process:${index}` : `claim-send:${index}`);
       return job;
     },
+    async claimNextInboundWork(input) {
+      const job = jobs.find((candidate) =>
+        candidate.queue === "message.process"
+        && candidate.status === "pending"
+        && (input.dedupeKey === undefined || candidate.dedupeKey === input.dedupeKey));
+      if (!job) return null;
+      const inboundEventId = String((job.payload as { inboundEventId?: string }).inboundEventId);
+      const event = events.get(inboundEventId);
+      if (!event?.streamId || event.streamGeneration === null) return null;
+      job.status = "processing";
+      job.lockedBy = input.workerId;
+      job.attempts += 1;
+      calls.push(`claim-process:${Number(inboundEventId.split("-").at(-1))}`);
+      return {
+        outcome: "claimed",
+        job,
+        streamId: event.streamId,
+        streamGeneration: event.streamGeneration,
+        inboundEventId,
+        claimToken: "a".repeat(43),
+      };
+    },
     async completeJob(jobId, workerId) {
       const job = jobs.find((candidate) => candidate.id === jobId && candidate.lockedBy === workerId);
       if (!job) return false;

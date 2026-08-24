@@ -14,6 +14,7 @@ import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositorie
 import { createLogger } from "@/infrastructure/logging/logger";
 import { reconcileMessageJobOrphans } from "@/application/jobs/reconcile-message-job-orphans";
 import { DrizzleMessageJobOrphanReader } from "@/infrastructure/repositories/drizzle-message-job-orphan-reader";
+import { DrizzleWhatsAppStreamAuthority } from "@/infrastructure/repositories/drizzle-whatsapp-stream-authority";
 import {
   DEFAULT_MESSAGE_PROCESS_BATCH_SIZE,
   MAX_MESSAGE_PROCESS_BATCH_SIZE,
@@ -70,6 +71,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const orphanReconciliation = await reconcileMessageJobOrphans({
       reader: new DrizzleMessageJobOrphanReader(),
       jobQueue,
+      streamAuthority: new DrizzleWhatsAppStreamAuthority(),
       queues: ["message.process", "message.send"],
     });
     const result = await drainMessageProcessQueue({

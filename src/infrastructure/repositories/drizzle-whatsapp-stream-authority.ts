@@ -2,8 +2,11 @@ import { sql } from "drizzle-orm";
 import type {
   BindStreamToConversationInput,
   BindStreamToConversationResult,
+  RepairInboundAuthorityJobInput,
+  RepairInboundAuthorityJobResult,
   WhatsAppStreamAuthority,
 } from "@/application/ports/whatsapp-stream-authority";
+import { db } from "@/infrastructure/db/client";
 import {
   neonHttpAtomicDatabaseBatch,
   type AtomicDatabaseBatch,
@@ -17,10 +20,7 @@ type BindingRow = {
   conversation_stream_order: number | string;
 };
 
-export class DrizzleWhatsAppStreamAuthority implements Pick<
-  WhatsAppStreamAuthority,
-  "bindStreamToConversation"
-> {
+export class DrizzleWhatsAppStreamAuthority implements WhatsAppStreamAuthority {
   constructor(
     private readonly atomicBatch: AtomicDatabaseBatch = neonHttpAtomicDatabaseBatch,
   ) {}
@@ -167,5 +167,150 @@ export class DrizzleWhatsAppStreamAuthority implements Pick<
       retiredCurrentStream: row.retired_current_stream,
       conversationStreamOrder: Number(row.conversation_stream_order),
     };
+  }
+
+  async repairInboundAuthorityJob(
+    input: RepairInboundAuthorityJobInput,
+  ): Promise<RepairInboundAuthorityJobResult> {
+    const result = await db.execute<{
+      outcome: "created" | "rebound";
+      job_id: string;
+    }>(sql`
+      with candidate as materialized (
+        select
+          event.id as inbound_event_id,
+          event.stream_id,
+          event.stream_generation,
+          event.claim_token,
+          event.claim_job_id,
+          stream.state as stream_state,
+          stream.current_generation,
+          stream.latest_inbound_event_id,
+          stream.quiet_until
+        from inbound_events event
+        join whatsapp_streams stream
+          on stream.id = event.stream_id
+         and stream.organization_id = event.organization_id
+        where event.id = ${input.inboundEventId}::uuid
+          and event.received_at <= ${input.olderThan}
+          and event.processing_status in ('pending', 'failed')
+          and event.stream_id is not null
+          and event.stream_generation is not null
+          and not exists (
+            select 1
+            from outbound_messages outbound
+            where outbound.authorization_inbound_event_id = event.id
+          )
+        for update of event, stream
+      ),
+      existing_job as materialized (
+        select job.*
+        from jobs job
+        join candidate
+          on job.id = candidate.claim_job_id
+          or job.inbound_event_id = candidate.inbound_event_id
+          or (
+            job.queue = 'message.process'
+            and job.dedupe_key = 'inbound-event:' || candidate.inbound_event_id::text
+          )
+        order by job.id
+        for update of job
+      ),
+      decision as (
+        select
+          candidate.*,
+          case
+            when candidate.claim_job_id is not null
+              and exists (
+                select 1 from existing_job job
+                where job.id = candidate.claim_job_id
+                  and job.queue = 'message.process'
+                  and job.inbound_event_id = candidate.inbound_event_id
+                  and job.dedupe_key = 'inbound-event:' || candidate.inbound_event_id::text
+                  and job.payload->>'inboundEventId' = candidate.inbound_event_id::text
+                  and job.payload->>'streamId' = candidate.stream_id::text
+                  and job.payload->>'streamGeneration' = candidate.stream_generation::text
+                  and job.status in ('failed', 'dead', 'done')
+              ) then 'rebound'
+            when candidate.claim_job_id is null
+              and not exists (select 1 from existing_job)
+              then 'created'
+            else 'ineligible'
+          end as outcome,
+          case
+            when candidate.stream_state <> 'active'
+              or candidate.latest_inbound_event_id is distinct from candidate.inbound_event_id
+              or candidate.current_generation is distinct from candidate.stream_generation
+              then ${input.now}
+            else greatest(${input.now}, candidate.quiet_until)
+          end as repaired_run_at
+        from candidate
+      ),
+      inserted_job as (
+        insert into jobs (
+          queue,
+          status,
+          payload,
+          dedupe_key,
+          run_at,
+          inbound_event_id,
+          created_at,
+          updated_at
+        )
+        select
+          'message.process',
+          'pending',
+          jsonb_build_object(
+            'inboundEventId', decision.inbound_event_id::text,
+            'streamId', decision.stream_id::text,
+            'streamGeneration', decision.stream_generation
+          ),
+          'inbound-event:' || decision.inbound_event_id::text,
+          decision.repaired_run_at,
+          decision.inbound_event_id,
+          ${input.now},
+          ${input.now}
+        from decision
+        where decision.outcome = 'created'
+        on conflict do nothing
+        returning id, inbound_event_id
+      ),
+      reset_job as (
+        update jobs job
+        set
+          status = 'pending',
+          run_at = decision.repaired_run_at,
+          locked_at = null,
+          locked_by = null,
+          last_error = null,
+          dead_letter_disposition = null,
+          dead_letter_resolved_at = null,
+          dead_letter_resolved_by = null,
+          dead_letter_resolution_reason = null,
+          updated_at = ${input.now}
+        from decision
+        where decision.outcome = 'rebound'
+          and job.id = decision.claim_job_id
+        returning job.id, job.inbound_event_id
+      ),
+      rebound_event as (
+        update inbound_events event
+        set claim_job_id = inserted.id
+        from inserted_job inserted
+        where event.id = inserted.inbound_event_id
+          and event.claim_token is not null
+        returning event.id
+      )
+      select 'created'::text as outcome, inserted.id::text as job_id
+      from inserted_job inserted
+      left join rebound_event event on event.id = inserted.inbound_event_id
+      union all
+      select 'rebound'::text as outcome, reset.id::text as job_id
+      from reset_job reset
+    `);
+    const row = result.rows[0];
+    return row
+      ? { outcome: row.outcome, jobId: row.job_id }
+      : { outcome: "ineligible", jobId: null };
   }
 }

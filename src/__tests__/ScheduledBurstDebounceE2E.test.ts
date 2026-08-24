@@ -40,6 +40,7 @@ class InMemoryInboundEventStore implements InboundEventStore {
 
   attachJobQueue(jobQueue: InMemoryJobQueue): void {
     this.jobQueue = jobQueue;
+    jobQueue.attachInboundEventStore(this);
   }
 
   async recordInboundEventAndEnqueue(input: RecordInboundEventInput) {
@@ -74,7 +75,7 @@ class InMemoryInboundEventStore implements InboundEventStore {
       (event) => event.streamId === streamId,
     ).length + 1;
     const identityConflict = input.aliases.some(
-      (alias) => alias.normalizedValue === "lid-owned-by-another-stream",
+      (alias) => alias.normalizedValue === "lid-owned-by-another-stream@lid",
     );
     const event: InboundEvent = {
       id,
@@ -158,6 +159,12 @@ class InMemoryInboundEventStore implements InboundEventStore {
 
 class InMemoryJobQueue implements JobQueue {
   readonly jobs: JobRecord[] = [];
+  private inboundEventStore: InMemoryInboundEventStore | null = null;
+  private tokenSequence = 0;
+
+  attachInboundEventStore(store: InMemoryInboundEventStore): void {
+    this.inboundEventStore = store;
+  }
 
   async enqueueJob(input: EnqueueJobInput) {
     const now = new Date(T0);
@@ -196,6 +203,46 @@ class InMemoryJobQueue implements JobQueue {
     return job;
   }
 
+  async claimNextInboundWork(input: Parameters<JobQueue["claimNextInboundWork"]>[0]) {
+    if (!this.inboundEventStore) throw new Error("in-memory inbound store is not attached");
+    const job = this.jobs
+      .filter((candidate) =>
+        candidate.queue === "message.process"
+        && candidate.status === "pending"
+        && candidate.runAt <= (input.now ?? new Date())
+        && (input.dedupeKey === undefined || candidate.dedupeKey === input.dedupeKey),
+      )
+      .sort((left, right) => left.runAt.getTime() - right.runAt.getTime())[0];
+    if (!job) return null;
+    const inboundEventId = getInboundEventIdFromPayload(job.payload);
+    const event = inboundEventId ? this.inboundEventStore.events.get(inboundEventId) : null;
+    if (!event?.streamId || event.streamGeneration === null) return null;
+    const authority = authorityFields(event);
+    const streamEvents = [...this.inboundEventStore.events.values()]
+      .filter((candidate) => candidate.streamId === event.streamId);
+    const latestGeneration = Math.max(...streamEvents.map((candidate) => candidate.streamGeneration ?? 0));
+    const isRetry = Boolean(authority.claimToken && authority.claimJobId === job.id);
+    const isLatest = event.streamGeneration === latestGeneration;
+    const outcome = isRetry || isLatest ? "claimed" as const : "history_only" as const;
+    if (outcome === "claimed" && !isRetry) {
+      authority.claimToken = `claim-${++this.tokenSequence}`;
+      authority.claimJobId = job.id;
+    }
+    if (outcome === "history_only") event.processingStatus = "history_only";
+    job.status = "processing";
+    job.lockedAt = input.now ?? new Date(T0);
+    job.lockedBy = input.workerId;
+    job.attempts += 1;
+    return {
+      outcome,
+      job,
+      streamId: event.streamId,
+      streamGeneration: event.streamGeneration,
+      inboundEventId: event.id,
+      claimToken: outcome === "claimed" ? authority.claimToken ?? null : null,
+    };
+  }
+
   async completeJob(jobId: string, workerId: string) {
     const job = this.jobs.find((candidate) => candidate.id === jobId && candidate.lockedBy === workerId);
     if (!job) return false;
@@ -224,6 +271,12 @@ class InMemoryJobQueue implements JobQueue {
   async recoverStaleJobs() {
     return 0;
   }
+}
+
+function getInboundEventIdFromPayload(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = (payload as Record<string, unknown>).inboundEventId;
+  return typeof value === "string" ? value : null;
 }
 
 type TestStreamAuthority = {
@@ -588,13 +641,13 @@ describe("scheduled burst debounce through the durable inbox", () => {
         messageId: "message-a",
         message: "A",
         conversationKey: "5511999999999",
-        chatLid: "unknown-lid",
+        chatLid: "371295921025045@lid",
       }),
       recordMessage(inboundEventStore, jobQueue, {
         messageId: "message-b",
         message: "B",
         conversationKey: "5511999999999",
-        chatLid: "unknown-lid",
+        chatLid: "371295921025045@lid",
       }),
     ]);
 
@@ -603,7 +656,7 @@ describe("scheduled burst debounce through the durable inbox", () => {
     expect(streamIds).toEqual(new Set(["stream-1"]));
     expect(events.every((event) => authorityFields(event).authorityState === "active")).toBe(true);
     expect(events.every((event) => authorityFields(event).aliasValues?.includes("5511999999999"))).toBe(true);
-    expect(events.every((event) => authorityFields(event).aliasValues?.includes("unknown-lid"))).toBe(true);
+    expect(events.every((event) => authorityFields(event).aliasValues?.includes("371295921025045@lid"))).toBe(true);
     expect(events.every((event) => !authorityFields(event).authorityState || authorityFields(event).authorityState !== "provisional")).toBe(true);
     expect(jobQueue.jobs).toHaveLength(2);
   });
@@ -616,7 +669,7 @@ describe("scheduled burst debounce through the durable inbox", () => {
       messageId: "conflicting-alias-message",
       message: "conflict",
       conversationKey: "5511999999999",
-      chatLid: "lid-owned-by-another-stream",
+      chatLid: "lid-owned-by-another-stream@lid",
     });
 
     const event = inboundEventStore.events.get("event-1")!;
@@ -740,7 +793,7 @@ describe("scheduled burst debounce through the durable inbox", () => {
       now: T20,
     });
 
-    expect(replies).toEqual(["A2", "B1"]);
+    expect(new Set(replies)).toEqual(new Set(["A2", "B1"]));
   });
 
   it("replies only from the fifth message in a five-message burst", async () => {

@@ -4,7 +4,12 @@ import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { conversations, leads, organizations } from "@/infrastructure/db/schema";
+import {
+  conversations,
+  leads,
+  organizations,
+  outboundMessages,
+} from "@/infrastructure/db/schema";
 import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleWhatsAppStreamAuthority } from "@/infrastructure/repositories/drizzle-whatsapp-stream-authority";
@@ -740,8 +745,7 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
       const dedupeKey = jobRows.rows[0]?.dedupe_key;
       expect(dedupeKey).toBe(`inbound-event:${recorded.inboundEventId}`);
 
-      const claimed = await queue.claimNextJob({
-        queues: ["message.process"],
+      const claimed = await queue.claimNextInboundWork({
         workerId: "database-worker-1",
         dedupeKey,
         now: new Date("2026-08-24T12:00:00.000Z"),
@@ -749,27 +753,35 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
       expect(claimed).not.toBeNull();
 
       const firstRow = await readInboundRow(recorded.inboundEventId);
-      expect.soft(claimed?.payload).toMatchObject({
+      expect.soft(claimed?.job.payload).toMatchObject({
         inboundEventId: recorded.inboundEventId,
         streamId: expect.any(String),
         streamGeneration: 1,
       });
+      expect.soft(claimed).toMatchObject({
+        outcome: "claimed",
+        inboundEventId: recorded.inboundEventId,
+        streamId: recorded.outcome === "registered" ? recorded.streamId : undefined,
+        streamGeneration: 1,
+        claimToken: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+      });
+      expect(JSON.stringify(claimed!.job.payload)).not.toContain("claimToken");
+      expect(JSON.stringify(claimed!.job.payload)).not.toContain("claim_token");
       expect.soft(firstRow.raw.stream_id).toEqual(expect.any(String));
       expect.soft(firstRow.raw.stream_generation).toBe(1);
       expect.soft(firstRow.raw.claim_token).toEqual(expect.any(String));
-      expect.soft(firstRow.raw.claim_job_id).toBe(claimed?.id);
+      expect.soft(firstRow.raw.claim_job_id).toBe(claimed?.job.id);
       const firstToken = firstRow.raw.claim_token;
 
       expect(claimed).not.toBeNull();
       const released = await queue.releaseJob(
-        claimed!.id,
+        claimed!.job.id,
         "database-worker-1",
         new Date("2026-08-24T12:00:05.000Z"),
       );
       expect(released).toBe(true);
 
-      const retried = await queue.claimNextJob({
-        queues: ["message.process"],
+      const retried = await queue.claimNextInboundWork({
         workerId: "database-worker-2",
         dedupeKey,
         now: new Date("2026-08-24T12:00:10.000Z"),
@@ -777,7 +789,8 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
       expect(retried).not.toBeNull();
       const retryRow = await readInboundRow(recorded.inboundEventId);
       expect.soft(retryRow.raw.claim_token).toBe(firstToken);
-      expect.soft(retryRow.raw.claim_job_id).toBe(retried?.id);
+      expect.soft(retryRow.raw.claim_job_id).toBe(retried?.job.id);
+      expect.soft(retried).toMatchObject({ outcome: "claimed", claimToken: firstToken });
 
       const competingClaims = [
         { label: "different event", inboundEventId: randomUUID(), streamId: "stream-1", streamGeneration: 1 },
@@ -804,13 +817,420 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
           )
         `);
 
-        const competingClaim = await queue.claimNextJob({
-          queues: ["message.process"],
+        const competingClaim = await queue.claimNextInboundWork({
           workerId: `database-${competing.label}`,
           dedupeKey: competingDedupeKey,
           now: new Date("2026-08-24T12:00:10.000Z"),
         });
         expect.soft(competingClaim, competing.label).toBeNull();
       }
+    });
+
+    it.each([
+      "before composition",
+      "after composition",
+      "during atomic outbox creation",
+    ])("retains the exact token after failure %s and retry", async (failurePhase) => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const queue = new DrizzleJobQueue();
+      const suffix = failurePhase.replaceAll(" ", "-");
+      const receivedAt = new Date("2026-08-24T18:35:00.000Z");
+      const recorded = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!,
+        `claim-failure-${suffix}`,
+        receivedAt,
+        {
+          phone: `55117777${failurePhase.length.toString().padStart(6, "0")}`,
+          providerThreadId: `claim-failure-${suffix}`,
+        },
+      ));
+      const first = await queue.claimNextInboundWork({
+        workerId: `failure-first-${suffix}`,
+        dedupeKey: `inbound-event:${recorded.inboundEventId}`,
+        now: new Date(receivedAt.getTime() + 15_000),
+      });
+      expect(first).toMatchObject({ outcome: "claimed", claimToken: expect.any(String) });
+      const failed = await queue.failJob({
+        job: first!.job,
+        workerId: `failure-first-${suffix}`,
+        error: failurePhase,
+        retryAt: new Date(receivedAt.getTime() + 20_000),
+        now: new Date(receivedAt.getTime() + 16_000),
+      });
+      expect(failed).toBe("pending");
+      await store.markInboundEventPending(recorded.inboundEventId);
+      const retry = await queue.claimNextInboundWork({
+        workerId: `failure-retry-${suffix}`,
+        dedupeKey: `inbound-event:${recorded.inboundEventId}`,
+        now: new Date(receivedAt.getTime() + 20_000),
+      });
+      expect(retry).toMatchObject({
+        outcome: "claimed",
+        inboundEventId: recorded.inboundEventId,
+        claimToken: first!.claimToken,
+      });
+      const persisted = await readInboundRow(recorded.inboundEventId);
+      expect(persisted.raw.claim_token).toBe(first!.claimToken);
+      expect(persisted.raw.claim_job_id).toBe(first!.job.id);
+    });
+
+    it("keeps the latest generation pending until its durable quiet boundary", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const queue = new DrizzleJobQueue();
+      const recorded = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!,
+        "claim-quiet-window",
+        new Date("2026-08-24T18:00:00.000Z"),
+        { phone: "5511888800010", providerThreadId: "claim-quiet-window" },
+      ));
+      const dedupeKey = `inbound-event:${recorded.inboundEventId}`;
+
+      await expect(queue.claimNextInboundWork({
+        workerId: "quiet-too-early",
+        dedupeKey,
+        now: new Date("2026-08-24T18:00:14.999Z"),
+      })).resolves.toBeNull();
+
+      const claimed = await queue.claimNextInboundWork({
+        workerId: "quiet-settled",
+        dedupeKey,
+        now: new Date("2026-08-24T18:00:15.000Z"),
+      });
+      expect(claimed).toMatchObject({ outcome: "claimed", inboundEventId: recorded.inboundEventId });
+    });
+
+    it("settles stale A as history-only when B registered before A claimed", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const queue = new DrizzleJobQueue();
+      const identity = { phone: "5511888800011", providerThreadId: "claim-before-a" };
+      const first = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "claim-before-a", new Date("2026-08-24T18:10:00.000Z"), identity,
+      ));
+      const second = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "claim-before-b", new Date("2026-08-24T18:10:05.000Z"), identity,
+      ));
+
+      const stale = await queue.claimNextInboundWork({
+        workerId: "claim-before-worker-a",
+        dedupeKey: `inbound-event:${first.inboundEventId}`,
+        now: new Date("2026-08-24T18:10:16.000Z"),
+      });
+      expect(stale).toMatchObject({
+        outcome: "history_only",
+        inboundEventId: first.inboundEventId,
+        claimToken: null,
+      });
+      const staleRow = await readInboundRow(first.inboundEventId);
+      expect(staleRow.raw).toMatchObject({ processing_status: "history_only", claim_token: null });
+
+      await expect(queue.claimNextInboundWork({
+        workerId: "claim-before-worker-b-early",
+        dedupeKey: `inbound-event:${second.inboundEventId}`,
+        now: new Date("2026-08-24T18:10:19.999Z"),
+      })).resolves.toBeNull();
+      const latest = await queue.claimNextInboundWork({
+        workerId: "claim-before-worker-b",
+        dedupeKey: `inbound-event:${second.inboundEventId}`,
+        now: new Date("2026-08-24T18:10:20.000Z"),
+      });
+      expect(latest).toMatchObject({ outcome: "claimed", inboundEventId: second.inboundEventId });
+    });
+
+    it("does not revoke A when B registers after A has durably claimed", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const queue = new DrizzleJobQueue();
+      const identity = { phone: "5511888800012", providerThreadId: "claim-after-a" };
+      const first = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "claim-after-a", new Date("2026-08-24T18:20:00.000Z"), identity,
+      ));
+      const firstClaim = await queue.claimNextInboundWork({
+        workerId: "claim-after-worker-a",
+        dedupeKey: `inbound-event:${first.inboundEventId}`,
+        now: new Date("2026-08-24T18:20:15.000Z"),
+      });
+      expect(firstClaim).toMatchObject({ outcome: "claimed", claimToken: expect.any(String) });
+
+      const second = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "claim-after-b", new Date("2026-08-24T18:20:16.000Z"), identity,
+      ));
+      if (second.outcome !== "registered") throw new Error("B unexpectedly conflicted");
+      await queue.releaseJob(
+        firstClaim!.job.id,
+        "claim-after-worker-a",
+        new Date("2026-08-24T18:20:17.000Z"),
+      );
+      const retry = await queue.claimNextInboundWork({
+        workerId: "claim-after-worker-a-retry",
+        dedupeKey: `inbound-event:${first.inboundEventId}`,
+        now: new Date("2026-08-24T18:20:17.000Z"),
+      });
+      expect(retry).toMatchObject({
+        outcome: "claimed",
+        inboundEventId: first.inboundEventId,
+        claimToken: firstClaim!.claimToken,
+      });
+      expect(second.streamGeneration).toBe(2);
+    });
+
+    it("allows only one competing worker to settle an exact authority tuple", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const recorded = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!,
+        "claim-competing-workers",
+        new Date("2026-08-24T18:30:00.000Z"),
+        { phone: "5511888800013", providerThreadId: "claim-competing-workers" },
+      ));
+      const dedupeKey = `inbound-event:${recorded.inboundEventId}`;
+      const workers = await Promise.all([
+        new DrizzleJobQueue().claimNextInboundWork({
+          workerId: "claim-competing-1",
+          dedupeKey,
+          now: new Date("2026-08-24T18:30:15.000Z"),
+        }),
+        new DrizzleJobQueue().claimNextInboundWork({
+          workerId: "claim-competing-2",
+          dedupeKey,
+          now: new Date("2026-08-24T18:30:15.000Z"),
+        }),
+      ]);
+      expect(workers.filter(Boolean)).toHaveLength(1);
+      expect(workers.find(Boolean)).toMatchObject({
+        outcome: "claimed",
+        inboundEventId: recorded.inboundEventId,
+      });
+    });
+
+    it("atomically repairs a missing inbound authority job", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const authority = new DrizzleWhatsAppStreamAuthority(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const recorded = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!,
+        "orphan-missing-job",
+        new Date("2026-08-24T18:40:00.000Z"),
+        { phone: "5511888800014", providerThreadId: "orphan-missing-job" },
+      ));
+      await testDb().execute(sql`
+        delete from jobs where inbound_event_id = ${recorded.inboundEventId}::uuid
+      `);
+
+      const repaired = await authority.repairInboundAuthorityJob({
+        inboundEventId: recorded.inboundEventId,
+        now: new Date("2026-08-24T18:42:00.000Z"),
+        olderThan: new Date("2026-08-24T18:41:00.000Z"),
+      });
+      expect(repaired).toMatchObject({ outcome: "created", jobId: expect.any(String) });
+      const persisted = await testDb().execute<{ count: string }>(sql`
+        select count(*)::text as count from jobs
+        where inbound_event_id = ${recorded.inboundEventId}::uuid
+          and queue = 'message.process'
+          and dedupe_key = ${`inbound-event:${recorded.inboundEventId}`}
+      `);
+      expect(persisted.rows[0]?.count).toBe("1");
+    });
+
+    it("resets the same terminally unusable claimed job without minting a token", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const queue = new DrizzleJobQueue();
+      const authority = new DrizzleWhatsAppStreamAuthority(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const recorded = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!,
+        "orphan-terminal-job",
+        new Date("2026-08-24T18:50:00.000Z"),
+        { phone: "5511888800015", providerThreadId: "orphan-terminal-job" },
+      ));
+      const claim = await queue.claimNextInboundWork({
+        workerId: "orphan-terminal-worker",
+        dedupeKey: `inbound-event:${recorded.inboundEventId}`,
+        now: new Date("2026-08-24T18:50:15.000Z"),
+      });
+      await testDb().execute(sql`
+        update jobs set status = 'dead', locked_at = null, locked_by = null
+        where id = ${claim!.job.id}::uuid
+      `);
+      await testDb().execute(sql`
+        update inbound_events set processing_status = 'failed'
+        where id = ${recorded.inboundEventId}::uuid
+      `);
+
+      const repaired = await authority.repairInboundAuthorityJob({
+        inboundEventId: recorded.inboundEventId,
+        now: new Date("2026-08-24T18:52:00.000Z"),
+        olderThan: new Date("2026-08-24T18:51:00.000Z"),
+      });
+      expect(repaired).toEqual({ outcome: "rebound", jobId: claim!.job.id });
+      const persisted = await readInboundRow(recorded.inboundEventId);
+      expect(persisted.raw.claim_token).toBe(claim!.claimToken);
+      const job = await testDb().execute<{ id: string; status: string }>(sql`
+        select id::text, status from jobs where inbound_event_id = ${recorded.inboundEventId}::uuid
+      `);
+      expect(job.rows).toEqual([{ id: claim!.job.id, status: "pending" }]);
+    });
+
+    it("fails orphan repair closed for live, young, terminal, or tuple-mismatched work", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const queue = new DrizzleJobQueue();
+      const authority = new DrizzleWhatsAppStreamAuthority(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const base = new Date("2026-08-24T19:00:00.000Z");
+      const live = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "orphan-live", base,
+        { phone: "5511888800016", providerThreadId: "orphan-live" },
+      ));
+      await expect(authority.repairInboundAuthorityJob({
+        inboundEventId: live.inboundEventId,
+        now: new Date("2026-08-24T19:02:00.000Z"),
+        olderThan: new Date("2026-08-24T19:01:00.000Z"),
+      })).resolves.toEqual({ outcome: "ineligible", jobId: null });
+
+      const young = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "orphan-young", new Date("2026-08-24T19:02:00.000Z"),
+        { phone: "5511888800017", providerThreadId: "orphan-young" },
+      ));
+      await testDb().execute(sql`delete from jobs where inbound_event_id = ${young.inboundEventId}::uuid`);
+      await expect(authority.repairInboundAuthorityJob({
+        inboundEventId: young.inboundEventId,
+        now: new Date("2026-08-24T19:02:30.000Z"),
+        olderThan: new Date("2026-08-24T19:01:30.000Z"),
+      })).resolves.toEqual({ outcome: "ineligible", jobId: null });
+
+      const terminal = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "orphan-terminal-event", base,
+        { phone: "5511888800018", providerThreadId: "orphan-terminal-event" },
+      ));
+      await testDb().execute(sql`delete from jobs where inbound_event_id = ${terminal.inboundEventId}::uuid`);
+      await testDb().execute(sql`
+        update inbound_events set processing_status = 'processed', processed_at = ${base}
+        where id = ${terminal.inboundEventId}::uuid
+      `);
+      await expect(authority.repairInboundAuthorityJob({
+        inboundEventId: terminal.inboundEventId,
+        now: new Date("2026-08-24T19:02:30.000Z"),
+        olderThan: new Date("2026-08-24T19:01:30.000Z"),
+      })).resolves.toEqual({ outcome: "ineligible", jobId: null });
+
+      const mismatch = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "orphan-tuple-mismatch", base,
+        { phone: "5511888800019", providerThreadId: "orphan-tuple-mismatch" },
+      ));
+      const mismatchClaim = await queue.claimNextInboundWork({
+        workerId: "orphan-mismatch-worker",
+        dedupeKey: `inbound-event:${mismatch.inboundEventId}`,
+        now: new Date("2026-08-24T19:00:15.000Z"),
+      });
+      await testDb().execute(sql`
+        update jobs
+        set status = 'dead', locked_at = null, locked_by = null,
+            payload = jsonb_set(payload, '{streamGeneration}', '999'::jsonb)
+        where id = ${mismatchClaim!.job.id}::uuid
+      `);
+      await testDb().execute(sql`
+        update inbound_events set processing_status = 'failed'
+        where id = ${mismatch.inboundEventId}::uuid
+      `);
+      await expect(authority.repairInboundAuthorityJob({
+        inboundEventId: mismatch.inboundEventId,
+        now: new Date("2026-08-24T19:02:30.000Z"),
+        olderThan: new Date("2026-08-24T19:01:30.000Z"),
+      })).resolves.toEqual({ outcome: "ineligible", jobId: null });
+    });
+
+    it("rejects orphan repair after an authorized outbound references the event", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const queue = new DrizzleJobQueue();
+      const authority = new DrizzleWhatsAppStreamAuthority(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const recorded = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "orphan-authorized-outbound", new Date("2026-08-24T19:10:00.000Z"),
+        { phone: "5511888800020", providerThreadId: "orphan-authorized-outbound" },
+      ));
+      const claim = await queue.claimNextInboundWork({
+        workerId: "orphan-outbound-worker",
+        dedupeKey: `inbound-event:${recorded.inboundEventId}`,
+        now: new Date("2026-08-24T19:10:15.000Z"),
+      });
+      const [lead] = await testDb().insert(leads).values({ clinicId: clinicId!, channel: "whatsapp" }).returning();
+      const [conversation] = await testDb().insert(conversations).values({
+        clinicId: clinicId!, leadId: lead.id, channel: "whatsapp",
+      }).returning();
+      await testDb().insert(outboundMessages).values({
+        clinicId: clinicId!,
+        conversationId: conversation.id,
+        channel: "whatsapp",
+        payload: { text: "authorized" },
+        deliveryKind: "text",
+        sequence: 1,
+        authorizationKind: "live_stream_reply",
+        authorizationStreamId: claim!.streamId,
+        authorizationGeneration: claim!.streamGeneration,
+        authorizationInboundEventId: claim!.inboundEventId,
+        authorizationClaimJobId: claim!.job.id,
+        authorizationClaimTokenDigest: "b".repeat(43),
+        authorizationVersion: 2,
+      });
+      await testDb().execute(sql`
+        update jobs set status = 'dead', locked_at = null, locked_by = null
+        where id = ${claim!.job.id}::uuid
+      `);
+      await testDb().execute(sql`
+        update inbound_events set processing_status = 'failed'
+        where id = ${recorded.inboundEventId}::uuid
+      `);
+
+      await expect(authority.repairInboundAuthorityJob({
+        inboundEventId: recorded.inboundEventId,
+        now: new Date("2026-08-24T19:12:00.000Z"),
+        olderThan: new Date("2026-08-24T19:11:00.000Z"),
+      })).resolves.toEqual({ outcome: "ineligible", jobId: null });
+    });
+
+    it("converges two concurrent missing-job repairs to one canonical job", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const recorded = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "orphan-concurrent", new Date("2026-08-24T19:20:00.000Z"),
+        { phone: "5511888800021", providerThreadId: "orphan-concurrent" },
+      ));
+      await testDb().execute(sql`delete from jobs where inbound_event_id = ${recorded.inboundEventId}::uuid`);
+      const request = {
+        inboundEventId: recorded.inboundEventId,
+        now: new Date("2026-08-24T19:22:00.000Z"),
+        olderThan: new Date("2026-08-24T19:21:00.000Z"),
+      };
+      const repairs = await Promise.all([
+        new DrizzleWhatsAppStreamAuthority().repairInboundAuthorityJob(request),
+        new DrizzleWhatsAppStreamAuthority().repairInboundAuthorityJob(request),
+      ]);
+      expect(repairs.filter((repair) => repair.outcome === "created")).toHaveLength(1);
+      expect(repairs.every((repair) => repair.outcome === "created" || repair.outcome === "ineligible")).toBe(true);
+      const jobs = await testDb().execute<{ count: string }>(sql`
+        select count(*)::text as count from jobs
+        where inbound_event_id = ${recorded.inboundEventId}::uuid
+      `);
+      expect(jobs.rows[0]?.count).toBe("1");
     });
 });
