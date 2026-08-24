@@ -1,0 +1,4 @@
+DROP INDEX "inbound_events_provider_message_unique";--> statement-breakpoint
+ALTER TABLE "messages" ADD CONSTRAINT "messages_inbound_authority_fk" FOREIGN KEY ("inbound_event_id","stream_id","stream_generation") REFERENCES "public"."inbound_events"("id","stream_id","stream_generation") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "outbound_messages" ADD CONSTRAINT "outbound_messages_authorization_inbound_fk" FOREIGN KEY ("authorization_inbound_event_id","authorization_stream_id","authorization_generation") REFERENCES "public"."inbound_events"("id","stream_id","stream_generation") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "whatsapp_streams" ADD CONSTRAINT "whatsapp_streams_conversation_org_fk" FOREIGN KEY ("conversation_id","organization_id") REFERENCES "public"."conversations"("id","organization_id") ON DELETE restrict ON UPDATE no action;

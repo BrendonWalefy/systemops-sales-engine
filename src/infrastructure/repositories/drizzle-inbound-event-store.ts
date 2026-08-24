@@ -51,7 +51,7 @@ export class DrizzleInboundEventStore implements InboundEventStore {
           ${input.dedupeKey},
           ${receivedAt}
         )
-        on conflict (provider, provider_message_id) do update
+        on conflict (organization_id, provider, provider_message_id) do update
           set provider_message_id = excluded.provider_message_id
         returning id
       ), persisted_job as (
@@ -99,7 +99,11 @@ export class DrizzleInboundEventStore implements InboundEventStore {
         receivedAt: input.receivedAt,
       })
       .onConflictDoNothing({
-        target: [inboundEvents.provider, inboundEvents.providerMessageId],
+        target: [
+          inboundEvents.clinicId,
+          inboundEvents.provider,
+          inboundEvents.providerMessageId,
+        ],
       })
       .returning();
 
@@ -110,6 +114,7 @@ export class DrizzleInboundEventStore implements InboundEventStore {
       .from(inboundEvents)
       .where(
         and(
+          eq(inboundEvents.clinicId, input.clinicId),
           eq(inboundEvents.provider, input.provider),
           eq(inboundEvents.providerMessageId, input.providerMessageId),
         ),

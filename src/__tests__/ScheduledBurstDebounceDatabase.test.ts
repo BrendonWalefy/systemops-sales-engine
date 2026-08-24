@@ -1,18 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
-import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import EmbeddedPostgres from "embedded-postgres";
-import { Pool } from "pg";
 import { organizations } from "@/infrastructure/db/schema";
-import { resolveTestDatabaseAccess } from "@/infrastructure/db/test-database-policy";
 import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
+import {
+  cleanupEmbeddedAuthorityDatabase,
+  startEmbeddedAuthorityDatabase,
+  type EmbeddedAuthorityDatabase,
+} from "@/__tests__/helpers/embedded-authority-database";
 
 const databaseMock = vi.hoisted(() => {
   let activeDb: unknown;
@@ -38,103 +37,6 @@ type TestDb = ReturnType<typeof drizzleNodePostgres>;
 
 function testDb(): TestDb {
   return databaseMock.proxy as TestDb;
-}
-
-const EMBEDDED_HOST = "127.0.0.1";
-const EMBEDDED_USER = "postgres";
-const EMBEDDED_PASSWORD = "pr306-test-password";
-const EMBEDDED_DATABASE = "systemops_test";
-const DEFAULT_DATABASE_URL = `postgresql://${EMBEDDED_USER}:${EMBEDDED_PASSWORD}@${EMBEDDED_HOST}:1/${EMBEDDED_DATABASE}`;
-
-type EmbeddedDatabaseRuntime = {
-  dataDir: string;
-  embedded: EmbeddedPostgres;
-  pool: Pool;
-};
-
-async function reserveAvailablePort(): Promise<number> {
-  return await new Promise<number>((resolve, reject) => {
-    const server = createServer();
-    server.unref();
-    server.once("error", reject);
-    server.listen(0, EMBEDDED_HOST, () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close(() => reject(new Error("failed to reserve an embedded PostgreSQL port")));
-        return;
-      }
-      const { port } = address;
-      server.close((error) => error ? reject(error) : resolve(port));
-    });
-  });
-}
-
-async function cleanupEmbeddedDatabase(runtime: Partial<EmbeddedDatabaseRuntime>): Promise<void> {
-  try {
-    await runtime.pool?.end();
-  } finally {
-    try {
-      await runtime.embedded?.stop();
-    } finally {
-      if (runtime.dataDir) {
-        await rm(runtime.dataDir, { recursive: true, force: true });
-      }
-      databaseMock.set(undefined);
-    }
-  }
-}
-
-async function startEmbeddedDatabase(): Promise<EmbeddedDatabaseRuntime> {
-  const partial: Partial<EmbeddedDatabaseRuntime> = {};
-  try {
-    partial.dataDir = await mkdtemp(join(tmpdir(), "systemops-pr306-"));
-    const configuredUrl = new URL(process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
-    const testHost = process.env.TEST_DATABASE_HOST ?? EMBEDDED_HOST;
-    const productionHost = process.env.PRODUCTION_DATABASE_HOST ?? "production.invalid";
-    if (configuredUrl.hostname !== EMBEDDED_HOST || testHost !== EMBEDDED_HOST) {
-      throw new Error("embedded authority tests require a loopback-only database host");
-    }
-
-    const port = await reserveAvailablePort();
-    configuredUrl.port = String(port);
-    const databaseUrl = configuredUrl.toString();
-    const access = resolveTestDatabaseAccess({
-      DATABASE_URL: databaseUrl,
-      TEST_DATABASE_HOST: testHost,
-      PRODUCTION_DATABASE_HOST: productionHost,
-    });
-    if (access.mode !== "authorized") {
-      throw new Error(`embedded PostgreSQL rejected by test database policy: ${access.reason}`);
-    }
-
-    const databaseName = decodeURIComponent(configuredUrl.pathname.slice(1));
-    const databaseUser = decodeURIComponent(configuredUrl.username);
-    const databasePassword = decodeURIComponent(configuredUrl.password);
-    partial.embedded = new EmbeddedPostgres({
-      databaseDir: partial.dataDir,
-      user: databaseUser,
-      password: databasePassword,
-      port,
-      persistent: false,
-      onLog: () => undefined,
-      onError: () => undefined,
-    });
-    await partial.embedded.initialise();
-    await partial.embedded.start();
-    await partial.embedded.createDatabase(databaseName);
-
-    partial.pool = new Pool({
-      host: EMBEDDED_HOST,
-      port,
-      user: databaseUser,
-      password: databasePassword,
-      database: databaseName,
-    });
-    return partial as EmbeddedDatabaseRuntime;
-  } catch (error) {
-    await cleanupEmbeddedDatabase(partial);
-    throw error;
-  }
 }
 
 type InboundJsonRow = {
@@ -195,10 +97,10 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
     const runId = randomUUID().slice(0, 8);
     const clinicSlug = `test-scheduled-burst-${runId}`;
     let clinicId: string | undefined;
-    let runtime: EmbeddedDatabaseRuntime | undefined;
+    let runtime: EmbeddedAuthorityDatabase | undefined;
 
     beforeAll(async () => {
-      runtime = await startEmbeddedDatabase();
+      runtime = await startEmbeddedAuthorityDatabase();
       const activeDb = drizzleNodePostgres(runtime.pool);
       databaseMock.set(activeDb);
       await migrate(activeDb, { migrationsFolder: join(process.cwd(), "drizzle") });
@@ -220,7 +122,11 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
     });
 
     afterAll(async () => {
-      await cleanupEmbeddedDatabase(runtime ?? {});
+      try {
+        await cleanupEmbeddedAuthorityDatabase(runtime ?? {});
+      } finally {
+        databaseMock.set(undefined);
+      }
     });
 
     it("converges simultaneous unknown-alias ingress through PostgreSQL authority", async () => {

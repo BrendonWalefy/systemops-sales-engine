@@ -51,3 +51,10 @@ jobs:
           DATABASE_URL: postgresql://postgres:pr306-test-password@127.0.0.1:1/systemops_test
           TEST_DATABASE_HOST: 127.0.0.1
           PRODUCTION_DATABASE_HOST: production.invalid
+
+      - name: Verify authority schema migrations
+        run: npm run test:db:schema
+        env:
+          DATABASE_URL: postgresql://postgres:pr306-test-password@127.0.0.1:1/systemops_test
+          TEST_DATABASE_HOST: 127.0.0.1
+          PRODUCTION_DATABASE_HOST: production.invalid

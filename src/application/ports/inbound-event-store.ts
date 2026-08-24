@@ -5,7 +5,9 @@ export type InboundEventProcessingStatus =
   | "processing"
   | "processed"
   | "failed"
-  | "ignored";
+  | "ignored"
+  | "identity_conflict"
+  | "history_only";
 
 export type InboundEvent = {
   id: string;
