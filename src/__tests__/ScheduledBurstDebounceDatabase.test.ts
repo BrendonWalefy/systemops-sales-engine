@@ -10,12 +10,18 @@ import {
   leads,
   organizations,
   outboundMessages,
+  whatsappStreamAliases,
+  whatsappStreams,
 } from "@/infrastructure/db/schema";
 import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleWhatsAppStreamAuthority } from "@/infrastructure/repositories/drizzle-whatsapp-stream-authority";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
+import { DrizzleConversationAuthorityStore } from "@/infrastructure/repositories/drizzle-conversation-authority-store";
+import { backfillWhatsAppStreamAuthority } from "../../scripts/backfill-whatsapp-stream-authority";
+import { cleanupWhatsAppStreamAuthority } from "../../scripts/cleanup-whatsapp-stream-authority";
+import { validateWhatsAppStreamAuthority } from "../../scripts/validate-whatsapp-stream-authority";
 import { buildWhatsAppStreamAliases } from "@/core/whatsapp/WhatsAppContactIdentity";
 import {
   cleanupEmbeddedAuthorityDatabase,
@@ -1587,5 +1593,182 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
       });
       await expect(store.authorizeOutboundMessageForSend(missingId))
         .resolves.toEqual({ authorized: false, reason: "authority_version_activated" });
+    });
+
+    it("advances organization authority by durable monotonic compare-and-set", async () => {
+      const [organization] = await testDb().insert(organizations).values({
+        name: "Authority CAS", slug: `authority-cas-${runId}`, specialty: "dental",
+      }).returning();
+      const store = new DrizzleConversationAuthorityStore();
+      await expect(store.getVersion(organization.id)).resolves.toBe(0);
+      const attempts = await Promise.all([
+        store.compareAndSetVersion({
+          clinicId: organization.id, expectedVersion: 0, nextVersion: 1,
+          actor: "test-a", now: new Date("2026-08-24T23:10:00.000Z"),
+        }),
+        store.compareAndSetVersion({
+          clinicId: organization.id, expectedVersion: 0, nextVersion: 1,
+          actor: "test-b", now: new Date("2026-08-24T23:10:00.000Z"),
+        }),
+      ]);
+      expect(attempts.filter(Boolean)).toHaveLength(1);
+      await expect(store.compareAndSetVersion({
+        clinicId: organization.id, expectedVersion: 1, nextVersion: 2,
+        actor: "principal", now: new Date("2026-08-24T23:11:00.000Z"),
+      })).resolves.toBe(true);
+      await expect(store.compareAndSetVersion({
+        clinicId: organization.id, expectedVersion: 2, nextVersion: 1,
+        actor: "rollback", now: new Date("2026-08-24T23:12:00.000Z"),
+      })).rejects.toThrow("cannot be downgraded");
+      await expect(store.getVersion(organization.id)).resolves.toBe(2);
+    });
+
+    it("bounds ambiguous backfill and records conflicts without creating jobs", async () => {
+      const [organization] = await testDb().insert(organizations).values({
+        name: "Authority Backfill", slug: `authority-backfill-${runId}`, specialty: "dental",
+      }).returning();
+      for (let index = 0; index < 3; index++) {
+        await testDb().execute(sql`
+          insert into inbound_events (
+            organization_id, provider, provider_message_id, conversation_key,
+            payload, dedupe_key, processing_status, received_at
+          ) values (
+            ${organization.id}::uuid, 'z_api', ${`backfill-${index}`}, ${`thread-${index}`},
+            '{}'::jsonb, ${`backfill:${index}`}, 'processed', clock_timestamp()
+          )
+        `);
+      }
+      const dryRun = await backfillWhatsAppStreamAuthority({
+        clinicId: organization.id, apply: false, batchSize: 2, afterId: null,
+      });
+      expect(dryRun).toMatchObject({ mode: "dry-run", selected: 2, conflicts: 2 });
+      await expect(backfillWhatsAppStreamAuthority({
+        clinicId: organization.id, apply: false, batchSize: 2,
+        afterId: dryRun.nextAfterId,
+      })).resolves.toMatchObject({ selected: 1, conflicts: 1 });
+      const applied = await backfillWhatsAppStreamAuthority({
+        clinicId: organization.id, apply: true, batchSize: 2, afterId: null,
+      });
+      expect(applied).toMatchObject({ mode: "apply", selected: 2, conflicts: 2 });
+      const conflicts = await testDb().execute<{ count: string }>(sql`
+        select count(*)::text as count from inbound_events
+        where organization_id = ${organization.id}::uuid and processing_status = 'identity_conflict'
+      `);
+      expect(conflicts.rows[0]?.count).toBe("2");
+      const jobs = await testDb().execute<{ count: string }>(sql`
+        select count(*)::text as count from jobs job
+        join inbound_events event on event.id = job.inbound_event_id
+        where event.organization_id = ${organization.id}::uuid
+      `);
+      expect(jobs.rows[0]?.count).toBe("0");
+    });
+
+    it("backfills only a single canonical conversation and active stream with serialized generation", async () => {
+      const [organization] = await testDb().insert(organizations).values({
+        name: "Authority Backfill Winner", slug: `authority-backfill-winner-${runId}`,
+        specialty: "dental",
+      }).returning();
+      const [lead] = await testDb().insert(leads).values({
+        clinicId: organization.id, channel: "whatsapp", phone: "5511888800099",
+      }).returning();
+      const [conversation] = await testDb().insert(conversations).values({
+        clinicId: organization.id, leadId: lead.id, channel: "whatsapp",
+      }).returning();
+      const [stream] = await testDb().insert(whatsappStreams).values({
+        clinicId: organization.id,
+        conversationId: conversation.id,
+        conversationStreamOrder: 1,
+        boundAt: new Date("2026-08-01T00:00:00.000Z"),
+        state: "active",
+      }).returning();
+      await testDb().insert(whatsappStreamAliases).values({
+        clinicId: organization.id, streamId: stream.id,
+        kind: "phone", providerScope: "provider_independent",
+        normalizedValue: "5511888800099",
+      });
+      const eventId = randomUUID();
+      await testDb().execute(sql`
+        insert into inbound_events (
+          id, organization_id, provider, provider_message_id, conversation_key,
+          payload, dedupe_key, processing_status, received_at
+        ) values (
+          ${eventId}::uuid, ${organization.id}::uuid, 'z_api', 'historical-winner',
+          '5511888800099', '{}'::jsonb, 'historical-winner', 'processed', clock_timestamp()
+        )
+      `);
+      const messageId = randomUUID();
+      await testDb().execute(sql`
+        insert into messages (id, conversation_id, author, body, sent_at, external_id)
+        values (${messageId}::uuid, ${conversation.id}::uuid, 'lead', 'histórico',
+                clock_timestamp(), 'historical-winner')
+      `);
+      await expect(backfillWhatsAppStreamAuthority({
+        clinicId: organization.id, apply: true, batchSize: 1, afterId: null,
+      })).resolves.toMatchObject({ selected: 1, backfilled: 1, conflicts: 0 });
+      const persisted = await testDb().execute<{
+        stream_id: string; stream_generation: string; inbound_event_id: string;
+      }>(sql`
+        select event.stream_id::text, event.stream_generation::text,
+               message.inbound_event_id::text
+        from inbound_events event
+        join messages message on message.id = ${messageId}::uuid
+        where event.id = ${eventId}::uuid
+      `);
+      expect(persisted.rows[0]).toEqual({
+        stream_id: stream.id, stream_generation: "1", inbound_event_id: eventId,
+      });
+    });
+
+    it("detects active orphans and alias conflicts and cleans only unreferenced old candidates", async () => {
+      const [organization] = await testDb().insert(organizations).values({
+        name: "Authority Cleanup", slug: `authority-cleanup-${runId}`, specialty: "dental",
+      }).returning();
+      const orphanId = randomUUID();
+      const retainedId = randomUUID();
+      const eligibleId = randomUUID();
+      await testDb().insert(whatsappStreams).values([
+        { id: orphanId, clinicId: organization.id, state: "active" },
+        {
+          id: retainedId, clinicId: organization.id, state: "retired",
+          currentGeneration: 1, retiredAt: new Date("2026-06-01T00:00:00.000Z"),
+          retirementReason: "alias_convergence",
+        },
+        {
+          id: eligibleId, clinicId: organization.id, state: "retired",
+          retiredAt: new Date("2026-06-01T00:00:00.000Z"),
+          retirementReason: "alias_convergence",
+        },
+      ]);
+      await testDb().insert(whatsappStreamAliases).values({
+        clinicId: organization.id,
+        kind: "provider_thread",
+        providerScope: "z_api",
+        normalizedValue: "retired-active-alias",
+        streamId: retainedId,
+      });
+      await testDb().execute(sql`
+        insert into inbound_events (
+          organization_id, provider, provider_message_id, conversation_key,
+          payload, dedupe_key, processing_status, stream_id, stream_generation,
+          registered_at, received_at
+        ) values (
+          ${organization.id}::uuid, 'z_api', 'retained-event', 'retained-thread',
+          '{}'::jsonb, 'retained-event', 'processed', ${retainedId}::uuid, 1,
+          clock_timestamp(), clock_timestamp()
+        )
+      `);
+      const validation = await validateWhatsAppStreamAuthority(organization.id);
+      expect(validation.issues).toContain("active_orphan_streams=1");
+      expect(validation.issues).toContain("active_alias_conflicts=1");
+      await expect(cleanupWhatsAppStreamAuthority({
+        clinicId: organization.id, apply: false, batchSize: 500, afterId: null,
+      })).resolves.toMatchObject({ selected: 1, deleted: 0 });
+      await expect(cleanupWhatsAppStreamAuthority({
+        clinicId: organization.id, apply: true, batchSize: 500, afterId: null,
+      })).resolves.toMatchObject({ selected: 1, deleted: 1 });
+      const retained = await testDb().execute<{ id: string }>(sql`
+        select id::text from whatsapp_streams where id in (${retainedId}::uuid, ${orphanId}::uuid)
+      `);
+      expect(retained.rows).toHaveLength(2);
     });
 });
