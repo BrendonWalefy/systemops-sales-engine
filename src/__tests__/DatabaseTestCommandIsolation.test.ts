@@ -9,6 +9,7 @@ const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as PackageJ
 const ciWorkflow = readFileSync(".github/workflows/ci.yml", "utf8");
 const authoritySuite = [
   "src/__tests__/ScheduledBurstDebounceDatabase.test.ts",
+  "src/__tests__/WhatsAppStreamPerformance.test.ts",
   "src/__tests__/helpers/embedded-authority-database.ts",
 ].map((path) => readFileSync(path, "utf8")).join("\n");
 
@@ -18,7 +19,7 @@ describe("database test command isolation", () => {
       "dotenv -e .env.test.local -- vitest run src/__tests__/calendar-import.test.ts",
     );
     expect(packageJson.scripts["test:db:authority"]).toBe(
-      "vitest run src/__tests__/ScheduledBurstDebounceDatabase.test.ts",
+      "vitest run src/__tests__/ScheduledBurstDebounceDatabase.test.ts src/__tests__/WhatsAppStreamPerformance.test.ts --maxWorkers=1",
     );
     expect(packageJson.scripts["test:db:schema"]).toBe(
       "vitest run src/__tests__/WhatsAppStreamSchema.test.ts",
@@ -29,6 +30,9 @@ describe("database test command isolation", () => {
     expect(packageJson.scripts["test:db:all"]).toBeUndefined();
     expect(packageJson.scripts.test).toContain(
       "--exclude src/__tests__/ScheduledBurstDebounceDatabase.test.ts",
+    );
+    expect(packageJson.scripts.test).toContain(
+      "--exclude src/__tests__/WhatsAppStreamPerformance.test.ts",
     );
     expect(packageJson.scripts.test).toContain(
       "--exclude src/__tests__/WhatsAppStreamSchema.test.ts",

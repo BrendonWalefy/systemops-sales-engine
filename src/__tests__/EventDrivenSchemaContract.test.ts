@@ -19,6 +19,8 @@ describe("event-driven modernization schema contract", () => {
       "processed",
       "failed",
       "ignored",
+      "identity_conflict",
+      "history_only",
     ]);
     expect(jobQueueEnum.enumValues).toEqual([
       "message.process",
