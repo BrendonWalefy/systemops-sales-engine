@@ -3,7 +3,24 @@ import { resolve } from "node:path";
 import { sql } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 
-export type AuthorityValidationIssue = Readonly<{ metric: string; count: number }>;
+export const AUTHORITY_VALIDATION_METRICS = [
+  "unresolved_events",
+  "partial_claims",
+  "identity_conflicts",
+  "duplicate_generations",
+  "duplicate_active_aliases",
+  "active_alias_conflicts",
+  "active_orphan_streams",
+  "multiple_active_streams_per_conversation",
+  "process_job_orphans",
+  "invalid_outbound_authorization",
+] as const;
+
+export type AuthorityValidationMetric = typeof AUTHORITY_VALIDATION_METRICS[number];
+export type AuthorityValidationIssue = Readonly<{
+  metric: AuthorityValidationMetric;
+  count: number;
+}>;
 export type AuthorityValidationReport = Readonly<{
   clinicId: string;
   clean: boolean;
@@ -11,7 +28,7 @@ export type AuthorityValidationReport = Readonly<{
   metrics: readonly AuthorityValidationIssue[];
 }>;
 
-type MetricRow = { metric: string; count: number | string };
+type MetricRow = { metric: AuthorityValidationMetric; count: number | string };
 
 export async function validateWhatsAppStreamAuthority(
   clinicId: string,
