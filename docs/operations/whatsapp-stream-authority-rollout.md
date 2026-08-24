@@ -37,3 +37,11 @@ Before version 2, stop rollout, leave expand columns/tables in place, and keep t
 After version 2, do not lower the database version and do not restore legacy replies. Disable live automation if a compatible sender cannot be kept online. Preserve inbound events, canonical messages, jobs, streams, and outbound audit rows for investigation.
 
 Record for each rollout: organization ID, build SHA, migration SHA, actor, validation output, old-worker drain timestamps, activation timestamp, rejection counts, queue latency, lock wait, transaction p95, CPU, rows scanned, and compute-active time when the database provider exposes it.
+
+## Embedded representative baseline
+
+The 2026-08-24 Phase 8 gate uses isolated PostgreSQL with 10,000 inbound events/jobs, 10,000 aliases, 100 active streams, 10,000 cleanup candidates, 600 backfill candidates, and 1,000 outbound rows. Point lookups inspect at most two authority rows. Representative observed execution times were 0.01–0.02 ms for provider dedupe, alias, generation, claim, bind, outbox authorization, and orphan lookups; bounded backfill was 0.19 ms and cleanup 0.23 ms. The complete plan suite took 4.99 ms wall time and 1.66 ms process CPU in that run.
+
+With stream A locked, a transaction updating stream B completed in 0.88 ms. A competing update to stream A reached the configured lock timeout in 255.25 ms, proving per-stream isolation and same-stream serialization. Backfill and cleanup each returned no more than 500 rows; their indexed scans inspected at most 1,000 relation rows per scan under the representative fixture. `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` records planned/actual rows and shared buffer blocks on every run.
+
+Embedded PostgreSQL does not expose Neon compute-active time, so that field is `unavailable_embedded`. During an authorized disposable-Neon rollout rehearsal, record compute-active time beside the same query, lock, CPU, transaction-duration, row, and buffer measurements. Absence of that provider-only metric does not authorize use of production Neon for testing.
