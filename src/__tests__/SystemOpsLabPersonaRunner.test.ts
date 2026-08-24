@@ -90,10 +90,12 @@ function makeHarness(options: HarnessOptions = {}) {
   let turnNumber = 0;
 
   const inboundEventStore: InboundEventStore = {
-    async recordInboundEvent(input) {
+    async recordInboundEventAndEnqueue(input) {
       turnNumber += 1;
       calls.push(`persist-inbound:${turnNumber}`);
       const id = `turn-${turnNumber}`;
+      const streamId = `stream-${input.clinicId}-${input.conversationKey}`;
+      const streamGeneration = turnNumber;
       const event: InboundEvent = {
         id,
         clinicId: input.clinicId,
@@ -107,9 +109,30 @@ function makeHarness(options: HarnessOptions = {}) {
         processingStatus: "pending",
         receivedAt: input.receivedAt ?? new Date(),
         processedAt: null,
+        streamId,
+        streamGeneration,
+        registeredAt: input.receivedAt,
+        claimToken: null,
+        claimTokenDigest: null,
+        claimJobId: null,
+        claimedAt: null,
       };
       events.set(id, event);
-      return { event, isNew: true };
+      const queued = await jobQueue.enqueueJob({
+        queue: "message.process",
+        payload: { inboundEventId: id, streamId, streamGeneration },
+        dedupeKey: `inbound-event:${id}`,
+        runAt: input.receivedAt,
+      });
+      return {
+        outcome: "registered" as const,
+        inboundEventId: id,
+        streamId,
+        streamGeneration,
+        jobId: queued.job.id,
+        eventWasNew: true,
+        jobWasNew: queued.isNew,
+      };
     },
     async findInboundEvent(id) { return events.get(id) ?? null; },
     async markInboundEventProcessing() {},

@@ -113,6 +113,7 @@ import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizz
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleHumanReviewRequestRepository } from "@/infrastructure/repositories/drizzle-human-review-request-repository";
 import { DrizzleConversationTurnLeaseStore } from "@/infrastructure/repositories/drizzle-conversation-turn-lease-store";
+import { DrizzleWhatsAppStreamAuthority } from "@/infrastructure/repositories/drizzle-whatsapp-stream-authority";
 import { ConversationTurnCoordinator } from "@/core/pipeline/ConversationTurnCoordinator";
 import {
   LiveTurnLifecycle,
@@ -3060,6 +3061,7 @@ export class ConversationOrchestrator {
       turnCoordinator: this.turnCoordinator,
       stateReader: this.stateMachine,
       now: () => runtimeNow(),
+      streamAuthority: new DrizzleWhatsAppStreamAuthority(),
     });
   }
 

@@ -4,7 +4,7 @@
 
 **Goal:** Replace split debounce authority with durable tenant-scoped WhatsApp streams that make ingress, generation, conversation binding, claim/retry, canonical history, outbox authorization, and sender validation idempotent and crash-safe.
 
-**Architecture:** PostgreSQL owns identity and settlement. One statement records a provider delivery, converges aliases, serializes a stream generation, and creates its uniquely deduped job. Claim settles authority; canonical history keeps database order across retained streams; outbox and sender validate a persisted authorization tuple without revoking post-claim work when newer ingress arrives.
+**Architecture:** PostgreSQL owns identity and settlement. One fixed, bounded statement sequence runs as an atomic non-interactive transaction submitted in one Neon HTTP request: it records a provider delivery, converges aliases, serializes a stream generation, and creates its uniquely deduped job. Claim settles authority; canonical history keeps database order across retained streams; outbox and sender validate a persisted authorization tuple without revoking post-claim work when newer ingress arrives.
 
 **Tech Stack:** TypeScript, Node `crypto`, Drizzle ORM, PostgreSQL/Neon, generated Drizzle migrations, Vitest, embedded/disposable PostgreSQL.
 
@@ -289,31 +289,32 @@ Implementation uses `randomBytes(32).toString("base64url")` and SHA-256 base64ur
 
 **Files:** modify `src/core/whatsapp/WhatsAppContactIdentity.ts`, `src/application/ports/inbound-event-store.ts`, `src/infrastructure/repositories/drizzle-inbound-event-store.ts`, `src/application/whatsapp/persist-inbound-event.ts`, `src/application/use-cases/leads/register-incoming-message.ts`, `src/application/conversation/live-turn-lifecycle.ts`; create `src/application/ports/whatsapp-stream-authority.ts`, `src/infrastructure/repositories/drizzle-whatsapp-stream-authority.ts`, `src/__tests__/WhatsAppStreamIngress.test.ts`.
 
-- [ ] **RED:** Add phone/LID/provider-thread normalization tests, including exact provider scopes and missing-instance rejection.
-- [ ] **RED:** Add real PostgreSQL tests for one physical event insertion, scoped provider duplicate detection, cross-organization same message id, concurrent unknown alias, active-plus-provisional convergence, multiple-active `identity_conflict`, transaction rollback, stable generation across alias changes, and simultaneous binding to one conversation.
-- [ ] **RED:** Add binding assertions: exactly one active stream per conversation, losing streams retained/retired, aliases moved to the winner, claimed loser events unchanged, unclaimed loser events history-only, and monotonic `conversation_stream_order`.
-- [ ] **GREEN:** Extend `RecordInboundEventInput`, `InboundEvent`, and `RecordInboundEventAndEnqueueResult` using the exact registration contracts above. Make `recordInboundEventAndEnqueue` mandatory, remove the non-atomic `recordInboundEvent` production method/fallback, and update in-memory fakes to implement the atomic contract. Use `number` for every generation.
-- [ ] **GREEN:** Implement one `db.execute(sql\`...\`)` statement with these CTE stages and no second event insert. Join `organizations` inside the statement and derive the quiet boundary from `message_debounce_ms ?? DEFAULT_MESSAGE_DEBOUNCE_MS`; set the new job's `run_at` to that boundary.
+- [x] **RED:** Add phone/LID/provider-thread normalization tests, including exact provider scopes and missing-instance rejection.
+- [x] **RED:** Add real PostgreSQL tests for one physical event insertion, scoped provider duplicate detection, cross-organization same message id, concurrent unknown alias, active-plus-provisional convergence, multiple-active `identity_conflict`, transaction rollback, stable generation across alias changes, and simultaneous binding to one conversation.
+- [x] **RED:** Add binding assertions: exactly one active stream per conversation, losing streams retained/retired, aliases moved to the winner, claimed loser events unchanged, unclaimed loser events history-only, and monotonic `conversation_stream_order`.
+- [x] **GREEN:** Extend `RecordInboundEventInput`, `InboundEvent`, and `RecordInboundEventAndEnqueueResult` using the exact registration contracts above. Make `recordInboundEventAndEnqueue` mandatory, remove the non-atomic `recordInboundEvent` production method/fallback, and update in-memory fakes to implement the atomic contract. Use `number` for every generation.
+- [x] **GREEN:** Add a narrow atomic-batch interface at the database-client boundary. Production uses the public Drizzle Neon HTTP `db.batch(...)` API; embedded PostgreSQL implements the same interface with serial statements inside one node-postgres transaction. Do not use `db.transaction()`, `Promise.all` inside the transaction, an interactive/second production adapter, or result-dependent JavaScript branching.
+- [x] **GREEN:** Pre-generate operation ids, construct one fixed bounded query list, and submit it as one non-interactive transaction in one HTTP request. The sequence is ledger insert/retrieve; unresolved candidate creation; alias insert/convergence; active-authority classification; activate/converge/conflict; generation serialization; single event-authority update; deduplicated job insert/retrieve; persisted-result read. Join `organizations` in the batch and derive the quiet boundary from `message_debounce_ms ?? DEFAULT_MESSAGE_DEBOUNCE_MS`; set the new job's `run_at` to that boundary.
+- [x] **GREEN:** Keep all intermediate writes invisible until commit and verify any failure rolls back ledger, candidate stream, aliases, generation, event authority, and job together. Every later statement derives behavior from persisted state selected by stable input identifiers.
 
 ```sql
-ledger_event
-provisional_stream
-inserted_aliases
-alias_winners
-active_winners
-selected_stream
-retired_candidates
-assigned_generation
-authorized_event
-persisted_job
-conflicted_event
-final_result
+register_ledger_event
+create_provisional_candidate
+converge_aliases
+lock_active_authorities
+resolve_alias_authority
+assign_generation
+bind_event_authority
+persist_processing_job
+read_persisted_result
 ```
 
-`ledger_event` performs the sole `INSERT ... ON CONFLICT (organization_id, provider, provider_message_id)`. All later CTEs are gated on an unresolved returned ledger row. `conflicted_event` writes `identity_conflict`; `persisted_job` uses queue `message.process`, dedupe `inbound-event:<id>`, and typed `inbound_event_id`.
-- [ ] **GREEN:** Implement `bindStreamToConversation` as one statement locking the conversation first, then streams by id, allocating `MAX(conversation_stream_order)+1` under the indexed conversation scope. Preserve loser event tuples and generation counters; move aliases and retire only the losing stream.
-- [ ] **GREEN:** Expose `bindStreamToConversation` to the worker/lifecycle dependency graph, but defer flow integration to Phase 5 where canonical preparation is split from business effects. Pass the authority tuple through the worker types without invoking binding after side effects.
-- [ ] **REFACTOR:** Repeat the concurrent database tests enough to exercise both transaction winners. Run `EXPLAIN` to confirm alias/provider predicates use their unique indexes at representative volume.
+The ledger statement performs the sole `INSERT ... ON CONFLICT (organization_id, provider, provider_message_id)`. Later statements are bounded by the stable provider identity and act only while that persisted ledger row is unresolved. The conflict statement writes `identity_conflict`; the job statement uses queue `message.process`, dedupe `inbound-event:<id>`, and typed `inbound_event_id`.
+
+Do not return to a one-data-modifying-CTE implementation. PostgreSQL sibling data-modifying CTEs share one statement snapshot; ordinary table reads in later sibling CTEs cannot observe rows written by earlier siblings. `RETURNING` alone cannot safely carry the ledger/candidate/alias arbitration through every required write. Sequential statements in the one HTTP transaction provide the required visibility without weakening atomicity.
+- [x] **GREEN:** Implement `bindStreamToConversation` through the same atomic non-interactive batch boundary: lock the conversation first, lock streams by id in the next statement, then bind/converge and allocate `MAX(conversation_stream_order)+1` under that retained conversation lock. The later statement must observe a winner committed while it waited. Preserve loser event tuples and generation counters; move aliases and retire only the losing stream.
+- [x] **GREEN:** Expose `bindStreamToConversation` to the worker/lifecycle dependency graph, but defer flow integration to Phase 5 where canonical preparation is split from business effects. Pass the authority tuple through the worker types without invoking binding after side effects.
+- [x] **REFACTOR:** Repeat the concurrent database tests enough to exercise both transaction winners. Run `EXPLAIN` to confirm alias/provider predicates use their unique indexes at representative volume.
 
 **Commit:** `feat(pr306): register and bind whatsapp streams atomically`
 

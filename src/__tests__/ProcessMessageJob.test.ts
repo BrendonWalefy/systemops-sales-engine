@@ -30,6 +30,13 @@ const event: InboundEvent = {
   processingStatus: "pending",
   receivedAt: new Date("2026-06-23T12:00:00.000Z"),
   processedAt: null,
+  streamId: "stream-1",
+  streamGeneration: 1,
+  registeredAt: new Date("2026-06-23T12:00:00.000Z"),
+  claimToken: null,
+  claimTokenDigest: null,
+  claimJobId: null,
+  claimedAt: null,
 };
 
 const job: JobRecord = {
@@ -94,6 +101,11 @@ describe("ProcessMessageJobHandler", () => {
         turnId: "event-1",
         replyEnabled: true,
         automationMode: "live",
+        inboundAuthority: {
+          streamId: "stream-1",
+          streamGeneration: 1,
+          inboundEventId: "event-1",
+        },
       }),
     );
     expect(conversationHandler.handle.mock.calls[0]![0]).not.toHaveProperty("turnObservationSink");

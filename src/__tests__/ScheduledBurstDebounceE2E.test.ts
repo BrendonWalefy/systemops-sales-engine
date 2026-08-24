@@ -7,6 +7,7 @@ import type {
   InboundEventStore,
   RecordInboundEventInput,
 } from "@/application/ports/inbound-event-store";
+import { buildWhatsAppStreamAliases } from "@/core/whatsapp/WhatsAppContactIdentity";
 import type {
   EnqueueJobInput,
   JobQueue,
@@ -34,9 +35,47 @@ function authorityFields(event: InboundEvent): AuthorityFields {
 
 class InMemoryInboundEventStore implements InboundEventStore {
   readonly events = new Map<string, InboundEvent>();
+  private jobQueue: InMemoryJobQueue | null = null;
+  private readonly streamIds = new Map<string, string>();
 
-  async recordInboundEvent(input: RecordInboundEventInput) {
+  attachJobQueue(jobQueue: InMemoryJobQueue): void {
+    this.jobQueue = jobQueue;
+  }
+
+  async recordInboundEventAndEnqueue(input: RecordInboundEventInput) {
+    const duplicate = [...this.events.values()].find((event) =>
+      event.clinicId === input.clinicId
+      && event.provider === input.provider
+      && event.providerMessageId === input.providerMessageId,
+    );
+    if (duplicate) {
+      const job = this.jobQueue?.jobs.find((candidate) =>
+        candidate.dedupeKey === `inbound-event:${duplicate.id}`,
+      );
+      if (!job || !duplicate.streamId || duplicate.streamGeneration === null) {
+        throw new Error("in-memory authority duplicate is incomplete");
+      }
+      return {
+        outcome: "registered" as const,
+        inboundEventId: duplicate.id,
+        streamId: duplicate.streamId,
+        streamGeneration: duplicate.streamGeneration,
+        jobId: job.id,
+        eventWasNew: false,
+        jobWasNew: false,
+      };
+    }
+    if (!this.jobQueue) throw new Error("in-memory authority job queue is not attached");
     const id = `event-${this.events.size + 1}`;
+    const streamKey = `${input.clinicId}:${input.conversationKey}`;
+    const streamId = this.streamIds.get(streamKey) ?? `stream-${this.streamIds.size + 1}`;
+    this.streamIds.set(streamKey, streamId);
+    const streamGeneration = [...this.events.values()].filter(
+      (event) => event.streamId === streamId,
+    ).length + 1;
+    const identityConflict = input.aliases.some(
+      (alias) => alias.normalizedValue === "lid-owned-by-another-stream",
+    );
     const event: InboundEvent = {
       id,
       clinicId: input.clinicId,
@@ -47,12 +86,47 @@ class InMemoryInboundEventStore implements InboundEventStore {
       normalizedText: input.normalizedText ?? null,
       mediaType: input.mediaType ?? null,
       dedupeKey: input.dedupeKey,
-      processingStatus: "pending",
+      processingStatus: identityConflict ? "identity_conflict" : "pending",
       receivedAt: input.receivedAt ?? new Date(T0),
       processedAt: null,
+      streamId: identityConflict ? null : streamId,
+      streamGeneration: identityConflict ? null : streamGeneration,
+      registeredAt: identityConflict ? null : input.receivedAt,
+      claimToken: null,
+      claimTokenDigest: null,
+      claimJobId: null,
+      claimedAt: null,
     };
+    Object.assign(authorityFields(event), {
+      authorityState: identityConflict ? null : "active",
+      aliasValues: input.aliases.map((alias) => alias.normalizedValue),
+      identityConflict,
+    });
     this.events.set(id, event);
-    return { event, isNew: true };
+    if (identityConflict) {
+      return {
+        outcome: "identity_conflict" as const,
+        inboundEventId: id,
+        jobId: null,
+        eventWasNew: true,
+        jobWasNew: false as const,
+      };
+    }
+    const queued = await this.jobQueue.enqueueJob({
+      queue: "message.process",
+      payload: { inboundEventId: id, streamId, streamGeneration },
+      dedupeKey: `inbound-event:${id}`,
+      runAt: new Date(input.receivedAt.getTime() + 15_000),
+    });
+    return {
+      outcome: "registered" as const,
+      inboundEventId: id,
+      streamId,
+      streamGeneration,
+      jobId: queued.job.id,
+      eventWasNew: true,
+      jobWasNew: queued.isNew,
+    };
   }
 
   async findInboundEvent(id: string) {
@@ -240,6 +314,7 @@ async function recordMessage(
     receivedAt?: Date;
   },
 ) {
+  inboundEventStore.attachJobQueue(jobQueue);
   return persistInboundEventAndEnqueue({
     clinicId: "clinic-1",
     provider: "z_api",
@@ -247,9 +322,17 @@ async function recordMessage(
     conversationKey: input.conversationKey ?? "5511999999999",
     payload: payload(input.messageId, input.message, input.chatLid),
     normalizedText: input.message,
+    mediaType: null,
+    aliases: buildWhatsAppStreamAliases({
+      provider: "z_api",
+      providerInstanceId: "instance-1",
+      providerThreadId: input.conversationKey ?? "5511999999999",
+      phone: "5511999999999",
+      whatsappLid: input.chatLid,
+    }),
     dedupeKey: `z-api:instance-1:${input.messageId}`,
     receivedAt: input.receivedAt ?? T0,
-  }, { inboundEventStore, jobQueue });
+  }, { inboundEventStore });
 }
 
 function replyHandler(replies: string[]) {
@@ -282,6 +365,7 @@ describe("scheduled burst debounce through the durable inbox", () => {
   it("does not reply to A when B arrived before A's job was drained", async () => {
     const inboundEventStore = new InMemoryInboundEventStore();
     const jobQueue = new InMemoryJobQueue();
+    inboundEventStore.attachJobQueue(jobQueue);
     const replies: string[] = [];
     const convertedConversationMessages: string[] = [];
 
@@ -292,9 +376,16 @@ describe("scheduled burst debounce through the durable inbox", () => {
       conversationKey: "5511999999999",
       payload: payload("message-a", "A"),
       normalizedText: "A",
+      mediaType: null,
+      aliases: buildWhatsAppStreamAliases({
+        provider: "z_api",
+        providerInstanceId: "instance-1",
+        providerThreadId: "5511999999999",
+        phone: "5511999999999",
+      }),
       dedupeKey: "z-api:instance-1:message-a",
       receivedAt: T0,
-    }, { inboundEventStore, jobQueue });
+    }, { inboundEventStore });
     await persistInboundEventAndEnqueue({
       clinicId: "clinic-1",
       provider: "z_api",
@@ -302,9 +393,16 @@ describe("scheduled burst debounce through the durable inbox", () => {
       conversationKey: "5511999999999",
       payload: payload("message-b", "B"),
       normalizedText: "B",
+      mediaType: null,
+      aliases: buildWhatsAppStreamAliases({
+        provider: "z_api",
+        providerInstanceId: "instance-1",
+        providerThreadId: "5511999999999",
+        phone: "5511999999999",
+      }),
       dedupeKey: "z-api:instance-1:message-b",
       receivedAt: T5,
-    }, { inboundEventStore, jobQueue });
+    }, { inboundEventStore });
 
     expect(jobQueue.jobs.map((job) => job.runAt)).toEqual([T0.getTime() + 15_000, T5.getTime() + 15_000].map((time) => new Date(time)));
     expect(jobQueue.jobs[0]?.runAt).toEqual(new Date(T0.getTime() + 15_000));

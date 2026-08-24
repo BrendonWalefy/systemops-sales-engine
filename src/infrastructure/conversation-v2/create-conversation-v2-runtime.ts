@@ -59,6 +59,7 @@ import { DrizzleClinicAutomationPolicyReader } from "@/infrastructure/repositori
 import { DrizzleConversationEnginePolicyReader } from "@/infrastructure/repositories/drizzle-conversation-engine-policy-reader";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { DrizzleConversationTurnLeaseStore } from "@/infrastructure/repositories/drizzle-conversation-turn-lease-store";
+import { DrizzleWhatsAppStreamAuthority } from "@/infrastructure/repositories/drizzle-whatsapp-stream-authority";
 import { DrizzleConversationV2ComparisonSink } from "@/infrastructure/repositories/drizzle-conversation-v2-comparison-sink";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
@@ -172,6 +173,7 @@ function createLiveHandler(input: {
     conversationRepository, contextReader,
     turnCoordinator: new ConversationTurnCoordinator(new DrizzleConversationTurnLeaseStore()),
     stateReader: state, now: () => new Date(),
+    streamAuthority: new DrizzleWhatsAppStreamAuthority(),
   });
   const gatewayFor = async (clinicId: string) => {
     if (clinicId !== input.expectedClinicId) throw new Error("Internal Lab calendar tenant mismatch");

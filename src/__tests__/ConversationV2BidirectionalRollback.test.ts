@@ -325,9 +325,16 @@ class MemoryInboundEvents implements InboundEventStore {
       processingStatus: "pending",
       receivedAt: input.timestamp,
       processedAt: null,
+      streamId: null,
+      streamGeneration: null,
+      registeredAt: null,
+      claimToken: null,
+      claimTokenDigest: null,
+      claimJobId: null,
+      claimedAt: null,
     });
   }
-  async recordInboundEvent(): Promise<never> { throw new Error("not used"); }
+  async recordInboundEventAndEnqueue(): Promise<never> { throw new Error("not used"); }
   async findInboundEvent(id: string) { return this.rows.get(id) ?? null; }
   async markInboundEventProcessing(id: string) { const row = this.rows.get(id); if (row) row.processingStatus = "processing"; }
   async markInboundEventPending(id: string) { const row = this.rows.get(id); if (row) row.processingStatus = "pending"; }

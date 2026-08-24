@@ -15,6 +15,8 @@ import type { Organization } from "@/domain/entities/clinic";
 import type { Lead } from "@/domain/entities/lead";
 import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
 import type { EditorialConfig } from "@/application/config/editorial-config";
+import type { InboundAuthorityTuple } from "@/application/ports/inbound-event-store";
+import type { WhatsAppStreamAuthority } from "@/application/ports/whatsapp-stream-authority";
 
 export type LiveTurnRegistration = Readonly<{
   turnId: string;
@@ -28,6 +30,7 @@ export type LiveTurnRegistration = Readonly<{
   inboundMessage: Message;
   outboundAddress: string;
   editorial: EditorialConfig | null;
+  inboundAuthority: InboundAuthorityTuple | null;
 }>;
 
 export type LiveTurnContext = LiveTurnRegistration & Readonly<{
@@ -80,6 +83,7 @@ type LiveTurnLifecycleDependencies = Readonly<{
     "getCurrentState" | "getLastResetBoundary"
   >;
   now: () => Date;
+  streamAuthority?: Pick<WhatsAppStreamAuthority, "bindStreamToConversation">;
 }>;
 
 export class LiveTurnLifecycle {
@@ -161,6 +165,7 @@ export class LiveTurnLifecycle {
       inboundMessage: persistedInbound,
       outboundAddress,
       editorial,
+      inboundAuthority: input.inboundAuthority ?? null,
     });
     await options.afterRegister?.(registration);
 

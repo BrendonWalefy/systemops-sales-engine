@@ -117,6 +117,7 @@ function makeHarness(options: {
     inboundMessage: inbound,
     outboundAddress: lead.phone!,
     editorial: null,
+    inboundAuthority: null,
     releaseLease,
   });
   const offeredState = {

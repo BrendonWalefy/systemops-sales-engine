@@ -176,6 +176,15 @@ export class ProcessMessageJobHandler {
         mediaUrl: content.mediaUrl,
         mediaType: content.mediaType,
         automationMode,
+        ...(event.streamId && event.streamGeneration !== null
+          ? {
+              inboundAuthority: {
+                streamId: event.streamId,
+                streamGeneration: event.streamGeneration,
+                inboundEventId: event.id,
+              },
+            }
+          : {}),
         ...(turnObservationSink ? { turnObservationSink } : {}),
       });
       await this.deps.inboundEventStore.markInboundEventProcessed(event.id);

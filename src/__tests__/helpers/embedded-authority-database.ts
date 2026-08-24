@@ -3,7 +3,9 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import EmbeddedPostgres from "embedded-postgres";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { Pool } from "pg";
+import type { AtomicDatabaseBatch } from "@/infrastructure/db/atomic-database-batch";
 import { resolveTestDatabaseAccess } from "@/infrastructure/db/test-database-policy";
 
 const EMBEDDED_HOST = "127.0.0.1";
@@ -17,6 +19,37 @@ export type EmbeddedAuthorityDatabase = {
   embedded: EmbeddedPostgres;
   pool: Pool;
 };
+
+export function createEmbeddedAtomicDatabaseBatch(
+  pool: Pool,
+  options: Readonly<{ failAfterStep?: string }> = {},
+): AtomicDatabaseBatch {
+  const dialect = new PgDialect();
+  return {
+    async execute(steps) {
+      const client = await pool.connect();
+      try {
+        await client.query("begin");
+        const results = [];
+        for (const step of steps) {
+          const query = dialect.sqlToQuery(step.statement);
+          const result = await client.query(query.sql, query.params);
+          results.push({ rows: result.rows as Record<string, unknown>[] });
+          if (step.name === options.failAfterStep) {
+            throw new Error(`forced embedded batch failure after ${step.name}`);
+          }
+        }
+        await client.query("commit");
+        return results;
+      } catch (error) {
+        await client.query("rollback");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+  };
+}
 
 export async function reserveAvailablePort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {

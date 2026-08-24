@@ -12,6 +12,14 @@ export type WhatsAppContactIdentifiers = {
   whatsappLid: string | null;
 };
 
+export type WhatsAppStreamAlias = Readonly<{
+  kind: "phone" | "whatsapp_lid" | "provider_thread";
+  providerScope: string;
+  normalizedValue: string;
+}>;
+
+export const PROVIDER_INDEPENDENT_WHATSAPP_SCOPE = "__provider_independent__";
+
 export function isWhatsAppLid(value: string): boolean {
   return value.toLowerCase().includes("@lid");
 }
@@ -19,6 +27,52 @@ export function isWhatsAppLid(value: string): boolean {
 export function normalizeWhatsAppPhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
   return digits.length >= 10 ? digits : null;
+}
+
+export function normalizeWhatsAppLid(raw: string): string | null {
+  const normalized = raw.trim().toLowerCase();
+  return isWhatsAppLid(normalized) ? normalized : null;
+}
+
+export function buildWhatsAppStreamAliases(input: Readonly<{
+  provider: "meta_cloud_api" | "z_api";
+  providerInstanceId: string;
+  providerThreadId: string;
+  phone?: string | null;
+  whatsappLid?: string | null;
+}>): readonly WhatsAppStreamAlias[] {
+  const providerInstanceId = input.providerInstanceId.trim();
+  if (!providerInstanceId) {
+    throw new Error("provider instance identity is required");
+  }
+  const providerThreadId = input.providerThreadId.trim();
+  if (!providerThreadId) {
+    throw new Error("provider thread identity is required");
+  }
+
+  const aliases: WhatsAppStreamAlias[] = [];
+  const phone = normalizeWhatsAppPhone(input.phone ?? "");
+  if (phone) {
+    aliases.push({
+      kind: "phone",
+      providerScope: PROVIDER_INDEPENDENT_WHATSAPP_SCOPE,
+      normalizedValue: phone,
+    });
+  }
+  const whatsappLid = normalizeWhatsAppLid(input.whatsappLid ?? "");
+  if (whatsappLid) {
+    aliases.push({
+      kind: "whatsapp_lid",
+      providerScope: PROVIDER_INDEPENDENT_WHATSAPP_SCOPE,
+      normalizedValue: whatsappLid,
+    });
+  }
+  aliases.push({
+    kind: "provider_thread",
+    providerScope: `${input.provider}:${providerInstanceId}`,
+    normalizedValue: providerThreadId,
+  });
+  return aliases;
 }
 
 /**
@@ -60,7 +114,7 @@ export function parseWhatsAppContactField(
   if (!trimmed) return {};
 
   if (isWhatsAppLid(trimmed)) {
-    return { whatsappLid: trimmed };
+    return { whatsappLid: normalizeWhatsAppLid(trimmed) };
   }
 
   const phone = normalizeWhatsAppPhone(trimmed);

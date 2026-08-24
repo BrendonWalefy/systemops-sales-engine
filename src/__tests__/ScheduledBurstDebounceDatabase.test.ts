@@ -4,11 +4,14 @@ import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { organizations } from "@/infrastructure/db/schema";
+import { conversations, leads, organizations } from "@/infrastructure/db/schema";
 import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
+import { DrizzleWhatsAppStreamAuthority } from "@/infrastructure/repositories/drizzle-whatsapp-stream-authority";
+import { buildWhatsAppStreamAliases } from "@/core/whatsapp/WhatsAppContactIdentity";
 import {
   cleanupEmbeddedAuthorityDatabase,
+  createEmbeddedAtomicDatabaseBatch,
   startEmbeddedAuthorityDatabase,
   type EmbeddedAuthorityDatabase,
 } from "@/__tests__/helpers/embedded-authority-database";
@@ -45,12 +48,32 @@ type InboundJsonRow = {
   raw: Record<string, unknown>;
 };
 
-function eventInput(clinicId: string, providerMessageId: string, receivedAt: Date) {
+function eventInput(
+  clinicId: string,
+  providerMessageId: string,
+  receivedAt: Date,
+  identity: Readonly<{
+    providerInstanceId?: string;
+    providerThreadId?: string;
+    phone?: string | null;
+    whatsappLid?: string | null;
+  }> = {},
+) {
+  const providerInstanceId = identity.providerInstanceId ?? "instance-1";
+  const providerThreadId = identity.providerThreadId ?? "unknown-phone-alias";
+  const phone = identity.phone === undefined ? "5511999999999" : identity.phone;
   return {
     clinicId,
     provider: "z_api" as const,
     providerMessageId,
     conversationKey: "unknown-phone-alias",
+    aliases: buildWhatsAppStreamAliases({
+      provider: "z_api",
+      providerInstanceId,
+      providerThreadId,
+      phone,
+      whatsappLid: identity.whatsappLid,
+    }),
     payload: {
       phone: "5511999999999",
       instanceId: "instance-1",
@@ -62,22 +85,10 @@ function eventInput(clinicId: string, providerMessageId: string, receivedAt: Dat
       isEdit: false,
     },
     normalizedText: providerMessageId,
+    mediaType: null,
     dedupeKey: `z-api:instance-1:${providerMessageId}`,
     receivedAt,
   };
-}
-
-async function readInboundRows(clinicId: string): Promise<InboundJsonRow[]> {
-  const result = await testDb().execute<InboundJsonRow>(sql`
-    select
-      id::text,
-      provider_message_id,
-      to_jsonb(inbound_events) as raw
-    from inbound_events
-    where organization_id = ${clinicId}::uuid
-    order by received_at asc, id asc
-  `);
-  return result.rows;
 }
 
 async function readInboundRow(id: string): Promise<InboundJsonRow> {
@@ -129,24 +140,113 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
       }
     });
 
-    it("converges simultaneous unknown-alias ingress through PostgreSQL authority", async () => {
-      const store = new DrizzleInboundEventStore();
-      const receivedAt = new Date("2026-08-24T12:00:00.000Z");
-
-      await Promise.all([
-        store.recordInboundEventAndEnqueue(eventInput(clinicId!, "database-a", receivedAt)),
-        store.recordInboundEventAndEnqueue(eventInput(clinicId!, "database-b", new Date(receivedAt.getTime() + 5_000))),
+    it("lets later batch statements observe earlier writes in one transaction", async () => {
+      const marker = `batch-visibility-${runId}`;
+      const batch = createEmbeddedAtomicDatabaseBatch(runtime!.pool);
+      const results = await batch.execute([
+        {
+          name: "insert_visibility_marker",
+          statement: sql`insert into link_previews (url, ok) values (${marker}, true)`,
+        },
+        {
+          name: "read_visibility_marker",
+          statement: sql`select url from link_previews where url = ${marker}`,
+        },
       ]);
 
-      const rows = await readInboundRows(clinicId!);
-      expect(rows).toHaveLength(2);
+      expect(results[1]?.rows).toEqual([{ url: marker }]);
+    });
 
-      const streamIds = rows.map((row) => row.raw.stream_id);
-      expect(streamIds.every((streamId) => typeof streamId === "string")).toBe(true);
-      expect(new Set(streamIds)).toHaveLength(1);
+    it("rolls back the complete ingress when failure is forced after generation assignment", async () => {
+      const providerMessageId = `rollback-${runId}`;
+      const phone = `55117${runId.replace(/[^0-9]/g, "").padEnd(8, "0").slice(0, 8)}`;
+      const batch = createEmbeddedAtomicDatabaseBatch(runtime!.pool, {
+        failAfterStep: "assign_generation",
+      });
+      const store = new DrizzleInboundEventStore(batch);
+      const before = await testDb().execute<{ count: string }>(sql`
+        select count(*)::text as count from whatsapp_streams
+        where organization_id = ${clinicId}::uuid
+      `);
 
-      const generations = rows.map((row) => row.raw.stream_generation);
-      expect(new Set(generations)).toEqual(new Set([1, 2]));
+      await expect(store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!,
+        providerMessageId,
+        new Date("2026-08-24T12:00:00.000Z"),
+        { phone, providerThreadId: providerMessageId },
+      ))).rejects.toThrow("forced embedded batch failure after assign_generation");
+
+      const persisted = await testDb().execute<{ events: string; streams: string; aliases: string; jobs: string }>(sql`
+        select
+          (select count(*)::text from inbound_events where organization_id = ${clinicId}::uuid and provider_message_id = ${providerMessageId}) as events,
+          (select count(*)::text from whatsapp_streams s where s.organization_id = ${clinicId}::uuid and exists (
+            select 1 from whatsapp_stream_aliases a where a.stream_id = s.id and a.normalized_value in (${phone}, ${providerMessageId})
+          )) as streams,
+          (select count(*)::text from whatsapp_stream_aliases where organization_id = ${clinicId}::uuid and normalized_value in (${phone}, ${providerMessageId})) as aliases,
+          (select count(*)::text from jobs where dedupe_key like ${`inbound-event:%` } and inbound_event_id in (
+            select id from inbound_events where organization_id = ${clinicId}::uuid and provider_message_id = ${providerMessageId}
+          )) as jobs
+      `);
+      expect(persisted.rows[0]).toEqual({ events: "0", streams: "0", aliases: "0", jobs: "0" });
+      const after = await testDb().execute<{ count: string; provisional: string }>(sql`
+        select
+          count(*)::text as count,
+          count(*) filter (where state = 'provisional')::text as provisional
+        from whatsapp_streams
+        where organization_id = ${clinicId}::uuid
+      `);
+      expect(after.rows[0]).toEqual({ count: before.rows[0]?.count, provisional: "0" });
+    });
+
+    it("converges simultaneous unknown-alias ingress through PostgreSQL authority", async () => {
+      const receivedAt = new Date("2026-08-24T12:00:00.000Z");
+      for (let iteration = 0; iteration < 8; iteration += 1) {
+        const store = new DrizzleInboundEventStore(
+          createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+        );
+        const messageIds = [`database-a-${iteration}`, `database-b-${iteration}`];
+        const identity = {
+          phone: `5511999900${String(iteration).padStart(2, "0")}`,
+          providerThreadId: `concurrent-thread-${iteration}`,
+        };
+        const registrations = await Promise.all([
+          store.recordInboundEventAndEnqueue(eventInput(
+            clinicId!, messageIds[0], receivedAt, identity,
+          )),
+          store.recordInboundEventAndEnqueue(eventInput(
+            clinicId!, messageIds[1], new Date(receivedAt.getTime() + 5_000), identity,
+          )),
+        ]);
+
+        expect(registrations.every((result) => result.outcome === "registered")).toBe(true);
+        const rows = await testDb().execute<InboundJsonRow>(sql`
+          select id::text, provider_message_id, to_jsonb(inbound_events) as raw
+          from inbound_events
+          where organization_id = ${clinicId}::uuid
+            and provider_message_id in (${messageIds[0]}, ${messageIds[1]})
+        `);
+        expect(rows.rows).toHaveLength(2);
+
+        const streamIds = rows.rows.map((row) => row.raw.stream_id);
+        expect(streamIds.every((streamId) => typeof streamId === "string")).toBe(true);
+        expect(new Set(streamIds)).toHaveLength(1);
+        expect(new Set(rows.rows.map((row) => row.raw.stream_generation))).toEqual(new Set([1, 2]));
+
+        for (const registration of registrations) {
+          if (registration.outcome !== "registered") continue;
+          const persisted = rows.rows.find((row) => row.id === registration.inboundEventId);
+          expect(persisted?.raw.stream_id).toBe(registration.streamId);
+          expect(persisted?.raw.stream_generation).toBe(registration.streamGeneration);
+          const job = await testDb().execute<{ id: string; inbound_event_id: string }>(sql`
+            select id::text, inbound_event_id::text
+            from jobs where id = ${registration.jobId}::uuid
+          `);
+          expect(job.rows[0]).toEqual({
+            id: registration.jobId,
+            inbound_event_id: registration.inboundEventId,
+          });
+        }
+      }
 
       const authorityTables = await testDb().execute<{ streams: string | null; aliases: string | null }>(sql`
         select
@@ -164,8 +264,7 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
         where organization_id = ${clinicId}::uuid
           and state = 'active'
       `);
-      expect(activeStreams.rows).toHaveLength(1);
-      expect(rows.every((row) => row.raw.stream_id === activeStreams.rows[0]?.id)).toBe(true);
+      expect(activeStreams.rows).toHaveLength(8);
 
       const provisionalStreams = await testDb().execute<{ id: string }>(sql`
         select id::text
@@ -176,14 +275,131 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
       expect(provisionalStreams.rows).toHaveLength(0);
     });
 
+    it("converges one active winner plus provisional aliases onto the active stream", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const phone = "5511777700001";
+      const lid = "271295921025045@lid";
+      const first = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!,
+        "active-provisional-a",
+        new Date("2026-08-24T13:00:00.000Z"),
+        { phone, providerThreadId: "active-provisional-a" },
+      ));
+      const second = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!,
+        "active-provisional-b",
+        new Date("2026-08-24T13:00:05.000Z"),
+        { phone, whatsappLid: lid, providerThreadId: "active-provisional-b" },
+      ));
+
+      expect(first.outcome).toBe("registered");
+      expect(second.outcome).toBe("registered");
+      if (first.outcome !== "registered" || second.outcome !== "registered") return;
+      expect(second.streamId).toBe(first.streamId);
+      expect(second.streamGeneration).toBe(2);
+
+      const aliases = await testDb().execute<{ stream_id: string; normalized_value: string }>(sql`
+        select stream_id::text, normalized_value
+        from whatsapp_stream_aliases
+        where organization_id = ${clinicId}::uuid
+          and retired_at is null
+          and normalized_value in (${phone}, ${lid}, 'active-provisional-b')
+      `);
+      expect(aliases.rows).toHaveLength(3);
+      expect(aliases.rows.every((alias) => alias.stream_id === first.streamId)).toBe(true);
+
+      const candidateStates = await testDb().execute<{ state: string; count: string }>(sql`
+        select state, count(*)::text as count
+        from whatsapp_streams
+        where organization_id = ${clinicId}::uuid
+          and id in (
+            select distinct stream_id from whatsapp_stream_aliases
+            where organization_id = ${clinicId}::uuid
+              and normalized_value in (${phone}, ${lid}, 'active-provisional-b')
+          )
+        group by state
+      `);
+      expect(candidateStates.rows).toContainEqual({ state: "active", count: "1" });
+      const inaccessibleCandidate = await testDb().execute<{ count: string }>(sql`
+        select count(*)::text as count
+        from whatsapp_streams stream
+        where stream.organization_id = ${clinicId}::uuid
+          and stream.state = 'retired'
+          and stream.retirement_reason = 'alias_convergence'
+          and not exists (
+            select 1 from whatsapp_stream_aliases alias
+            where alias.stream_id = stream.id and alias.retired_at is null
+          )
+      `);
+      expect(Number(inaccessibleCandidate.rows[0]?.count)).toBeGreaterThanOrEqual(1);
+    });
+
+    it("fails closed when aliases resolve to multiple genuinely active streams", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const phone = "5511666600001";
+      const lid = "371295921025045@lid";
+      const phoneAuthority = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "conflict-phone", new Date("2026-08-24T14:00:00.000Z"),
+        { phone, providerThreadId: "conflict-phone" },
+      ));
+      const lidAuthority = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "conflict-lid", new Date("2026-08-24T14:00:01.000Z"),
+        { phone: null, whatsappLid: lid, providerThreadId: "conflict-lid" },
+      ));
+      expect(phoneAuthority.outcome).toBe("registered");
+      expect(lidAuthority.outcome).toBe("registered");
+
+      const conflict = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "identity-conflict", new Date("2026-08-24T14:00:02.000Z"),
+        { phone, whatsappLid: lid, providerThreadId: "identity-conflict" },
+      ));
+      expect(conflict).toMatchObject({
+        outcome: "identity_conflict",
+        jobId: null,
+        jobWasNew: false,
+      });
+
+      const event = await readInboundRow(conflict.inboundEventId);
+      expect(event.raw).toMatchObject({
+        processing_status: "identity_conflict",
+        stream_id: null,
+        stream_generation: null,
+      });
+      const jobs = await testDb().execute<{ count: string }>(sql`
+        select count(*)::text as count from jobs
+        where inbound_event_id = ${conflict.inboundEventId}::uuid
+      `);
+      expect(jobs.rows[0]?.count).toBe("0");
+      const activeAuthorities = await testDb().execute<{ count: string }>(sql`
+        select count(distinct stream.id)::text as count
+        from whatsapp_stream_aliases alias
+        join whatsapp_streams stream on stream.id = alias.stream_id
+        where alias.organization_id = ${clinicId}::uuid
+          and alias.retired_at is null
+          and stream.state = 'active'
+          and alias.normalized_value in (${phone}, ${lid})
+      `);
+      expect(activeAuthorities.rows[0]?.count).toBe("2");
+    });
+
     it("deduplicates simultaneous deliveries of one provider message", async () => {
-      const store = new DrizzleInboundEventStore();
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
       const input = eventInput(clinicId!, "database-duplicate", new Date("2026-08-24T12:00:00.000Z"));
 
-      await Promise.all([
+      const registrations = await Promise.all([
         store.recordInboundEventAndEnqueue(input),
         store.recordInboundEventAndEnqueue(input),
       ]);
+
+      expect(new Set(registrations.map((result) => result.inboundEventId))).toHaveLength(1);
+      expect(registrations.filter((result) => result.eventWasNew)).toHaveLength(1);
+      expect(registrations.filter((result) => result.jobWasNew)).toHaveLength(1);
 
       const rows = await testDb().execute<{ count: string }>(sql`
         select count(*)::text as count
@@ -206,13 +422,314 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
       expect(jobs.rows[0]?.count).toBe("1");
     });
 
+    it("scopes duplicate provider message identity by organization", async () => {
+      const [secondOrganization] = await testDb()
+        .insert(organizations)
+        .values({
+          name: `Scheduled Burst Second ${runId}`,
+          slug: `${clinicSlug}-second`,
+          specialty: "dental",
+          city: "São Paulo",
+          autoReplyEnabled: true,
+          isTest: true,
+          operationalStatus: "test",
+        })
+        .returning({ id: organizations.id });
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const providerMessageId = `cross-org-${runId}`;
+      const [first, second] = await Promise.all([
+        store.recordInboundEventAndEnqueue(eventInput(
+          clinicId!, providerMessageId, new Date("2026-08-24T15:00:00.000Z"),
+          { phone: "5511555500001", providerThreadId: "cross-org" },
+        )),
+        store.recordInboundEventAndEnqueue(eventInput(
+          secondOrganization.id, providerMessageId, new Date("2026-08-24T15:00:00.000Z"),
+          { phone: "5511555500001", providerThreadId: "cross-org" },
+        )),
+      ]);
+
+      expect(first.inboundEventId).not.toBe(second.inboundEventId);
+      const count = await testDb().execute<{ count: string }>(sql`
+        select count(*)::text as count from inbound_events
+        where provider = 'z_api' and provider_message_id = ${providerMessageId}
+      `);
+      expect(count.rows[0]?.count).toBe("2");
+    });
+
+    it("uses the tenant debounce setting for both stream quiet time and job eligibility", async () => {
+      const receivedAt = new Date("2026-08-24T15:30:00.000Z");
+      await testDb().execute(sql`
+        update organizations set message_debounce_ms = 45000
+        where id = ${clinicId}::uuid
+      `);
+      try {
+        const store = new DrizzleInboundEventStore(
+          createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+        );
+        const registered = await store.recordInboundEventAndEnqueue(eventInput(
+          clinicId!, "long-debounce", receivedAt,
+          { phone: "5511222200001", providerThreadId: "long-debounce" },
+        ));
+        if (registered.outcome !== "registered") throw new Error("long debounce ingress conflicted");
+        const persisted = await testDb().execute<{ quiet_until: string; run_at: string }>(sql`
+          select stream.quiet_until, job.run_at
+          from whatsapp_streams stream
+          join inbound_events event on event.stream_id = stream.id
+          join jobs job on job.inbound_event_id = event.id
+          where event.id = ${registered.inboundEventId}::uuid
+        `);
+        const expected = new Date(receivedAt.getTime() + 45_000);
+        expect(new Date(persisted.rows[0]!.quiet_until)).toEqual(expected);
+        expect(new Date(persisted.rows[0]!.run_at)).toEqual(expected);
+      } finally {
+        await testDb().execute(sql`
+          update organizations set message_debounce_ms = null
+          where id = ${clinicId}::uuid
+        `);
+      }
+    });
+
+    it("serializes simultaneous first bindings and retains the losing stream history", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const first = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "bind-a", new Date("2026-08-24T16:00:00.000Z"),
+        { phone: "5511444400001", providerThreadId: "bind-a" },
+      ));
+      const second = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "bind-b", new Date("2026-08-24T16:00:01.000Z"),
+        { phone: "5511444400002", providerThreadId: "bind-b" },
+      ));
+      expect(first.outcome).toBe("registered");
+      expect(second.outcome).toBe("registered");
+      if (first.outcome !== "registered" || second.outcome !== "registered") return;
+
+      const [lead] = await testDb().insert(leads).values({
+        clinicId: clinicId!,
+        phone: "5511444499999",
+        channel: "whatsapp",
+      }).returning({ id: leads.id });
+      const [conversation] = await testDb().insert(conversations).values({
+        clinicId: clinicId!,
+        leadId: lead.id,
+        channel: "whatsapp",
+        externalThreadId: "bind-conversation",
+      }).returning({ id: conversations.id });
+      const authority = new DrizzleWhatsAppStreamAuthority(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+
+      const results = await Promise.all([
+        authority.bindStreamToConversation({
+          clinicId: clinicId!,
+          conversationId: conversation.id,
+          streamId: first.streamId,
+          streamGeneration: first.streamGeneration,
+          inboundEventId: first.inboundEventId,
+          now: new Date("2026-08-24T16:00:02.000Z"),
+        }),
+        authority.bindStreamToConversation({
+          clinicId: clinicId!,
+          conversationId: conversation.id,
+          streamId: second.streamId,
+          streamGeneration: second.streamGeneration,
+          inboundEventId: second.inboundEventId,
+          now: new Date("2026-08-24T16:00:02.000Z"),
+        }),
+      ]);
+
+      expect(new Set(results.map((result) => result.authoritativeStreamId))).toHaveLength(1);
+      const bound = await testDb().execute<{
+        id: string;
+        state: string;
+        conversation_stream_order: string;
+      }>(sql`
+        select id::text, state, conversation_stream_order::text
+        from whatsapp_streams
+        where conversation_id = ${conversation.id}::uuid
+        order by conversation_stream_order
+      `);
+      expect(bound.rows).toHaveLength(2);
+      expect(bound.rows.filter((stream) => stream.state === "active")).toHaveLength(1);
+      expect(bound.rows.filter((stream) => stream.state === "retired")).toHaveLength(1);
+      expect(new Set(bound.rows.map((stream) => stream.conversation_stream_order))).toEqual(
+        new Set(["1", "2"]),
+      );
+
+      const eventTuples = await testDb().execute<{
+        id: string;
+        stream_id: string;
+        stream_generation: string;
+        processing_status: string;
+      }>(sql`
+        select id::text, stream_id::text, stream_generation::text, processing_status
+        from inbound_events
+        where id in (${first.inboundEventId}::uuid, ${second.inboundEventId}::uuid)
+      `);
+      expect(eventTuples.rows.map((event) => ({
+        id: event.id,
+        stream_id: event.stream_id,
+        stream_generation: event.stream_generation,
+      }))).toEqual(
+        expect.arrayContaining([
+          { id: first.inboundEventId, stream_id: first.streamId, stream_generation: String(first.streamGeneration) },
+          { id: second.inboundEventId, stream_id: second.streamId, stream_generation: String(second.streamGeneration) },
+        ]),
+      );
+      expect(eventTuples.rows.filter((event) => event.processing_status === "history_only")).toHaveLength(1);
+
+      const authoritativeStreamId = results[0]!.authoritativeStreamId;
+      const activeAliases = await testDb().execute<{ stream_id: string }>(sql`
+        select stream_id::text
+        from whatsapp_stream_aliases
+        where organization_id = ${clinicId}::uuid
+          and retired_at is null
+          and stream_id in (${first.streamId}::uuid, ${second.streamId}::uuid)
+      `);
+      expect(activeAliases.rows.length).toBeGreaterThan(0);
+      expect(activeAliases.rows.every((alias) => alias.stream_id === authoritativeStreamId)).toBe(true);
+    });
+
+    it("does not revoke a claimed loser while converging it onto an existing conversation stream", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const winner = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "claimed-bind-winner", new Date("2026-08-24T17:00:00.000Z"),
+        { phone: "5511333300001", providerThreadId: "claimed-bind-winner" },
+      ));
+      const loser = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "claimed-bind-loser", new Date("2026-08-24T17:00:01.000Z"),
+        { phone: "5511333300002", providerThreadId: "claimed-bind-loser" },
+      ));
+      if (winner.outcome !== "registered" || loser.outcome !== "registered") {
+        throw new Error("binding setup did not register both streams");
+      }
+      const [lead] = await testDb().insert(leads).values({
+        clinicId: clinicId!, phone: "5511333399999", channel: "whatsapp",
+      }).returning({ id: leads.id });
+      const [conversation] = await testDb().insert(conversations).values({
+        clinicId: clinicId!, leadId: lead.id, channel: "whatsapp",
+      }).returning({ id: conversations.id });
+      const authority = new DrizzleWhatsAppStreamAuthority(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      await authority.bindStreamToConversation({
+        clinicId: clinicId!, conversationId: conversation.id,
+        streamId: winner.streamId, streamGeneration: winner.streamGeneration,
+        inboundEventId: winner.inboundEventId, now: new Date("2026-08-24T17:00:02.000Z"),
+      });
+      await testDb().execute(sql`
+        update inbound_events
+        set claim_token = ${"a".repeat(43)},
+            claim_token_digest = ${"b".repeat(43)},
+            claimed_at = clock_timestamp()
+        where id = ${loser.inboundEventId}::uuid
+      `);
+
+      const converged = await authority.bindStreamToConversation({
+        clinicId: clinicId!, conversationId: conversation.id,
+        streamId: loser.streamId, streamGeneration: loser.streamGeneration,
+        inboundEventId: loser.inboundEventId, now: new Date("2026-08-24T17:00:03.000Z"),
+      });
+      expect(converged).toMatchObject({
+        authoritativeStreamId: winner.streamId,
+        retainedEventStreamId: loser.streamId,
+        retiredCurrentStream: true,
+        conversationStreamOrder: 2,
+      });
+      const retained = await readInboundRow(loser.inboundEventId);
+      expect(retained.raw).toMatchObject({
+        stream_id: loser.streamId,
+        stream_generation: loser.streamGeneration,
+        processing_status: "pending",
+        claim_token: "a".repeat(43),
+      });
+    });
+
+    it("uses scoped unique indexes for provider and alias authority lookups", async () => {
+      await testDb().execute(sql`
+        insert into inbound_events (
+          id, organization_id, provider, provider_message_id,
+          conversation_key, payload, dedupe_key, received_at
+        )
+        select
+          md5(${runId} || '-plan-event-' || series::text)::uuid,
+          ${clinicId}::uuid,
+          'z_api',
+          'plan-message-' || series::text,
+          'plan-thread-' || series::text,
+          '{}'::jsonb,
+          'plan-dedupe-' || series::text,
+          clock_timestamp()
+        from generate_series(1, 10000) series
+        on conflict (organization_id, provider, provider_message_id) do nothing
+      `);
+      await testDb().execute(sql`
+        insert into whatsapp_streams (id, organization_id, state)
+        select
+          md5(${runId} || '-plan-stream-' || series::text)::uuid,
+          ${clinicId}::uuid,
+          'active'
+        from generate_series(1, 1000) series
+        on conflict (id) do nothing
+      `);
+      await testDb().execute(sql`
+        insert into whatsapp_stream_aliases (
+          organization_id, kind, provider_scope, normalized_value, stream_id
+        )
+        select
+          ${clinicId}::uuid,
+          'phone',
+          '__provider_independent__',
+          'plan-alias-' || series::text,
+          md5(${runId} || '-plan-stream-' || series::text)::uuid
+        from generate_series(1, 1000) series
+        on conflict (organization_id, kind, provider_scope, normalized_value)
+          where retired_at is null
+        do nothing
+      `);
+      const providerPlan = await testDb().execute<{ "QUERY PLAN": string }>(sql`
+        explain (analyze, buffers, costs off)
+        select id from inbound_events
+        where organization_id = ${clinicId}::uuid
+          and provider = 'z_api'
+          and provider_message_id = 'database-duplicate'
+      `);
+      const aliasPlan = await testDb().execute<{ "QUERY PLAN": string }>(sql`
+        explain (analyze, buffers, costs off)
+        select stream_id from whatsapp_stream_aliases
+        where organization_id = ${clinicId}::uuid
+          and kind = 'phone'
+          and provider_scope = '__provider_independent__'
+          and normalized_value = '5511999999999'
+          and retired_at is null
+      `);
+
+      expect(providerPlan.rows.map((row) => row["QUERY PLAN"]).join("\n")).toContain(
+        "inbound_events_org_provider_message_unique",
+      );
+      expect(aliasPlan.rows.map((row) => row["QUERY PLAN"]).join("\n")).toContain(
+        "whatsapp_stream_aliases_active_identity_unique",
+      );
+    });
+
     it("uses the real claim path to persist and retain one durable claim token", async () => {
-      const store = new DrizzleInboundEventStore();
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
       const queue = new DrizzleJobQueue();
       const input = eventInput(
         clinicId!,
         "database-claim",
         new Date("2026-08-24T11:00:00.000Z"),
+        {
+          phone: "5511888800001",
+          providerThreadId: "database-claim-thread",
+        },
       );
       const recorded = await store.recordInboundEventAndEnqueue(input);
       const jobRows = await testDb().execute<{ dedupe_key: string }>(sql`

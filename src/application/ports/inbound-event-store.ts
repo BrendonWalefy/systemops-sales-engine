@@ -1,4 +1,5 @@
 export type InboundEventProvider = "meta_cloud_api" | "z_api";
+export type StreamGeneration = number;
 
 export type InboundEventProcessingStatus =
   | "pending"
@@ -8,6 +9,18 @@ export type InboundEventProcessingStatus =
   | "ignored"
   | "identity_conflict"
   | "history_only";
+
+export type StreamAliasInput = Readonly<{
+  kind: "phone" | "whatsapp_lid" | "provider_thread";
+  providerScope: string;
+  normalizedValue: string;
+}>;
+
+export type InboundAuthorityTuple = Readonly<{
+  streamId: string;
+  streamGeneration: StreamGeneration;
+  inboundEventId: string;
+}>;
 
 export type InboundEvent = {
   id: string;
@@ -22,40 +35,51 @@ export type InboundEvent = {
   processingStatus: InboundEventProcessingStatus;
   receivedAt: Date;
   processedAt: Date | null;
+  streamId: string | null;
+  streamGeneration: StreamGeneration | null;
+  registeredAt: Date | null;
+  claimToken: string | null;
+  claimTokenDigest: string | null;
+  claimJobId: string | null;
+  claimedAt: Date | null;
 };
 
-export type RecordInboundEventInput = {
+export type RegisterInboundAuthorityInput = Readonly<{
   clinicId: string;
   provider: InboundEventProvider;
   providerMessageId: string;
   conversationKey: string;
+  aliases: readonly StreamAliasInput[];
   payload: unknown;
-  normalizedText?: string | null;
-  mediaType?: string | null;
+  normalizedText: string | null;
+  mediaType: string | null;
   dedupeKey: string;
-  receivedAt?: Date;
-};
+  receivedAt: Date;
+}>;
 
-export type RecordInboundEventResult = {
-  event: InboundEvent;
-  isNew: boolean;
-};
+export type RecordInboundEventInput = RegisterInboundAuthorityInput;
 
-export type RecordInboundEventAndEnqueueResult = {
-  inboundEventId: string;
-  eventWasNew: boolean;
-  jobWasNew: boolean;
-};
+export type InboundRegistrationResult =
+  | (InboundAuthorityTuple & Readonly<{
+      outcome: "registered";
+      jobId: string;
+      eventWasNew: boolean;
+      jobWasNew: boolean;
+    }>)
+  | Readonly<{
+      outcome: "identity_conflict";
+      inboundEventId: string;
+      jobId: null;
+      eventWasNew: boolean;
+      jobWasNew: false;
+    }>;
+
+export type RecordInboundEventAndEnqueueResult = InboundRegistrationResult;
 
 export type InboundEventStore = {
-  recordInboundEvent(input: RecordInboundEventInput): Promise<RecordInboundEventResult>;
-  /**
-   * Optional atomic fast path implemented by durable stores. In-memory test
-   * doubles may omit it and use the compatible two-call fallback.
-   */
-  recordInboundEventAndEnqueue?(
-    input: RecordInboundEventInput,
-  ): Promise<RecordInboundEventAndEnqueueResult>;
+  recordInboundEventAndEnqueue(
+    input: RegisterInboundAuthorityInput,
+  ): Promise<InboundRegistrationResult>;
   findInboundEvent(id: string): Promise<InboundEvent | null>;
   markInboundEventProcessing(id: string): Promise<void>;
   markInboundEventPending(id: string): Promise<void>;

@@ -78,7 +78,7 @@ Constraints and indexes:
 
 ### 3.3 Stream-to-conversation binding
 
-A stream is initially unbound. `RegisterIncomingMessage.execute` resolves or creates the canonical conversation using the existing unique lead/conversation rules. Immediately after that result and before LLM, scheduling, reservation, notification, or outbound effects, `bindStreamToConversation` runs one database statement:
+A stream is initially unbound. `RegisterIncomingMessage.execute` resolves or creates the canonical conversation using the existing unique lead/conversation rules. Immediately after that result and before LLM, scheduling, reservation, notification, or outbound effects, `bindStreamToConversation` runs one fixed non-interactive batch transaction in one HTTP request:
 
 1. Lock the canonical `conversations` row, validating the same `organization_id`.
 2. Lock the current stream and any active stream already bound to the conversation in ascending stream-id order.
@@ -87,7 +87,7 @@ A stream is initially unbound. `RegisterIncomingMessage.execute` resolves or cre
 5. If another active stream is bound, it is the winner. Move active aliases to the winner, retire the current stream with reason `conversation_convergence`, bind the retired stream to the same conversation with the next `conversation_stream_order`, and leave every existing event on its original stream and generation.
 6. Claimed events on a retired loser retain settled authority. Unclaimed events on it become `history_only`. Future ingress resolves through aliases on the active winner.
 
-The conversation-row lock serializes simultaneous first bindings; the partial active-conversation unique index is the final database guard. A retained retired stream remains auditable. Canonical history orders by `conversation_stream_order ASC, stream_generation ASC, inbound_event_id ASC`. Alias changes mutate alias ownership only; they never replace the active stream or reset `current_generation`.
+The first statement locks the conversation row. A later statement in the same transaction receives a fresh statement snapshot and can therefore observe the binding committed by a transaction that held that lock first; attempting both operations in one statement can retain the pre-wait snapshot and collide with the partial active-conversation unique index. The conversation lock serializes simultaneous first bindings, and that unique index remains the final database guard. A retained retired stream remains auditable. Canonical history orders by `conversation_stream_order ASC, stream_generation ASC, inbound_event_id ASC`. Alias changes mutate alias ownership only; they never replace the active stream or reset `current_generation`.
 
 ### 3.4 `whatsapp_stream_aliases`
 
@@ -175,19 +175,25 @@ This PR adds no automatic retention worker. `cleanup-whatsapp-stream-authority.t
 
 ## 4. One-path atomic event registration
 
-`DrizzleInboundEventStore.recordInboundEventAndEnqueue` remains the only durable insertion path. It executes one PostgreSQL statement, which is one transaction under the Neon HTTP driver.
+`DrizzleInboundEventStore.recordInboundEventAndEnqueue` remains the only durable insertion path. It submits one fixed, bounded query list through the public Drizzle Neon HTTP `db.batch(...)` API. Neon executes that list as one non-interactive database transaction carried by one HTTP request. Production keeps the existing `neon-http` driver: this path does not use `db.transaction()`, an interactive transaction, WebSocket, TCP, `Pool`, a second production adapter, or database-side functions, triggers, or procedures.
 
-The statement uses the ledger-first algorithm:
+The batch uses the ledger-first algorithm. Every operation id is generated before the batch is constructed; no result-dependent JavaScript runs between statements. Each later statement derives its work from persisted rows selected by the stable tenant/provider identity and operation ids:
 
 1. `INSERT INTO inbound_events (...) ON CONFLICT (organization_id, provider, provider_message_id) DO UPDATE SET provider_message_id = excluded.provider_message_id RETURNING ...`. This is the only physical event insertion.
-2. If the returned existing event already has stream authority or `identity_conflict`, return its persisted result and existing job; do not resolve aliases, allocate generation, or create another job.
-3. For a new/unresolved row, insert a provisional stream and aliases with `INSERT ... ON CONFLICT`, then retrieve all winning alias stream ids.
-4. Partition winners by stream state. Zero active winners activates one provisional winner; one active winner absorbs candidates and retires them with reason `alias_convergence`; more than one active winner updates the ledger row to `identity_conflict` and creates no job.
-5. For a resolved winner, lock its stream row, increment `current_generation`, update the one ledger row with stream id/generation/`registered_at`, update stream latest/quiet fields, and insert one `message.process` job with `(queue, dedupe_key) = ('message.process', 'inbound-event:<id>')` and `inbound_event_id = event.id`.
+2. Create a provisional candidate only while that ledger event remains unresolved.
+3. Insert all normalized aliases with `INSERT ... ON CONFLICT`, converging on unique live alias ownership.
+4. Determine the distinct active authorities reachable from those aliases.
+5. Activate the candidate for zero active winners, move candidate aliases and retire it for exactly one active winner, or retire it and persist `identity_conflict` for multiple active winners.
+6. Select and lock the resolved active stream row, then serialize and assign its next generation.
+7. Update the single ledger event exactly once with its final stream authority and registration time.
+8. Insert or retrieve the unique `message.process` job with `(queue, dedupe_key) = ('message.process', 'inbound-event:<id>')` and `inbound_event_id = event.id`.
+9. Return the complete persisted event/stream/generation/job result, or the persisted conflict result.
 
-The statement reads `organizations.message_debounce_ms` for the event tenant and computes `quiet_until = received_at + COALESCE(message_debounce_ms, 15000 milliseconds)`; the job's initial `run_at` equals that quiet boundary. The constant is passed from `DEFAULT_MESSAGE_DEBOUNCE_MS`, not duplicated as an unrelated business rule. Every later ingress updates the stream quiet boundary, so longer clinic settings are enforced at claim without an orchestrator sleep.
+The batch reads `organizations.message_debounce_ms` for the event tenant and computes `quiet_until = received_at + COALESCE(message_debounce_ms, 15000 milliseconds)`; the job's initial `run_at` equals that quiet boundary. The constant is passed from `DEFAULT_MESSAGE_DEBOUNCE_MS`, not duplicated as an unrelated business rule. Every later ingress updates the stream quiet boundary, so longer clinic settings are enforced at claim without an orchestrator sleep.
 
-Concurrent duplicate insertion waits on the scoped provider unique index. After the winner commits, the duplicate returns the winner's completed row/job. If the winner transaction rolls back, its ledger, stream, alias, generation, and job changes all roll back; the waiting transaction may then become the inserter and execute the same one path. No partially registered ledger row commits.
+Statements execute sequentially and therefore observe writes made by earlier statements in the same transaction, while all intermediate ledger, candidate, alias, generation, event-authority, and job changes remain invisible to other transactions until commit. Any statement failure rolls the complete set back. Concurrent duplicate insertion waits on the scoped provider unique index. After the winner commits, the duplicate returns the winner's completed row/job. If the winner transaction rolls back, the waiting transaction may become the inserter and execute the same fixed path. No partially registered ledger row commits.
+
+A single data-modifying-CTE statement is explicitly invalid for this algorithm. PostgreSQL sibling data-modifying CTEs share one statement snapshot and cannot use ordinary table reads to observe rows written by earlier sibling CTEs; `RETURNING` is the only supported communication path. The ledger, candidate, alias arbitration, and later authority updates require sequential visibility across multiple writes, so attempting to encode them as one statement can leave the final authority update unable to see the newly inserted ledger/candidate rows. The non-interactive batch preserves atomicity while providing the required statement-to-statement visibility.
 
 Alias convergence distinguishes active authorities from provisional candidates:
 
@@ -280,7 +286,7 @@ Rollout order is expand → compatibility/dual-write → disposable migration ve
 
 ## 9. Performance safety
 
-No polling, heartbeat, or new worker is introduced. Ingress is one statement; claim, bind, outbox, and repair are each one short statement. Locks are scoped to aliases involved, one conversation during binding, and one stream/event/job during claim.
+No polling, heartbeat, or new worker is introduced. Ingress is one fixed bounded batch in one non-interactive transaction and one HTTP request; claim, bind, outbox, and repair are each one short statement. Locks are scoped to aliases involved, one conversation during binding, and one stream/event/job during claim.
 
 Performance tests seed representative volumes before inspecting plans: at least 10,000 inbound events/jobs across at least 100 streams, with at least 100 rows in the target stream. Tests assert authority predicates and lock candidates use the named indexes or remain bounded to the target stream/event/job. A sequential scan on a tiny disposable table is not itself a failure. Failure conditions are an unbounded scan at representative volume, missing authority index, cross-stream lock blocking, polling/heartbeat, unbounded backfill/cleanup, or batch queries without keyset limits.
 
