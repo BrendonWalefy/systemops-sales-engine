@@ -8,6 +8,18 @@ const repo = new DrizzleTreatmentRepository();
 
 export type ActionState = { success: boolean; error?: string } | null;
 
+/**
+ * Teto de um fato de texto divulgável no plano autorizado da V2. Acima disso o
+ * turno inteiro cairia na frase determinística, sem ninguém saber por quê.
+ */
+const MAX_DESCRIPTION_LENGTH = 240;
+
+function parseDescription(raw: FormDataEntryValue | null): string | null {
+  const text = String(raw ?? "").trim();
+  if (text.length === 0) return null;
+  return text.slice(0, MAX_DESCRIPTION_LENGTH);
+}
+
 function parseOptionalCents(raw: FormDataEntryValue | null): number | null {
   if (!raw || String(raw).trim() === "") return null;
   const val = parseFloat(String(raw));
@@ -30,7 +42,7 @@ export async function createTreatment(prevState: ActionState, formData: FormData
     clinicId,
     name,
     durationMinutes,
-    description: null,
+    description: parseDescription(formData.get("description")),
     requiresEvaluationFirst: false,
     keywordMatchEnabled: true,
     aliases: [],
@@ -79,6 +91,13 @@ export async function updateTreatment(prevState: ActionState, formData: FormData
     minPriceCents,
     maxPriceCents,
   };
+
+  // Mesmo padrão de marcador de presença do preço: a descrição só é tocada por
+  // um formulário que a envia, para editar nome/duração em outra aba não apagar
+  // o texto que explica o procedimento.
+  if (formData.get("descriptionPresent") === "1") {
+    patch.description = parseDescription(formData.get("description"));
+  }
 
   // Item 3: flags de derivação de preço só são tocadas quando o formulário as
   // envia (marcador priceFlagsPresent). Assim editar o tratamento por outra aba

@@ -10,8 +10,8 @@ function fixture(): Record<string, unknown> {
     leadMessage: "Quero agendar",
     history: [{ author: "lead", body: "Olá" }],
     policy: { priceDisclosureEnabled: true, humanEscalationRequired: false, schedulingMinimumLeadTimeHours: 2, schedulingRequiresEvaluationFirst: false },
-    catalog: { status: "captured", value: [{ id: "svc-1", name: "Limpeza", priceCents: 25000, priceDisclosable: true }] },
-    serviceResolutions: [{ query: "limpeza", result: { kind: "exact", service: { id: "svc-1", name: "Limpeza", priceCents: 25000, priceDisclosable: true }, evidenceRef: "catalog-1" } }],
+    catalog: { status: "captured", value: [{ id: "svc-1", name: "Limpeza", priceCents: 25000, priceDisclosable: true, description: null }] },
+    serviceResolutions: [{ query: "limpeza", result: { kind: "exact", service: { id: "svc-1", name: "Limpeza", priceCents: 25000, priceDisclosable: true, description: null }, evidenceRef: "catalog-1" } }],
     slotSearches: [{ input: { service: null, date: "2026-08-17", period: "afternoon", minimumLeadTimeHours: 2, now: "2026-08-16T12:00:00.000Z" }, result: { service: { id: "svc-1", name: "Limpeza" }, slots: [{ id: "slot-1", label: "17/08 15:00", evidenceRef: "slots-1" }] } }],
     offeredSlotResolutions: [{ pendingStepId: "offer-1", ordinal: 1, date: null, time: null, result: { id: "slot-1", label: "17/08 15:00", evidenceRef: "slots-1" } }],
     pendingAppointmentResolutions: [{ pendingStepId: "confirm-1", result: { id: "appt-1", label: "17/08 15:00", evidenceRef: "appointment-1" } }],
@@ -27,7 +27,7 @@ function allFrozen(value: unknown, seen = new WeakSet<object>()): boolean {
 describe("Captured V2 turn reads", () => {
   it("canonicaliza em uma árvore imutável sem aliases e isolada de mutação posterior", () => {
     const input = fixture();
-    const shared = { id: "svc-1", name: "Limpeza", priceCents: 25000, priceDisclosable: true };
+    const shared = { id: "svc-1", name: "Limpeza", priceCents: 25000, priceDisclosable: true, description: null };
     ((input.catalog as { value: unknown[] }).value)[0] = shared;
     (((input.serviceResolutions as { result: { service: unknown } }[])[0]!).result.service) = shared;
     input.history = [{ author: "lead", body: "Olá" }];

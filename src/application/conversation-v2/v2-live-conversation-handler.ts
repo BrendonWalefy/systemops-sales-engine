@@ -6,6 +6,7 @@ import type {
 } from "@/application/conversation/live-turn-lifecycle";
 import { createDentalLiveAdapters, type DentalLiveAdapterDependencies } from "@/application/conversation-v2/dental-live-adapters";
 import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
+import { authorizationForConversationReply } from "@/application/jobs/outbound-authorization";
 import type { JobQueue } from "@/application/ports/job-queue";
 import type { OutboundMessageStore } from "@/application/ports/outbound-message-store";
 import type {
@@ -16,6 +17,7 @@ import type {
 import type { ConversationState } from "@/conversation-core/capability/contract";
 import type { ComposerStyle } from "@/conversation-core/composer/contract";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
+import type { SpeakerProfile, VerbalizationOutcome } from "@/conversation-core/composer/verbalization";
 import type { ActionResult } from "@/conversation-core/decision";
 import type { TurnGateInput } from "@/conversation-core/gate";
 import type { InternalLabDeliveryBinding } from "@/application/conversation-v2/internal-lab-delivery-guard";
@@ -43,6 +45,10 @@ import {
   assertRegisteredLiveDentalUnderstanding,
   type LiveDentalUnderstanding,
 } from "@/infrastructure/adapters/ai/live-dental-understanding";
+import {
+  assertRegisteredLiveResponseVerbalizer,
+  type LiveResponseVerbalizer,
+} from "@/infrastructure/adapters/ai/live-response-verbalizer";
 
 export type V2SafeFailureReason =
   | "duplicate"
@@ -57,6 +63,7 @@ export type V2LiveTurnConfiguration = Readonly<{
   gateInput: TurnGateInput;
   policy: DentalPolicy;
   style: ComposerStyle;
+  speaker: SpeakerProfile;
   useVoice: boolean;
   ttsConfig: TtsConfig;
   deliveryBinding: InternalLabDeliveryBinding;
@@ -75,6 +82,11 @@ type DynamicDentalDependencies =
 export type V2LiveConversationHandlerDependencies = Readonly<{
   lifecycle: Pick<LiveTurnLifecycle, "begin" | "loadSnapshot" | "complete" | "fail">;
   understanding: LiveDentalUnderstanding;
+  /**
+   * Ausente, a resposta sai com a frase determinística do plano. Presente, o
+   * modelo reescreve essa mesma frase e o validador decide se ela pode sair.
+   */
+  verbalizer?: LiveResponseVerbalizer;
   dental: Omit<DentalLiveAdapterDependencies, DynamicDentalDependencies>;
   resolveTurnConfiguration(input: Readonly<{
     context: LiveTurnContext;
@@ -142,6 +154,18 @@ function historyForUnderstanding(
   );
 }
 
+/**
+ * O trace declara quem escolheu as palavras entregues. Recusa e falha do modelo
+ * caem no mesmo valor porque o texto entregue foi o determinístico nos dois
+ * casos; `verbalizationViolations` distingue recusa (com os códigos) de falha
+ * do provedor (vazio).
+ */
+function verbalizationTraceModel(outcome: VerbalizationOutcome): string {
+  if (outcome.status === "accepted") return outcome.modelId;
+  if (outcome.status === "absent") return "deterministic-v2";
+  return "deterministic-fallback";
+}
+
 function failureReason(phase: FailurePhase): V2SafeFailureReason {
   switch (phase) {
     case "understanding": return "understanding_failed";
@@ -196,6 +220,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
       turnNow = new Date((this.deps.now?.() ?? new Date()).getTime());
       phase = "understanding";
       assertRegisteredLiveDentalUnderstanding(this.deps.understanding);
+      if (this.deps.verbalizer) assertRegisteredLiveResponseVerbalizer(this.deps.verbalizer);
       const modelId = this.deps.understanding.modelId;
       phase = "decision";
       const snapshot = await this.deps.lifecycle.loadSnapshot(context);
@@ -271,6 +296,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
                   channel: "whatsapp",
                   deliveryKind: "text",
                   category: "reply",
+                  authorization: authorizationForConversationReply(context.inboundAuthority),
                   dedupeKey: `conversation-reply:${context.turnId}`,
                   payload: {
                     version: 1,
@@ -411,7 +437,13 @@ export class V2LiveConversationHandler implements ConversationHandler {
             violations: validation.violations.join(","),
             requiresHandoff: validation.requiresHandoff,
             source: validation.source,
-            model: "deterministic-v2",
+            model: verbalizationTraceModel(validation.verbalization),
+            promptVersion: validation.verbalization.status === "accepted"
+              ? this.deps.verbalizer!.promptVersion
+              : "deterministic-renderer.v1",
+            verbalizationViolations: validation.verbalization.status === "rejected"
+              ? validation.verbalization.violations.join(",")
+              : "",
             latencyMs: validation.latencyMs,
           });
           if (validation.source === "fallback") {
@@ -425,6 +457,9 @@ export class V2LiveConversationHandler implements ConversationHandler {
         response: {
           style: configuration.style,
           composer: new DeterministicResponseComposer(),
+          verbalization: this.deps.verbalizer
+            ? { verbalizer: this.deps.verbalizer, speaker: configuration.speaker }
+            : undefined,
         },
       });
 
@@ -446,6 +481,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
         channel: "whatsapp",
         deliveryKind: "text",
         category: "reply",
+        authorization: authorizationForConversationReply(context.inboundAuthority),
         dedupeKey: `conversation-reply:${context.turnId}`,
         payload: {
           version: 1,
@@ -531,6 +567,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
         channel: "whatsapp",
         deliveryKind: "text",
         category: "reply",
+        authorization: authorizationForConversationReply(context.inboundAuthority),
         dedupeKey: `conversation-reply:${context.turnId}`,
         payload: {
           version: 1,

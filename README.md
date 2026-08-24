@@ -129,6 +129,22 @@ npm run build           # build de produção
 
 Configuração compartilhada de infraestrutura fica em `.env.local`. Configuração que varia por organização — canal, agenda, playbook, catálogo, módulos, limites e usuários — fica no banco. Consulte [.env.example](.env.example) e [fontes de verdade](docs/architecture/sources-of-truth.md).
 
+## Atalhos de setup e debug
+
+Os comandos acima continuam sendo a referência. Para quem está chegando agora, dois atalhos:
+
+```bash
+make setup                     # install + .env.local + migrations
+./scripts/dev-setup.sh --workers   # o mesmo, e sobe os workers junto
+./scripts/validate-env.sh      # confere se .env.local tem o mínimo para subir
+```
+
+Para depurar com breakpoints, `.vscode/launch.json` traz `Next: Dev (with inspector)`
+(sobe os workers via task e abre o inspector em `9229`) e `Attach to Node (9229)`.
+No terminal, o equivalente é `npm run dev:inspect`.
+
+O passo a passo completo, com troubleshooting, está em [DEVELOPER.md](DEVELOPER.md).
+
 ## Documentação essencial
 
 - [Índice da documentação](docs/README.md)

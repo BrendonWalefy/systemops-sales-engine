@@ -93,6 +93,10 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     "latencyMs",
     "source",
     "costMicros",
+    // Códigos fechados da recusa do texto do modelo. Sem eles o trace diz que a
+    // resposta saiu determinística e nunca por qual regra — e a operação não
+    // sabe se o gate está protegendo ou apenas atrapalhando.
+    "verbalizationViolations",
   ],
   "response.fallback_applied": [
     "action",

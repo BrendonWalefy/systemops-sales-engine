@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LiveTurnLifecycle } from "@/application/conversation/live-turn-lifecycle";
 import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-incoming-message";
 import { ConversationTurnCoordinator } from "@/core/pipeline/ConversationTurnCoordinator";
@@ -216,7 +216,9 @@ class MemoryLeaseStore implements ConversationTurnLeaseStore {
   }
 }
 
-function makeHarness() {
+function makeHarness(options: Readonly<{
+  bindStreamToConversation?: ReturnType<typeof vi.fn>;
+}> = {}) {
   const leads = new MemoryLeadRepository();
   const conversations = new MemoryConversationRepository(leads);
   const leaseStore = new MemoryLeaseStore();
@@ -295,6 +297,9 @@ function makeHarness() {
       },
     },
     now: () => NOW,
+    ...(options.bindStreamToConversation
+      ? { streamAuthority: { bindStreamToConversation: options.bindStreamToConversation } }
+      : {}),
   });
   const lifecycle = makeLifecycle();
   return {
@@ -337,6 +342,72 @@ function ready(result: Awaited<ReturnType<LiveTurnLifecycle["begin"]>>) {
 }
 
 describe("LiveTurnLifecycle", () => {
+  it("binds canonical authority before claimed lead effects and preserves the token in context", async () => {
+    const harnessRef: { current: ReturnType<typeof makeHarness> | null } = { current: null };
+    const bindStreamToConversation = vi.fn(async () => {
+      expect([...(harnessRef.current?.leads.leads.values() ?? [])][0]?.status).toBe("new");
+      expect(harnessRef.current?.effects().followUpLists).toBe(0);
+      return {};
+    });
+    const harness = makeHarness({ bindStreamToConversation });
+    harnessRef.current = harness;
+    const inboundAuthority = {
+      streamId: "stream-1",
+      streamGeneration: 1,
+      inboundEventId: "event-1",
+      claimJobId: "job-1",
+      claimToken: "a".repeat(43),
+    };
+
+    const result = await harness.lifecycle.begin({
+      ...turn("provider-authority"),
+      inboundAuthority,
+    });
+    const context = ready(result);
+
+    expect(bindStreamToConversation).toHaveBeenCalledWith(expect.objectContaining({
+      clinicId: organization.id,
+      conversationId: context.conversationId,
+      streamId: "stream-1",
+      streamGeneration: 1,
+      inboundEventId: "event-1",
+    }));
+    expect(context.inboundAuthority).toEqual(inboundAuthority);
+    expect(context.lead.status).toBe("waiting_response");
+    expect(harness.effects().followUpLists).toBe(1);
+    await context.releaseLease();
+  });
+
+  it("does not suppress distinct durable generations merely because their content matches", async () => {
+    const bindStreamToConversation = vi.fn().mockResolvedValue({});
+    const { lifecycle, conversations } = makeHarness({ bindStreamToConversation });
+    const first = await lifecycle.begin({
+      ...turn("provider-authority-a", "Mesmo conteúdo"),
+      inboundAuthority: {
+        streamId: "stream-1",
+        streamGeneration: 1,
+        inboundEventId: "event-a",
+        claimJobId: "job-a",
+        claimToken: "a".repeat(43),
+      },
+    });
+    await ready(first).releaseLease();
+    const second = await lifecycle.begin({
+      ...turn("provider-authority-b", "Mesmo conteúdo"),
+      inboundAuthority: {
+        streamId: "stream-1",
+        streamGeneration: 2,
+        inboundEventId: "event-b",
+        claimJobId: "job-b",
+        claimToken: "b".repeat(43),
+      },
+    });
+
+    expect(second.outcome).toBe("ready");
+    expect([...conversations.messages.values()].flat()).toHaveLength(2);
+    await ready(second).releaseLease();
+  });
+
   it("does not expose a source organization row for copied or external domain objects", () => {
     const reader = new DrizzleLiveConversationContextReader();
 

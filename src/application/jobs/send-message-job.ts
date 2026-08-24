@@ -185,6 +185,19 @@ export class SendMessageJobHandler {
       log.info("job.ignored", { reason: "outbound_terminal_or_missing", durationMs: Date.now() - startedAt });
       return "ignored";
     }
+    const sendAuthorization = await this.deps.outboundMessageStore
+      .authorizeOutboundMessageForSend(outbound.id);
+    if (!sendAuthorization.authorized) {
+      await this.deps.outboundMessageStore.markOutboundCancelled(
+        outbound.id,
+        sendAuthorization.reason,
+      );
+      log.warn("job.ignored", {
+        reason: sendAuthorization.reason,
+        durationMs: Date.now() - startedAt,
+      });
+      return "ignored";
+    }
     const outboundLog = log.child({
       clinicId: outbound.clinicId,
       conversationId: outbound.conversationId,

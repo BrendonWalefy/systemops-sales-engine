@@ -64,6 +64,7 @@ export function buildReminderOutboxInput(input: {
       channel: "whatsapp" as const,
       deliveryKind: input.useVoice ? ("audio" as const) : ("text" as const),
       category: "reminder" as const,
+      authorization: { kind: "reminder" as const },
       dedupeKey,
       payload: {
         version: 1 as const,

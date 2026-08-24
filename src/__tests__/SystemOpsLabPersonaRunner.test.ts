@@ -90,10 +90,12 @@ function makeHarness(options: HarnessOptions = {}) {
   let turnNumber = 0;
 
   const inboundEventStore: InboundEventStore = {
-    async recordInboundEvent(input) {
+    async recordInboundEventAndEnqueue(input) {
       turnNumber += 1;
       calls.push(`persist-inbound:${turnNumber}`);
       const id = `turn-${turnNumber}`;
+      const streamId = `stream-${input.clinicId}-${input.conversationKey}`;
+      const streamGeneration = turnNumber;
       const event: InboundEvent = {
         id,
         clinicId: input.clinicId,
@@ -107,9 +109,30 @@ function makeHarness(options: HarnessOptions = {}) {
         processingStatus: "pending",
         receivedAt: input.receivedAt ?? new Date(),
         processedAt: null,
+        streamId,
+        streamGeneration,
+        registeredAt: input.receivedAt,
+        claimToken: null,
+        claimTokenDigest: null,
+        claimJobId: null,
+        claimedAt: null,
       };
       events.set(id, event);
-      return { event, isNew: true };
+      const queued = await jobQueue.enqueueJob({
+        queue: "message.process",
+        payload: { inboundEventId: id, streamId, streamGeneration },
+        dedupeKey: `inbound-event:${id}`,
+        runAt: input.receivedAt,
+      });
+      return {
+        outcome: "registered" as const,
+        inboundEventId: id,
+        streamId,
+        streamGeneration,
+        jobId: queued.job.id,
+        eventWasNew: true,
+        jobWasNew: queued.isNew,
+      };
     },
     async findInboundEvent(id) { return events.get(id) ?? null; },
     async markInboundEventProcessing() {},
@@ -159,6 +182,28 @@ function makeHarness(options: HarnessOptions = {}) {
         : Number(String(job.payload && (job.payload as { turnId?: string }).turnId).split("-").at(-1));
       calls.push(job.queue === "message.process" ? `claim-process:${index}` : `claim-send:${index}`);
       return job;
+    },
+    async claimNextInboundWork(input) {
+      const job = jobs.find((candidate) =>
+        candidate.queue === "message.process"
+        && candidate.status === "pending"
+        && (input.dedupeKey === undefined || candidate.dedupeKey === input.dedupeKey));
+      if (!job) return null;
+      const inboundEventId = String((job.payload as { inboundEventId?: string }).inboundEventId);
+      const event = events.get(inboundEventId);
+      if (!event?.streamId || event.streamGeneration === null) return null;
+      job.status = "processing";
+      job.lockedBy = input.workerId;
+      job.attempts += 1;
+      calls.push(`claim-process:${Number(inboundEventId.split("-").at(-1))}`);
+      return {
+        outcome: "claimed",
+        job,
+        streamId: event.streamId,
+        streamGeneration: event.streamGeneration,
+        inboundEventId,
+        claimToken: "a".repeat(43),
+      };
     },
     async completeJob(jobId, workerId) {
       const job = jobs.find((candidate) => candidate.id === jobId && candidate.lockedBy === workerId);
@@ -241,6 +286,11 @@ function makeHarness(options: HarnessOptions = {}) {
           dedupeKey: `conversation-reply:${turnId}`,
           attempts: 0,
           lastError: null,
+          authorization: {
+            kind: "legacy", streamId: null, streamGeneration: null,
+            sourceInboundEventId: null, claimJobId: null, claimTokenDigest: null,
+            authorityVersion: 0,
+          },
           createdAt: new Date(`2026-08-17T15:0${index}:01.000Z`),
           sentAt: null,
         });

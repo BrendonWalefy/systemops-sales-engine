@@ -46,6 +46,7 @@ import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-
 import { DentalUnderstandingProvider } from "@/infrastructure/adapters/ai/DentalUnderstandingProvider";
 import { OpenAIDentalUnderstandingModel } from "@/infrastructure/adapters/ai/OpenAIDentalUnderstandingModel";
 import { createLiveDentalUnderstanding } from "@/infrastructure/adapters/ai/live-dental-understanding";
+import { createLiveResponseVerbalizer } from "@/infrastructure/adapters/ai/live-response-verbalizer";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import {
   loadConfiguredInternalLabAuthority,
@@ -58,6 +59,7 @@ import { DrizzleClinicAutomationPolicyReader } from "@/infrastructure/repositori
 import { DrizzleConversationEnginePolicyReader } from "@/infrastructure/repositories/drizzle-conversation-engine-policy-reader";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { DrizzleConversationTurnLeaseStore } from "@/infrastructure/repositories/drizzle-conversation-turn-lease-store";
+import { DrizzleWhatsAppStreamAuthority } from "@/infrastructure/repositories/drizzle-whatsapp-stream-authority";
 import { DrizzleConversationV2ComparisonSink } from "@/infrastructure/repositories/drizzle-conversation-v2-comparison-sink";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
@@ -171,6 +173,7 @@ function createLiveHandler(input: {
     conversationRepository, contextReader,
     turnCoordinator: new ConversationTurnCoordinator(new DrizzleConversationTurnLeaseStore()),
     stateReader: state, now: () => new Date(),
+    streamAuthority: new DrizzleWhatsAppStreamAuthority(),
   });
   const gatewayFor = async (clinicId: string) => {
     if (clinicId !== input.expectedClinicId) throw new Error("Internal Lab calendar tenant mismatch");
@@ -212,9 +215,11 @@ function createLiveHandler(input: {
     },
   };
   const booking = new BookingService(calendar, appointmentRepository, leadRepository, reservations, followUps);
+  const client = new OpenAI({ apiKey: input.apiKey });
   return new V2LiveConversationHandler({
     lifecycle,
-    understanding: createLiveDentalUnderstanding(new OpenAI({ apiKey: input.apiKey })),
+    understanding: createLiveDentalUnderstanding(client),
+    verbalizer: createLiveResponseVerbalizer(client),
     dental: { treatments: new DrizzleTreatmentRepository(), calendar, state, appointments: appointmentRepository, reservations, booking },
     resolveTurnConfiguration: (configurationInput) =>
       resolveInternalLabLiveTurnConfiguration(configurationInput, {

@@ -1,6 +1,12 @@
 # Ideia Inicial: Modo Campanha (Campaign Context Overlay)
 
 ## O Problema
+> **Nota (2026-08-20):** o ADR-009 citado abaixo não existe mais como arquivo.
+> Todos os ADRs foram removidos em `3115cefd` ("docs: consolidate current
+> architecture", 06/08). O Motor de Reativação continua em produção; a
+> arquitetura corrente vive em `docs/architecture/current.md`, e o ADR original
+> só existe no histórico do git e na branch `feat/reativacao-motor`.
+
 Atualmente, nosso sistema possui o **Motor de Reativação (ADR-009)** e o painel de campanhas rodando. No entanto, o `ReactivationMessageComposer` atua apenas no **disparo da primeira mensagem** (o rascunho de reativação).
 
 Quando o lead responde (ex: "Eu quero" ou "Como funciona?"), a conversa volta para o pipeline normal da IA (`ResponseComposer` e `IntentClassifier`). 

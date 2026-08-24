@@ -19,6 +19,22 @@ import {
   type SystemOpsLabRunResult,
 } from "@/application/labs/systemops-lab-persona";
 import { isDentalOutcomeStructuralSummary } from "@/domain-packs/dental/outcome-provenance";
+import { DENTAL_OUTCOME_SCHEMA } from "@/domain-packs/dental/capabilities";
+import { DENTAL_REQUESTS, type DentalRequest } from "@/domain-packs/dental/vocabulary";
+
+/**
+ * Quem pode assinar as palavras entregues no estágio `response.validated` de um
+ * turno do Lab: um modelo vivo, o renderizador determinístico, ou o mesmo
+ * renderizador depois de o texto do modelo ser recusado. Uma identidade nova
+ * precisa entrar aqui — o parser do evidence recusa qualquer outra.
+ */
+export const RESPONSE_VALIDATED_MODEL_IDS = [
+  "gpt-4o-mini",
+  "deterministic-v2",
+  "deterministic-fallback",
+] as const;
+
+export type ResponseValidatedModelId = (typeof RESPONSE_VALIDATED_MODEL_IDS)[number];
 
 export type SanitizedTranscriptMessage = Readonly<{
   turnId: string;
@@ -50,8 +66,7 @@ type UnderstandingTrace = Readonly<{
     status: "completed" | "failed";
     durationMs: number;
     modelId: "gpt-4o-mini";
-    request: "price-of-service" | "service-availability" | "book-appointment"
-      | "confirm-slot" | "confirm-appointment" | null;
+    request: DentalRequest | null;
   }>;
 }>;
 
@@ -123,13 +138,14 @@ type ResponseValidatedTrace = Readonly<{
     violationCount: number;
     violations: string;
     requiresHandoff: boolean;
-    model?: "gpt-4o-mini" | "deterministic-v2" | "deterministic-fallback";
+    model?: ResponseValidatedModelId;
     promptVersion?: string;
     inputTokens?: number | null;
     outputTokens?: number | null;
     latencyMs?: number;
     costMicros?: number | null;
     source: "draft" | "repair" | "fallback" | "none";
+    verbalizationViolations?: string;
   }>;
 }>;
 
@@ -235,11 +251,16 @@ const decisionKindsCsv = closedCsv([
 const intendedEffectsCsv = closedCsv([
   "none", "book_slot", "confirm_appointment", "persist_slot_offer",
 ], true);
-const outcomeTypesCsv = closedCsv([
-  "catalog_answered", "slots_found", "appointment_created", "appointment_confirmed",
-  "appointment_create_failed", "appointment_confirmation_failed", "scheduling_failed",
-  "escalation_required", "clarification_required",
-], true);
+/**
+ * Derivados do pack. Copiados à mão, ficaram sem `reception_answered` e sem
+ * `greeting`/`other` assim que o turno de abertura entrou — e um trace de
+ * abertura passava a ser recusado por este parser, em silêncio.
+ */
+export const EVIDENCE_OUTCOME_TYPES = Object.freeze(
+  Object.keys(DENTAL_OUTCOME_SCHEMA),
+) as readonly string[];
+export const EVIDENCE_REQUESTS = DENTAL_REQUESTS;
+const outcomeTypesCsv = closedCsv([...EVIDENCE_OUTCOME_TYPES], true);
 const semanticClassesCsv = closedCsv([
   "information_authorized", "options_found", "effect_completed", "effect_failed",
   "human_action_required", "clarification_required",
@@ -270,13 +291,7 @@ const traceSchema = z.discriminatedUnion("stage", [
       status: z.enum(["completed", "failed"]),
       durationMs: nonNegativeInteger,
       modelId: z.literal("gpt-4o-mini"),
-      request: z.enum([
-        "price-of-service",
-        "service-availability",
-        "book-appointment",
-        "confirm-slot",
-        "confirm-appointment",
-      ]).nullable(),
+      request: z.enum(EVIDENCE_REQUESTS).nullable(),
     }).strict(),
   }).strict(),
   z.object({
@@ -332,13 +347,14 @@ const traceSchema = z.discriminatedUnion("stage", [
       violationCount: nonNegativeInteger,
       violations: z.string().max(1_000),
       requiresHandoff: z.boolean(),
-      model: z.enum(["gpt-4o-mini", "deterministic-v2", "deterministic-fallback"]).optional(),
+      model: z.enum(RESPONSE_VALIDATED_MODEL_IDS).optional(),
       promptVersion: nonEmptySafeString.optional(),
       inputTokens: nonNegativeInteger.nullable().optional(),
       outputTokens: nonNegativeInteger.nullable().optional(),
       latencyMs: nonNegativeInteger.optional(),
       costMicros: nonNegativeInteger.nullable().optional(),
       source: z.enum(["draft", "repair", "fallback", "none"]),
+      verbalizationViolations: z.string().max(500).optional(),
     }).strict(),
   }).strict(),
   z.object({

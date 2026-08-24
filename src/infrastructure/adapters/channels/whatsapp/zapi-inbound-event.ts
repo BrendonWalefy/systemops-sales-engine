@@ -1,5 +1,9 @@
 import type { RecordInboundEventInput } from "@/application/ports/inbound-event-store";
 import type { ZApiInboundPayload } from "./zapi-channel-adapter";
+import {
+  buildContactIdentifiersFromWebhook,
+  buildWhatsAppStreamAliases,
+} from "@/core/whatsapp/WhatsAppContactIdentity";
 
 export function buildZApiInboundEvent(params: {
   clinicId: string;
@@ -7,11 +11,23 @@ export function buildZApiInboundEvent(params: {
   now?: Date;
 }): RecordInboundEventInput {
   const { clinicId, payload } = params;
+  const identifiers = buildContactIdentifiersFromWebhook({
+    phone: payload.phone,
+    chatLid: payload.chatLid,
+  });
+  const conversationKey = payload.chatLid?.trim() || payload.phone;
   return {
     clinicId,
     provider: "z_api",
     providerMessageId: payload.messageId,
-    conversationKey: payload.chatLid?.trim() || payload.phone,
+    conversationKey,
+    aliases: buildWhatsAppStreamAliases({
+      provider: "z_api",
+      providerInstanceId: payload.instanceId,
+      providerThreadId: conversationKey,
+      phone: identifiers.phone,
+      whatsappLid: identifiers.whatsappLid,
+    }),
     payload,
     normalizedText: resolveNormalizedText(payload),
     mediaType: resolveMediaType(payload),

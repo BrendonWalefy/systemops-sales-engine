@@ -94,6 +94,10 @@ function configuredSnapshot(): SystemOpsDentalLabConfigSnapshot {
     id: `treatment-${index}`,
     clinicId: labId,
     name: name as string,
+    // Apelido e descrição vêm do próprio config: repetir o texto aqui deixaria a
+    // fixture passar enquanto a configuração real ficasse vazia.
+    aliases: [...SYSTEMOPS_DENTAL_LAB_CONFIG.treatments.find((entry) => entry.name === name)!.aliases],
+    description: SYSTEMOPS_DENTAL_LAB_CONFIG.treatments.find((entry) => entry.name === name)!.description,
     priceCents: priceCents as number,
     priceKind: priceKind as string,
     priceQuotableInChat: true,
@@ -213,6 +217,44 @@ describe("SystemOps Dental Lab declarative config", () => {
     expect(SYSTEMOPS_DENTAL_LAB_CONFIG.treatments[1].pipelineSteps[0].instruction).toBe(
       "Identifique o procedimento estético de interesse e o objetivo principal relatado pelo paciente.",
     );
+  });
+
+  it("declara apelido e descrição em todo tratamento, senão o modelo adivinha", () => {
+    for (const entry of SYSTEMOPS_DENTAL_LAB_CONFIG.treatments) {
+      expect(entry.aliases.length, `${entry.name} sem apelido`).toBeGreaterThan(0);
+      expect(entry.description, `${entry.name} sem descrição`).toBeTruthy();
+    }
+  });
+
+  it("mantém toda descrição dentro do teto de fato divulgável", () => {
+    for (const entry of SYSTEMOPS_DENTAL_LAB_CONFIG.treatments) {
+      expect(entry.description.length, `${entry.name} passa de 240`).toBeLessThanOrEqual(240);
+      expect(entry.description.trim()).toBe(entry.description);
+    }
+  });
+
+  it("não deixa a descrição afirmar preço, prazo ou garantia", () => {
+    for (const entry of SYSTEMOPS_DENTAL_LAB_CONFIG.treatments) {
+      expect(entry.description, `${entry.name}`).not.toMatch(/R\$|\breais\b/i);
+      expect(entry.description, `${entry.name}`).not.toMatch(/garant|promet|assegur/i);
+    }
+  });
+
+  it("persiste apelido e descrição em vez de apagá-los a cada apply", async () => {
+    const memory = createMemoryStore([emptySnapshot()]);
+
+    await applySystemOpsDentalLabConfig(memory.store, {
+      clinicId: labId,
+      expectedChannelDigest: channelDigest,
+      expectedOwnerMembershipDigest: ownerMembershipDigest,
+    });
+
+    const persisted = memory.snapshot(labId).treatments;
+    for (const declared of SYSTEMOPS_DENTAL_LAB_CONFIG.treatments) {
+      const row = persisted.find((entry) => entry.name === declared.name)!;
+      expect(row.aliases, `${declared.name}`).toEqual([...declared.aliases]);
+      expect(row.description, `${declared.name}`).toBe(declared.description);
+    }
   });
 
   it("produces the same domain-separated digest regardless of object mutation attempts", () => {

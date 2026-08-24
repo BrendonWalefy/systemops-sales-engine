@@ -1,5 +1,8 @@
 import type { InboundEventStore } from "@/application/ports/inbound-event-store";
-import type { JobQueue } from "@/application/ports/job-queue";
+import type {
+  ClaimInboundWorkResult,
+  JobQueue,
+} from "@/application/ports/job-queue";
 import { getJobRetryAt } from "@/application/services/job-retry-policy";
 import {
   getInboundEventId,
@@ -8,7 +11,8 @@ import {
 import { createLogger } from "@/infrastructure/logging/logger";
 
 export type MessageProcessJobHandler = {
-  processJob(job: Parameters<typeof getInboundEventId>[0]): Promise<JobResult>;
+  processClaimedJob(work: ClaimInboundWorkResult): Promise<JobResult>;
+  processHistoryOnlyJob(work: ClaimInboundWorkResult): Promise<JobResult>;
 };
 
 export type DrainMessageProcessQueueResult = {
@@ -47,27 +51,29 @@ export async function drainMessageProcessQueue(params: {
     queue: "message.process",
   });
 
-  const jobs = [];
+  const workItems: ClaimInboundWorkResult[] = [];
   for (let index = 0; index < params.maxJobs; index++) {
-    const job = await params.jobQueue.claimNextJob({
-      queues: ["message.process"],
+    const work = await params.jobQueue.claimNextInboundWork({
       workerId: params.workerId,
       now,
     });
-    if (!job) break;
-    jobs.push(job);
+    if (!work) break;
+    workItems.push(work);
   }
 
-  result.claimed = jobs.length;
+  result.claimed = workItems.length;
 
   await Promise.all(
-    jobs.map(async (job) => {
+    workItems.map(async (work) => {
+      const job = work.job;
       const jobLog = log.child({ jobId: job.id, traceId: getInboundEventId(job) ?? undefined });
       const startedAt = Date.now();
       jobLog.info("job.claimed", { attempt: job.attempts });
       let processingResult: JobResult | null = null;
       try {
-        processingResult = await params.handler.processJob(job);
+        processingResult = work.outcome === "history_only"
+          ? await params.handler.processHistoryOnlyJob(work)
+          : await params.handler.processClaimedJob(work);
         const completed = await params.jobQueue.completeJob(job.id, params.workerId, new Date());
         if (!completed) return;
 
@@ -91,7 +97,7 @@ export async function drainMessageProcessQueue(params: {
           now: new Date(),
         });
         const inboundEventId = getInboundEventId(job);
-        if (inboundEventId && status === "pending") {
+        if (inboundEventId && status === "pending" && work.outcome === "claimed") {
           await params.inboundEventStore.markInboundEventPending(inboundEventId);
         }
         if (inboundEventId && status === "dead") {

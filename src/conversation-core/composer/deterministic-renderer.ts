@@ -1,20 +1,16 @@
 import type { CoreResponse } from "@/conversation-core/composer/contract";
 import type { FactValue } from "@/conversation-core/decision";
+import { formatFactValue } from "@/conversation-core/composer/fact-format";
 import {
   authorizedPlanFor,
   type ValidatedDraftResponse,
 } from "@/conversation-core/composer/validator";
 
 function formatValue(value: FactValue): string {
+  // Texto livre entra entre aspas: o leitor precisa ver onde termina o valor
+  // autorizado e comeca a frase do sistema.
   if (value.kind === "display_text") return JSON.stringify(value.value);
-  if (value.kind === "money") {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: value.currency,
-    }).format(value.amountInMinor / 100).replace(/\u00a0/g, " ");
-  }
-  if (value.kind === "boolean") return value.value ? "sim" : "não";
-  return String(value.value);
+  return formatFactValue(value);
 }
 
 export function renderDeterministicResponse<OutcomeType extends string>(input: {

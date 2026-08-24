@@ -30,6 +30,13 @@ const event: InboundEvent = {
   processingStatus: "pending",
   receivedAt: new Date("2026-06-23T12:00:00.000Z"),
   processedAt: null,
+  streamId: "stream-1",
+  streamGeneration: 1,
+  registeredAt: new Date("2026-06-23T12:00:00.000Z"),
+  claimToken: null,
+  claimTokenDigest: null,
+  claimJobId: null,
+  claimedAt: null,
 };
 
 const job: JobRecord = {
@@ -68,6 +75,7 @@ function makeHandler(overrides: Partial<ConstructorParameters<typeof ProcessMess
       resolveInboundContent,
       transcribeAudio: vi.fn(),
       decisionTraceSink,
+      inboundHistoryRegistrar: { prepare: vi.fn().mockResolvedValue({}) } as never,
       ...overrides,
     }),
     inboundEventStore,
@@ -79,6 +87,63 @@ function makeHandler(overrides: Partial<ConstructorParameters<typeof ProcessMess
 }
 
 describe("ProcessMessageJobHandler", () => {
+  it("passes the settled token only in memory with the exact durable tuple", async () => {
+    const { handler, conversationHandler } = makeHandler();
+    const claimToken = "a".repeat(43);
+
+    await handler.processClaimedJob({
+      outcome: "claimed",
+      job,
+      streamId: "stream-1",
+      streamGeneration: 1,
+      inboundEventId: "event-1",
+      claimToken,
+    });
+
+    expect(conversationHandler.handle).toHaveBeenCalledWith(expect.objectContaining({
+      inboundAuthority: {
+        streamId: "stream-1",
+        streamGeneration: 1,
+        inboundEventId: "event-1",
+        claimJobId: "job-1",
+        claimToken,
+      },
+    }));
+    expect(JSON.stringify(job.payload)).not.toContain(claimToken);
+  });
+
+  it("terminates history-only work without reading content or invoking conversation effects", async () => {
+    const prepare = vi.fn().mockResolvedValue({ messageInserted: true });
+    const { handler, inboundEventStore, conversationHandler, resolveInboundContent } = makeHandler({
+      inboundHistoryRegistrar: { prepare },
+    } as never);
+
+    await expect(handler.processHistoryOnlyJob({
+      outcome: "history_only",
+      job,
+      streamId: "stream-1",
+      streamGeneration: 1,
+      inboundEventId: "event-1",
+      claimToken: null,
+    })).resolves.toEqual({ outcome: "ignored", inboundEventId: "event-1" });
+
+    expect(inboundEventStore.findInboundEvent).toHaveBeenCalledWith("event-1");
+    expect(prepare).toHaveBeenCalledWith(expect.objectContaining({
+      clinicId: "clinic-1",
+      authority: {
+        streamId: "stream-1",
+        streamGeneration: 1,
+        inboundEventId: "event-1",
+      },
+      message: expect.objectContaining({
+        externalMessageId: "message-1",
+        body: "Olá",
+      }),
+    }));
+    expect(resolveInboundContent).not.toHaveBeenCalled();
+    expect(conversationHandler.handle).not.toHaveBeenCalled();
+  });
+
   it("processa o evento persistido e só então marca a entrada como concluída", async () => {
     const { handler, inboundEventStore, conversationHandler, decisionTraceSink } = makeHandler();
 
@@ -94,6 +159,11 @@ describe("ProcessMessageJobHandler", () => {
         turnId: "event-1",
         replyEnabled: true,
         automationMode: "live",
+        inboundAuthority: {
+          streamId: "stream-1",
+          streamGeneration: 1,
+          inboundEventId: "event-1",
+        },
       }),
     );
     expect(conversationHandler.handle.mock.calls[0]![0]).not.toHaveProperty("turnObservationSink");

@@ -174,6 +174,7 @@ export async function sendRecoveryMessageAction(
     channel: "whatsapp",
     deliveryKind: "text",
     category: "recovery",
+    authorization: { kind: "recovery" },
     dedupeKey: `manual-recovery:${operationId}`,
     payload: {
       version: 1,

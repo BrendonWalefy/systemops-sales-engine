@@ -3,6 +3,11 @@ import { coordinateCapabilities } from "@/conversation-core/capability/coordinat
 import { buildV2AuthorizedResponsePlan, canonicalizeActionResults } from "@/conversation-core/authorized-response-plan";
 import type { ComposerStyle, CoreResponse, ResponseComposerPort } from "@/conversation-core/composer/contract";
 import { runV2ResponsePipeline } from "@/conversation-core/composer/response-pipeline";
+import type {
+  ResponseVerbalizerPort,
+  SpeakerProfile,
+  VerbalizationOutcome,
+} from "@/conversation-core/composer/verbalization";
 import type { ActionResult, Decision, OutcomeSchema, OutcomeTypeOf } from "@/conversation-core/decision";
 import { evaluateTurnGate, type TurnGateInput } from "@/conversation-core/gate";
 import type { Understanding } from "@/conversation-core/understanding/schema";
@@ -13,6 +18,16 @@ export type TurnPipelineResult<Schema extends OutcomeSchema = OutcomeSchema> =
   | { status: "escalated"; reason: "capability_conflict"; capabilityIds: readonly string[] }
   | { status: "rejected"; actionResults: readonly ActionResult<Schema>[] }
   | { status: "delivered"; capabilityIds: readonly string[]; actionResults: readonly ActionResult<Schema>[]; response: CoreResponse };
+
+export type ResponseStageInput<OutcomeType extends string> = Readonly<{
+  style: ComposerStyle;
+  composer: ResponseComposerPort<OutcomeType>;
+  verbalization?: Readonly<{
+    verbalizer: ResponseVerbalizerPort;
+    speaker: SpeakerProfile;
+    timeoutMs?: number;
+  }>;
+}>;
 
 export type PreparedDecision = Readonly<{ capabilityId: string; decision: Decision }>;
 export type TurnResponseAudit = Readonly<{
@@ -31,6 +46,7 @@ export type TurnResponseAudit = Readonly<{
     valid: boolean;
     violations: readonly string[];
     source: "draft" | "repair" | "fallback" | "none";
+    verbalization: VerbalizationOutcome;
     requiresHandoff: boolean;
     latencyMs: number;
   }>;
@@ -208,7 +224,7 @@ export async function completeTurnPipeline<Request extends string, Policy extend
   outcomeSchema: Schema;
   onActionResults?: (actionResults: readonly ActionResult<Schema>[]) => void | Promise<void>;
   onResponseAudit?: (audit: TurnResponseAudit) => void | Promise<void>;
-  response: { style: ComposerStyle; composer: ResponseComposerPort<OutcomeTypeOf<Schema>> };
+  response: ResponseStageInput<OutcomeTypeOf<Schema>>;
 }): Promise<TurnPipelineResult<Schema>> {
   const executions = preparedTurnRegistry.get(input.prepared);
   if (!executions) throw new Error("unregistered prepared turn");
@@ -228,7 +244,12 @@ export async function completeTurnPipeline<Request extends string, Policy extend
   await input.onActionResults?.(actionResults);
   const plan = buildV2AuthorizedResponsePlan(input.outcomeSchema, actionResults);
   const responseStartedAt = performance.now();
-  const responseResult = await runV2ResponsePipeline({ plan, style: input.response.style, composer: input.response.composer });
+  const responseResult = await runV2ResponsePipeline({
+    plan,
+    style: input.response.style,
+    composer: input.response.composer,
+    verbalization: input.response.verbalization,
+  });
   await input.onResponseAudit?.(Object.freeze({
     plan: Object.freeze({
       version: plan.version,
@@ -252,6 +273,9 @@ export async function completeTurnPipeline<Request extends string, Policy extend
           ])]
         : []),
       source: responseResult.status === "rendered" ? responseResult.source : "none",
+      verbalization: responseResult.status === "rendered"
+        ? responseResult.verbalization
+        : { status: "absent" as const },
       requiresHandoff: plan.outcomes.some(
         ({ semanticClass }) => semanticClass === "human_action_required",
       ),
@@ -270,7 +294,7 @@ export async function runTurnPipeline<Request extends string, Policy extends obj
   understand(): Promise<Understanding<Request>>;
   capabilities: readonly Capability<Request, Policy, ClaimPayload, Schema>[];
   outcomeSchema: Schema;
-  response: { style: ComposerStyle; composer: ResponseComposerPort<OutcomeTypeOf<Schema>> };
+  response: ResponseStageInput<OutcomeTypeOf<Schema>>;
 }): Promise<TurnPipelineResult<Schema>> {
   const preparation = await prepareTurnPipeline({
     gateInput: input.gateInput, state: input.state, policy: input.policy, now: input.now,

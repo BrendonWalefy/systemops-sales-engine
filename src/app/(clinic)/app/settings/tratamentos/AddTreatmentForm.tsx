@@ -110,6 +110,14 @@ export function AddTreatmentForm({
           )}
         </div>
 
+        <textarea
+          name="description"
+          rows={3}
+          maxLength={240}
+          placeholder={`O que é o ${serviceNoun}, em uma ou duas frases faladas — a IA usa este texto para explicar. Sem preço, sem prazo, sem garantia.`}
+          style={{ ...inputStyle, height: "auto", padding: "8px 10px", lineHeight: 1.45, resize: "vertical" }}
+        />
+
         <div style={{ display: "flex", gap: "8px" }}>
           <AddButton />
           <button

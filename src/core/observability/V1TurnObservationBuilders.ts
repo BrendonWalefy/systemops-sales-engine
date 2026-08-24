@@ -10,7 +10,7 @@ import {
 
 type V1ObservationTreatment = Pick<
   Treatment,
-  "id" | "name" | "priceCents" | "minPriceCents" | "priceQuotableInChat"
+  "id" | "name" | "priceCents" | "minPriceCents" | "priceQuotableInChat" | "description"
 >;
 
 export function buildV1HumanControlGateFact(
@@ -66,6 +66,7 @@ export function buildV1TenantSnapshotObservation(input: {
       priceCents: treatment.priceCents,
       priceDisclosable:
         treatment.priceQuotableInChat && treatment.priceCents !== null,
+      description: treatment.description,
     })),
   };
 }
@@ -93,6 +94,7 @@ export function buildV1ServiceResolutionObservation(input: {
           priceCents: treatment.priceCents,
           priceDisclosable:
             treatment.priceQuotableInChat && treatment.priceCents !== null,
+          description: treatment.description,
         },
         evidenceRef: `${evidencePrefix}:${treatment.id}`,
       },

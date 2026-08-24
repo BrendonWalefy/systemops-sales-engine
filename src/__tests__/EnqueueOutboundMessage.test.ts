@@ -18,6 +18,7 @@ describe("enqueueOutboundMessage", () => {
         channel: "whatsapp",
         payload: { turnId: "turn-atomic" },
         deliveryKind: "text",
+        authorization: { kind: "legacy" },
       },
       {
         outboundMessageStore: {
@@ -52,6 +53,7 @@ describe("enqueueOutboundMessage", () => {
         payload: {},
         deliveryKind: "text",
         dedupeKey: "agent-message:agent-1",
+        authorization: { kind: "legacy" },
       },
       {
         outboundMessageStore: { createOutboundMessage } as never,
@@ -79,6 +81,7 @@ describe("enqueueOutboundMessage", () => {
       channel: "whatsapp" as const,
       payload: { turnId: "turn-1" },
       deliveryKind: "text" as const,
+      authorization: { kind: "legacy" as const },
     };
 
     await enqueueOutboundMessage(input, {

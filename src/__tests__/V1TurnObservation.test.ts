@@ -50,6 +50,7 @@ const tenantSnapshot = (turnId: string) => ({
     name: "Avaliação",
     priceCents: 25_000,
     priceDisclosable: true,
+    description: null,
   }],
 });
 
@@ -545,6 +546,7 @@ describe("V1 turn observation seam", () => {
           name: "Avaliação",
           priceCents: 25_000,
           priceDisclosable: true,
+    description: null,
         },
         evidenceRef: "v1-price:service:turn-resolution",
       },
@@ -581,6 +583,7 @@ describe("V1 turn observation seam", () => {
           name: "Avaliação",
           priceCents: 25_000,
           priceDisclosable: true,
+    description: null,
         },
         evidenceRef: "v1-price:service:turn-resolution",
       },
@@ -599,7 +602,7 @@ describe("V1 turn observation seam", () => {
       query: "Avaliação",
       result: {
         kind: "exact",
-        service: { id: "service:turn-slots", name: "Avaliação", priceCents: null, priceDisclosable: false },
+        service: { id: "service:turn-slots", name: "Avaliação", priceCents: null, priceDisclosable: false, description: null },
         evidenceRef: "v1-scheduling:service:turn-slots",
       },
     });
@@ -646,7 +649,7 @@ describe("V1 turn observation seam", () => {
       query: "Avaliação",
       result: {
         kind: "exact",
-        service: { id: "service:turn-single-slot", name: "Avaliação", priceCents: null, priceDisclosable: false },
+        service: { id: "service:turn-single-slot", name: "Avaliação", priceCents: null, priceDisclosable: false, description: null },
         evidenceRef: "v1-scheduling:service:turn-single-slot",
       },
     });

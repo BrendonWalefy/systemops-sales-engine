@@ -1,5 +1,6 @@
 import type { JobQueue } from "@/application/ports/job-queue";
 import type { MessageJobOrphanReader } from "@/application/ports/message-job-orphan-reader";
+import type { WhatsAppStreamAuthority } from "@/application/ports/whatsapp-stream-authority";
 
 export type MessageJobOrphanReconciliationResult = {
   inboundFound: number;
@@ -16,6 +17,7 @@ export type MessageJobOrphanReconciliationResult = {
 export async function reconcileMessageJobOrphans(input: {
   reader: MessageJobOrphanReader;
   jobQueue: JobQueue;
+  streamAuthority?: WhatsAppStreamAuthority;
   now?: Date;
   minimumAgeMs?: number;
   limitPerQueue?: number;
@@ -27,20 +29,26 @@ export async function reconcileMessageJobOrphans(input: {
   const queues = new Set(input.queues ?? ["message.process", "message.send"]);
   const olderThan = new Date(now.getTime() - minimumAgeMs);
   const inbound = queues.has("message.process")
-    ? await input.reader.listInboundWithoutJob({ olderThan, limit })
+    ? await input.reader.listInboundAuthorityCandidates({ olderThan, limit })
     : [];
   const outbound = queues.has("message.send")
     ? await input.reader.listOutboundWithoutJob({ olderThan, limit })
     : [];
 
-  const inboundResults = await Promise.all(inbound.map((event) =>
-    input.jobQueue.enqueueJob({
-      queue: "message.process",
-      payload: { inboundEventId: event.id },
-      dedupeKey: `inbound-event:${event.id}`,
-    })
-  ));
-  const inboundRepaired = inboundResults.filter((result) => result.isNew).length;
+  if (inbound.length > 0 && !input.streamAuthority) {
+    throw new Error("inbound orphan reconciliation requires durable stream authority");
+  }
+  let inboundRepaired = 0;
+  for (const event of inbound) {
+    const repaired = await input.streamAuthority!.repairInboundAuthorityJob({
+      inboundEventId: event.id,
+      now,
+      olderThan,
+    });
+    if (repaired.outcome === "created" || repaired.outcome === "rebound") {
+      inboundRepaired++;
+    }
+  }
 
   const outboundResults = await Promise.all(outbound.map((message) => {
     const turnId = getTurnId(message.payload);

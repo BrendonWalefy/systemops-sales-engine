@@ -8,7 +8,7 @@ export type OrphanedOutboundMessage = {
 };
 
 export type MessageJobOrphanReader = {
-  listInboundWithoutJob(input: {
+  listInboundAuthorityCandidates(input: {
     olderThan: Date;
     limit: number;
   }): Promise<OrphanedInboundEvent[]>;

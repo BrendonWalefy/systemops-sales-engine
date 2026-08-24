@@ -27,6 +27,7 @@ const understanding = (
 describe("claims mínimos do pack dental", () => {
   it("declara ordem e ownership sem resolver ports durante claim", () => {
     expect(dentalPack.capabilities.map(({ id }) => id)).toEqual([
+      "dental-explanation",
       "dental-catalog",
       "dental-scheduling",
       "dental-escalation",
@@ -41,8 +42,8 @@ describe("claims mínimos do pack dental", () => {
             completedStepIds: [],
           })?.capabilityId ?? null,
       ),
-    ).toEqual(["dental-catalog", null, null, null]);
-    const scheduling = dentalPack.capabilities[1]!;
+    ).toEqual([null, "dental-catalog", null, null, null]);
+    const scheduling = dentalPack.capabilities.find(({ id }) => id === "dental-scheduling")!;
     const claim = scheduling.claim(understanding("book-appointment"), {
       phase: "active",
       pendingStepId: null,

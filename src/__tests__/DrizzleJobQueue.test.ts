@@ -71,6 +71,15 @@ describe("DrizzleJobQueue", () => {
     expect(dbMock.select).toHaveBeenCalledOnce();
   });
 
+  it("cannot claim message.process through the generic queue boundary", async () => {
+    await expect(new DrizzleJobQueue().claimNextJob({
+      queues: ["message.process"],
+      workerId: "legacy-process-worker",
+    })).resolves.toBeNull();
+    expect(dbMock.select).not.toHaveBeenCalled();
+    expect(dbMock.update).not.toHaveBeenCalled();
+  });
+
   it("claims through a locked CTE and increments attempts exactly once", async () => {
     const candidate = { id: {} };
     const candidateSelect = {
@@ -84,14 +93,19 @@ describe("DrizzleJobQueue", () => {
       set: vi.fn().mockReturnThis(),
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
-      returning: vi.fn().mockResolvedValue([{ ...existingJob, status: "processing", attempts: 1 }]),
+      returning: vi.fn().mockResolvedValue([{
+        ...existingJob,
+        queue: "message.send",
+        status: "processing",
+        attempts: 1,
+      }]),
     };
     dbMock.$with.mockReturnValue({ as: vi.fn().mockReturnValue(candidate) });
     dbMock.select.mockReturnValue(candidateSelect);
     dbMock.with.mockReturnValue({ update: vi.fn().mockReturnValue(update) });
 
     const claimed = await new DrizzleJobQueue().claimNextJob({
-      queues: ["message.process"],
+      queues: ["message.send"],
       workerId: "worker-1",
       now: new Date("2026-06-23T12:00:00.000Z"),
     });
@@ -116,6 +130,7 @@ describe("DrizzleJobQueue", () => {
       where: vi.fn().mockReturnThis(),
       returning: vi.fn().mockResolvedValue([{
         ...existingJob,
+        queue: "message.send",
         dedupeKey: "inbound:event-wanted",
         status: "processing",
         attempts: 1,
@@ -127,7 +142,7 @@ describe("DrizzleJobQueue", () => {
     const wanted = "inbound:event-wanted";
 
     const claimed = await new DrizzleJobQueue().claimNextJob({
-      queues: ["message.process"],
+      queues: ["message.send"],
       workerId: "lab-runner-1",
       dedupeKey: wanted,
       now: new Date("2026-06-23T12:00:00.000Z"),

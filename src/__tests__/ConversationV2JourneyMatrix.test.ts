@@ -156,7 +156,7 @@ function promotedAvailabilityReads() {
     turnId,
     configFingerprint: "availability-config",
     policy: { status: "captured", value: policy },
-    catalog: [{ id: "service-private", name: "Limpeza", priceCents: null, priceDisclosable: false }],
+    catalog: [{ id: "service-private", name: "Limpeza", priceCents: null, priceDisclosable: false, description: null }],
   });
   collector.record({
     kind: "slot_search",
@@ -231,13 +231,13 @@ describe("Cycle I supported journey matrix", () => {
     const result = await runner.run(capturedReads({
       catalog: {
         status: "captured",
-        value: [{ id: "service-private", name: "Limpeza", priceCents: 29000, priceDisclosable: true }],
+        value: [{ id: "service-private", name: "Limpeza", priceCents: 29000, priceDisclosable: true, description: null }],
       },
       serviceResolutions: [{
         query: "limpeza",
         result: {
           kind: "exact",
-          service: { id: "service-private", name: "Limpeza", priceCents: 29000, priceDisclosable: true },
+          service: { id: "service-private", name: "Limpeza", priceCents: 29000, priceDisclosable: true, description: null },
           evidenceRef: "catalog-snapshot",
         },
       }],

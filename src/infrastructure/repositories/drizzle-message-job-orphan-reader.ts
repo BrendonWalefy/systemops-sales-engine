@@ -1,24 +1,31 @@
-import { and, asc, eq, lte, notExists, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, notExists, or, sql } from "drizzle-orm";
 import type { MessageJobOrphanReader } from "@/application/ports/message-job-orphan-reader";
 import { db } from "@/infrastructure/db/client";
 import { inboundEvents, jobs, outboundMessages } from "@/infrastructure/db/schema";
 
 export class DrizzleMessageJobOrphanReader implements MessageJobOrphanReader {
-  async listInboundWithoutJob(input: { olderThan: Date; limit: number }) {
+  async listInboundAuthorityCandidates(input: { olderThan: Date; limit: number }) {
     return db
       .select({ id: inboundEvents.id })
       .from(inboundEvents)
       .where(and(
-        eq(inboundEvents.processingStatus, "pending"),
+        inArray(inboundEvents.processingStatus, ["pending", "failed"]),
         lte(inboundEvents.receivedAt, input.olderThan),
-        notExists(
-          db.select({ id: jobs.id }).from(jobs).where(and(
-            eq(jobs.queue, "message.process"),
-            eq(
-              jobs.dedupeKey,
-              sql<string>`'inbound-event:' || ${inboundEvents.id}::text`,
-            ),
-          )),
+        or(
+          notExists(
+            db.select({ id: jobs.id }).from(jobs).where(and(
+              eq(jobs.queue, "message.process"),
+              eq(
+                jobs.dedupeKey,
+                sql<string>`'inbound-event:' || ${inboundEvents.id}::text`,
+              ),
+            )),
+          ),
+          sql`exists (
+            select 1 from jobs bound_job
+            where bound_job.id = ${inboundEvents.claimJobId}
+              and bound_job.status in ('failed', 'dead', 'done')
+          )`,
         ),
       ))
       .orderBy(asc(inboundEvents.receivedAt))

@@ -12,7 +12,7 @@ import {
   type DentalCapabilityId,
   type DentalOutcomeStructuralSummary,
 } from "@/domain-packs/dental/outcome-provenance";
-import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
+import { DENTAL_REQUESTS, type DentalRequest } from "@/domain-packs/dental/vocabulary";
 
 export const LIVE_COMPARISON_VERSION = "conversation-v2-live-comparison.v2" as const;
 export const APPROVED_EVAL_VERSION = "conversation-v2-approved-eval.v1" as const;
@@ -53,8 +53,14 @@ const isoDateTime = z.string().datetime({ offset: true }).refine((value) => !Num
 const commit = z.string().regex(/^[a-f0-9]{7,64}$/);
 const nonNegativeInteger = z.number().int().min(0);
 const nullableNonNegativeInteger = nonNegativeInteger.nullable();
-const requests = ["price-of-service", "service-availability", "book-appointment", "confirm-slot", "confirm-appointment"] as const;
-const capabilityIds = ["dental-catalog", "dental-scheduling", "dental-escalation"] as const;
+// Derivados do pack: copiar a lista já deixou o registro recusando turnos de
+// abertura depois que `greeting` e `other` entraram no vocabulário.
+export const COMPARISON_REQUESTS = DENTAL_REQUESTS;
+export const COMPARISON_CAPABILITY_IDS = [
+  "dental-explanation", "dental-catalog", "dental-scheduling", "dental-escalation", "dental-reception",
+] as const;
+const requests = COMPARISON_REQUESTS;
+const capabilityIds = COMPARISON_CAPABILITY_IDS;
 const decisionKinds = ["answer", "ask", "offer", "execute", "escalate", "close", "suppress"] as const;
 
 const modelSchema = z.object({ modelId: z.string().min(1).max(128), calls: z.number().int().min(1), inputTokens: nullableNonNegativeInteger, outputTokens: nullableNonNegativeInteger, latencyMs: nonNegativeInteger, estimatedCostMinor: nullableNonNegativeInteger }).strict();

@@ -133,6 +133,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult> {
             channel: "whatsapp",
             deliveryKind: "text",
             category: rule.category,
+            authorization: { kind: rule.category },
             dedupeKey,
             payload: {
               version: 1,

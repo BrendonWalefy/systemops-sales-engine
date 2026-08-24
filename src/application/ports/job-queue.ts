@@ -38,6 +38,21 @@ export type ClaimNextJobInput = {
   dedupeKey?: string;
 };
 
+export type ClaimNextInboundWorkInput = {
+  workerId: string;
+  now?: Date;
+  dedupeKey?: string;
+};
+
+export type ClaimInboundWorkResult = Readonly<{
+  outcome: "claimed" | "history_only";
+  job: JobRecord;
+  streamId: string;
+  streamGeneration: number;
+  inboundEventId: string;
+  claimToken: string | null;
+}>;
+
 export type FailJobInput = {
   job: JobRecord;
   workerId: string;
@@ -48,6 +63,9 @@ export type FailJobInput = {
 
 export type JobQueue = {
   enqueueJob(input: EnqueueJobInput): Promise<EnqueueJobResult>;
+  claimNextInboundWork(
+    input: ClaimNextInboundWorkInput,
+  ): Promise<ClaimInboundWorkResult | null>;
   claimNextJob(input: ClaimNextJobInput): Promise<JobRecord | null>;
   completeJob(jobId: string, workerId: string, now?: Date): Promise<boolean>;
   releaseJob(jobId: string, workerId: string, runAt: Date, now?: Date): Promise<boolean>;
