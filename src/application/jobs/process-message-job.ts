@@ -5,6 +5,7 @@ import type {
   ClaimInboundWorkResult,
   JobRecord,
 } from "@/application/ports/job-queue";
+import type { InboundHistoryRegistrar } from "@/application/conversation/register-inbound-history";
 import {
   resolveLeadInboundContent,
   type ResolvedLeadInboundContent,
@@ -27,6 +28,7 @@ export type ProcessMessageJobDependencies = {
   inboundEventStore: InboundEventStore;
   automationPolicy: ClinicAutomationPolicyReader;
   conversationHandler: ConversationHandler;
+  inboundHistoryRegistrar?: InboundHistoryRegistrar;
   resolveInboundContent?: (params: {
     payload: ZApiInboundPayload;
     replyEnabled: boolean;
@@ -55,6 +57,7 @@ export class ProcessMessageJobHandler {
     if (work.outcome !== "claimed" || !work.claimToken) {
       throw new Error("claimed inbound work requires a durable claim token");
     }
+    await this.registerCanonicalInboundHistory(work);
     return this.processJob(work.job, work);
   }
 
@@ -62,7 +65,54 @@ export class ProcessMessageJobHandler {
     if (work.outcome !== "history_only" || work.claimToken !== null) {
       throw new Error("history-only inbound work cannot carry reply authority");
     }
+    await this.registerCanonicalInboundHistory(work);
     return { outcome: "ignored", inboundEventId: work.inboundEventId };
+  }
+
+  private async registerCanonicalInboundHistory(
+    work: ClaimInboundWorkResult,
+  ): Promise<void> {
+    const event = await this.deps.inboundEventStore.findInboundEvent(work.inboundEventId);
+    if (!event) return;
+    if (!this.deps.inboundHistoryRegistrar) {
+      throw new Error("durable inbound work requires a canonical history registrar");
+    }
+    const zapiPayload = event.provider === "z_api"
+      ? normalizeZApiInboundPayload(event.payload)
+      : null;
+    const metaPayload = event.provider === "meta_cloud_api"
+      ? parseMetaInboundTextMessage(event.payload)
+      : null;
+    const phone = zapiPayload?.phone ?? metaPayload?.phone;
+    const messageId = zapiPayload?.messageId ?? metaPayload?.messageId;
+    if (!phone || !messageId) {
+      throw new Error(`history-only event ${event.id} has no canonical provider identity`);
+    }
+    const whatsappLid = zapiPayload?.chatLid ?? null;
+    await this.deps.inboundHistoryRegistrar.prepare({
+      clinicId: event.clinicId,
+      authority: {
+        streamId: work.streamId,
+        streamGeneration: work.streamGeneration,
+        inboundEventId: work.inboundEventId,
+      },
+      message: {
+        channel: "whatsapp",
+        externalContactId: phone,
+        externalThreadId: whatsappLid ?? phone,
+        externalMessageId: messageId,
+        name: zapiPayload?.senderName ?? metaPayload?.senderName ?? null,
+        senderPhoto: zapiPayload?.senderPhoto ?? null,
+        phone,
+        whatsappLid,
+        email: null,
+        body: event.normalizedText ?? metaPayload?.messageText ?? "",
+        mediaUrl: null,
+        mediaType: (event.mediaType as "image" | "video" | "audio" | "document" | null) ?? null,
+        receivedAt: event.receivedAt,
+        campaignId: null,
+      },
+    });
   }
 
   async processJob(

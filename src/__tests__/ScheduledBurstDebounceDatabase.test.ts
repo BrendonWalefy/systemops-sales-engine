@@ -11,6 +11,7 @@ import {
   outboundMessages,
 } from "@/infrastructure/db/schema";
 import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
+import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleWhatsAppStreamAuthority } from "@/infrastructure/repositories/drizzle-whatsapp-stream-authority";
 import { buildWhatsAppStreamAliases } from "@/core/whatsapp/WhatsAppContactIdentity";
@@ -1232,5 +1233,198 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
         where inbound_event_id = ${recorded.inboundEventId}::uuid
       `);
       expect(jobs.rows[0]?.count).toBe("1");
+    });
+
+    it("persists canonical inbound authority once and orders by generation, not provider time", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const authority = new DrizzleWhatsAppStreamAuthority(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const conversationRepository = new DrizzleConversationRepository();
+      const identity = { phone: "5511888800022", providerThreadId: "canonical-order" };
+      const first = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "canonical-a", new Date("2026-08-24T20:00:05.000Z"), identity,
+      ));
+      const second = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "canonical-b", new Date("2026-08-24T20:00:00.000Z"), identity,
+      ));
+      if (first.outcome !== "registered" || second.outcome !== "registered") {
+        throw new Error("canonical-order ingress unexpectedly conflicted");
+      }
+      const [lead] = await testDb().insert(leads).values({
+        clinicId: clinicId!, channel: "whatsapp", phone: "5511888800022",
+      }).returning();
+      const [conversation] = await testDb().insert(conversations).values({
+        clinicId: clinicId!, leadId: lead.id, channel: "whatsapp",
+      }).returning();
+      await authority.bindStreamToConversation({
+        clinicId: clinicId!,
+        conversationId: conversation.id,
+        streamId: first.streamId,
+        streamGeneration: first.streamGeneration,
+        inboundEventId: first.inboundEventId,
+        now: new Date("2026-08-24T20:00:20.000Z"),
+      });
+
+      const append = (input: typeof first, body: string, sentAt: Date) =>
+        conversationRepository.appendMessage({
+          id: randomUUID(),
+          conversationId: conversation.id,
+          author: "lead",
+          body,
+          mediaUrl: null,
+          mediaType: null,
+          sentAt,
+          externalId: `external-${input.inboundEventId}`,
+          inboundEventId: input.inboundEventId,
+          streamId: input.streamId,
+          streamGeneration: input.streamGeneration,
+        } as never);
+      expect(await append(first, "A", new Date("2026-08-24T20:00:05.000Z"))).toBe(true);
+      expect(await append(second, "B", new Date("2026-08-24T20:00:00.000Z"))).toBe(true);
+      expect(await append(first, "A duplicate", new Date("2026-08-24T20:00:06.000Z"))).toBe(false);
+
+      const history = await conversationRepository.listMessages(conversation.id);
+      expect(history.map((message) => message.body)).toEqual(["A", "B"]);
+      expect(history.map((message) => ({
+        inboundEventId: (message as Record<string, unknown>).inboundEventId,
+        streamId: (message as Record<string, unknown>).streamId,
+        streamGeneration: (message as Record<string, unknown>).streamGeneration,
+      }))).toEqual([
+        { inboundEventId: first.inboundEventId, streamId: first.streamId, streamGeneration: 1 },
+        { inboundEventId: second.inboundEventId, streamId: second.streamId, streamGeneration: 2 },
+      ]);
+    });
+
+    it("orders one active and two retained streams by conversation stream order", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const authority = new DrizzleWhatsAppStreamAuthority(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const repository = new DrizzleConversationRepository();
+      const registrations = [];
+      for (let index = 1; index <= 3; index++) {
+        const registered = await store.recordInboundEventAndEnqueue(eventInput(
+          clinicId!,
+          `retained-history-${index}`,
+          new Date(`2026-08-24T20:10:0${4 - index}.000Z`),
+          {
+            phone: `55118888001${index.toString().padStart(2, "0")}`,
+            providerThreadId: `retained-history-${index}`,
+          },
+        ));
+        if (registered.outcome !== "registered") throw new Error("retained stream conflicted");
+        registrations.push(registered);
+      }
+      const [lead] = await testDb().insert(leads).values({
+        clinicId: clinicId!, channel: "whatsapp", phone: "5511888800101",
+      }).returning();
+      const [conversation] = await testDb().insert(conversations).values({
+        clinicId: clinicId!, leadId: lead.id, channel: "whatsapp",
+      }).returning();
+      for (const registered of registrations) {
+        await authority.bindStreamToConversation({
+          clinicId: clinicId!,
+          conversationId: conversation.id,
+          streamId: registered.streamId,
+          streamGeneration: registered.streamGeneration,
+          inboundEventId: registered.inboundEventId,
+          now: new Date("2026-08-24T20:11:00.000Z"),
+        });
+        await repository.appendMessage({
+          id: randomUUID(),
+          conversationId: conversation.id,
+          author: "lead",
+          body: `stream-${registrations.indexOf(registered) + 1}`,
+          sentAt: new Date(`2026-08-24T20:10:0${4 - registrations.indexOf(registered)}.000Z`),
+          externalId: `retained-external-${registered.inboundEventId}`,
+          inboundEventId: registered.inboundEventId,
+          streamId: registered.streamId,
+          streamGeneration: registered.streamGeneration,
+        });
+      }
+      const streams = await testDb().execute<{
+        id: string;
+        state: string;
+        conversation_stream_order: string;
+      }>(sql`
+        select id::text, state, conversation_stream_order::text
+        from whatsapp_streams
+        where conversation_id = ${conversation.id}::uuid
+        order by conversation_stream_order
+      `);
+      expect(streams.rows.map(({ state, conversation_stream_order }) => ({
+        state,
+        order: Number(conversation_stream_order),
+      }))).toEqual([
+        { state: "active", order: 1 },
+        { state: "retired", order: 2 },
+        { state: "retired", order: 3 },
+      ]);
+      await expect(repository.listMessages(conversation.id)).resolves.toMatchObject([
+        { body: "stream-1", streamId: registrations[0]!.streamId },
+        { body: "stream-2", streamId: registrations[1]!.streamId },
+        { body: "stream-3", streamId: registrations[2]!.streamId },
+      ]);
+    });
+
+    it("uses generation and event id as canonical tie-breakers for equal and delayed timestamps", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const authority = new DrizzleWhatsAppStreamAuthority(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const repository = new DrizzleConversationRepository();
+      const identity = { phone: "5511888800023", providerThreadId: "canonical-ties" };
+      const providerTimes = [
+        new Date("2026-08-24T20:20:05.000Z"),
+        new Date("2026-08-24T20:20:05.000Z"),
+        new Date("2026-08-24T19:20:00.000Z"),
+        new Date("2026-08-24T21:20:00.000Z"),
+      ];
+      const registrations = [];
+      for (let index = 0; index < providerTimes.length; index++) {
+        const registered = await store.recordInboundEventAndEnqueue(eventInput(
+          clinicId!, `canonical-tie-${index + 1}`, providerTimes[index]!, identity,
+        ));
+        if (registered.outcome !== "registered") throw new Error("canonical tie conflicted");
+        registrations.push(registered);
+      }
+      const [lead] = await testDb().insert(leads).values({
+        clinicId: clinicId!, channel: "whatsapp", phone: "5511888800023",
+      }).returning();
+      const [conversation] = await testDb().insert(conversations).values({
+        clinicId: clinicId!, leadId: lead.id, channel: "whatsapp",
+      }).returning();
+      await authority.bindStreamToConversation({
+        clinicId: clinicId!,
+        conversationId: conversation.id,
+        streamId: registrations[0]!.streamId,
+        streamGeneration: registrations[0]!.streamGeneration,
+        inboundEventId: registrations[0]!.inboundEventId,
+        now: new Date("2026-08-24T21:20:20.000Z"),
+      });
+      for (let index = 0; index < registrations.length; index++) {
+        const registered = registrations[index]!;
+        await repository.appendMessage({
+          id: randomUUID(),
+          conversationId: conversation.id,
+          author: "lead",
+          body: String.fromCharCode(65 + index),
+          sentAt: providerTimes[index]!,
+          externalId: `canonical-tie-external-${index}`,
+          inboundEventId: registered.inboundEventId,
+          streamId: registered.streamId,
+          streamGeneration: registered.streamGeneration,
+        });
+      }
+      const history = await repository.listMessages(conversation.id);
+      expect(history.map(({ body }) => body)).toEqual(["A", "B", "C", "D"]);
+      expect(history.map(({ streamGeneration }) => streamGeneration)).toEqual([1, 2, 3, 4]);
     });
 });

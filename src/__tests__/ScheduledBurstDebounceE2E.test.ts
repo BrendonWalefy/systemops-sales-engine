@@ -411,6 +411,9 @@ function processHandler(
     })),
     transcribeAudio: vi.fn(),
     conversationHandler,
+    inboundHistoryRegistrar: {
+      prepare: vi.fn().mockResolvedValue({}),
+    } as never,
   });
 }
 
@@ -469,6 +472,12 @@ describe("scheduled burst debounce through the durable inbox", () => {
         shouldReply: true,
       })),
       transcribeAudio: vi.fn(),
+      inboundHistoryRegistrar: {
+        async prepare(input) {
+          convertedConversationMessages.push(input.message.body);
+          return {} as never;
+        },
+      },
       conversationHandler: {
         async handle(input) {
           // This is the current boundary: only a message that has already been
@@ -492,7 +501,7 @@ describe("scheduled burst debounce through the durable inbox", () => {
     // B is durable and already received, but its process job is not eligible
     // until t=20, so it has not become a conversation message at t=16.
     expect(inboundEventStore.events.get("event-2")?.processingStatus).toBe("pending");
-    expect(convertedConversationMessages).not.toContain("B");
+    expect(convertedConversationMessages).toEqual(["A"]);
     expect(replies).toEqual([]);
   });
 

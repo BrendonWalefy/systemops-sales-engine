@@ -4,6 +4,9 @@ import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { drainMessageProcessQueue } from "@/application/jobs/drain-message-process-queue";
 import { drainMessageSendQueue } from "@/application/jobs/drain-message-send-queue";
 import { ProcessMessageJobHandler } from "@/application/jobs/process-message-job";
+import { RegisterInboundHistory } from "@/application/conversation/register-inbound-history";
+import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-incoming-message";
+import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
 import { SendMessageJobHandler } from "@/application/jobs/send-message-job";
 import { WhisperGateway } from "@/infrastructure/adapters/ai/whisper-gateway";
 import { ZApiAudioTranscriber } from "@/infrastructure/adapters/channels/whatsapp/zapi-audio-transcriber";
@@ -15,6 +18,9 @@ import { createLogger } from "@/infrastructure/logging/logger";
 import { reconcileMessageJobOrphans } from "@/application/jobs/reconcile-message-job-orphans";
 import { DrizzleMessageJobOrphanReader } from "@/infrastructure/repositories/drizzle-message-job-orphan-reader";
 import { DrizzleWhatsAppStreamAuthority } from "@/infrastructure/repositories/drizzle-whatsapp-stream-authority";
+import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
+import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
+import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
 import {
   DEFAULT_MESSAGE_PROCESS_BATCH_SIZE,
   MAX_MESSAGE_PROCESS_BATCH_SIZE,
@@ -58,10 +64,27 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     jobQueue,
     outboundMessageStore,
   });
+  const historyConversationRepository = new DrizzleConversationRepository();
+  const streamAuthority = new DrizzleWhatsAppStreamAuthority();
   const handler = new ProcessMessageJobHandler({
     inboundEventStore,
     automationPolicy: conversationV2Runtime.automationPolicy,
     conversationHandler: conversationV2Runtime.conversationHandler,
+    inboundHistoryRegistrar: new RegisterInboundHistory({
+      registerIncomingMessage: new RegisterIncomingMessage({
+        leadRepository: new DrizzleLeadRepository(),
+        conversationRepository: historyConversationRepository,
+        usageCostTracker: new DefaultUsageCostTracker({
+          usageCostRepository: new DrizzleUsageCostRepository(),
+          idGenerator: randomUUID,
+          now: () => new Date(),
+        }),
+        idGenerator: randomUUID,
+        now: () => new Date(),
+      }),
+      streamAuthority,
+      now: () => new Date(),
+    }),
     transcribeAudio: audioTranscriber.transcribe.bind(audioTranscriber),
     decisionTraceSink: conversationV2Runtime.decisionTraceSink,
     createTurnObservationSink: conversationV2Runtime.createTurnObservationSink,
@@ -71,7 +94,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const orphanReconciliation = await reconcileMessageJobOrphans({
       reader: new DrizzleMessageJobOrphanReader(),
       jobQueue,
-      streamAuthority: new DrizzleWhatsAppStreamAuthority(),
+      streamAuthority,
       queues: ["message.process", "message.send"],
     });
     const result = await drainMessageProcessQueue({

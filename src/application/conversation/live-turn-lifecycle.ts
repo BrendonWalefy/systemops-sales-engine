@@ -15,7 +15,6 @@ import type { Organization } from "@/domain/entities/clinic";
 import type { Lead } from "@/domain/entities/lead";
 import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
 import type { EditorialConfig } from "@/application/config/editorial-config";
-import type { InboundAuthorityTuple } from "@/application/ports/inbound-event-store";
 import type { WhatsAppStreamAuthority } from "@/application/ports/whatsapp-stream-authority";
 
 export type LiveTurnRegistration = Readonly<{
@@ -30,7 +29,7 @@ export type LiveTurnRegistration = Readonly<{
   inboundMessage: Message;
   outboundAddress: string;
   editorial: EditorialConfig | null;
-  inboundAuthority: InboundAuthorityTuple | null;
+  inboundAuthority: ConversationHandleInput["inboundAuthority"] | null;
 }>;
 
 export type LiveTurnContext = LiveTurnRegistration & Readonly<{
@@ -95,22 +94,32 @@ export class LiveTurnLifecycle {
   ): Promise<BeginLiveTurnResult> {
     const existing = await this.deps.conversationRepository
       .findMessageByExternalId(input.messageId);
-    if (existing) return { outcome: "duplicate", reason: "external_id" };
+    if (
+      existing &&
+      (!input.inboundAuthority ||
+        existing.inboundEventId !== input.inboundAuthority.inboundEventId ||
+        existing.streamId !== input.inboundAuthority.streamId ||
+        existing.streamGeneration !== input.inboundAuthority.streamGeneration)
+    ) {
+      return { outcome: "duplicate", reason: "external_id" };
+    }
 
     const identifiers = buildContactIdentifiersFromWebhook({
       phone: input.phone,
       chatLid: input.whatsappLid,
     });
     const channelAddress = resolveWhatsAppChannelAddress(identifiers) ?? input.phone;
-    const recent = await this.deps.conversationRepository
-      .findRecentLeadMessageByIdentityAndContent({
-        clinicId: input.clinicId,
-        phone: identifiers.phone,
-        whatsappLid: identifiers.whatsappLid,
-        fallbackPhone: input.phone,
-        body: input.messageText,
-        sentAtOrAfter: new Date(this.deps.now().getTime() - 2 * 60_000),
-      });
+    const recent = input.inboundAuthority
+      ? null
+      : await this.deps.conversationRepository
+        .findRecentLeadMessageByIdentityAndContent({
+          clinicId: input.clinicId,
+          phone: identifiers.phone,
+          whatsappLid: identifiers.whatsappLid,
+          fallbackPhone: input.phone,
+          body: input.messageText,
+          sentAtOrAfter: new Date(this.deps.now().getTime() - 2 * 60_000),
+        });
     if (recent) return { outcome: "duplicate", reason: "recent_content" };
 
     const clinic = await this.deps.contextReader.findOrganization(input.clinicId);
@@ -118,8 +127,9 @@ export class LiveTurnLifecycle {
     const editorial = await this.deps.contextReader.resolveEditorialConfig(input.clinicId);
     await options.beforeRegister?.(Object.freeze({ clinic, editorial }));
 
-    const registered = await this.deps.registerIncomingMessage.execute({
+    const prepared = await this.deps.registerIncomingMessage.prepareInboundHistory({
       clinicId: input.clinicId,
+      inboundAuthority: input.inboundAuthority,
       message: {
         externalMessageId: input.messageId,
         externalContactId: channelAddress,
@@ -138,15 +148,29 @@ export class LiveTurnLifecycle {
       },
     });
 
+    if (input.inboundAuthority && (prepared.messageInserted || prepared.authorityMatchedExisting)) {
+      if (!this.deps.streamAuthority) {
+        throw new Error("durable inbound authority requires stream binding");
+      }
+      await this.deps.streamAuthority.bindStreamToConversation({
+        clinicId: input.clinicId,
+        conversationId: prepared.conversation.id,
+        ...input.inboundAuthority,
+        now: this.deps.now(),
+      });
+    }
+
     // `messages_external_id_idx` is the durable authority for races that pass
     // both preflight reads. RegisterIncomingMessage gates every mutable effect
     // on the insert result, so only the row winner may continue to an engine.
-    if (!registered.messageInserted) {
+    if (!prepared.messageInserted && !prepared.authorityMatchedExisting) {
       const persistedInbound = await this.deps.conversationRepository
         .findMessageByExternalId(input.messageId);
       if (!persistedInbound) return { outcome: "busy", reason: "conversation_lease" };
       return { outcome: "duplicate", reason: "external_id" };
     }
+    const registered = await this.deps.registerIncomingMessage
+      .applyClaimedInboundEffects(prepared);
     const persistedInbound = registered.message;
 
     const outboundAddress = resolveWhatsAppChannelAddress({
