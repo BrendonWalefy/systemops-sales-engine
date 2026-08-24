@@ -44,3 +44,10 @@ jobs:
 
       - name: Verify
         run: npm run verify
+
+      - name: Verify embedded authority database
+        run: npm run test:db:authority
+        env:
+          DATABASE_URL: postgresql://postgres:pr306-test-password@127.0.0.1:1/systemops_test
+          TEST_DATABASE_HOST: 127.0.0.1
+          PRODUCTION_DATABASE_HOST: production.invalid
