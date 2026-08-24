@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { describe, expect, it, beforeAll, afterAll, vi } from "vitest";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import {
+  conversationAuthority,
   conversations,
   leads,
   organizations,
@@ -14,6 +15,7 @@ import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleWhatsAppStreamAuthority } from "@/infrastructure/repositories/drizzle-whatsapp-stream-authority";
+import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { buildWhatsAppStreamAliases } from "@/core/whatsapp/WhatsAppContactIdentity";
 import {
   cleanupEmbeddedAuthorityDatabase,
@@ -1426,5 +1428,164 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
       const history = await repository.listMessages(conversation.id);
       expect(history.map(({ body }) => body)).toEqual(["A", "B", "C", "D"]);
       expect(history.map(({ streamGeneration }) => streamGeneration)).toEqual([1, 2, 3, 4]);
+    });
+
+    it("persists and validates a settled live outbound tuple without checking the latest generation", async () => {
+      const ingress = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const first = await ingress.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "outbound-authority-a", new Date("2026-08-24T22:00:00.000Z"),
+        { phone: "5511888800030", providerThreadId: "outbound-authority" },
+      ));
+      if (first.outcome !== "registered") throw new Error("live outbound ingress conflicted");
+      const queue = new DrizzleJobQueue();
+      const claim = await queue.claimNextInboundWork({
+        workerId: "outbound-authority-worker",
+        dedupeKey: `inbound-event:${first.inboundEventId}`,
+        now: new Date("2026-08-24T22:00:15.000Z"),
+      });
+      if (!claim || claim.outcome !== "claimed" || !claim.claimToken) {
+        throw new Error("live outbound event did not settle");
+      }
+      const second = await ingress.recordInboundEventAndEnqueue(eventInput(
+        clinicId!, "outbound-authority-b", new Date("2026-08-24T22:00:20.000Z"),
+        { phone: "5511888800030", providerThreadId: "outbound-authority" },
+      ));
+      if (second.outcome !== "registered") throw new Error("later ingress conflicted");
+      const [lead] = await testDb().insert(leads).values({
+        clinicId: clinicId!, channel: "whatsapp", phone: "5511888800030",
+      }).returning();
+      const [conversation] = await testDb().insert(conversations).values({
+        clinicId: clinicId!, leadId: lead.id, channel: "whatsapp",
+      }).returning();
+      await testDb().insert(conversationAuthority).values({
+        clinicId: clinicId!, version: 2,
+      }).onConflictDoUpdate({
+        target: conversationAuthority.clinicId,
+        set: { version: 2 },
+      });
+      const outboundStore = new DrizzleOutboundMessageStore();
+      const input = {
+        clinicId: clinicId!,
+        conversationId: conversation.id,
+        channel: "whatsapp" as const,
+        payload: { turnId: "outbound-authority-a" },
+        deliveryKind: "text" as const,
+        category: "reply" as const,
+        dedupeKey: "outbound-authority-a",
+        authorization: {
+          kind: "live_stream_reply" as const,
+          streamId: claim.streamId,
+          streamGeneration: claim.streamGeneration,
+          sourceInboundEventId: claim.inboundEventId,
+          claimJobId: claim.job.id,
+          claimToken: claim.claimToken,
+        },
+      };
+
+      const firstOutbox = await outboundStore.createOutboundMessageAndEnqueue(input);
+      await expect(outboundStore.authorizeOutboundMessageForSend(firstOutbox.outboundMessageId))
+        .resolves.toEqual({ authorized: true });
+      await expect(outboundStore.createOutboundMessageAndEnqueue({
+        ...input,
+        dedupeKey: "invalid-token-must-not-reuse-live-authority",
+        authorization: { ...input.authorization, claimToken: "z".repeat(43) },
+      })).rejects.toThrow("Outbound authorization rejected");
+      await testDb().execute(sql`
+        update outbound_messages set status = 'dead'
+        where id = ${firstOutbox.outboundMessageId}::uuid
+      `);
+      const duplicate = await outboundStore.createOutboundMessageAndEnqueue({
+        ...input,
+        dedupeKey: "different-dedupe-must-not-create-a-second-live-reply",
+      });
+      expect(duplicate.outboundMessageId).toBe(firstOutbox.outboundMessageId);
+      const persisted = await outboundStore.findOutboundMessage(firstOutbox.outboundMessageId);
+      expect(persisted?.authorization).toMatchObject({
+        kind: "live_stream_reply",
+        streamId: claim.streamId,
+        streamGeneration: claim.streamGeneration,
+        sourceInboundEventId: claim.inboundEventId,
+        claimJobId: claim.job.id,
+        authorityVersion: 2,
+      });
+      expect(persisted?.authorization.claimTokenDigest).not.toBe(claim.claimToken);
+      expect(persisted?.status).toBe("dead");
+      const jobs = await testDb().execute<{ payload: Record<string, unknown>; count: string }>(sql`
+        select min(payload::text)::jsonb as payload, count(*)::text as count
+        from jobs where dedupe_key = ${`outbound-message:${firstOutbox.outboundMessageId}`}
+      `);
+      expect(jobs.rows[0]?.count).toBe("1");
+      const serializedJob = JSON.stringify(jobs.rows[0]?.payload);
+      expect(serializedJob).not.toContain(claim.claimToken);
+      expect(serializedJob).not.toContain(persisted?.authorization.claimTokenDigest ?? "missing");
+    });
+
+    it("persists every explicit non-live kind and fences missing or legacy authorization at version 2", async () => {
+      const [lead] = await testDb().insert(leads).values({
+        clinicId: clinicId!, channel: "whatsapp", phone: "5511888800031",
+      }).returning();
+      const [conversation] = await testDb().insert(conversations).values({
+        clinicId: clinicId!, leadId: lead.id, channel: "whatsapp",
+      }).returning();
+      await testDb().insert(conversationAuthority).values({ clinicId: clinicId!, version: 1 })
+        .onConflictDoUpdate({ target: conversationAuthority.clinicId, set: { version: 1 } });
+      const store = new DrizzleOutboundMessageStore();
+      const cases = [
+        ["follow_up", "follow_up"],
+        ["reminder", "reminder"],
+        ["campaign", "campaign"],
+        ["human_manual", "reply"],
+        ["operational", "operational"],
+        ["system", "reply"],
+        ["recovery", "recovery"],
+        ["legacy", "reply"],
+      ] as const;
+      for (const [kind, category] of cases) {
+        const created = await store.createOutboundMessageAndEnqueue({
+          clinicId: clinicId!,
+          conversationId: conversation.id,
+          channel: "whatsapp",
+          payload: { kind, text: kind },
+          deliveryKind: "text",
+          category,
+          dedupeKey: `non-live-authorization:${kind}`,
+          authorization: { kind },
+        });
+        const persisted = await store.findOutboundMessage(created.outboundMessageId);
+        expect(persisted?.authorization).toEqual({
+          kind,
+          streamId: null,
+          streamGeneration: null,
+          sourceInboundEventId: null,
+          claimJobId: null,
+          claimTokenDigest: null,
+          authorityVersion: 1,
+        });
+      }
+      await testDb().update(conversationAuthority).set({ version: 2 })
+        .where(eq(conversationAuthority.clinicId, clinicId!));
+      const legacy = await testDb().execute<{ id: string }>(sql`
+        select id::text from outbound_messages
+        where conversation_id = ${conversation.id}::uuid
+          and authorization_kind = 'legacy'
+      `);
+      await expect(store.authorizeOutboundMessageForSend(legacy.rows[0]!.id))
+        .resolves.toEqual({ authorized: false, reason: "authority_version_activated" });
+
+      const missingId = randomUUID();
+      await testDb().insert(outboundMessages).values({
+        id: missingId,
+        clinicId: clinicId!,
+        conversationId: conversation.id,
+        channel: "whatsapp",
+        payload: { text: "historical" },
+        deliveryKind: "text",
+        category: "reply",
+        sequence: 100,
+      });
+      await expect(store.authorizeOutboundMessageForSend(missingId))
+        .resolves.toEqual({ authorized: false, reason: "authority_version_activated" });
     });
 });

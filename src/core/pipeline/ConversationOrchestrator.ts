@@ -105,6 +105,8 @@ import {
 import type { ProcedureListItem } from "@/core/conversation/ConversationStateMachine";
 import { buildInitialAgentMessage } from "./outbound-message-persistence";
 import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
+import { authorizationForConversationReply } from "@/application/jobs/outbound-authorization";
+import type { OutboundAuthorizationInput } from "@/application/ports/outbound-message-store";
 import type {
   ConversationOutboundPayload,
   PipelineAdvance,
@@ -3309,6 +3311,21 @@ export class ConversationOrchestrator {
   ): Promise<{ replied: boolean; reason?: string }> {
     const { clinicId, phone, messageId, senderName, senderPhoto, timestamp } = params;
     const turnId = params.turnId ?? messageId;
+    const liveReplyAuthorization = authorizationForConversationReply(params.inboundAuthority);
+    const enqueueLiveReply = (
+      replyClinicId: string,
+      replyConversationId: string,
+      payload: ConversationOutboundPayload,
+      deterministicTrace?: ConversationDeterministicTraceCompletion,
+      plannedResponse?: PlannedResponse,
+    ) => this.enqueueConversationReply(
+      replyClinicId,
+      replyConversationId,
+      payload,
+      deterministicTrace,
+      plannedResponse,
+      liveReplyAuthorization,
+    );
     const turnStartedAt = runtimeNow();
     recordV1TurnObservation(params.turnObservationSink, {
       kind: "turn_input",
@@ -3409,6 +3426,7 @@ export class ConversationOrchestrator {
           turnObservationSink: params.turnObservationSink,
           automationMode: params.automationMode
             ?? (params.observationOnly ? "observe" : replyEnabled ? "live" : "disabled"),
+          inboundAuthority: params.inboundAuthority,
         }, {
           beforeRegister: async ({ clinic, editorial }) => {
             preparedLiveTenant = await prepareTenantConfiguration(clinic, editorial);
@@ -3772,7 +3790,7 @@ export class ConversationOrchestrator {
               intent: "acknowledgment",
               deliveryFormat: null,
             });
-            await this.enqueueConversationReply(clinicId, conversation.id, {
+            await enqueueLiveReply(clinicId, conversation.id, {
               version: 1,
               kind: "conversation_reply",
               turnId,
@@ -4013,7 +4031,7 @@ export class ConversationOrchestrator {
           intent: "needs_human",
           deliveryFormat: null,
         });
-        await this.enqueueConversationReply(clinicId, conversation.id, {
+        await enqueueLiveReply(clinicId, conversation.id, {
           version: 1,
           kind: "conversation_reply",
           turnId,
@@ -4158,7 +4176,7 @@ export class ConversationOrchestrator {
         intent: "needs_human",
         deliveryFormat: null,
       });
-      await this.enqueueConversationReply(clinicId, conversation.id, {
+      await enqueueLiveReply(clinicId, conversation.id, {
         version: 1,
         kind: "conversation_reply",
         turnId,
@@ -4299,7 +4317,7 @@ export class ConversationOrchestrator {
         intent: "needs_human",
         deliveryFormat: null,
       });
-      await this.enqueueConversationReply(clinicId, conversation.id, {
+      await enqueueLiveReply(clinicId, conversation.id, {
         version: 1,
         kind: "conversation_reply",
         turnId,
@@ -4535,7 +4553,7 @@ export class ConversationOrchestrator {
           intent: "acknowledgment",
           deliveryFormat: null,
         });
-        await this.enqueueConversationReply(clinicId, conversation.id, {
+        await enqueueLiveReply(clinicId, conversation.id, {
           version: 1,
           kind: "conversation_reply",
           turnId,
@@ -4692,7 +4710,7 @@ export class ConversationOrchestrator {
             intent: null,
             deliveryFormat: null,
           });
-          await this.enqueueConversationReply(clinicId, conversation.id, {
+          await enqueueLiveReply(clinicId, conversation.id, {
             version: 1,
             kind: "conversation_reply",
             turnId,
@@ -5007,7 +5025,7 @@ export class ConversationOrchestrator {
         intent: "stop_contact",
         deliveryFormat: null,
       });
-      await this.enqueueConversationReply(clinicId, conversation.id, {
+      await enqueueLiveReply(clinicId, conversation.id, {
         version: 1,
         kind: "conversation_reply",
         turnId,
@@ -5601,7 +5619,7 @@ export class ConversationOrchestrator {
             intent: "acknowledgment",
             deliveryFormat: null,
           });
-          await this.enqueueConversationReply(clinicId, conversation.id, {
+          await enqueueLiveReply(clinicId, conversation.id, {
             version: 1,
             kind: "conversation_reply",
             turnId,
@@ -7960,7 +7978,7 @@ export class ConversationOrchestrator {
       conversation.id,
       pendingPipelineAdvance,
     );
-    await this.enqueueConversationReply(clinicId, conversation.id, {
+    await enqueueLiveReply(clinicId, conversation.id, {
       version: 1,
       kind: "conversation_reply",
       turnId,
@@ -8267,6 +8285,7 @@ export class ConversationOrchestrator {
     payload: ConversationOutboundPayload,
     deterministicTrace?: ConversationDeterministicTraceCompletion,
     plannedResponse?: PlannedResponse,
+    authorization: OutboundAuthorizationInput = { kind: "system" },
   ): Promise<void> {
     if (payload.turnId) {
       const stateBeforeDelivery =
@@ -8330,6 +8349,7 @@ export class ConversationOrchestrator {
         payload,
         deliveryKind: "text",
         dedupeKey: `agent-message:${payload.agentMessageId}`,
+        authorization,
       },
       {
         outboundMessageStore: new DrizzleOutboundMessageStore(),

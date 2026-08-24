@@ -105,6 +105,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         channel: "whatsapp" as const,
         deliveryKind: "text" as const,
         category: "reminder" as const,
+        authorization: { kind: "reminder" as const },
         dedupeKey: `deposit-expired:${row.id}`,
         payload: {
           version: 1 as const,

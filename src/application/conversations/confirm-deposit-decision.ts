@@ -194,6 +194,7 @@ export async function confirmDepositDecision(params: {
       channel: "whatsapp",
       deliveryKind: "text",
       category: "reply",
+      authorization: { kind: "human_manual" },
       dedupeKey: `deposit-confirmation:${payload.reservationId ?? payload.slotStartsAt}`,
       payload: {
         version: 1,

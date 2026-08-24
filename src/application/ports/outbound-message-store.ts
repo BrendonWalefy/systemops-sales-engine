@@ -17,6 +17,45 @@ export type OutboundMessageStatus =
   | "dead"
   | "cancelled";
 
+export type NonLiveOutboundAuthorizationKind =
+  | "follow_up"
+  | "reminder"
+  | "campaign"
+  | "human_manual"
+  | "operational"
+  | "system"
+  | "recovery"
+  | "legacy";
+
+export type OutboundAuthorizationKind =
+  | "live_stream_reply"
+  | NonLiveOutboundAuthorizationKind;
+
+export type OutboundAuthorizationInput =
+  | Readonly<{
+      kind: "live_stream_reply";
+      streamId: string;
+      streamGeneration: number;
+      sourceInboundEventId: string;
+      claimJobId: string;
+      claimToken: string;
+    }>
+  | Readonly<{ kind: NonLiveOutboundAuthorizationKind }>;
+
+export type PersistedOutboundAuthorization = Readonly<{
+  kind: OutboundAuthorizationKind | null;
+  streamId: string | null;
+  streamGeneration: number | null;
+  sourceInboundEventId: string | null;
+  claimJobId: string | null;
+  claimTokenDigest: string | null;
+  authorityVersion: number | null;
+}>;
+
+export type OutboundSendAuthorizationResult =
+  | Readonly<{ authorized: true }>
+  | Readonly<{ authorized: false; reason: string }>;
+
 export type OutboundMessage = {
   id: string;
   clinicId: string;
@@ -31,6 +70,7 @@ export type OutboundMessage = {
   dedupeKey: string | null;
   attempts: number;
   lastError: string | null;
+  authorization: PersistedOutboundAuthorization;
   createdAt: Date;
   sentAt: Date | null;
 };
@@ -43,6 +83,7 @@ export type CreateOutboundMessageInput = {
   deliveryKind: OutboundMessageDeliveryKind;
   category?: OutboundMessageCategory;
   dedupeKey?: string | null;
+  authorization: OutboundAuthorizationInput;
 };
 
 export type CreateOutboundMessageResult = {
@@ -70,6 +111,7 @@ export type OutboundMessageStore = {
     options?: { turnId?: string | null },
   ): Promise<CreateOutboundMessageAndEnqueueResult>;
   findOutboundMessage(id: string): Promise<OutboundMessage | null>;
+  authorizeOutboundMessageForSend(id: string): Promise<OutboundSendAuthorizationResult>;
   findConversationReplyByTurnId(input: {
     clinicId: string;
     turnId: string;

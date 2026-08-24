@@ -199,6 +199,7 @@ export function buildRecoveryOutboxInput(input: {
       channel: "whatsapp" as const,
       deliveryKind: "text" as const,
       category: "recovery" as const,
+      authorization: { kind: "recovery" as const },
       dedupeKey,
       payload: {
         version: 1 as const,

@@ -286,6 +286,11 @@ function makeHarness(options: HarnessOptions = {}) {
           dedupeKey: `conversation-reply:${turnId}`,
           attempts: 0,
           lastError: null,
+          authorization: {
+            kind: "legacy", streamId: null, streamGeneration: null,
+            sourceInboundEventId: null, claimJobId: null, claimTokenDigest: null,
+            authorityVersion: 0,
+          },
           createdAt: new Date(`2026-08-17T15:0${index}:01.000Z`),
           sentAt: null,
         });
