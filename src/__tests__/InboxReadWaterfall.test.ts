@@ -22,6 +22,11 @@ const dbMock = vi.hoisted(() => ({
 }));
 vi.mock("@/infrastructure/db/client", () => ({ db: dbMock }));
 
+const requireSessionClinicIdMock = vi.hoisted(() => vi.fn());
+vi.mock("@/application/tenancy/resolve-clinic", () => ({
+  requireSessionClinicId: requireSessionClinicIdMock,
+}));
+
 vi.mock("@/infrastructure/observability/performance-logger", () => ({
   measureServerOperation: (_input: unknown, work: () => Promise<unknown>) => work(),
 }));
@@ -108,6 +113,7 @@ describe("página da conversa — profundidade da leitura", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.resetModules();
+    requireSessionClinicIdMock.mockResolvedValue(CLINIC_ID);
   });
 
   it("dispara lead, mensagens, agendamento, clínica e estado do sinal na MESMA rodada", async () => {
@@ -156,6 +162,7 @@ describe("página da conversa — profundidade da leitura", () => {
 
     await barrier.settleMicrotasks();
     expect(barrier.dispatched).toEqual(["conversation"]);
+    expect(requireSessionClinicIdMock).toHaveBeenCalledOnce();
 
     barrier.releaseAll();
     await barrier.settleMicrotasks();
