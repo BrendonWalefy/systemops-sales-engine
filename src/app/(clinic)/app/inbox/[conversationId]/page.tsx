@@ -22,6 +22,7 @@ import { LeadAvatar } from "./LeadAvatar";
 import { ConversationCategoryControl } from "./ConversationCategoryControl";
 import { avatarInitial } from "../avatar-initial";
 import { measureServerOperation } from "@/infrastructure/observability/performance-logger";
+import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 
 const TZ = "America/Sao_Paulo";
 
@@ -316,13 +317,25 @@ export default async function ConversationPage({
       operation: "conversation_total",
     },
     async () => {
-      const [conv] = await db
-        .select()
-        .from(conversations)
-        .where(eq(conversations.id, conversationId))
-        .limit(1);
+      // Guarda multi-tenant na leitura. requireSessionClinicId() é o mesmo
+      // helper que as Server Actions irmãs em ./actions.ts usam — para
+      // clinic_admin devolve a clínica do vínculo, para owner devolve a
+      // clínica selecionada via cookie sops_active_clinic. Dispara junto do
+      // SELECT da conversa (Promise.all): a resolução do tenant não adiciona
+      // um round trip sequencial. Se a conversa pertence a outra clínica —
+      // ou não existe — a resposta é notFound(), indistinguível de UUID
+      // inexistente.
+      const [sessionClinicId, convRows] = await Promise.all([
+        requireSessionClinicId(),
+        db
+          .select()
+          .from(conversations)
+          .where(eq(conversations.id, conversationId))
+          .limit(1),
+      ]);
+      const conv = convRows[0];
 
-      if (!conv) notFound();
+      if (!conv || conv.clinicId !== sessionClinicId) notFound();
       clinicId = conv.clinicId;
       return prepareConversationPage(conversationId, conv);
     },
