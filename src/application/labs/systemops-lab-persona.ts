@@ -12,6 +12,7 @@ import type { JobQueue, JobQueueName, JobRecord } from "@/application/ports/job-
 import type { OutboundMessageStore } from "@/application/ports/outbound-message-store";
 import { getJobRetryAt } from "@/application/services/job-retry-policy";
 import { persistInboundEventAndEnqueue } from "@/application/whatsapp/persist-inbound-event";
+import { buildWhatsAppStreamAliases } from "@/core/whatsapp/WhatsAppContactIdentity";
 
 export const SYSTEMOPS_LAB_PERSONA_EXPECTATIONS = Object.freeze([
   "factual_correctness",
@@ -320,6 +321,12 @@ export async function runSystemOpsLabPersona(input: Readonly<{
       provider: "z_api",
       providerMessageId,
       conversationKey: syntheticAddress,
+      aliases: buildWhatsAppStreamAliases({
+        provider: "z_api",
+        providerInstanceId: `systemops-lab-${input.runId}`,
+        providerThreadId: syntheticAddress,
+        whatsappLid: syntheticAddress,
+      }),
       payload: {
         phone: syntheticAddress,
         chatLid: syntheticAddress,
@@ -341,7 +348,6 @@ export async function runSystemOpsLabPersona(input: Readonly<{
       receivedAt: nextReceivedAt,
     }, {
       inboundEventStore: input.dependencies.inboundEventStore,
-      jobQueue: input.dependencies.jobQueue,
     });
     if (!persisted.eventWasNew || !persisted.jobWasNew) {
       throw new Error("SystemOps Lab persona run reuses an existing inbound turn");

@@ -180,6 +180,7 @@ export async function POST(
       channel: "whatsapp",
       deliveryKind: attachment?.mediaType ?? "text",
       category: "reply",
+      authorization: { kind: "human_manual" },
       dedupeKey: `operator:${msgId}`,
       payload: {
         version: 1,

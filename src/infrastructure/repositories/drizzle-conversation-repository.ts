@@ -3,7 +3,12 @@ import type { Conversation, Message } from "@/domain/entities/conversation";
 import type { ConversationRepository } from "@/domain/repositories/conversation-repository";
 import { db } from "@/infrastructure/db/client";
 import { isPostgresErrorCode } from "@/infrastructure/db/is-postgres-error-code";
-import { conversations, leads, messages } from "@/infrastructure/db/schema";
+import {
+  conversations,
+  leads,
+  messages,
+  whatsappStreams,
+} from "@/infrastructure/db/schema";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export class DrizzleConversationRepository implements ConversationRepository {
@@ -166,6 +171,9 @@ export class DrizzleConversationRepository implements ConversationRepository {
           intent: message.intent ?? null,
           deliveryFormat: message.deliveryFormat ?? null,
           simulated: message.simulated ?? false,
+          inboundEventId: message.inboundEventId ?? null,
+          streamId: message.streamId ?? null,
+          streamGeneration: message.streamGeneration ?? null,
         })
         .onConflictDoNothing()
         .returning({ id: messages.id });
@@ -198,9 +206,16 @@ export class DrizzleConversationRepository implements ConversationRepository {
     const rows = await db
       .select()
       .from(messages)
+      .leftJoin(whatsappStreams, eq(whatsappStreams.id, messages.streamId))
       .where(eq(messages.conversationId, conversationId))
-      .orderBy(asc(messages.sentAt));
-    return rows.map(mapMessageRow);
+      .orderBy(
+        asc(whatsappStreams.conversationStreamOrder),
+        asc(messages.streamGeneration),
+        asc(messages.inboundEventId),
+        asc(messages.sentAt),
+        asc(messages.id),
+      );
+    return rows.map((row) => mapMessageRow(row.messages));
   }
 
   async findLatestLeadMessage(conversationId: string): Promise<Message | null> {
@@ -247,5 +262,8 @@ function mapMessageRow(row: typeof messages.$inferSelect): Message {
     externalId: row.externalId,
     intent: row.intent ?? null,
     deliveryFormat: (row.deliveryFormat as Message["deliveryFormat"]) ?? null,
+    inboundEventId: row.inboundEventId ?? null,
+    streamId: row.streamId ?? null,
+    streamGeneration: row.streamGeneration ?? null,
   };
 }

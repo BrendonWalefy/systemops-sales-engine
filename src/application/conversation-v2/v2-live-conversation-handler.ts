@@ -6,6 +6,7 @@ import type {
 } from "@/application/conversation/live-turn-lifecycle";
 import { createDentalLiveAdapters, type DentalLiveAdapterDependencies } from "@/application/conversation-v2/dental-live-adapters";
 import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
+import { authorizationForConversationReply } from "@/application/jobs/outbound-authorization";
 import type { JobQueue } from "@/application/ports/job-queue";
 import type { OutboundMessageStore } from "@/application/ports/outbound-message-store";
 import type {
@@ -295,6 +296,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
                   channel: "whatsapp",
                   deliveryKind: "text",
                   category: "reply",
+                  authorization: authorizationForConversationReply(context.inboundAuthority),
                   dedupeKey: `conversation-reply:${context.turnId}`,
                   payload: {
                     version: 1,
@@ -479,6 +481,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
         channel: "whatsapp",
         deliveryKind: "text",
         category: "reply",
+        authorization: authorizationForConversationReply(context.inboundAuthority),
         dedupeKey: `conversation-reply:${context.turnId}`,
         payload: {
           version: 1,
@@ -564,6 +567,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
         channel: "whatsapp",
         deliveryKind: "text",
         category: "reply",
+        authorization: authorizationForConversationReply(context.inboundAuthority),
         dedupeKey: `conversation-reply:${context.turnId}`,
         payload: {
           version: 1,

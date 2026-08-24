@@ -18,6 +18,9 @@ export type Message = {
   deliveryFormat?: "text" | "audio" | null;
   /** true quando composta em shadow mode: nunca foi enviada de verdade ao lead. */
   simulated?: boolean;
+  inboundEventId?: string | null;
+  streamId?: string | null;
+  streamGeneration?: number | null;
 };
 
 export type Conversation = {

@@ -701,6 +701,20 @@
       "when": 1786926156779,
       "tag": "0099_cold_molten_man",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1787596082038,
+      "tag": "0100_remarkable_dagger",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1787596101078,
+      "tag": "0101_odd_apocalypse",
+      "breakpoints": true
     }
   ]
 }

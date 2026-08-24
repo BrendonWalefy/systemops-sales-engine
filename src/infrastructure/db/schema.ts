@@ -1,6 +1,8 @@
 import {
   bigint,
   boolean,
+  check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -12,6 +14,7 @@ import {
   unique,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import type { MenuItem } from "@/domain/entities/clinic";
 import type { ModuleKey } from "@/application/modules/module-catalog";
@@ -109,7 +112,31 @@ export const messageDirectionEnum = pgEnum("message_direction", [
 
 export const inboundEventProcessingStatusEnum = pgEnum(
   "inbound_event_processing_status",
-  ["pending", "processing", "processed", "failed", "ignored"],
+  [
+    "pending",
+    "processing",
+    "processed",
+    "failed",
+    "ignored",
+    "identity_conflict",
+    "history_only",
+  ],
+);
+
+export const whatsappStreamStateEnum = pgEnum("whatsapp_stream_state", [
+  "provisional",
+  "active",
+  "retired",
+]);
+
+export const whatsappStreamRetirementReasonEnum = pgEnum(
+  "whatsapp_stream_retirement_reason",
+  ["alias_convergence", "conversation_convergence", "manual"],
+);
+
+export const whatsappStreamAliasKindEnum = pgEnum(
+  "whatsapp_stream_alias_kind",
+  ["phone", "whatsapp_lid", "provider_thread"],
 );
 
 export const jobQueueEnum = pgEnum("job_queue", [
@@ -139,6 +166,21 @@ export const outboundMessageStatusEnum = pgEnum("outbound_message_status", [
   "dead",
   "cancelled",
 ]);
+
+export const outboundAuthorizationKindEnum = pgEnum(
+  "outbound_authorization_kind",
+  [
+    "live_stream_reply",
+    "follow_up",
+    "reminder",
+    "campaign",
+    "human_manual",
+    "operational",
+    "system",
+    "recovery",
+    "legacy",
+  ],
+);
 
 // Categoria de saída para políticas do Channel Safety Engine (gates no sender).
 // reply: resposta a inbound do lead — sempre entregue, nunca bloqueada.
@@ -740,38 +782,164 @@ export const conversations = pgTable(
       table.lastMessageAt.desc(),
       table.id.desc(),
     ),
+    idOrgUnique: unique("conversations_id_org_unique").on(
+      table.id,
+      table.clinicId,
+    ),
   }),
 );
 
-export const messages = pgTable(
-  "messages",
+export const whatsappStreams = pgTable(
+  "whatsapp_streams",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    conversationId: uuid("conversation_id")
+    clinicId: uuid("organization_id")
       .notNull()
-      .references(() => conversations.id),
-    author: messageAuthorEnum("author").notNull(),
-    body: text("body").notNull(),
-    mediaUrl: text("media_url"),
-    mediaType: text("media_type").$type<
-      "image" | "video" | "audio" | "document"
-    >(),
-    sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
-    externalId: text("external_id"),
-    intent: text("intent"),
-    deliveryFormat: text("delivery_format").$type<"text" | "audio">(),
-    // Composta em shadow mode: nunca foi enviada de verdade ao WhatsApp do lead.
-    simulated: boolean("simulated").notNull().default(false),
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id"),
+    state: whatsappStreamStateEnum("state").notNull().default("provisional"),
+    currentGeneration: bigint("current_generation", { mode: "number" })
+      .notNull()
+      .default(0),
+    latestInboundEventId: uuid("latest_inbound_event_id").references(
+      (): AnyPgColumn => inboundEvents.id,
+      { onDelete: "set null" },
+    ),
+    quietUntil: timestamp("quiet_until", { withTimezone: true }),
+    conversationStreamOrder: bigint("conversation_stream_order", {
+      mode: "number",
+    }),
+    boundAt: timestamp("bound_at", { withTimezone: true }),
+    retiredAt: timestamp("retired_at", { withTimezone: true }),
+    retirementReason: whatsappStreamRetirementReasonEnum("retirement_reason"),
     createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
   (table) => ({
-    conversationSentAtIdx: index("messages_conversation_sent_at_idx").on(
-      table.conversationId,
-      table.sentAt,
+    idOrgUnique: unique("whatsapp_streams_id_org_unique").on(
+      table.id,
+      table.clinicId,
     ),
-    externalIdIdx: uniqueIndex("messages_external_id_idx").on(table.externalId),
+    conversationOrgFk: foreignKey({
+      name: "whatsapp_streams_conversation_org_fk",
+      columns: [table.conversationId, table.clinicId],
+      foreignColumns: [conversations.id, conversations.clinicId],
+    }).onDelete("restrict"),
+    currentGenerationCheck: check(
+      "whatsapp_streams_current_generation_check",
+      sql`${table.currentGeneration} between 0 and 9007199254740991`,
+    ),
+    conversationBindingCheck: check(
+      "whatsapp_streams_conversation_binding_check",
+      sql`(
+        (${table.conversationId} is null and ${table.conversationStreamOrder} is null and ${table.boundAt} is null)
+        or
+        (${table.conversationId} is not null and ${table.conversationStreamOrder} is not null and ${table.boundAt} is not null)
+      )`,
+    ),
+    conversationOrderCheck: check(
+      "whatsapp_streams_conversation_order_check",
+      sql`${table.conversationStreamOrder} is null or ${table.conversationStreamOrder} between 1 and 9007199254740991`,
+    ),
+    retirementCheck: check(
+      "whatsapp_streams_retirement_check",
+      sql`(
+        (${table.state} = 'retired' and ${table.retiredAt} is not null and ${table.retirementReason} is not null)
+        or
+        (${table.state} <> 'retired' and ${table.retiredAt} is null and ${table.retirementReason} is null)
+      )`,
+    ),
+    activeConversationUnique: uniqueIndex(
+      "whatsapp_streams_active_conversation_unique",
+    ).on(table.conversationId).where(
+      sql`${table.state} = 'active' and ${table.conversationId} is not null`,
+    ),
+    conversationOrderUnique: uniqueIndex(
+      "whatsapp_streams_conversation_order_unique",
+    ).on(table.conversationId, table.conversationStreamOrder).where(
+      sql`${table.conversationId} is not null and ${table.conversationStreamOrder} is not null`,
+    ),
+    orgStateUpdatedIdx: index("whatsapp_streams_org_state_updated_idx").on(
+      table.clinicId,
+      table.state,
+      table.updatedAt,
+    ),
+    conversationHistoryIdx: index(
+      "whatsapp_streams_conversation_history_idx",
+    ).on(
+      table.conversationId,
+      table.conversationStreamOrder,
+      table.id,
+    ),
+    orgQuietGenerationIdx: index(
+      "whatsapp_streams_org_quiet_generation_idx",
+    ).on(
+      table.clinicId,
+      table.quietUntil,
+      table.currentGeneration,
+    ),
+  }),
+);
+
+export const whatsappStreamAliases = pgTable(
+  "whatsapp_stream_aliases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    clinicId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    kind: whatsappStreamAliasKindEnum("kind").notNull(),
+    providerScope: text("provider_scope").notNull(),
+    normalizedValue: text("normalized_value").notNull(),
+    streamId: uuid("stream_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    retiredAt: timestamp("retired_at", { withTimezone: true }),
+  },
+  (table) => ({
+    streamOrgFk: foreignKey({
+      name: "whatsapp_stream_aliases_stream_org_fk",
+      columns: [table.streamId, table.clinicId],
+      foreignColumns: [whatsappStreams.id, whatsappStreams.clinicId],
+    }).onDelete("cascade"),
+    activeIdentityUnique: uniqueIndex(
+      "whatsapp_stream_aliases_active_identity_unique",
+    ).on(
+      table.clinicId,
+      table.kind,
+      table.providerScope,
+      table.normalizedValue,
+    ).where(sql`${table.retiredAt} is null`),
+    streamRetiredIdx: index("whatsapp_stream_aliases_stream_retired_idx").on(
+      table.streamId,
+      table.retiredAt,
+    ),
+  }),
+);
+
+export const conversationAuthority = pgTable(
+  "conversation_authority",
+  {
+    clinicId: uuid("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    version: integer("version").notNull().default(0),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    activatedBy: text("activated_by"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    versionCheck: check(
+      "conversation_authority_version_check",
+      sql`${table.version} in (0, 1, 2, 3)`,
+    ),
   }),
 );
 
@@ -796,11 +964,70 @@ export const inboundEvents = pgTable(
       .notNull()
       .defaultNow(),
     processedAt: timestamp("processed_at", { withTimezone: true }),
+    streamId: uuid("stream_id"),
+    streamGeneration: bigint("stream_generation", { mode: "number" }),
+    registeredAt: timestamp("registered_at", { withTimezone: true }),
+    claimToken: text("claim_token"),
+    claimTokenDigest: text("claim_token_digest"),
+    claimJobId: uuid("claim_job_id").references(
+      (): AnyPgColumn => jobs.id,
+      { onDelete: "set null" },
+    ),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
   },
   (table) => ({
-    providerMessageUnique: uniqueIndex(
-      "inbound_events_provider_message_unique",
-    ).on(table.provider, table.providerMessageId),
+    orgProviderMessageUnique: uniqueIndex(
+      "inbound_events_org_provider_message_unique",
+    ).on(table.clinicId, table.provider, table.providerMessageId),
+    streamOrgFk: foreignKey({
+      name: "inbound_events_stream_org_fk",
+      columns: [table.streamId, table.clinicId],
+      foreignColumns: [whatsappStreams.id, whatsappStreams.clinicId],
+    }).onDelete("restrict"),
+    streamTupleCheck: check(
+      "inbound_events_stream_tuple_check",
+      sql`(
+        (${table.streamId} is null and ${table.streamGeneration} is null)
+        or
+        (${table.streamId} is not null and ${table.streamGeneration} is not null)
+      )`,
+    ),
+    streamGenerationCheck: check(
+      "inbound_events_stream_generation_check",
+      sql`${table.streamGeneration} is null or ${table.streamGeneration} between 1 and 9007199254740991`,
+    ),
+    claimTokenCheck: check(
+      "inbound_events_claim_token_check",
+      sql`(
+        (${table.claimToken} is null and ${table.claimTokenDigest} is null and ${table.claimedAt} is null)
+        or
+        (${table.claimToken} is not null and ${table.claimTokenDigest} is not null and ${table.claimedAt} is not null)
+      )`,
+    ),
+    claimTokenFormatCheck: check(
+      "inbound_events_claim_token_format_check",
+      sql`(
+        (${table.claimToken} is null or ${table.claimToken} ~ '^[A-Za-z0-9_-]{43}$')
+        and
+        (${table.claimTokenDigest} is null or ${table.claimTokenDigest} ~ '^[A-Za-z0-9_-]{43}$')
+      )`,
+    ),
+    claimJobCheck: check(
+      "inbound_events_claim_job_check",
+      sql`${table.claimJobId} is null or ${table.claimToken} is not null`,
+    ),
+    streamGenerationUnique: uniqueIndex(
+      "inbound_events_stream_generation_unique",
+    ).on(table.streamId, table.streamGeneration).where(
+      sql`${table.streamId} is not null and ${table.streamGeneration} is not null`,
+    ),
+    authorityTupleUnique: uniqueIndex(
+      "inbound_events_authority_tuple_unique",
+    ).on(table.id, table.streamId, table.streamGeneration),
+    streamGenerationIdIdx: index(
+      "inbound_events_stream_generation_id_idx",
+    ).on(table.streamId, table.streamGeneration, table.id),
+    claimJobIdx: index("inbound_events_claim_job_idx").on(table.claimJobId),
     clinicReceivedAtIdx: index("inbound_events_org_received_at_idx").on(
       table.clinicId,
       table.receivedAt,
@@ -836,6 +1063,10 @@ export const jobs = pgTable(
     }),
     deadLetterResolvedBy: text("dead_letter_resolved_by"),
     deadLetterResolutionReason: text("dead_letter_resolution_reason"),
+    inboundEventId: uuid("inbound_event_id").references(
+      () => inboundEvents.id,
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -856,6 +1087,71 @@ export const jobs = pgTable(
     queueDedupeKeyIdx: uniqueIndex("jobs_queue_dedupe_key_idx").on(
       table.queue,
       table.dedupeKey,
+    ),
+    inboundEventUnique: uniqueIndex("jobs_inbound_event_unique").on(
+      table.inboundEventId,
+    ),
+    queueStatusRunAtInboundIdx: index(
+      "jobs_queue_status_run_at_inbound_idx",
+    ).on(table.queue, table.status, table.runAt, table.inboundEventId),
+  }),
+);
+
+export const messages = pgTable(
+  "messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id),
+    author: messageAuthorEnum("author").notNull(),
+    body: text("body").notNull(),
+    mediaUrl: text("media_url"),
+    mediaType: text("media_type").$type<
+      "image" | "video" | "audio" | "document"
+    >(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull(),
+    externalId: text("external_id"),
+    intent: text("intent"),
+    deliveryFormat: text("delivery_format").$type<"text" | "audio">(),
+    // Composta em shadow mode: nunca foi enviada de verdade ao WhatsApp do lead.
+    simulated: boolean("simulated").notNull().default(false),
+    inboundEventId: uuid("inbound_event_id"),
+    streamId: uuid("stream_id"),
+    streamGeneration: bigint("stream_generation", { mode: "number" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    conversationSentAtIdx: index("messages_conversation_sent_at_idx").on(
+      table.conversationId,
+      table.sentAt,
+    ),
+    externalIdIdx: uniqueIndex("messages_external_id_idx").on(table.externalId),
+    inboundEventUnique: uniqueIndex("messages_inbound_event_unique").on(
+      table.inboundEventId,
+    ),
+    inboundAuthorityFk: foreignKey({
+      name: "messages_inbound_authority_fk",
+      columns: [table.inboundEventId, table.streamId, table.streamGeneration],
+      foreignColumns: [
+        inboundEvents.id,
+        inboundEvents.streamId,
+        inboundEvents.streamGeneration,
+      ],
+    }).onDelete("restrict"),
+    streamGenerationCheck: check(
+      "messages_stream_generation_check",
+      sql`${table.streamGeneration} is null or ${table.streamGeneration} between 1 and 9007199254740991`,
+    ),
+    conversationStreamGenerationIdx: index(
+      "messages_conversation_stream_generation_idx",
+    ).on(
+      table.conversationId,
+      table.streamId,
+      table.streamGeneration,
+      table.inboundEventId,
     ),
   }),
 );
@@ -977,6 +1273,18 @@ export const outboundMessages = pgTable(
     dedupeKey: text("dedupe_key"),
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error"),
+    authorizationKind: outboundAuthorizationKindEnum("authorization_kind"),
+    authorizationStreamId: uuid("authorization_stream_id"),
+    authorizationGeneration: bigint("authorization_generation", {
+      mode: "number",
+    }),
+    authorizationInboundEventId: uuid("authorization_inbound_event_id"),
+    authorizationClaimJobId: uuid("authorization_claim_job_id").references(
+      () => jobs.id,
+      { onDelete: "restrict" },
+    ),
+    authorizationClaimTokenDigest: text("authorization_claim_token_digest"),
+    authorizationVersion: integer("authorization_version"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -998,6 +1306,45 @@ export const outboundMessages = pgTable(
     ).on(table.conversationId, table.dedupeKey),
     providerMessageIdIdx: index("outbound_messages_provider_message_id_idx").on(
       table.providerMessageId,
+    ),
+    authorizationStreamOrgFk: foreignKey({
+      name: "outbound_messages_authorization_stream_org_fk",
+      columns: [table.authorizationStreamId, table.clinicId],
+      foreignColumns: [whatsappStreams.id, whatsappStreams.clinicId],
+    }).onDelete("restrict"),
+    authorizationInboundFk: foreignKey({
+      name: "outbound_messages_authorization_inbound_fk",
+      columns: [
+        table.authorizationInboundEventId,
+        table.authorizationStreamId,
+        table.authorizationGeneration,
+      ],
+      foreignColumns: [
+        inboundEvents.id,
+        inboundEvents.streamId,
+        inboundEvents.streamGeneration,
+      ],
+    }).onDelete("restrict"),
+    authorizationGenerationCheck: check(
+      "outbound_messages_authorization_generation_check",
+      sql`${table.authorizationGeneration} is null or ${table.authorizationGeneration} between 1 and 9007199254740991`,
+    ),
+    authorizationDigestCheck: check(
+      "outbound_messages_authorization_digest_check",
+      sql`${table.authorizationClaimTokenDigest} is null or ${table.authorizationClaimTokenDigest} ~ '^[A-Za-z0-9_-]{43}$'`,
+    ),
+    liveStreamAuthorityUnique: uniqueIndex(
+      "outbound_messages_live_stream_authority_unique",
+    ).on(
+      table.authorizationStreamId,
+      table.authorizationGeneration,
+      table.authorizationInboundEventId,
+    ),
+    authorityStatusIdx: index("outbound_messages_authority_status_idx").on(
+      table.clinicId,
+      table.authorizationKind,
+      table.status,
+      table.createdAt,
     ),
   }),
 );

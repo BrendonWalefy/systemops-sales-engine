@@ -99,6 +99,7 @@ export function buildFollowUpOutboxInput(input: {
       channel: "whatsapp" as const,
       deliveryKind: input.useVoice ? "audio" as const : "text" as const,
       category: "follow_up" as const,
+      authorization: { kind: "follow_up" as const },
       dedupeKey: `followup:${input.followUpId}`,
       payload: {
         version: 1 as const,

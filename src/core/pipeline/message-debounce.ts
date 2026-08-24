@@ -31,3 +31,22 @@ export function resolveMessageDebounceMs(input: {
 
   return configured;
 }
+
+/**
+ * Quanto ainda falta da janela de agrupamento no momento em que o worker
+ * finalmente pegou o job. A janela é medida desde o recebimento da mensagem;
+ * o schedule (run_at = recebimento + janela padrão) faz a maior parte da espera
+ * dormir na fila, sem prender workers vivos. Aqui apenas o resíduo escapa para
+ * um setTimeout — clampado em zero para não estender além do configurado nem
+ * dormir por causa de relógios diferentes entre nó de recebimento e worker.
+ */
+export function computeResidualDebounceMs(input: {
+  debounceMs: number;
+  receivedAt: Date;
+  now: Date;
+}): number {
+  if (input.debounceMs <= 0) return 0;
+  const elapsed = input.now.getTime() - input.receivedAt.getTime();
+  if (elapsed <= 0) return input.debounceMs;
+  return Math.max(0, input.debounceMs - elapsed);
+}

@@ -6,12 +6,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { parseMetaInboundTextMessage } from "@/infrastructure/adapters/channels/whatsapp/meta-webhook-content";
 import { persistInboundEventAndEnqueue } from "@/application/whatsapp/persist-inbound-event";
 import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
-import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import {
   extractMetaPhoneNumberId,
   verifyMetaWebhookSignature,
 } from "@/application/whatsapp/meta-webhook-auth";
 import { decryptCredentialNullable } from "@/infrastructure/crypto/credential-vault";
+import { buildWhatsAppStreamAliases } from "@/core/whatsapp/WhatsAppContactIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +67,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       provider: "meta_cloud_api",
       providerMessageId: message.messageId,
       conversationKey: message.phone,
+      aliases: buildWhatsAppStreamAliases({
+        provider: "meta_cloud_api",
+        providerInstanceId: message.phoneNumberId,
+        providerThreadId: message.phone,
+        phone: message.phone,
+      }),
       payload: body,
       normalizedText: message.messageText,
       mediaType: null,
@@ -74,7 +80,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       receivedAt: message.receivedAt,
     }, {
       inboundEventStore: new DrizzleInboundEventStore(),
-      jobQueue: new DrizzleJobQueue(),
     });
 
     return new NextResponse("OK", { status: 200 });

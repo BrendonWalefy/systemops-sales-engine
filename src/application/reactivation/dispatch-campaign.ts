@@ -267,6 +267,7 @@ export async function dispatchCampaign(input: {
           channel: "whatsapp",
           deliveryKind: "text",
           category: "campaign",
+          authorization: { kind: "campaign" },
           dedupeKey,
           payload: {
             version: 1 as const,

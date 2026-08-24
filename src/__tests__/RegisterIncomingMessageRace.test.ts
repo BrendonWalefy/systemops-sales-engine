@@ -311,6 +311,43 @@ function makeMessage(body: string, externalMessageId: string, receivedAt: Date):
 }
 
 describe("RegisterIncomingMessage — corrida de primeiro contato", () => {
+  it("prepares canonical authority before applying lead and follow-up effects", async () => {
+    const leadRepository = new SimpleLeadRepository();
+    const conversationRepository = new SimpleConversationRepository();
+    const followUpRepository = makeFollowUpRepository();
+    const followUpList = vi.spyOn(followUpRepository, "listPendingByLead");
+    const useCase = new RegisterIncomingMessage({
+      leadRepository,
+      conversationRepository,
+      usageCostTracker,
+      followUpRepository,
+      idGenerator: () => crypto.randomUUID(),
+      now: () => new Date("2026-06-12T12:00:00.000Z"),
+    });
+    const inboundAuthority = {
+      streamId: "stream-1",
+      streamGeneration: 1,
+      inboundEventId: "event-1",
+    };
+
+    const prepared = await useCase.prepareInboundHistory({
+      clinicId: "ximendes",
+      message: makeMessage(
+        "Histórico antes dos efeitos",
+        "provider-history-first",
+        new Date("2026-06-12T11:59:30.000Z"),
+      ),
+      inboundAuthority,
+    });
+
+    expect(prepared.message).toMatchObject(inboundAuthority);
+    expect(prepared.lead.status).toBe("new");
+    expect(followUpList).not.toHaveBeenCalled();
+    const applied = await useCase.applyClaimedInboundEffects(prepared);
+    expect(applied.lead.status).toBe("waiting_response");
+    expect(followUpList).toHaveBeenCalledOnce();
+  });
+
   it("uses the durable external-id insert winner as the only registration side-effect owner", async () => {
     const leadRepository = new SimpleLeadRepository();
     const conversationRepository = new SimpleConversationRepository();

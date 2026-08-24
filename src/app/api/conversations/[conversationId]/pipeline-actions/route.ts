@@ -370,6 +370,7 @@ export async function POST(
           channel: "whatsapp",
           deliveryKind: "text",
           category: "reply",
+          authorization: { kind: "system" },
           payload: {
             version: 1,
             kind: "conversation_reply",
@@ -526,6 +527,7 @@ export async function POST(
         channel: "whatsapp",
         deliveryKind: "text",
         category: "reply",
+        authorization: { kind: "system" },
         payload: {
           version: 1,
           kind: "conversation_reply",

@@ -21,85 +21,88 @@ function payload(overrides: Partial<ZApiInboundPayload> = {}): ZApiInboundPayloa
 }
 
 describe("persistInboundEventAndEnqueue", () => {
-  it("prefere a persistência atômica quando o store durável a oferece", async () => {
+  it("delegates ledger, stream generation, and job creation to the one atomic store boundary", async () => {
+    const persisted = {
+      outcome: "registered" as const,
+      inboundEventId: "event-atomic",
+      streamId: "stream-1",
+      streamGeneration: 1,
+      jobId: "job-1",
+      eventWasNew: true,
+      jobWasNew: true,
+    };
+    const recordInboundEventAndEnqueue = vi.fn().mockResolvedValue(persisted);
+    const input = buildZApiInboundEvent({ clinicId: "clinic-1", payload: payload() });
+
+    const result = await persistInboundEventAndEnqueue(input, {
+      inboundEventStore: { recordInboundEventAndEnqueue } as never,
+    });
+
+    expect(result).toEqual(persisted);
+    expect(recordInboundEventAndEnqueue).toHaveBeenCalledOnce();
+    expect(recordInboundEventAndEnqueue).toHaveBeenCalledWith(input);
+  });
+
+  it("forwards normalized phone and provider-thread aliases without a queue fallback", async () => {
+    const receivedAt = new Date("2026-06-23T12:00:00.000Z");
     const recordInboundEventAndEnqueue = vi.fn().mockResolvedValue({
-      inboundEventId: "event-atomic",
+      outcome: "registered",
+      inboundEventId: "event-1",
+      streamId: "stream-1",
+      streamGeneration: 1,
+      jobId: "job-1",
       eventWasNew: true,
       jobWasNew: true,
     });
-    const recordInboundEvent = vi.fn();
-    const enqueueJob = vi.fn();
 
-    const result = await persistInboundEventAndEnqueue(
-      buildZApiInboundEvent({ clinicId: "clinic-1", payload: payload() }),
-      {
-        inboundEventStore: {
-          recordInboundEventAndEnqueue,
-          recordInboundEvent,
-        } as never,
-        jobQueue: { enqueueJob } as never,
-      },
-    );
+    await persistInboundEventAndEnqueue(buildZApiInboundEvent({
+      clinicId: "clinic-1",
+      payload: payload({ text: { message: " Olá " }, momment: receivedAt.getTime() }),
+    }), {
+      inboundEventStore: { recordInboundEventAndEnqueue } as never,
+    });
 
-    expect(result).toEqual({
-      inboundEventId: "event-atomic",
+    expect(recordInboundEventAndEnqueue).toHaveBeenCalledWith(expect.objectContaining({
+      provider: "z_api",
+      providerMessageId: "message-1",
+      conversationKey: "5511999999999",
+      normalizedText: "Olá",
+      mediaType: null,
+      receivedAt,
+      aliases: [
+        {
+          kind: "phone",
+          providerScope: "__provider_independent__",
+          normalizedValue: "5511999999999",
+        },
+        {
+          kind: "provider_thread",
+          providerScope: "z_api:instance-1",
+          normalizedValue: "5511999999999",
+        },
+      ],
+    }));
+  });
+
+  it("returns the store's persisted identity-conflict result without creating a fallback job", async () => {
+    const conflict = {
+      outcome: "identity_conflict" as const,
+      inboundEventId: "event-conflict",
+      jobId: null,
       eventWasNew: true,
-      jobWasNew: true,
-    });
-    expect(recordInboundEvent).not.toHaveBeenCalled();
-    expect(enqueueJob).not.toHaveBeenCalled();
-  });
-
-  it("enfileira message.process para um inbound novo", async () => {
-    const recordInboundEvent = vi.fn().mockResolvedValue({
-      event: { id: "event-1" },
-      isNew: true,
-    });
-    const enqueueJob = vi.fn().mockResolvedValue({ isNew: true });
+      jobWasNew: false as const,
+    };
+    const recordInboundEventAndEnqueue = vi.fn().mockResolvedValue(conflict);
 
     const result = await persistInboundEventAndEnqueue(
-      buildZApiInboundEvent({ clinicId: "clinic-1", payload: payload({ text: { message: " Olá " } }) }),
-      {
-        inboundEventStore: { recordInboundEvent } as never,
-        jobQueue: { enqueueJob } as never,
-      },
-    );
-
-    expect(recordInboundEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        provider: "z_api",
-        providerMessageId: "message-1",
-        conversationKey: "5511999999999",
-        normalizedText: "Olá",
-      }),
-    );
-    expect(enqueueJob).toHaveBeenCalledWith({
-      queue: "message.process",
-      payload: { inboundEventId: "event-1" },
-      dedupeKey: "inbound-event:event-1",
-    });
-    expect(result).toEqual({ inboundEventId: "event-1", eventWasNew: true, jobWasNew: true });
-  });
-
-  it("reenfileira duplicata por provider message id quando o job anterior não foi criado", async () => {
-    const recordInboundEvent = vi.fn().mockResolvedValue({
-      event: { id: "event-1" },
-      isNew: false,
-    });
-    const enqueueJob = vi.fn().mockResolvedValue({ isNew: true });
-
-    await persistInboundEventAndEnqueue(
       buildZApiInboundEvent({ clinicId: "clinic-1", payload: payload() }),
-      {
-        inboundEventStore: { recordInboundEvent } as never,
-        jobQueue: { enqueueJob } as never,
-      },
+      { inboundEventStore: { recordInboundEventAndEnqueue } as never },
     );
 
-    expect(enqueueJob).toHaveBeenCalledOnce();
+    expect(result).toEqual(conflict);
   });
 
-  it("preserva payload sem texto para processamento posterior", () => {
+  it("preserves payload without text for later canonical processing", () => {
     const event = buildZApiInboundEvent({
       clinicId: "clinic-1",
       payload: payload({ messageId: "message-without-text" }),
@@ -112,5 +115,4 @@ describe("persistInboundEventAndEnqueue", () => {
       mediaType: null,
     });
   });
-
 });

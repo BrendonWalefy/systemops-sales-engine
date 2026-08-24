@@ -21,6 +21,7 @@ function makeFollowUpInput() {
 function makeStore(outbound: OutboundMessage) {
   return {
     findOutboundMessage: vi.fn().mockResolvedValue(outbound),
+    authorizeOutboundMessageForSend: vi.fn().mockResolvedValue({ authorized: true }),
     hasEarlierActiveMessage: vi.fn().mockResolvedValue(false),
     markOutboundProcessing: vi.fn().mockResolvedValue(true),
     markOutboundPending: vi.fn().mockResolvedValue(undefined),
@@ -68,6 +69,11 @@ describe("FollowUpDispatcher outbox", () => {
       dedupeKey: outbound.dedupeKey,
       attempts: 0,
       lastError: null,
+      authorization: {
+        kind: "follow_up", streamId: null, streamGeneration: null,
+        sourceInboundEventId: null, claimJobId: null, claimTokenDigest: null,
+        authorityVersion: 0,
+      },
       createdAt: new Date("2026-07-05T12:00:00.000Z"),
       sentAt: null,
     };

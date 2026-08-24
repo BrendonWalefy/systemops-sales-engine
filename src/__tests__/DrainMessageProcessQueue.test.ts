@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { drainMessageProcessQueue } from "@/application/jobs/drain-message-process-queue";
-import type { JobRecord } from "@/application/ports/job-queue";
+import type {
+  ClaimInboundWorkResult,
+  JobRecord,
+} from "@/application/ports/job-queue";
 
 const job: JobRecord = {
   id: "job-1",
@@ -18,11 +21,23 @@ const job: JobRecord = {
   updatedAt: new Date("2026-06-23T12:00:00.000Z"),
 };
 
+function claimedWork(claimedJob: JobRecord = job): ClaimInboundWorkResult {
+  const inboundEventId = (claimedJob.payload as { inboundEventId: string }).inboundEventId;
+  return {
+    outcome: "claimed",
+    job: claimedJob,
+    streamId: `stream:${inboundEventId}`,
+    streamGeneration: 1,
+    inboundEventId,
+    claimToken: "a".repeat(43),
+  };
+}
+
 function makeDeps() {
   return {
     jobQueue: {
       recoverStaleJobs: vi.fn().mockResolvedValue(0),
-      claimNextJob: vi.fn().mockResolvedValueOnce(job).mockResolvedValue(null),
+      claimNextInboundWork: vi.fn().mockResolvedValueOnce(claimedWork()).mockResolvedValue(null),
       completeJob: vi.fn().mockResolvedValue(true),
       failJob: vi.fn(),
     },
@@ -34,6 +49,36 @@ function makeDeps() {
 }
 
 describe("drainMessageProcessQueue", () => {
+  it("routes history-only work away from the claimed business pipeline", async () => {
+    const deps = makeDeps();
+    const historyWork: ClaimInboundWorkResult = {
+      ...claimedWork(),
+      outcome: "history_only",
+      claimToken: null,
+    };
+    deps.jobQueue.claimNextInboundWork
+      .mockReset()
+      .mockResolvedValueOnce(historyWork)
+      .mockResolvedValue(null);
+    const processClaimedJob = vi.fn();
+    const processHistoryOnlyJob = vi.fn().mockResolvedValue({
+      outcome: "ignored",
+      inboundEventId: "event-1",
+    });
+
+    const result = await drainMessageProcessQueue({
+      ...deps,
+      handler: { processClaimedJob, processHistoryOnlyJob },
+      workerId: "history-worker",
+      maxJobs: 1,
+    } as never);
+
+    expect(result).toMatchObject({ claimed: 1, ignored: 1, processed: 0 });
+    expect(processHistoryOnlyJob).toHaveBeenCalledWith(historyWork);
+    expect(processClaimedJob).not.toHaveBeenCalled();
+    expect(deps.inboundEventStore.markInboundEventPending).not.toHaveBeenCalled();
+  });
+
   it("processa dez tenants no mesmo lote sem cruzar seus eventos", async () => {
     const tenantJobs = Array.from({ length: 10 }, (_, index): JobRecord => ({
       ...job,
@@ -48,7 +93,10 @@ describe("drainMessageProcessQueue", () => {
     const processed: Array<{ eventId: string; clinicId: string }> = [];
     const jobQueue = {
       recoverStaleJobs: vi.fn().mockResolvedValue(0),
-      claimNextJob: vi.fn(async () => claimed.shift() ?? null),
+      claimNextInboundWork: vi.fn(async () => {
+        const next = claimed.shift();
+        return next ? claimedWork(next) : null;
+      }),
       completeJob: vi.fn().mockResolvedValue(true),
       failJob: vi.fn(),
     };
@@ -60,7 +108,8 @@ describe("drainMessageProcessQueue", () => {
         markInboundEventFailed: vi.fn(),
       },
       handler: {
-        processJob: vi.fn(async (claimedJob: JobRecord) => {
+        processClaimedJob: vi.fn(async (work: ClaimInboundWorkResult) => {
+          const claimedJob = work.job;
           const payload = claimedJob.payload as {
             inboundEventId: string;
             clinicId: string;
@@ -74,6 +123,7 @@ describe("drainMessageProcessQueue", () => {
             inboundEventId: payload.inboundEventId,
           };
         }),
+        processHistoryOnlyJob: vi.fn(),
       },
       workerId: "worker-ten-tenants",
       maxJobs: 10,
@@ -91,7 +141,10 @@ describe("drainMessageProcessQueue", () => {
 
     const result = await drainMessageProcessQueue({
       ...deps,
-      handler: { processJob: vi.fn().mockResolvedValue({ outcome: "processed", inboundEventId: "event-1" }) },
+      handler: {
+        processClaimedJob: vi.fn().mockResolvedValue({ outcome: "processed", inboundEventId: "event-1" }),
+        processHistoryOnlyJob: vi.fn(),
+      },
       workerId: "worker-1",
       maxJobs: 3,
       now: new Date("2026-06-23T12:00:00.000Z"),
@@ -107,7 +160,10 @@ describe("drainMessageProcessQueue", () => {
 
     const result = await drainMessageProcessQueue({
       ...deps,
-      handler: { processJob: vi.fn().mockRejectedValue(new Error("OpenAI timeout")) },
+      handler: {
+        processClaimedJob: vi.fn().mockRejectedValue(new Error("OpenAI timeout")),
+        processHistoryOnlyJob: vi.fn(),
+      },
       workerId: "worker-1",
       maxJobs: 1,
       now: new Date("2026-06-23T12:00:00.000Z"),
@@ -131,7 +187,10 @@ describe("drainMessageProcessQueue", () => {
 
     const result = await drainMessageProcessQueue({
       ...deps,
-      handler: { processJob: vi.fn().mockRejectedValue(new Error("permanent failure")) },
+      handler: {
+        processClaimedJob: vi.fn().mockRejectedValue(new Error("permanent failure")),
+        processHistoryOnlyJob: vi.fn(),
+      },
       workerId: "worker-1",
       maxJobs: 1,
       now: new Date("2026-06-23T12:00:00.000Z"),
@@ -147,7 +206,10 @@ describe("drainMessageProcessQueue", () => {
 
     const result = await drainMessageProcessQueue({
       ...deps,
-      handler: { processJob: vi.fn().mockResolvedValue({ outcome: "processed", inboundEventId: "event-1" }) },
+      handler: {
+        processClaimedJob: vi.fn().mockResolvedValue({ outcome: "processed", inboundEventId: "event-1" }),
+        processHistoryOnlyJob: vi.fn(),
+      },
       workerId: "worker-1",
       maxJobs: 1,
     } as never);

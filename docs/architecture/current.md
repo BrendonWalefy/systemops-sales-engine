@@ -79,7 +79,7 @@ GET /api/cron/sender-worker
 
 ### Garantias do pipeline
 
-- A entrada e seu job são criados por um único statement SQL com CTE.
+- A entrada, autoridade de stream e seu job são criados por uma transação HTTP não interativa: uma lista fixa e limitada de statements é enviada em um único `db.batch(...)` e confirma ou reverte em conjunto.
 - A saída e seu job também são criados atomicamente.
 - Unique constraints e dedupe keys tornam retries seguros.
 - `FOR UPDATE SKIP LOCKED`, leases e exclusão por conversa evitam processamento concorrente incompatível.

@@ -183,6 +183,7 @@ export async function enqueueNoShowRecovery(params: {
       channel: "whatsapp",
       deliveryKind: "text",
       category: "recovery",
+      authorization: { kind: "recovery" },
       dedupeKey,
       payload: {
         version: 1,

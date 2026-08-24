@@ -241,6 +241,15 @@ class MemoryOutbox implements OutboundMessageStore {
       dedupeKey: input.dedupeKey ?? null,
       attempts: 0,
       lastError: null,
+      authorization: {
+        kind: input.authorization.kind,
+        streamId: null,
+        streamGeneration: null,
+        sourceInboundEventId: null,
+        claimJobId: null,
+        claimTokenDigest: null,
+        authorityVersion: 0,
+      },
       createdAt: now,
       sentAt: null,
     };
@@ -253,6 +262,7 @@ class MemoryOutbox implements OutboundMessageStore {
     return { message: this.rows.find(({ id }) => id === result.outboundMessageId)!, isNew: result.messageWasNew };
   }
   async findOutboundMessage(id: string) { return this.rows.find((row) => row.id === id) ?? null; }
+  async authorizeOutboundMessageForSend() { return { authorized: true as const }; }
   async findConversationReplyByTurnId(input: { clinicId: string; turnId: string }) {
     return this.rows.find((row) => {
       const payload = row.payload as Record<string, unknown>;
@@ -325,9 +335,16 @@ class MemoryInboundEvents implements InboundEventStore {
       processingStatus: "pending",
       receivedAt: input.timestamp,
       processedAt: null,
+      streamId: null,
+      streamGeneration: null,
+      registeredAt: null,
+      claimToken: null,
+      claimTokenDigest: null,
+      claimJobId: null,
+      claimedAt: null,
     });
   }
-  async recordInboundEvent(): Promise<never> { throw new Error("not used"); }
+  async recordInboundEventAndEnqueue(): Promise<never> { throw new Error("not used"); }
   async findInboundEvent(id: string) { return this.rows.get(id) ?? null; }
   async markInboundEventProcessing(id: string) { const row = this.rows.get(id); if (row) row.processingStatus = "processing"; }
   async markInboundEventPending(id: string) { const row = this.rows.get(id); if (row) row.processingStatus = "pending"; }
@@ -432,6 +449,7 @@ class JourneyHandler implements ConversationHandler {
         channel: "whatsapp",
         deliveryKind: "text",
         category: "reply",
+        authorization: { kind: "legacy" },
         dedupeKey: `conversation-reply:${context.turnId}`,
         payload: {
           version: 1,
@@ -763,6 +781,7 @@ describe("Conversation V2 bidirectional rollback", () => {
       channel: "whatsapp",
       deliveryKind: "text",
       category: "reply",
+      authorization: { kind: "legacy" },
       dedupeKey: "conversation-reply:turn-3",
       payload: { turnId: "turn-3", engine: "v2", recomposed: true },
     }, { outboundMessageStore: harness.outbox, jobQueue: {} as never })).resolves.toEqual({

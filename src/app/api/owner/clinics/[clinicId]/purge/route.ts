@@ -30,6 +30,11 @@ import {
   priceCampaigns,
   humanReviewRequests,
   conversationV2Comparisons,
+  jobs,
+  whatsappStreamAliases,
+  whatsappStreams,
+  leadOutcomes,
+  reactivationCampaigns,
 } from "@/infrastructure/db/schema";
 import { createLogger } from "@/infrastructure/logging/logger";
 
@@ -98,16 +103,35 @@ export async function POST(
     .from(conversations)
     .where(eq(conversations.clinicId, clinicId));
   const conversationIds = conversationRows.map((c) => c.id);
+  const inboundEventRows = await db
+    .select({ id: inboundEvents.id })
+    .from(inboundEvents)
+    .where(eq(inboundEvents.clinicId, clinicId));
+  const inboundEventIds = inboundEventRows.map((event) => event.id);
+
+  // Authority audit references use RESTRICT. Preserve this exact child-first
+  // order when the durable stream schema grows.
+  await db.delete(outboundMessages).where(eq(outboundMessages.clinicId, clinicId));
+
+  if (conversationIds.length > 0) {
+    await db.delete(messages).where(inArray(messages.conversationId, conversationIds));
+  }
+  if (inboundEventIds.length > 0) {
+    await db.delete(jobs).where(inArray(jobs.inboundEventId, inboundEventIds));
+  }
+  await db.delete(inboundEvents).where(eq(inboundEvents.clinicId, clinicId));
+  await db.delete(whatsappStreamAliases).where(eq(whatsappStreamAliases.clinicId, clinicId));
+  await db.delete(whatsappStreams).where(eq(whatsappStreams.clinicId, clinicId));
+  await db.delete(leadOutcomes).where(eq(leadOutcomes.clinicId, clinicId));
+  await db.delete(reactivationCampaigns).where(eq(reactivationCampaigns.clinicId, clinicId));
 
   if (conversationIds.length > 0) {
     await db.delete(humanReviewRequests).where(inArray(humanReviewRequests.conversationId, conversationIds));
-    await db.delete(messages).where(inArray(messages.conversationId, conversationIds));
     await db.delete(conversationStates).where(inArray(conversationStates.conversationId, conversationIds));
   }
 
   await db.delete(agentRecommendations).where(eq(agentRecommendations.clinicId, clinicId));
   await db.delete(conversationV2Comparisons).where(eq(conversationV2Comparisons.clinicId, clinicId));
-  await db.delete(outboundMessages).where(eq(outboundMessages.clinicId, clinicId));
   await db.delete(followUps).where(eq(followUps.clinicId, clinicId));
   await db.delete(slotReservations).where(eq(slotReservations.clinicId, clinicId));
   await db.delete(appointments).where(eq(appointments.clinicId, clinicId));
@@ -122,7 +146,6 @@ export async function POST(
   await db.delete(mediaAssets).where(eq(mediaAssets.clinicId, clinicId));
   await db.delete(priceCampaigns).where(eq(priceCampaigns.clinicId, clinicId));
   await db.delete(treatments).where(eq(treatments.clinicId, clinicId));
-  await db.delete(inboundEvents).where(eq(inboundEvents.clinicId, clinicId));
   await db.delete(aiUsageCosts).where(eq(aiUsageCosts.clinicId, clinicId));
   await db.delete(ttsUsageCosts).where(eq(ttsUsageCosts.clinicId, clinicId));
   await db.delete(whatsappMessageCosts).where(eq(whatsappMessageCosts.clinicId, clinicId));

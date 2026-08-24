@@ -18,7 +18,6 @@ import { DrizzleConversationRepository } from "@/infrastructure/repositories/dri
 import { resolveUnsupportedInboundPlaceholder } from "@/infrastructure/adapters/channels/whatsapp/zapi-webhook-content";
 import { persistInboundEventAndEnqueue } from "@/application/whatsapp/persist-inbound-event";
 import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
-import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { buildZApiInboundEvent } from "@/infrastructure/adapters/channels/whatsapp/zapi-inbound-event";
 import { createLogger } from "@/infrastructure/logging/logger";
 import {
@@ -568,7 +567,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       buildZApiInboundEvent({ clinicId, payload: body }),
       {
         inboundEventStore: new DrizzleInboundEventStore(),
-        jobQueue: new DrizzleJobQueue(),
       },
     );
     clinicLog.info("webhook.enqueued", {
