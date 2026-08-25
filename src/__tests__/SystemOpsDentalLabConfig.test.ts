@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   SYSTEMOPS_DENTAL_LAB_CONFIG,
+  SystemOpsDentalLabConfigOperationError,
   applySystemOpsDentalLabConfig,
   digestSystemOpsDentalLabConfig,
+  describeSystemOpsDentalLabConfigFailure,
   digestSystemOpsDentalLabSnapshot,
   orderSystemOpsDentalLabPlaybooksForRollback,
   projectSystemOpsDentalLabRuntimeArtifact,
@@ -18,6 +20,7 @@ import {
   INTERNAL_LAB_RUNTIME_ARTIFACT_SCHEMA,
 } from "@/application/conversation-v2/internal-lab-runtime-bindings";
 import {
+  formatSystemOpsDentalLabCommandFailure,
   parseSystemOpsDentalLabCommandArgs,
   runSystemOpsDentalLabConfigCommand,
 } from "../../scripts/configure-systemops-dental-lab";
@@ -341,12 +344,22 @@ describe("SystemOps Dental Lab declarative config", () => {
       transaction: async (_clinicId, operation) => operation(transaction),
     };
 
-    await expect(applySystemOpsDentalLabConfig(store, {
-      clinicId: labId,
-      expectedChannelDigest: channelDigest,
-      expectedOwnerMembershipDigest: ownerMembershipDigest,
-      expectedSnapshotDigest: digestSystemOpsDentalLabSnapshot(inspected),
-    })).rejects.toThrow(/changed after inspection/i);
+    let failure: unknown;
+    try {
+      await applySystemOpsDentalLabConfig(store, {
+        clinicId: labId,
+        expectedChannelDigest: channelDigest,
+        expectedOwnerMembershipDigest: ownerMembershipDigest,
+        expectedSnapshotDigest: digestSystemOpsDentalLabSnapshot(inspected),
+      });
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).toBeInstanceOf(SystemOpsDentalLabConfigOperationError);
+    expect(describeSystemOpsDentalLabConfigFailure(failure)).toEqual({
+      stage: "transaction_lock",
+      errorClass: "Error",
+    });
     expect(transaction.writeOrganization).not.toHaveBeenCalled();
   });
 
@@ -473,6 +486,83 @@ describe("SystemOps Dental Lab config command", () => {
     expect(apply).toHaveBeenCalledWith(expect.objectContaining({
       expectedSnapshotDigest: expect.stringMatching(/^sha256:/),
     }));
+  });
+
+  it("reports a fixed failing stage and never resolves an approval artifact after apply failure", async () => {
+    const writeOwnerOnlyFile = vi.fn().mockResolvedValue(undefined);
+    const resolveRuntimeArtifact = vi.fn();
+    const secret = "approval-key-material-must-not-escape";
+    let failure: unknown;
+
+    try {
+      await runSystemOpsDentalLabConfigCommand({
+        mode: "apply",
+        clinicId: labId,
+        expectedChannelDigest: channelDigest,
+        expectedOwnerMembershipDigest: ownerMembershipDigest,
+        snapshotPath: "/private/tmp/systemops-lab-snapshot.json",
+        resolvedArtifactPath: "/private/tmp/systemops-lab-resolved.json",
+      }, {
+        inspect: async () => emptySnapshot(),
+        apply: vi.fn().mockRejectedValue(Object.assign(new Error(secret), {
+          name: secret,
+        })),
+        rollback: vi.fn(),
+        writeOwnerOnlyFile,
+        readOwnerOnlyFile: vi.fn(),
+        resolveRuntimeArtifact,
+        write: vi.fn(),
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(SystemOpsDentalLabConfigOperationError);
+    const output = formatSystemOpsDentalLabCommandFailure(failure);
+    expect(output).toBe("stage=transaction_entry reasonCodes=command_failed errorClass=Error");
+    expect(output).not.toContain(secret);
+    expect(writeOwnerOnlyFile).toHaveBeenCalledOnce();
+    expect(resolveRuntimeArtifact).not.toHaveBeenCalled();
+  });
+
+  it("reports the authoritative runtime config digest after a successful apply", async () => {
+    const writtenArtifacts: string[] = [];
+    const output: string[] = [];
+    const currentArtifact = {
+      schemaVersion: INTERNAL_LAB_RUNTIME_ARTIFACT_SCHEMA,
+      clinic: { id: labId, channelProvider: "z_api", zapiToken: "runtime-secret" },
+      editorial: null,
+      modules: [],
+      treatments: [],
+    } as const;
+
+    await runSystemOpsDentalLabConfigCommand({
+      mode: "apply",
+      clinicId: labId,
+      expectedChannelDigest: channelDigest,
+      expectedOwnerMembershipDigest: ownerMembershipDigest,
+      snapshotPath: "/private/tmp/systemops-lab-snapshot.json",
+      resolvedArtifactPath: "/private/tmp/systemops-lab-resolved.json",
+    }, {
+      inspect: async () => emptySnapshot(),
+      apply: async () => configuredSnapshot(),
+      rollback: vi.fn(),
+      writeOwnerOnlyFile: async (_path, contents) => {
+        writtenArtifacts.push(contents);
+      },
+      readOwnerOnlyFile: vi.fn(),
+      resolveRuntimeArtifact: async () => currentArtifact,
+      write: (line) => output.push(line),
+    });
+
+    const protectedRuntimeArtifact = JSON.parse(writtenArtifacts[1]);
+    const expectedBindings = computeInternalLabRuntimeBindings(protectedRuntimeArtifact);
+    expect(JSON.parse(output[1])).toMatchObject({
+      resolvedArtifact: "written_owner_only_outside_worktree",
+      bindings: { configDigest: expectedBindings.configDigest },
+    });
+    expect(expectedBindings.configDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(writtenArtifacts[1]).not.toContain("runtime-secret");
   });
 
   it("dry-run and verify never invoke a mutating dependency", async () => {
