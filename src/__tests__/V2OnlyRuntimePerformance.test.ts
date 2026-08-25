@@ -24,7 +24,7 @@ function metrics(arm: RuntimeArmMetrics["arm"]): RuntimeArmMetrics {
 
 function report(): RuntimePerformanceReport {
   return {
-    version: "v2-only-runtime-performance.v1",
+    version: "v2-only-runtime-performance.v2",
     provenance: {
       commit: "f15865539731a668c9a7095ff6c9a1df798e2db3",
       node: "v25.9.0",
@@ -35,6 +35,8 @@ function report(): RuntimePerformanceReport {
         nodePostgres: { package: "pg", packageVersion: "8.16.3" },
       },
       populationDigest: `sha256:${"a".repeat(64)}`,
+      populationDigestSemantics: "ordered-manifest+complete-corpus+normalized-tenant-configs+derived-inputs.v1",
+      lockHoldMetricSemantics: "whatsapp-stream-authority.explicit-after-acquisition-to-end.autocommit-statement-upper-bound.v1",
       armOrderPolicy: "alternate-by-repetition.v1-first-even.v2-first-odd",
       armOrder: [
         ["v1_current", "v2_only"],
@@ -228,6 +230,27 @@ describe("V2-only runtime performance baseline", () => {
       violations: [
         "protocol.armOrderPolicy",
         "frozen.v2_only.cardinality.sendJobs",
+      ],
+    });
+  });
+
+  it("rejects population and lock metric semantic drift before volatile comparison", () => {
+    const frozen = report();
+    const source = report();
+    const current = {
+      ...source,
+      provenance: {
+        ...source.provenance,
+        populationDigestSemantics: "partial-population.v0",
+        lockHoldMetricSemantics: "all-dml.v0",
+      },
+    } as unknown as RuntimePerformanceReport;
+
+    expect(evaluateRuntimePerformanceReport(current, frozen)).toEqual({
+      passed: false,
+      violations: [
+        "protocol.populationDigestSemantics",
+        "protocol.lockHoldMetricSemantics",
       ],
     });
   });

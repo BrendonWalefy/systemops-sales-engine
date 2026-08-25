@@ -25,15 +25,27 @@ describe("runtime performance SQL interval summary", () => {
     });
   });
 
-  it("uses the observed lock-to-transaction-end interval", () => {
+  it("uses the observed authority-acquisition-completion to transaction-end interval", () => {
     const intervals: SqlInterval[] = [
       { startedAt: 10, endedAt: 12, lockBearing: true, transactionId: 1 },
       { startedAt: 13, endedAt: 14, lockBearing: false, transactionId: 1 },
     ];
 
     expect(summarizeSqlIntervals(intervals, [
-      { transactionId: 1, firstLockAt: 10, endedAt: 15 },
-    ])).toEqual({ statements: 2, sequentialRoundTrips: 2, lockHoldMs: 5 });
+      { transactionId: 1, firstAuthorityCompletedAt: 12, endedAt: 15 },
+    ])).toEqual({ statements: 2, sequentialRoundTrips: 2, lockHoldMs: 3 });
+  });
+
+  it("uses the observed authority statement duration as the autocommit upper bound", () => {
+    const intervals: SqlInterval[] = [
+      { startedAt: 20, endedAt: 27, lockBearing: true, transactionId: null },
+    ];
+
+    expect(summarizeSqlIntervals(intervals, [])).toEqual({
+      statements: 1,
+      sequentialRoundTrips: 1,
+      lockHoldMs: 7,
+    });
   });
 });
 
@@ -42,6 +54,10 @@ describe("runtime performance SQL dispatch recorder", () => {
 
   beforeAll(async () => {
     runtime = await startEmbeddedAuthorityDatabase();
+    await runtime.pool.query("create table whatsapp_streams (id integer primary key, value integer not null)");
+    await runtime.pool.query("insert into whatsapp_streams (id, value) values (1, 1)");
+    await runtime.pool.query("create table runtime_unrelated_rows (id integer primary key, value integer not null)");
+    await runtime.pool.query("insert into runtime_unrelated_rows (id, value) values (1, 1)");
   }, 30_000);
 
   afterAll(async () => {
@@ -65,6 +81,51 @@ describe("runtime performance SQL dispatch recorder", () => {
         sequentialRoundTrips: 2,
         lockHoldMs: 0,
       });
+    } finally {
+      recorder.restore();
+    }
+  });
+
+  it("excludes unrelated DML from stream-authority lock hold", async () => {
+    const recorder = installRuntimePerformanceSqlRecorder(runtime!.pool);
+    try {
+      recorder.beginTurn();
+      await runtime!.pool.query("update runtime_unrelated_rows set value = value + 1 where id = 1");
+
+      expect(recorder.endTurn()).toMatchObject({ statements: 1, lockHoldMs: 0 });
+    } finally {
+      recorder.restore();
+    }
+  });
+
+  it("measures an explicit stream-authority transaction after acquisition completes", async () => {
+    const recorder = installRuntimePerformanceSqlRecorder(runtime!.pool);
+    const client = await runtime!.pool.connect();
+    try {
+      recorder.beginTurn();
+      await client.query("begin");
+      await client.query("select id from whatsapp_streams where id = 1 for update");
+      await client.query("select pg_sleep(0.01)");
+      await client.query("commit");
+
+      const metrics = recorder.endTurn();
+      expect(metrics.statements).toBe(4);
+      expect(metrics.lockHoldMs).toBeGreaterThan(0);
+    } finally {
+      client.release();
+      recorder.restore();
+    }
+  });
+
+  it("measures an autocommit stream-authority mutation as an observed upper bound", async () => {
+    const recorder = installRuntimePerformanceSqlRecorder(runtime!.pool);
+    try {
+      recorder.beginTurn();
+      await runtime!.pool.query("update whatsapp_streams set value = value + 1 where id = 1");
+      const metrics = recorder.endTurn();
+
+      expect(metrics.statements).toBe(1);
+      expect(metrics.lockHoldMs).toBeGreaterThan(0);
     } finally {
       recorder.restore();
     }

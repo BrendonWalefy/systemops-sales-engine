@@ -124,6 +124,7 @@ import type { Appointment } from "@/domain/entities/calendar-slot";
 import type { Conversation, Message } from "@/domain/entities/conversation";
 import type { Lead } from "@/domain/entities/lead";
 import { createLiveDentalUnderstanding } from "@/infrastructure/adapters/ai/live-dental-understanding";
+import { createLiveResponseVerbalizer } from "@/infrastructure/adapters/ai/live-response-verbalizer";
 import { createEmbeddedAtomicDatabaseBatch } from "@/__tests__/helpers/embedded-authority-database";
 import {
   cleanupEmbeddedAuthorityDatabase,
@@ -134,6 +135,13 @@ import {
   installRuntimePerformanceSqlRecorder,
   type SqlTurnMetrics,
 } from "@/__tests__/helpers/runtime-performance-sql-recorder";
+import {
+  buildRuntimePerformancePopulation,
+  RUNTIME_DRAIN_NOW_ISO,
+  RUNTIME_FIXED_NOW_ISO,
+  RUNTIME_POPULATION_DIGEST_SEMANTICS,
+  type RuntimeFixtureInputs,
+} from "@/__tests__/helpers/runtime-performance-population";
 import * as schema from "@/infrastructure/db/schema";
 import { organizations, treatments } from "@/infrastructure/db/schema";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
@@ -167,8 +175,8 @@ type TurnSample = Readonly<{
   cardinality: TurnCardinality;
 }>;
 
-const FIXED_NOW = new Date("2026-08-25T12:00:00.000Z");
-const DRAIN_NOW = new Date("2026-08-26T12:00:00.000Z");
+const FIXED_NOW = new Date(RUNTIME_FIXED_NOW_ISO);
+const DRAIN_NOW = new Date(RUNTIME_DRAIN_NOW_ISO);
 const DUPLICATE_CASE_ID = "injection-0001";
 const REPLY_ACTION_TYPES = new Set([
   "general_question",
@@ -310,19 +318,6 @@ function expectedLegacyActions(fixture: CorpusCase): readonly string[] {
   ])];
 }
 
-function serviceKey(value: string): string {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((token) => token && !["de", "da", "das", "do", "dos", "em"].includes(token))
-    .join(" ");
-}
-
-function serviceQueryMatches(query: string, serviceName: string): boolean {
-  const serviceTokens = new Set(serviceKey(serviceName).split(" "));
-  const queryTokens = serviceKey(query).split(" ");
-  return queryTokens.length > 0 && queryTokens.every((token) => serviceTokens.has(token));
-}
-
 function understandingFor(fixture: CorpusCase): Record<string, unknown> {
   const source = fixture.labels.understanding;
   const entities = source.entities;
@@ -426,6 +421,8 @@ describe("V2-only runtime performance measurement worker", () => {
   let activeV2Fixture: CorpusCase | undefined;
   let activeV2Calls = 0;
   let activeV2Tokens = 0;
+  let activeV2VerbalizerCalls = 0;
+  let activeV2VerbalizerTokens = 0;
   let providerDeliveries = 0;
   const observations = new Map<string, ConversationHandleResult>();
   const decisionTraces: Record<ArmName, Map<string, DecisionTraceRecord[]>> = {
@@ -434,6 +431,7 @@ describe("V2-only runtime performance measurement worker", () => {
   };
   const v1TurnObservations = new Map<string, V1TurnObservationEvent[]>();
   const clinicIdsByCase = new Map<string, string>();
+  const fixtureInputsByCase = new Map<string, RuntimeFixtureInputs>();
   const expectedV2OutcomesByCase = new Map<string, string>();
   const samples: Record<ArmName, TurnSample[]> = { v1_current: [], v2_only: [] };
 
@@ -445,8 +443,9 @@ describe("V2-only runtime performance measurement worker", () => {
     atomicBatchMock.set(embeddedBatch);
     await migrate(database, { migrationsFolder: join(process.cwd(), "drizzle") });
 
+    const manifestPath = "evals/understanding/cycle-f-dental.json";
     const manifest = JSON.parse(readFileSync(
-      join(process.cwd(), "evals/understanding/cycle-f-dental.json"),
+      join(process.cwd(), manifestPath),
       "utf8",
     )) as { cases: { caseId: string }[] };
     const corpusById = new Map(loadCorpus("evals/corpus").cases.map((fixture) => [fixture.caseId, fixture]));
@@ -465,102 +464,48 @@ describe("V2-only runtime performance measurement worker", () => {
       expect(REPLY_ACTION_TYPES.has(fixture.labels.expectedActionResult.type)).toBe(true);
       expect(expectedReply(fixture)).toBe(true);
     }
-    populationDigest = `sha256:${createHash("sha256").update(JSON.stringify(
-      fixtures.map((fixture) => ({
-        caseId: fixture.caseId,
-        input: fixture.input,
-        understanding: fixture.labels.understanding,
-        expectedActionResult: fixture.labels.expectedActionResult,
-      })),
-    )).digest("hex")}`;
-
-    for (const [fixtureIndex, fixture] of fixtures.entries()) {
+    const tenantConfigs = new Map<string, unknown>();
+    for (const fixture of fixtures) {
       const configRef = fixture.input.tenantConfigRef;
-      const config = JSON.parse(readFileSync(
-        join(process.cwd(), "evals/corpus/tenant-configs", `${configRef}.json`),
-        "utf8",
-      )) as {
-        timezone?: unknown;
-        businessHours?: unknown;
-        services?: unknown;
-      };
-      if (!Array.isArray(config.services)) throw new Error(`runtime fixture ${configRef} has no services`);
-      const fixtureServices = config.services.map((candidate, serviceIndex) => {
-        if (!candidate || typeof candidate !== "object") {
-          throw new Error(`runtime fixture ${configRef} service ${serviceIndex} is invalid`);
-        }
-        const service = candidate as Record<string, unknown>;
-        const name = optionalString(service.name);
-        if (!name) throw new Error(`runtime fixture ${configRef} service ${serviceIndex} has no name`);
-        return { service, name };
-      });
-      const aliasesByService = new Map<string, Set<string>>();
-      const serviceQuery = fixture.labels.understanding.entities.service;
-      const expected = fixture.labels.expectedActionResult;
-      const targetNames = optionalStringArray(expected.ambiguousTreatmentMatches)
-        ?? (optionalString(expected.identifiedTreatment) ? [String(expected.identifiedTreatment)] : []);
-      const targets = targetNames.length > 0
-        ? fixtureServices.filter(({ name }) => targetNames.some((target) => serviceKey(target) === serviceKey(name)))
-        : typeof serviceQuery === "string"
-          ? fixtureServices.filter(({ name }) => serviceQueryMatches(serviceQuery, name))
-          : [];
-      if (typeof serviceQuery === "string") {
-        for (const target of targets) {
-          const aliases = aliasesByService.get(target.name) ?? new Set<string>();
-          aliases.add(serviceQuery);
-          aliasesByService.set(target.name, aliases);
-        }
+      if (!tenantConfigs.has(configRef)) {
+        tenantConfigs.set(configRef, JSON.parse(readFileSync(
+          join(process.cwd(), "evals/corpus/tenant-configs", `${configRef}.json`),
+          "utf8",
+        )));
       }
-      const expectedOutcome = expected.type === "slots_found"
-        ? "slots_found"
-        : expected.type === "appointment_confirmed"
-          ? "appointment_created"
-          : expected.type === "appointment_confirmation_accepted"
-            ? "appointment_confirmed"
-            : targets.length > 1
-              ? "service_options_offered"
-              : targets.length === 1 && (
-                fixture.labels.understanding.request === "service-availability"
-                || typeof targets[0]!.service.priceCents === "number"
-              )
-                ? "catalog_answered"
-                : "clarification_required";
-      expectedV2OutcomesByCase.set(fixture.caseId, expectedOutcome);
+    }
+    const population = buildRuntimePerformancePopulation({
+      manifestPath,
+      manifest,
+      fixtures,
+      tenantConfigs,
+    });
+    populationDigest = population.populationDigest;
+    for (const fixtureInput of population.fixtureInputs) {
+      fixtureInputsByCase.set(fixtureInput.caseId, fixtureInput);
+    }
+
+    for (const fixture of fixtures) {
+      const fixtureInput = fixtureInputsByCase.get(fixture.caseId);
+      if (!fixtureInput) throw new Error(`missing derived runtime fixture ${fixture.caseId}`);
+      expectedV2OutcomesByCase.set(fixture.caseId, fixtureInput.expectedV2Outcome);
       const [organization] = await database.insert(organizations).values({
-        name: `Runtime measurement ${fixtureIndex + 1}`,
-        slug: `runtime-measurement-${fixtureIndex + 1}`,
-        specialty: "dental",
-        operationalStatus: "active",
-        isTest: true,
-        isDemo: false,
-        autoReplyEnabled: true,
-        calendarMode: "internal",
-        timezone: optionalString(config.timezone) ?? "America/Sao_Paulo",
-        businessHours: optionalString(config.businessHours) ?? "Seg-Sex 08:00-18:00",
-        messageDebounceMs: 0,
+        ...fixtureInput.organization,
       }).returning({ id: organizations.id });
       clinicIdsByCase.set(fixture.caseId, organization!.id);
-      const servicesToSeed = fixture.labels.understanding.request === "book-appointment"
-        ? (targets.length > 0 ? targets : fixtureServices.slice(0, 1))
-        : fixture.labels.understanding.request === "confirm-slot"
-          || fixture.labels.understanding.request === "confirm-appointment"
-          ? fixtureServices.slice(0, 1)
-          : fixtureServices;
-      for (const { service, name } of servicesToSeed) {
-        const priceCents = typeof service.priceCents === "number" ? service.priceCents : null;
-        const aliases = new Set(optionalStringArray(service.aliases) ?? []);
-        for (const alias of aliasesByService.get(name) ?? []) aliases.add(alias);
+      expect(fixtureInput.catalog.length, `${fixture.caseId} full catalog size`).toBeGreaterThan(0);
+      for (const service of fixtureInput.catalog) {
         await database.insert(treatments).values({
           clinicId: organization!.id,
-          name,
-          durationMinutes: 60,
-          description: optionalString(service.description),
-          aliases: [...aliases],
-          priceCents,
-          priceQuotableInChat: priceCents !== null,
-          priceKind: "fixed",
+          ...service,
+          aliases: [...service.aliases],
         });
       }
+      expect(
+        (await new DrizzleTreatmentRepository().listByClinic(organization!.id))
+          .map((service) => service.name).sort(),
+        `${fixture.caseId} persisted full committed catalog`,
+      ).toEqual(fixtureInput.catalog.map((service) => service.name).sort());
     }
     const version = await runtime.pool.query<{ server_version: string }>("show server_version");
     databaseServerVersion = version.rows[0]?.server_version ?? "unknown";
@@ -635,9 +580,47 @@ describe("V2-only runtime performance measurement worker", () => {
         },
       },
     });
+    const v2Verbalizer = createLiveResponseVerbalizer({
+      chat: {
+        completions: {
+          create: async (input: unknown) => {
+            if (!activeV2Fixture) throw new Error("V2 verbalizer invoked outside a measured turn");
+            const request = input as { messages?: { content?: unknown }[] };
+            const rawPayload = request.messages?.[1]?.content;
+            if (typeof rawPayload !== "string") throw new Error("V2 verbalizer received no payload");
+            const payload = JSON.parse(rawPayload) as { allowedValues?: unknown };
+            const values = Array.isArray(payload.allowedValues)
+              && payload.allowedValues.every((value) => typeof value === "string")
+              ? payload.allowedValues
+              : [];
+            const prefix: Record<string, string> = {
+              general_question: "Posso ajudar.",
+              greeting: "Olá, posso ajudar.",
+              price_inquiry: "Sobre este serviço:",
+              clarification_needed: "Preciso confirmar o serviço.",
+              slots_found: "Estas são as opções:",
+              appointment_confirmed: "A ação foi concluída.",
+              appointment_confirmation_accepted: "Confirmação recebida.",
+            };
+            const fixturePrefix = prefix[activeV2Fixture.labels.expectedActionResult.type]
+              ?? "Posso ajudar.";
+            const text = values.length > 0 ? `${fixturePrefix} ${values.join(" ")}` : fixturePrefix;
+            const inputTokens = 17 + activeV2Fixture.caseId.length % 7;
+            const outputTokens = 5 + Math.ceil(text.length / 24);
+            activeV2VerbalizerCalls += 1;
+            activeV2VerbalizerTokens += inputTokens + outputTokens;
+            return {
+              choices: [{ message: { content: JSON.stringify({ text }) } }],
+              usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens },
+            };
+          },
+        },
+      },
+    });
     const v2Handler = observeHandler(new V2LiveConversationHandler({
       lifecycle: v2Lifecycle,
       understanding: v2Understanding,
+      verbalizer: v2Verbalizer,
       dental: {
         treatments: new DrizzleTreatmentRepository(),
         calendar,
@@ -652,36 +635,30 @@ describe("V2-only runtime performance measurement worker", () => {
           followUpRepository,
         ),
       },
-      resolveTurnConfiguration: async () => ({
-        gateInput: {
-          automationEnabled: true,
-          duplicate: false,
-          humanControlled: false,
-          optedOut: false,
-        },
-        policy: {
-          priceDisclosureEnabled: true,
-          humanEscalationRequired: false,
-          schedulingMinimumLeadTimeHours: 2,
-          schedulingRequiresEvaluationFirst: false,
-        },
-        style: { tone: "warm", verbosity: "concise", greeting: "omit", emoji: "none" },
-        speaker: {
-          agentName: "Runtime",
-          organizationName: "Runtime measurement",
-          specialty: "dental",
-          toneOfVoice: "neutral",
-          guidelines: [],
-        },
-        useVoice: false,
-        ttsConfig: { provider: "nova", speed: 1 },
-        deliveryBinding: {
-          schemaVersion: "conversation-v2.internal-lab-delivery-binding.v1",
-          tenantDigest: `sha256:${"1".repeat(64)}`,
-          channelDigest: `sha256:${"2".repeat(64)}`,
-          configDigest: `sha256:${"3".repeat(64)}`,
-        },
-      }),
+      resolveTurnConfiguration: async () => {
+        if (!activeV2Fixture) throw new Error("V2 configuration resolved outside a measured turn");
+        const fixtureInput = fixtureInputsByCase.get(activeV2Fixture.caseId);
+        if (!fixtureInput) throw new Error(`missing V2 fixture inputs ${activeV2Fixture.caseId}`);
+        return {
+          gateInput: {
+            automationEnabled: true,
+            duplicate: false,
+            humanControlled: false,
+            optedOut: false,
+          },
+          policy: fixtureInput.turnConfiguration.policy,
+          style: fixtureInput.turnConfiguration.style,
+          speaker: fixtureInput.turnConfiguration.speaker,
+          useVoice: false,
+          ttsConfig: { provider: "nova", speed: 1 },
+          deliveryBinding: {
+            schemaVersion: "conversation-v2.internal-lab-delivery-binding.v1",
+            tenantDigest: `sha256:${"1".repeat(64)}`,
+            channelDigest: `sha256:${"2".repeat(64)}`,
+            configDigest: `sha256:${"3".repeat(64)}`,
+          },
+        };
+      },
       outbound: { outboundMessageStore, jobQueue },
       decisionTraceSink: decisionTraceSink("v2_only"),
       persistStopContact: async () => {},
@@ -785,6 +762,8 @@ describe("V2-only runtime performance measurement worker", () => {
     clinicId: string,
   ): Promise<void> {
     const now = fixedDate();
+    const fixtureInput = fixtureInputsByCase.get(fixture.caseId);
+    if (!fixtureInput) throw new Error(`missing fixture inputs ${fixture.caseId}`);
     const lead = await leadRepository.ensureWhatsAppIdentity({
       id: randomUUID(),
       clinicId,
@@ -794,7 +773,7 @@ describe("V2-only runtime performance measurement worker", () => {
       email: null,
       channel: "whatsapp",
       campaignId: null,
-      treatmentInterest: null,
+      treatmentInterest: fixtureInput.lead.treatmentInterest,
       profilePicUrl: null,
       status: "new",
       temperature: null,
@@ -822,13 +801,13 @@ describe("V2-only runtime performance measurement worker", () => {
       updatedAt: now,
     } satisfies Conversation);
 
-    for (const [index, history] of fixture.input.history.entries()) {
+    for (const [index, history] of fixtureInput.history.entries()) {
       const inserted = await conversationRepository.appendMessage({
         id: randomUUID(),
         conversationId: conversation.id,
-        author: history.author === "operator" ? "clinic_user" : history.author,
+        author: history.author,
         body: history.body,
-        sentAt: new Date(FIXED_NOW.getTime() - (fixture.input.history.length - index + 1) * 60_000),
+        sentAt: new Date(FIXED_NOW.getTime() - history.minutesBeforeTurn * 60_000),
         externalId: null,
         intent: null,
         deliveryFormat: null,
@@ -848,50 +827,35 @@ describe("V2-only runtime performance measurement worker", () => {
       "awaiting_deposit_proof",
       "deposit_proof_received",
     ]);
-    if (fixture.input.state !== null) {
-      if (!supportedStates.has(fixture.input.state as ConversationStateType)) {
-        throw new Error(`unsupported runtime fixture state ${fixture.input.state}`);
+    if (fixtureInput.requestedState !== null) {
+      if (!supportedStates.has(fixtureInput.requestedState as ConversationStateType)) {
+        throw new Error(`unsupported runtime fixture state ${fixtureInput.requestedState}`);
       }
-      await state.transition(conversation.id, fixture.input.state as ConversationStateType);
+      await state.transition(conversation.id, fixtureInput.requestedState as ConversationStateType);
     }
 
     const persistedHistory = await conversationRepository.listMessages(conversation.id);
     expect(
       persistedHistory.map(({ author, body }) => ({ author, body })),
       `${arm}/${fixture.caseId}/${turnIndex} durable history`,
-    ).toEqual(fixture.input.history.map(({ author, body }) => ({
-      author: author === "operator" ? "clinic_user" : author,
-      body,
-    })));
+    ).toEqual(fixtureInput.history.map(({ author, body }) => ({ author, body })));
     expect((await state.getCurrentState(conversation.id))?.state ?? null)
-      .toBe(fixture.input.state);
+      .toBe(fixtureInput.requestedState);
 
-    if (fixture.labels.expectedActionResult.type === "appointment_confirmed") {
-      const [treatment] = await new DrizzleTreatmentRepository().listByClinic(clinicId);
+    if (fixtureInput.actionContext.kind === "offered_slots") {
+      const actionContext = fixtureInput.actionContext;
+      const treatment = (await new DrizzleTreatmentRepository().listByClinic(clinicId))
+        .find((candidate) => candidate.name === actionContext.treatmentName);
       if (!treatment) throw new Error(`missing runtime treatment for ${fixture.caseId}`);
       await state.transition(conversation.id, "slots_offered", {
-        slots: [
-          {
-            index: 1,
-            startsAt: "2026-08-26T17:00:00.000Z",
-            endsAt: "2026-08-26T18:00:00.000Z",
-            label: "quarta às 14h",
-          },
-          {
-            index: 2,
-            startsAt: "2026-08-26T18:00:00.000Z",
-            endsAt: "2026-08-26T19:00:00.000Z",
-            label: optionalString(fixture.labels.expectedActionResult.slot) ?? "quarta às 15h",
-          },
-        ],
-        expiresAt: "2026-08-26T20:00:00.000Z",
+        slots: actionContext.slots,
+        expiresAt: actionContext.expiresAt,
         treatmentId: treatment.id,
         treatmentName: treatment.name,
-        durationMinutes: 60,
+        durationMinutes: actionContext.durationMinutes,
       }, 1_920);
-    } else if (fixture.labels.expectedActionResult.type === "appointment_confirmation_accepted") {
+    } else if (fixtureInput.actionContext.kind === "appointment_confirmation") {
       const appointmentId = randomUUID();
-      const appointmentLabel = optionalString(fixture.labels.expectedActionResult.appointmentLabel) ?? "horário confirmado";
       await appointmentRepository.save({
         id: appointmentId,
         clinicId,
@@ -900,8 +864,8 @@ describe("V2-only runtime performance measurement worker", () => {
         roomId: null,
         calendarEventId: randomUUID(),
         calendarEventUrl: null,
-        startsAt: new Date("2026-08-25T19:00:00.000Z"),
-        endsAt: new Date("2026-08-25T20:00:00.000Z"),
+        startsAt: new Date(fixtureInput.actionContext.startsAt),
+        endsAt: new Date(fixtureInput.actionContext.endsAt),
         status: "scheduled",
         source: "app",
         origin: null,
@@ -914,7 +878,7 @@ describe("V2-only runtime performance measurement worker", () => {
       });
       await state.transition(conversation.id, "awaiting_appointment_confirmation", {
         appointmentId,
-        appointmentLabel,
+        appointmentLabel: fixtureInput.actionContext.appointmentLabel,
       });
     }
   }
@@ -961,6 +925,8 @@ describe("V2-only runtime performance measurement worker", () => {
     activeV2Fixture = fixture;
     activeV2Calls = 0;
     activeV2Tokens = 0;
+    activeV2VerbalizerCalls = 0;
+    activeV2VerbalizerTokens = 0;
     const deliveriesBefore = providerDeliveries;
     sqlRecorder!.beginTurn();
     const startedAt = performance.now();
@@ -1051,7 +1017,16 @@ describe("V2-only runtime performance measurement worker", () => {
       }
       const telemetry = arm === "v1_current"
         ? v1Model.snapshot()
-        : { calls: activeV2Calls, tokens: activeV2Tokens };
+        : {
+            calls: activeV2Calls + activeV2VerbalizerCalls,
+            tokens: activeV2Tokens + activeV2VerbalizerTokens,
+          };
+      if (arm === "v2_only" && expectedReply(fixture)) {
+        expect(activeV2Calls, `${fixture.caseId} Understanding boundary calls`).toBe(1);
+        expect(activeV2Tokens, `${fixture.caseId} Understanding boundary tokens`).toBeGreaterThan(0);
+        expect(activeV2VerbalizerCalls, `${fixture.caseId} verbalizer boundary calls`).toBe(1);
+        expect(activeV2VerbalizerTokens, `${fixture.caseId} verbalizer boundary tokens`).toBeGreaterThan(0);
+      }
       expect(telemetry.calls).toBeGreaterThan(0);
       expect(telemetry.tokens).toBeGreaterThan(0);
       samples[arm].push(Object.freeze({ latencyMs, modelCalls: telemetry.calls, tokens: telemetry.tokens, sql, cardinality }));
@@ -1109,7 +1084,7 @@ describe("V2-only runtime performance measurement worker", () => {
     });
 
     const report: RuntimePerformanceReport = {
-      version: "v2-only-runtime-performance.v1",
+      version: "v2-only-runtime-performance.v2",
       provenance: {
         commit: process.env.V2_RUNTIME_PERFORMANCE_COMMIT ?? "0".repeat(40),
         node: process.version,
@@ -1124,6 +1099,8 @@ describe("V2-only runtime performance measurement worker", () => {
           nodePostgres: { package: "pg", packageVersion: packageVersion("pg") },
         },
         populationDigest,
+        populationDigestSemantics: RUNTIME_POPULATION_DIGEST_SEMANTICS,
+        lockHoldMetricSemantics: "whatsapp-stream-authority.explicit-after-acquisition-to-end.autocommit-statement-upper-bound.v1",
         armOrderPolicy: "alternate-by-repetition.v1-first-even.v2-first-odd",
         armOrder: ARM_ORDER,
       },

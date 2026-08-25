@@ -11,7 +11,7 @@ export type SqlInterval = Readonly<{
 
 type TransactionInterval = Readonly<{
   transactionId: number;
-  firstLockAt: number | null;
+  firstAuthorityCompletedAt: number | null;
   endedAt: number;
 }>;
 
@@ -34,12 +34,14 @@ function normalizedSql(input: unknown): string {
   return sqlText(input).trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function isLockBearing(input: unknown): boolean {
+function isStreamAuthoritySql(input: unknown): boolean {
   const sql = normalizedSql(input);
+  const mentionsStreamAuthority = /\b(?:public\.)?whatsapp_streams\b/.test(sql);
+  if (!mentionsStreamAuthority) return false;
   return /\bfor (?:no key )?(?:update|share)\b/.test(sql)
-    || /\bskip locked\b/.test(sql)
-    || /^(?:with\b[\s\S]*\b)?(?:insert|update|delete)\b/.test(sql)
-    || /\b(?:insert into|update|delete from)\b/.test(sql);
+    || /\binsert into (?:public\.)?whatsapp_streams\b/.test(sql)
+    || /\bupdate (?:public\.)?whatsapp_streams\b/.test(sql)
+    || /\bdelete from (?:public\.)?whatsapp_streams\b/.test(sql);
 }
 
 export function summarizeSqlIntervals(
@@ -54,8 +56,11 @@ export function summarizeSqlIntervals(
     waveEnd = Math.max(waveEnd, interval.endedAt);
   }
   const transactionLocks = transactions
-    .filter((transaction) => transaction.firstLockAt !== null)
-    .map((transaction) => Math.max(0, transaction.endedAt - transaction.firstLockAt!));
+    .filter((transaction) => transaction.firstAuthorityCompletedAt !== null)
+    .map((transaction) => Math.max(
+      0,
+      transaction.endedAt - transaction.firstAuthorityCompletedAt!,
+    ));
   const standaloneLocks = ordered
     .filter((interval) => interval.lockBearing && interval.transactionId === null)
     .map((interval) => Math.max(0, interval.endedAt - interval.startedAt));
@@ -77,22 +82,35 @@ export function installRuntimePerformanceSqlRecorder(pool: Pool): Readonly<{
   const wrappedClients = new WeakSet<PoolClient>();
   const intervals: SqlInterval[] = [];
   const transactions: TransactionInterval[] = [];
-  const activeTransactions = new WeakMap<PoolClient, { id: number; firstLockAt: number | null }>();
+  const activeTransactions = new WeakMap<PoolClient, {
+    id: number;
+    firstAuthorityCompletedAt: number | null;
+  }>();
   let recording = false;
   let transactionSequence = 0;
 
-  async function record<T>(input: unknown, transactionId: number | null, query: () => Promise<T>): Promise<T> {
+  async function record<T>(
+    input: unknown,
+    transactionId: number | null,
+    query: () => Promise<T>,
+    completed?: (endedAt: number, succeeded: boolean) => void,
+  ): Promise<T> {
     if (!recording) return query();
     const startedAt = performance.now();
+    let succeeded = false;
     try {
-      return await query();
+      const result = await query();
+      succeeded = true;
+      return result;
     } finally {
+      const endedAt = performance.now();
       intervals.push({
         startedAt,
-        endedAt: performance.now(),
-        lockBearing: isLockBearing(input),
+        endedAt,
+        lockBearing: isStreamAuthoritySql(input),
         transactionId,
       });
+      completed?.(endedAt, succeeded);
     }
   }
 
@@ -103,15 +121,14 @@ export function installRuntimePerformanceSqlRecorder(pool: Pool): Readonly<{
     client.query = ((...args: unknown[]) => {
       const command = normalizedSql(args[0]);
       if (command === "begin" || command.startsWith("begin ")) {
-        activeTransactions.set(client, { id: ++transactionSequence, firstLockAt: null });
+        activeTransactions.set(client, {
+          id: ++transactionSequence,
+          firstAuthorityCompletedAt: null,
+        });
       }
       const active = activeTransactions.get(client) ?? null;
       if (poolQueryContext.getStore()) {
         return originalClientQuery(...args as Parameters<PoolClient["query"]>);
-      }
-      const startedAt = performance.now();
-      if (recording && active && isLockBearing(args[0]) && active.firstLockAt === null) {
-        active.firstLockAt = startedAt;
       }
       const result = record(
         args[0],
@@ -119,16 +136,26 @@ export function installRuntimePerformanceSqlRecorder(pool: Pool): Readonly<{
         () => originalClientQuery(
           ...args as Parameters<PoolClient["query"]>,
         ) as unknown as Promise<QueryResult>,
+        (endedAt, succeeded) => {
+          if (
+            succeeded
+            && active
+            && isStreamAuthoritySql(args[0])
+            && active.firstAuthorityCompletedAt === null
+          ) {
+            active.firstAuthorityCompletedAt = endedAt;
+          }
+          if ((command === "commit" || command === "rollback") && active) {
+            transactions.push({
+              transactionId: active.id,
+              firstAuthorityCompletedAt: active.firstAuthorityCompletedAt,
+              endedAt,
+            });
+          }
+        },
       );
       return result.finally(() => {
         if ((command === "commit" || command === "rollback") && active) {
-          if (recording) {
-            transactions.push({
-              transactionId: active.id,
-              firstLockAt: active.firstLockAt,
-              endedAt: performance.now(),
-            });
-          }
           activeTransactions.delete(client);
         }
       });

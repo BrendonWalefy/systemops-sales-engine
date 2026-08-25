@@ -20,7 +20,7 @@ export type RuntimeArmMetrics = Readonly<{
 }>;
 
 export type RuntimePerformanceReport = Readonly<{
-  version: "v2-only-runtime-performance.v1";
+  version: "v2-only-runtime-performance.v2";
   provenance: Readonly<{
     commit: string;
     node: string;
@@ -38,6 +38,8 @@ export type RuntimePerformanceReport = Readonly<{
       }>;
     }>;
     populationDigest: string;
+    populationDigestSemantics: "ordered-manifest+complete-corpus+normalized-tenant-configs+derived-inputs.v1";
+    lockHoldMetricSemantics: "whatsapp-stream-authority.explicit-after-acquisition-to-end.autocommit-statement-upper-bound.v1";
     armOrderPolicy: "alternate-by-repetition.v1-first-even.v2-first-odd";
     armOrder: readonly [
       readonly ["v1_current", "v2_only"],
@@ -78,7 +80,7 @@ const armMetricsSchema = z.object({
 }).strict();
 
 const reportSchema = z.object({
-  version: z.literal("v2-only-runtime-performance.v1"),
+  version: z.literal("v2-only-runtime-performance.v2"),
   provenance: z.object({
     commit: z.string().regex(/^[0-9a-f]{40}$/),
     node: z.string().regex(/^v\d+\.\d+\.\d+/),
@@ -96,6 +98,12 @@ const reportSchema = z.object({
       }).strict(),
     }).strict(),
     populationDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+    populationDigestSemantics: z.literal(
+      "ordered-manifest+complete-corpus+normalized-tenant-configs+derived-inputs.v1",
+    ),
+    lockHoldMetricSemantics: z.literal(
+      "whatsapp-stream-authority.explicit-after-acquisition-to-end.autocommit-statement-upper-bound.v1",
+    ),
     armOrderPolicy: z.literal("alternate-by-repetition.v1-first-even.v2-first-odd"),
     armOrder: z.tuple([
       z.tuple([z.literal("v1_current"), z.literal("v2_only")]),
@@ -202,6 +210,12 @@ export function evaluateRuntimePerformanceReport(
   const violations: string[] = [];
   if (current.provenance.populationDigest !== frozen.provenance.populationDigest) {
     violations.push("protocol.populationDigest");
+  }
+  if (current.provenance.populationDigestSemantics !== frozen.provenance.populationDigestSemantics) {
+    violations.push("protocol.populationDigestSemantics");
+  }
+  if (current.provenance.lockHoldMetricSemantics !== frozen.provenance.lockHoldMetricSemantics) {
+    violations.push("protocol.lockHoldMetricSemantics");
   }
   if (!samePopulation(current.population, frozen.population)) violations.push("protocol.population");
   if (current.provenance.armOrderPolicy !== frozen.provenance.armOrderPolicy) {
