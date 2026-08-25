@@ -33,6 +33,7 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
     const streamGeneration = isLiveReply ? authorization.streamGeneration : null;
     const sourceInboundEventId = isLiveReply ? authorization.sourceInboundEventId : null;
     const claimJobId = isLiveReply ? authorization.claimJobId : null;
+    const turnId = options?.turnId ?? readTurnId(input.payload);
     const statement = sql`
       with authority_version as materialized (
         select coalesce((
@@ -43,7 +44,15 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
       ), validated_authorization as materialized (
         select authority_version.version
         from authority_version
-        where (
+        where not exists (
+          select 1
+          from inbound_events terminal_event
+          where terminal_event.organization_id = ${input.clinicId}::uuid
+            and terminal_event.id::text = ${turnId}
+            and terminal_event.processing_status = 'history_only'
+            and terminal_event.stream_id is null
+            and terminal_event.stream_generation is null
+        ) and ((
           ${authorization.kind} <> 'live_stream_reply'
           and not (${authorization.kind} = 'legacy' and authority_version.version >= 2)
           and (
@@ -77,7 +86,7 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
               and event.claim_job_id = ${claimJobId}::uuid
               and event.claimed_at is not null
           )
-        )
+        ))
       ), reserved_sequence as (
         update conversations
         set next_outbound_sequence = next_outbound_sequence + 1
@@ -218,6 +227,15 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
     const result = await db.execute<{ authorized: boolean; reason: string }>(sql`
       select
         case
+          when exists (
+            select 1
+            from inbound_events terminal_event
+            where terminal_event.organization_id = outbound.organization_id
+              and terminal_event.id::text = outbound.payload->>'turnId'
+              and terminal_event.processing_status = 'history_only'
+              and terminal_event.stream_id is null
+              and terminal_event.stream_generation is null
+          ) then false
           when coalesce(authority.version, 0) < 2
             and outbound.authorization_kind is null then true
           when coalesce(authority.version, 0) >= 2
@@ -253,6 +271,15 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
           else false
         end as authorized,
         case
+          when exists (
+            select 1
+            from inbound_events terminal_event
+            where terminal_event.organization_id = outbound.organization_id
+              and terminal_event.id::text = outbound.payload->>'turnId'
+              and terminal_event.processing_status = 'history_only'
+              and terminal_event.stream_id is null
+              and terminal_event.stream_generation is null
+          ) then 'terminal_legacy_history'
           when coalesce(authority.version, 0) >= 2
             and (outbound.authorization_kind is null or outbound.authorization_kind = 'legacy')
             then 'authority_version_activated'
@@ -384,6 +411,12 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
       );
     return row?.value ?? 0;
   }
+}
+
+function readTurnId(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const turnId = (payload as Record<string, unknown>).turnId;
+  return typeof turnId === "string" && turnId.length > 0 ? turnId : null;
 }
 
 function mapOutboundMessage(row: typeof outboundMessages.$inferSelect): OutboundMessage {

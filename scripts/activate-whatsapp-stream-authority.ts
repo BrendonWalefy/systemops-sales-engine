@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { DrizzleConversationAuthorityStore } from "@/infrastructure/repositories/drizzle-conversation-authority-store";
 import {
+  AUTHORITY_BLOCKING_VALIDATION_METRICS,
   AUTHORITY_VALIDATION_METRICS,
   assertUuid,
   validateWhatsAppStreamAuthority,
@@ -45,7 +46,7 @@ export function assessWhatsAppStreamAuthorityTransition(input: Readonly<{
 
   const unresolvedEvents = metrics.get("unresolved_events") ?? 0;
   const allowsUnresolvedMigrationDebt = input.expectedVersion === 0 && input.nextVersion === 1;
-  const blocking = AUTHORITY_VALIDATION_METRICS.flatMap((metric) => {
+  const blocking = AUTHORITY_BLOCKING_VALIDATION_METRICS.flatMap((metric) => {
     const count = metrics.get(metric) ?? 0;
     if (count === 0 || (metric === "unresolved_events" && allowsUnresolvedMigrationDebt)) return [];
     return [`${metric}=${count}`];
