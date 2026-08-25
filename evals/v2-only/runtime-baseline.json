@@ -1,7 +1,7 @@
 {
-  "version": "v2-only-runtime-performance.v1",
+  "version": "v2-only-runtime-performance.v2",
   "provenance": {
-    "commit": "1816187c98af35c0d788a8a2c2acd5bd248157f4",
+    "commit": "676cd913d565f68bf80d02fe719a789680a51963",
     "node": "v25.9.0",
     "platform": "darwin",
     "arch": "arm64",
@@ -16,7 +16,9 @@
         "packageVersion": "8.23.0"
       }
     },
-    "populationDigest": "sha256:71b1c570048ac4675c6f17e2d45fbf75d7a9f6d875c263461625f30e2073e569",
+    "populationDigest": "sha256:c3bb0437e542489064e8c7d6ec5e5e841980bf5479a99bca09319eff02aa410c",
+    "populationDigestSemantics": "ordered-manifest+complete-corpus+normalized-tenant-configs+derived-inputs.v1",
+    "lockHoldMetricSemantics": "whatsapp-stream-authority.explicit-after-acquisition-to-end.autocommit-statement-upper-bound.v1",
     "armOrderPolicy": "alternate-by-repetition.v1-first-even.v2-first-odd",
     "armOrder": [
       [
@@ -55,8 +57,8 @@
       "arm": "v1_current",
       "turns": 102,
       "latencyMs": {
-        "p50": 28.73395800000071,
-        "p95": 34.03170799999998
+        "p50": 28.244124999999258,
+        "p95": 35.51391599999988
       },
       "modelCalls": {
         "mean": 1.9411764705882353,
@@ -67,9 +69,9 @@
         "p95": 46
       },
       "database": {
-        "statementsP95": 119,
-        "roundTripsP95": 99,
-        "lockHoldP95Ms": 5.367165999999997
+        "statementsP95": 113,
+        "roundTripsP95": 97,
+        "lockHoldP95Ms": 3.0939589999998134
       },
       "cardinality": {
         "events": 102,
@@ -82,21 +84,21 @@
       "arm": "v2_only",
       "turns": 102,
       "latencyMs": {
-        "p50": 25.75745900000038,
-        "p95": 29.456750000000284
+        "p50": 25.042500000000473,
+        "p95": 30.71795800000018
       },
       "modelCalls": {
-        "mean": 1,
-        "p95": 1
+        "mean": 2,
+        "p95": 2
       },
       "tokens": {
-        "mean": 20.764705882352942,
-        "p95": 24
+        "mean": 47.94117647058823,
+        "p95": 50
       },
       "database": {
-        "statementsP95": 103,
-        "roundTripsP95": 87,
-        "lockHoldP95Ms": 5.45416699999987
+        "statementsP95": 104,
+        "roundTripsP95": 88,
+        "lockHoldP95Ms": 3.2452910000001793
       },
       "cardinality": {
         "events": 102,
