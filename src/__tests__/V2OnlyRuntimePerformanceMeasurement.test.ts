@@ -174,6 +174,11 @@ type TurnSample = Readonly<{
   sql: SqlTurnMetrics;
   cardinality: TurnCardinality;
 }>;
+type SeededFixtureContext = Readonly<{
+  conversationId: string;
+  leadId: string;
+  seededAppointmentId: string | null;
+}>;
 
 const FIXED_NOW = new Date(RUNTIME_FIXED_NOW_ISO);
 const DRAIN_NOW = new Date(RUNTIME_DRAIN_NOW_ISO);
@@ -754,13 +759,31 @@ describe("V2-only runtime performance measurement worker", () => {
     return result.rows[0]?.intent ?? null;
   }
 
+  async function alignLatestFixtureStateWithFixedClock(
+    conversationId: string,
+    createdAt: Date,
+  ): Promise<void> {
+    const result = await runtime!.pool.query(`
+      update conversation_states
+         set created_at = $2
+       where id = (
+         select id
+           from conversation_states
+          where conversation_id = $1::uuid
+          order by created_at desc, id desc
+          limit 1
+       )
+    `, [conversationId, createdAt]);
+    expect(result.rowCount, `${conversationId} fixed-clock state alignment`).toBe(1);
+  }
+
   async function seedFixtureContext(
     arm: ArmName,
     fixture: CorpusCase,
     turnIndex: number,
     phone: string,
     clinicId: string,
-  ): Promise<void> {
+  ): Promise<SeededFixtureContext> {
     const now = fixedDate();
     const fixtureInput = fixtureInputsByCase.get(fixture.caseId);
     if (!fixtureInput) throw new Error(`missing fixture inputs ${fixture.caseId}`);
@@ -832,6 +855,10 @@ describe("V2-only runtime performance measurement worker", () => {
         throw new Error(`unsupported runtime fixture state ${fixtureInput.requestedState}`);
       }
       await state.transition(conversation.id, fixtureInput.requestedState as ConversationStateType);
+      await alignLatestFixtureStateWithFixedClock(
+        conversation.id,
+        new Date(FIXED_NOW.getTime() - 120_000),
+      );
     }
 
     const persistedHistory = await conversationRepository.listMessages(conversation.id);
@@ -842,6 +869,7 @@ describe("V2-only runtime performance measurement worker", () => {
     expect((await state.getCurrentState(conversation.id))?.state ?? null)
       .toBe(fixtureInput.requestedState);
 
+    let seededAppointmentId: string | null = null;
     if (fixtureInput.actionContext.kind === "offered_slots") {
       const actionContext = fixtureInput.actionContext;
       const treatment = (await new DrizzleTreatmentRepository().listByClinic(clinicId))
@@ -854,8 +882,13 @@ describe("V2-only runtime performance measurement worker", () => {
         treatmentName: treatment.name,
         durationMinutes: actionContext.durationMinutes,
       }, 1_920);
+      await alignLatestFixtureStateWithFixedClock(
+        conversation.id,
+        new Date(FIXED_NOW.getTime() - 60_000),
+      );
     } else if (fixtureInput.actionContext.kind === "appointment_confirmation") {
       const appointmentId = randomUUID();
+      seededAppointmentId = appointmentId;
       await appointmentRepository.save({
         id: appointmentId,
         clinicId,
@@ -880,6 +913,110 @@ describe("V2-only runtime performance measurement worker", () => {
         appointmentId,
         appointmentLabel: fixtureInput.actionContext.appointmentLabel,
       });
+      await alignLatestFixtureStateWithFixedClock(
+        conversation.id,
+        new Date(FIXED_NOW.getTime() - 60_000),
+      );
+    }
+    return Object.freeze({
+      conversationId: conversation.id,
+      leadId: lead.id,
+      seededAppointmentId,
+    });
+  }
+
+  async function assertDurableFixtureEffect(
+    arm: ArmName,
+    fixture: CorpusCase,
+    repetition: number,
+    clinicId: string,
+    context: SeededFixtureContext,
+  ): Promise<void> {
+    const label = `${arm}/${fixture.caseId}/${repetition}`;
+    const fixtureInput = fixtureInputsByCase.get(fixture.caseId);
+    if (!fixtureInput) throw new Error(`missing fixture inputs ${fixture.caseId}`);
+    const currentState = await state.getCurrentState(context.conversationId);
+
+    switch (fixture.labels.expectedActionResult.type) {
+      case "slots_found": {
+        const expectedSlotStarts = fixture.caseId === "availability-0001"
+          ? ["2026-08-26T12:00:00.000Z"]
+          : ["2026-08-26T12:00:00.000Z", "2026-08-27T12:00:00.000Z"];
+        const payload = currentState?.payload as {
+          slots?: readonly { startsAt?: unknown }[];
+        } | null;
+        expect(currentState?.state, `${label} durable slot-offer state`).toBe("slots_offered");
+        expect(
+          payload?.slots?.map((slot) => slot.startsAt) ?? [],
+          `${label} durable slot-offer effect`,
+        ).toEqual(expectedSlotStarts);
+        return;
+      }
+      case "appointment_confirmed": {
+        if (fixtureInput.actionContext.kind !== "offered_slots") {
+          throw new Error(`${label} missing offered-slot action context`);
+        }
+        const selectedIndex = fixture.labels.understanding.entities.ordinal;
+        const selectedSlot = fixtureInput.actionContext.slots.find(
+          (slot) => slot.index === selectedIndex,
+        );
+        if (!selectedSlot) throw new Error(`${label} missing selected appointment slot`);
+        const appointments = await appointmentRepository.findByPeriod(
+          clinicId,
+          new Date(selectedSlot.startsAt),
+          new Date(selectedSlot.endsAt),
+        );
+        expect(
+          appointments
+            .filter((appointment) =>
+              appointment.leadId === context.leadId &&
+              (appointment.status === "scheduled" || appointment.status === "confirmed"),
+            )
+            .map((appointment) => ({
+              startsAt: appointment.startsAt.toISOString(),
+              endsAt: appointment.endsAt.toISOString(),
+              status: appointment.status,
+              origin: appointment.origin,
+            })),
+          `${label} durable appointment effect`,
+        ).toEqual([{
+          startsAt: selectedSlot.startsAt,
+          endsAt: selectedSlot.endsAt,
+          status: "scheduled",
+          origin: "ai_conversation",
+        }]);
+        expect(
+          { state: currentState?.state, payload: currentState?.payload ?? null },
+          `${label} consumed slot state`,
+        ).toEqual({ state: "idle", payload: null });
+        return;
+      }
+      case "appointment_confirmation_accepted": {
+        if (
+          fixtureInput.actionContext.kind !== "appointment_confirmation" ||
+          context.seededAppointmentId === null
+        ) {
+          throw new Error(`${label} missing appointment-confirmation action context`);
+        }
+        const appointment = await appointmentRepository.findById(context.seededAppointmentId);
+        expect(appointment && {
+          clinicId: appointment.clinicId,
+          leadId: appointment.leadId,
+          startsAt: appointment.startsAt.toISOString(),
+          endsAt: appointment.endsAt.toISOString(),
+          status: appointment.status,
+        }, `${label} durable appointment-confirmation effect`).toEqual({
+          clinicId,
+          leadId: context.leadId,
+          startsAt: fixtureInput.actionContext.startsAt,
+          endsAt: fixtureInput.actionContext.endsAt,
+          status: "confirmed",
+        });
+        expect(
+          { state: currentState?.state, payload: currentState?.payload ?? null },
+          `${label} consumed confirmation state`,
+        ).toEqual({ state: "idle", payload: null });
+      }
     }
   }
 
@@ -920,7 +1057,7 @@ describe("V2-only runtime performance measurement worker", () => {
       receivedAt: fixedDate(),
     };
 
-    await seedFixtureContext(arm, fixture, turnIndex, phone, clinicId);
+    const seededContext = await seedFixtureContext(arm, fixture, turnIndex, phone, clinicId);
     v1Model.begin(fixture.caseId, legacyClassificationFor(fixture));
     activeV2Fixture = fixture;
     activeV2Calls = 0;
@@ -1029,6 +1166,7 @@ describe("V2-only runtime performance measurement worker", () => {
       }
       expect(telemetry.calls).toBeGreaterThan(0);
       expect(telemetry.tokens).toBeGreaterThan(0);
+      await assertDurableFixtureEffect(arm, fixture, repetition, clinicId, seededContext);
       samples[arm].push(Object.freeze({ latencyMs, modelCalls: telemetry.calls, tokens: telemetry.tokens, sql, cardinality }));
       if (fixture.labels.expectedActionResult.type === "appointment_confirmed") {
         const createdAppointments = await appointmentRepository.findByPeriod(

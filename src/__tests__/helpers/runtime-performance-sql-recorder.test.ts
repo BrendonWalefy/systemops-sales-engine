@@ -58,6 +58,8 @@ describe("runtime performance SQL dispatch recorder", () => {
     await runtime.pool.query("insert into whatsapp_streams (id, value) values (1, 1)");
     await runtime.pool.query("create table runtime_unrelated_rows (id integer primary key, value integer not null)");
     await runtime.pool.query("insert into runtime_unrelated_rows (id, value) values (1, 1)");
+    await runtime.pool.query("create table runtime_jobs (id integer primary key, stream_id integer not null references whatsapp_streams(id))");
+    await runtime.pool.query("insert into runtime_jobs (id, stream_id) values (1, 1)");
   }, 30_000);
 
   afterAll(async () => {
@@ -113,6 +115,36 @@ describe("runtime performance SQL dispatch recorder", () => {
       expect(metrics.lockHoldMs).toBeGreaterThan(0);
     } finally {
       client.release();
+      recorder.restore();
+    }
+  });
+
+  it.each([
+    "select id from whatsapp_streams where id = 1 for update of whatsapp_streams",
+    "select authority_stream.id from whatsapp_streams authority_stream where authority_stream.id = 1 for update of authority_stream",
+  ])("measures an explicit stream relation target: %s", async (query) => {
+    const recorder = installRuntimePerformanceSqlRecorder(runtime!.pool);
+    try {
+      recorder.beginTurn();
+      await runtime!.pool.query(query);
+
+      expect(recorder.endTurn().lockHoldMs).toBeGreaterThan(0);
+    } finally {
+      recorder.restore();
+    }
+  });
+
+  it.each([
+    "select job.id from runtime_jobs job join whatsapp_streams stream on stream.id = job.stream_id where job.id = 1 for update of job",
+    "select unrelated.id from runtime_unrelated_rows unrelated cross join whatsapp_streams authority_stream where unrelated.id = 1 for update of unrelated",
+  ])("excludes a non-stream FOR UPDATE target: %s", async (query) => {
+    const recorder = installRuntimePerformanceSqlRecorder(runtime!.pool);
+    try {
+      recorder.beginTurn();
+      await runtime!.pool.query(query);
+
+      expect(recorder.endTurn()).toMatchObject({ statements: 1, lockHoldMs: 0 });
+    } finally {
       recorder.restore();
     }
   });

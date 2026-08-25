@@ -34,11 +34,55 @@ function normalizedSql(input: unknown): string {
   return sqlText(input).trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+const SQL_RELATION_BOUNDARIES = new Set([
+  "cross",
+  "for",
+  "full",
+  "group",
+  "inner",
+  "join",
+  "left",
+  "limit",
+  "offset",
+  "on",
+  "order",
+  "right",
+  "where",
+]);
+
+function streamRelationTargets(sql: string): ReadonlySet<string> {
+  const targets = new Set<string>();
+  const relations = sql.matchAll(
+    /\b(?:from|join)\s+(?:public\.)?whatsapp_streams\b(?:\s+(?:as\s+)?([a-z_][a-z0-9_$]*))?/g,
+  );
+  for (const relation of relations) {
+    const alias = relation[1];
+    targets.add(alias && !SQL_RELATION_BOUNDARIES.has(alias) ? alias : "whatsapp_streams");
+  }
+  return targets;
+}
+
+function locksStreamRelation(sql: string): boolean {
+  const streamTargets = streamRelationTargets(sql);
+  if (streamTargets.size === 0) return false;
+  const lockClauses = sql.matchAll(
+    /\bfor\s+(?:(?:no\s+key\s+)?update|(?:key\s+)?share)\b/g,
+  );
+  for (const clause of lockClauses) {
+    const tail = sql.slice((clause.index ?? 0) + clause[0].length);
+    const explicitTargets = /^\s+of\s+(.+?)(?=\s+(?:nowait|skip\s+locked)\b|;?$)/.exec(tail);
+    if (!explicitTargets) return true;
+    const targets = explicitTargets[1]!.split(",").map((target) => target.trim());
+    if (targets.some((target) => streamTargets.has(target))) return true;
+  }
+  return false;
+}
+
 function isStreamAuthoritySql(input: unknown): boolean {
   const sql = normalizedSql(input);
   const mentionsStreamAuthority = /\b(?:public\.)?whatsapp_streams\b/.test(sql);
   if (!mentionsStreamAuthority) return false;
-  return /\bfor (?:no key )?(?:update|share)\b/.test(sql)
+  return locksStreamRelation(sql)
     || /\binsert into (?:public\.)?whatsapp_streams\b/.test(sql)
     || /\bupdate (?:public\.)?whatsapp_streams\b/.test(sql)
     || /\bdelete from (?:public\.)?whatsapp_streams\b/.test(sql);
