@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { drainMessageSendQueue } from "@/application/jobs/drain-message-send-queue";
 import { SendMessageJobHandler } from "@/application/jobs/send-message-job";
@@ -16,6 +16,11 @@ import {
   MAX_MESSAGE_SEND_BATCH_SIZE,
   resolveWorkerBatchSize,
 } from "@/application/jobs/worker-capacity";
+import {
+  requestSenderWorkerRun,
+  scheduleAcceptedWorkerRun,
+  scheduleSenderWorkerWake,
+} from "@/application/jobs/worker-wake";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -29,6 +34,49 @@ const MAX_JOBS_PER_RUN = resolveWorkerBatchSize(
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const unauthorized = requireCronAuthorization(request);
   if (unauthorized) return unauthorized;
+
+  if (request.nextUrl.searchParams.get("ack") === "1") {
+    const isDeferredWake = request.nextUrl.searchParams.get("deferredWake") === "1";
+    const notBeforeValue = request.nextUrl.searchParams.get("notBefore");
+    const notBefore = notBeforeValue ? new Date(notBeforeValue) : undefined;
+    if (notBefore && Number.isNaN(notBefore.getTime())) {
+      return NextResponse.json({ error: "invalid_not_before" }, { status: 400 });
+    }
+    const accepted = scheduleAcceptedWorkerRun({
+      schedule: after,
+      notBefore,
+      run: async () => {
+        const outcome = await runSenderWorker();
+        if (outcome.nextRunAt && !isDeferredWake) {
+          await requestSenderWorkerRun({
+            notBefore: outcome.nextRunAt,
+            deferredWake: true,
+          });
+        }
+      },
+    });
+    return accepted
+      ? NextResponse.json({ accepted: true }, { status: 202 })
+      : NextResponse.json({ accepted: false, fallback: "cron" }, { status: 422 });
+  }
+
+  const outcome = await runSenderWorker();
+  if (outcome.nextRunAt) {
+    scheduleSenderWorkerWake(after, {
+      notBefore: outcome.nextRunAt,
+      deferredWake: true,
+    });
+  }
+  return NextResponse.json(outcome.body, { status: outcome.status });
+}
+
+type SenderWorkerRunOutcome = {
+  body: Record<string, unknown>;
+  status: number;
+  nextRunAt?: Date;
+};
+
+async function runSenderWorker(): Promise<SenderWorkerRunOutcome> {
 
   const workerId = `sender-worker:${randomUUID()}`;
   const log = createLogger({
@@ -65,9 +113,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       orphanReconciliation,
       durationMs: Date.now() - startedAt,
     });
-    return NextResponse.json({ ...result, orphanReconciliation });
+    return {
+      body: { ...result, orphanReconciliation },
+      status: 200,
+      nextRunAt: result.nextRunAt ?? undefined,
+    };
   } catch (error) {
     log.error("worker.run.failed", error, { durationMs: Date.now() - startedAt });
-    return NextResponse.json({ error: "sender_worker_failed" }, { status: 500 });
+    return { body: { error: "sender_worker_failed" }, status: 500 };
   }
 }

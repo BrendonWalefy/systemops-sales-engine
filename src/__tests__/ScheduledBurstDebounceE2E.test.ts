@@ -62,6 +62,7 @@ class InMemoryInboundEventStore implements InboundEventStore {
         streamId: duplicate.streamId,
         streamGeneration: duplicate.streamGeneration,
         jobId: job.id,
+        runAt: job.runAt,
         eventWasNew: false,
         jobWasNew: false,
       };
@@ -125,6 +126,7 @@ class InMemoryInboundEventStore implements InboundEventStore {
       streamId,
       streamGeneration,
       jobId: queued.job.id,
+      runAt: queued.job.runAt,
       eventWasNew: true,
       jobWasNew: queued.isNew,
     };

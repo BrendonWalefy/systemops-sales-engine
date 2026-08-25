@@ -7,7 +7,6 @@ import { resolveCalendarMode } from "@/infrastructure/adapters/calendar/resolve-
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { importCalendarEvents } from "@/application/calendar/import-calendar-events";
-import { resolveDefaultProfessionalId } from "@/application/calendar/resolve-default-professional";
 
 export const dynamic = "force-dynamic";
 
@@ -81,10 +80,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     if (events.length > 0) {
-      const defaultProfessionalId = await resolveDefaultProfessionalId(clinic.id);
-      const importResult = await importCalendarEvents(clinic.id, events, {
-        defaultProfessionalId: defaultProfessionalId ?? undefined,
-      });
+      const importResult = await importCalendarEvents(clinic.id, events);
 
       if (importResult.errors.length > 0) {
         throw new Error(

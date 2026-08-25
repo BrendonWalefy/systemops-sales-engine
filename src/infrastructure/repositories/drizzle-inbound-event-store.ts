@@ -21,6 +21,7 @@ type RegistrationRow = {
   stream_id: string | null;
   stream_generation: number | string | null;
   job_id: string | null;
+  job_run_at: Date | string | null;
   event_was_new: boolean;
   job_was_new: boolean;
 };
@@ -337,6 +338,7 @@ export class DrizzleInboundEventStore implements InboundEventStore {
             event.stream_id::text as stream_id,
             event.stream_generation,
             job.id::text as job_id,
+            job.run_at as job_run_at,
             event.id = ${inboundEventId}::uuid as event_was_new,
             coalesce(job.id = ${jobId}::uuid, false) as job_was_new,
             1 / case
@@ -382,7 +384,7 @@ export class DrizzleInboundEventStore implements InboundEventStore {
         jobWasNew: false,
       };
     }
-    if (!row.stream_id || row.stream_generation === null || !row.job_id) {
+    if (!row.stream_id || row.stream_generation === null || !row.job_id || !row.job_run_at) {
       throw new Error("Registered inbound authority returned an incomplete tuple");
     }
     return {
@@ -391,6 +393,7 @@ export class DrizzleInboundEventStore implements InboundEventStore {
       streamId: row.stream_id,
       streamGeneration: Number(row.stream_generation),
       jobId: row.job_id,
+      runAt: new Date(row.job_run_at),
       eventWasNew: row.event_was_new,
       jobWasNew: row.job_was_new,
     };

@@ -21,6 +21,7 @@ Este diretório contém somente documentação que orienta o produto, a arquitet
 - [Migrations](operations/migrations-baseline.md): baseline e fluxo seguro de schema.
 - [Staging CI](operations/staging-ci-setup.md): teste de migrations em branch Neon descartável.
 - [Controle de spend Vercel](operations/vercel-pro-spend-control.md): limites e alertas da plataforma.
+- [Workers event-driven e autosuspend](operations/event-driven-whatsapp-workers.md): wakes duráveis, crons de fallback, monitoramento e rollback do Neon.
 
 ## Operação
 

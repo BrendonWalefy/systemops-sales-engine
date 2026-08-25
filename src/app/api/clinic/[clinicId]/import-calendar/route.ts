@@ -5,7 +5,6 @@ import { eq } from "drizzle-orm";
 import { parseIcs } from "@/application/calendar/parse-ics";
 import { importCalendarEvents } from "@/application/calendar/import-calendar-events";
 import { getSessionClinicId } from "@/application/tenancy/resolve-clinic";
-import { resolveDefaultProfessionalId } from "@/application/calendar/resolve-default-professional";
 
 export const runtime = "nodejs";
 
@@ -70,10 +69,7 @@ export async function POST(
     }
 
     // Importar eventos para DB
-    const defaultProfessionalId = await resolveDefaultProfessionalId(clinicId);
-    const importResult = await importCalendarEvents(clinicId, parseResult.events, {
-      defaultProfessionalId: defaultProfessionalId ?? undefined,
-    });
+    const importResult = await importCalendarEvents(clinicId, parseResult.events);
 
     return NextResponse.json({
       success: importResult.imported > 0 || importResult.errors.length === 0,

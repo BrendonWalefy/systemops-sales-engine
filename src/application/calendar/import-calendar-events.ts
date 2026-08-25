@@ -17,11 +17,44 @@ export interface ImportOptions {
   // (processamento sequencial, 1 req/evento) e polui o banco com consultas
   // já passadas sem valor operacional. Default: só a partir de agora.
   cutoffDate?: Date;
-  // Profissional usado quando o SUMMARY não menciona nenhum profissional
-  // cadastrado (agenda real da Vitalli: só 3 de 24 eventos futuros mencionam
-  // "gregorie" no texto — os demais não indicam quem atende, então caem no
-  // profissional padrão informado pelo chamador).
-  defaultProfessionalId?: string;
+}
+
+export type CalendarProfessionalCandidate = {
+  id: string;
+  name: string;
+  isActive: boolean;
+};
+
+export function pickDefaultProfessional(
+  candidates: CalendarProfessionalCandidate[],
+): string | null {
+  const active = candidates.filter((candidate) => candidate.isActive);
+  return active.length === 1 ? active[0].id : null;
+}
+
+export function resolveImportedProfessionalId(params: {
+  summary: string;
+  candidates: CalendarProfessionalCandidate[];
+  existingProfessionalId: string | null;
+}): string | null {
+  const active = params.candidates.filter((candidate) => candidate.isActive);
+  const normalizedSummary = normalizeEventText(params.summary);
+  const mentioned = active.find((candidate) =>
+    matchesProfessionalMention(
+      normalizedSummary,
+      normalizeProfessionalName(candidate.name),
+    ),
+  );
+  if (mentioned) return mentioned.id;
+
+  if (
+    params.existingProfessionalId &&
+    active.some((candidate) => candidate.id === params.existingProfessionalId)
+  ) {
+    return params.existingProfessionalId;
+  }
+
+  return pickDefaultProfessional(params.candidates);
 }
 
 export function normalizeCalendarEventId(calendarEventId: string): string {
@@ -97,7 +130,7 @@ export async function importCalendarEvents(
 
   const clinicProfessionals = await db.query.professionals.findMany({
     where: eq(professionals.clinicId, clinicId),
-    columns: { id: true, name: true },
+    columns: { id: true, name: true, isActive: true },
   });
 
   // Uma marca ao final da importação inteira, não uma por evento — um
@@ -178,7 +211,6 @@ export async function importCalendarEvents(
       // Busca fuzzy em memória: qual tratamento cadastrado aparece dentro do
       // texto livre do evento (não o inverso — o SUMMARY não é um nome exato
       // de tratamento, é uma frase que pode mencioná-lo em qualquer posição).
-      const normalizedSummary = normalizeWord(treatmentName);
       const treatmentMatch = matchImportedTreatment(treatmentName, treatmentCandidates);
       const matchedTreatment = treatmentMatch.treatmentId
         ? clinicTreatments.find((t) => t.id === treatmentMatch.treatmentId)
@@ -191,11 +223,6 @@ export async function importCalendarEvents(
           `${treatmentMatch.ambiguousWith.join(" | ")} (clinic=${clinicId})`,
         );
       }
-
-      const matchedProfessional = clinicProfessionals.find((p) =>
-        matchesProfessionalMention(normalizedSummary, normalizeProfessionalName(p.name)),
-      );
-      const professionalId = matchedProfessional?.id ?? options.defaultProfessionalId ?? null;
 
       const valueCents = extractEventValueCents(treatmentName);
 
@@ -213,6 +240,11 @@ export async function importCalendarEvents(
             inArray(appts.calendarEventId, calendarEventIdCandidates(event.uid)),
           ),
         columns: { id: true, professionalId: true, treatmentId: true, status: true, valueCents: true, leadId: true }
+      });
+      const professionalId = resolveImportedProfessionalId({
+        summary: treatmentName,
+        candidates: clinicProfessionals,
+        existingProfessionalId: existingAppointment?.professionalId ?? null,
       });
 
       if (existingAppointment) {
@@ -238,7 +270,7 @@ export async function importCalendarEvents(
             // Google devolveria o bloco curto e a proteção se perderia.
             endsAt,
             status: updatedStatus,
-            professionalId: matchedProfessional?.id ?? existingAppointment.professionalId ?? options.defaultProfessionalId ?? null,
+            professionalId,
             treatmentId: matchedTreatment?.id ?? existingAppointment.treatmentId ?? null,
             // Não apaga valor já registrado quando o texto do evento perde a cifra.
             valueCents: valueCents ?? existingAppointment.valueCents ?? null,

@@ -2,7 +2,7 @@
 import { resolveMetaWebhookTenant } from "@/application/tenancy/resolve-clinic";
 // GET: verificação do webhook Meta. POST: mensagens recebidas.
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { parseMetaInboundTextMessage } from "@/infrastructure/adapters/channels/whatsapp/meta-webhook-content";
 import { persistInboundEventAndEnqueue } from "@/application/whatsapp/persist-inbound-event";
 import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-inbound-event-store";
@@ -12,6 +12,7 @@ import {
 } from "@/application/whatsapp/meta-webhook-auth";
 import { decryptCredentialNullable } from "@/infrastructure/crypto/credential-vault";
 import { buildWhatsAppStreamAliases } from "@/core/whatsapp/WhatsAppContactIdentity";
+import { scheduleMessageWorkerWake } from "@/application/jobs/worker-wake";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    await persistInboundEventAndEnqueue({
+    const result = await persistInboundEventAndEnqueue({
       clinicId: tenant.clinicId,
       provider: "meta_cloud_api",
       providerMessageId: message.messageId,
@@ -81,6 +82,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }, {
       inboundEventStore: new DrizzleInboundEventStore(),
     });
+    if (result.outcome === "registered" && result.jobWasNew) {
+      scheduleMessageWorkerWake(after, { notBefore: result.runAt });
+    }
 
     return new NextResponse("OK", { status: 200 });
   } catch (error) {

@@ -55,8 +55,9 @@ WhatsApp
   -> autenticação + resolveClinicByZapiInstance()
   -> recordInboundEventAndEnqueue()
      -> grava inbound_events e jobs(message.process) atomicamente
+  -> após commit, solicita wake one-shot no run_at persistido
 
-GET /api/cron/message-worker
+GET /api/cron/message-worker?ack=1 (evento) ou cron de fallback
   -> claim com lease e exclusão por conversa
   -> ProcessMessageJobHandler
   -> normalização, policy e transcrição opcional
@@ -68,8 +69,9 @@ GET /api/cron/message-worker
      -> ResponseComposer
      -> enqueueOutboundMessage()
         -> grava outbound_messages e jobs(message.send) atomicamente
+        -> após commit, solicita wake one-shot do sender
 
-GET /api/cron/sender-worker
+GET /api/cron/sender-worker?ack=1 (evento) ou cron de fallback
   -> claim ordenado
   -> SendMessageJobHandler
   -> safety gate + TTS/mídia quando necessário
@@ -86,6 +88,7 @@ GET /api/cron/sender-worker
 - A outbox preserva conteúdo e ordem; retry de entrega não recomputa a conversa.
 - Jobs excedidos viram `dead`; o owner pode reprocessar ou descartar com motivo e auditoria.
 - A reconciliação de órfãos permanece como defesa para registros legados e caminhos de fallback.
+- Wakes são one-shot, limitados e posteriores ao commit; falha no wake preserva o job e o cron de 10 minutos o recupera sem polling contínuo.
 
 ### Correlação e privacidade
 
