@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -23,9 +24,29 @@ function metrics(arm: RuntimeArmMetrics["arm"]): RuntimeArmMetrics {
 function report(): RuntimePerformanceReport {
   return {
     version: "v2-only-runtime-performance.v1",
+    provenance: {
+      commit: "f15865539731a668c9a7095ff6c9a1df798e2db3",
+      node: "v25.9.0",
+      platform: "darwin",
+      arch: "arm64",
+      database: {
+        embeddedPostgresql: { package: "embedded-postgres", packageVersion: "17.5.0", serverVersion: "17.5" },
+        nodePostgres: { package: "pg", packageVersion: "8.16.3" },
+      },
+      populationDigest: `sha256:${"a".repeat(64)}`,
+      armOrderPolicy: "alternate-by-repetition.v1-first-even.v2-first-odd",
+      armOrder: [
+        ["v1_current", "v2_only"],
+        ["v2_only", "v1_current"],
+        ["v1_current", "v2_only"],
+        ["v2_only", "v1_current"],
+        ["v1_current", "v2_only"],
+        ["v2_only", "v1_current"],
+      ],
+    },
     population: { cases: 17, repetitions: 6, turnsPerArm: 102 },
     arms: [metrics("v1_current"), metrics("v2_only")],
-  };
+  } as RuntimePerformanceReport;
 }
 
 function sourceFiles(directory: string): string[] {
@@ -78,6 +99,80 @@ describe("V2-only runtime performance baseline", () => {
         "cardinality.sendJobs",
       ],
     });
+  });
+
+  it("rejects percentile inversions in either arm", () => {
+    const baseline = report();
+
+    expect(() => parseRuntimePerformanceReport({
+      ...baseline,
+      arms: [
+        { ...baseline.arms[0], latencyMs: { p50: 201, p95: 200 } },
+        baseline.arms[1],
+      ],
+    })).toThrow(/p50|p95|percentile/i);
+  });
+
+  it("rejects absolute-only latency and lock regressions even when ratios pass", () => {
+    const baseline = {
+      ...metrics("v1_current"),
+      latencyMs: { p50: 2_000, p95: 3_000 },
+      database: { ...metrics("v1_current").database, lockHoldP95Ms: 100 },
+    };
+    const candidate = {
+      ...metrics("v2_only"),
+      latencyMs: { p50: 2_101, p95: 3_251 },
+      database: { ...metrics("v2_only").database, lockHoldP95Ms: 106 },
+    };
+
+    expect(evaluateRuntimePerformance(candidate, baseline).violations).toEqual([
+      "latencyMs.p50",
+      "latencyMs.p95",
+      "database.lockHoldP95Ms",
+    ]);
+  });
+
+  it.each(["--baseline", "--write-baseline"])("rejects a missing value for %s", (flag) => {
+    const result = spawnSync(process.execPath, [
+      join(process.cwd(), "node_modules/tsx/dist/cli.mjs"),
+      "scripts/measure-v2-only-runtime.ts",
+      flag,
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+        TMPDIR: process.env.TMPDIR ?? "/tmp",
+        NODE_ENV: "test",
+      },
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/requires a value/i);
+  });
+
+  it.each([
+    ["PGHOST", "external.example"],
+    ["HTTPS_PROXY", "http://127.0.0.1:8080"],
+    ["NODE_OPTIONS", "--no-warnings"],
+    ["SERVICE_API_KEY", "credential"],
+  ])("rejects inherited unsafe environment variable %s", (name, value) => {
+    const result = spawnSync(process.execPath, [
+      join(process.cwd(), "node_modules/tsx/dist/cli.mjs"),
+      "scripts/measure-v2-only-runtime.ts",
+    ], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      env: {
+        PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+        TMPDIR: process.env.TMPDIR ?? "/tmp",
+        NODE_ENV: "test",
+        [name]: value,
+      },
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain(`measurement refuses inherited ${name}`);
   });
 
   it("keeps measurement artifacts unreachable from production roots", () => {

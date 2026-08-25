@@ -21,6 +21,33 @@ export type RuntimeArmMetrics = Readonly<{
 
 export type RuntimePerformanceReport = Readonly<{
   version: "v2-only-runtime-performance.v1";
+  provenance: Readonly<{
+    commit: string;
+    node: string;
+    platform: string;
+    arch: string;
+    database: Readonly<{
+      embeddedPostgresql: Readonly<{
+        package: "embedded-postgres";
+        packageVersion: string;
+        serverVersion: string;
+      }>;
+      nodePostgres: Readonly<{
+        package: "pg";
+        packageVersion: string;
+      }>;
+    }>;
+    populationDigest: string;
+    armOrderPolicy: "alternate-by-repetition.v1-first-even.v2-first-odd";
+    armOrder: readonly [
+      readonly ["v1_current", "v2_only"],
+      readonly ["v2_only", "v1_current"],
+      readonly ["v1_current", "v2_only"],
+      readonly ["v2_only", "v1_current"],
+      readonly ["v1_current", "v2_only"],
+      readonly ["v2_only", "v1_current"],
+    ];
+  }>;
   population: Readonly<{ cases: 17; repetitions: 6; turnsPerArm: 102 }>;
   arms: readonly [RuntimeArmMetrics, RuntimeArmMetrics];
 }>;
@@ -52,6 +79,33 @@ const armMetricsSchema = z.object({
 
 const reportSchema = z.object({
   version: z.literal("v2-only-runtime-performance.v1"),
+  provenance: z.object({
+    commit: z.string().regex(/^[0-9a-f]{40}$/),
+    node: z.string().regex(/^v\d+\.\d+\.\d+/),
+    platform: z.string().min(1),
+    arch: z.string().min(1),
+    database: z.object({
+      embeddedPostgresql: z.object({
+        package: z.literal("embedded-postgres"),
+        packageVersion: z.string().min(1),
+        serverVersion: z.string().min(1),
+      }).strict(),
+      nodePostgres: z.object({
+        package: z.literal("pg"),
+        packageVersion: z.string().min(1),
+      }).strict(),
+    }).strict(),
+    populationDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+    armOrderPolicy: z.literal("alternate-by-repetition.v1-first-even.v2-first-odd"),
+    armOrder: z.tuple([
+      z.tuple([z.literal("v1_current"), z.literal("v2_only")]),
+      z.tuple([z.literal("v2_only"), z.literal("v1_current")]),
+      z.tuple([z.literal("v1_current"), z.literal("v2_only")]),
+      z.tuple([z.literal("v2_only"), z.literal("v1_current")]),
+      z.tuple([z.literal("v1_current"), z.literal("v2_only")]),
+      z.tuple([z.literal("v2_only"), z.literal("v1_current")]),
+    ]),
+  }).strict(),
   population: z.object({
     cases: z.literal(17),
     repetitions: z.literal(6),
@@ -66,6 +120,13 @@ const reportSchema = z.object({
   for (const arm of report.arms) {
     if (arm.turns !== report.population.turnsPerArm) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "arm turn count must match the fixed population" });
+    }
+    if (arm.latencyMs.p50 > arm.latencyMs.p95) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["arms", arm.arm, "latencyMs"],
+        message: "latency p50 must not exceed p95",
+      });
     }
   }
 });
