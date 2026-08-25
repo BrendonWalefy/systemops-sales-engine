@@ -1,4 +1,4 @@
-import type { ClinicAutomationPolicyReader } from "@/application/ports/clinic-automation-policy-reader";
+import type { V2AutomationPolicy } from "@/application/automation/v2-only-automation-policy";
 import type { ConversationHandler } from "@/application/ports/conversation-handler";
 import type { InboundEventStore } from "@/application/ports/inbound-event-store";
 import type {
@@ -26,7 +26,7 @@ export type JobResult = {
 
 export type ProcessMessageJobDependencies = {
   inboundEventStore: InboundEventStore;
-  automationPolicy: ClinicAutomationPolicyReader;
+  automationPolicy: V2AutomationPolicy;
   conversationHandler: ConversationHandler;
   inboundHistoryRegistrar?: InboundHistoryRegistrar;
   resolveInboundContent?: (params: {
@@ -176,7 +176,20 @@ export class ProcessMessageJobHandler {
     }
 
     await this.deps.inboundEventStore.markInboundEventProcessing(event.id);
-    const automationMode = await this.deps.automationPolicy.getAutomationMode(event.clinicId);
+    const automationDecision = await this.deps.automationPolicy.decide(event.clinicId);
+    const automationMode = automationDecision.mode;
+    await recordDecisionTrace(this.deps.decisionTraceSink, {
+      turnId: inboundEventId,
+      stage: "tenant.config_loaded",
+      occurredAt: new Date().toISOString(),
+      clinicId: event.clinicId,
+      metadata: {
+        automationMode,
+        reason: automationDecision.reason,
+        authorityVersion: automationDecision.authorityVersion,
+        runtimeControlVersion: automationDecision.runtimeControlVersion,
+      },
+    });
     const replyEnabled = automationMode === "live";
     const content = zapiPayload
       ? await this.resolveInboundContent({
@@ -209,6 +222,23 @@ export class ProcessMessageJobHandler {
       },
     });
 
+    if (automationMode !== "live") {
+      await this.deps.inboundEventStore.markInboundEventProcessed(event.id);
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId: inboundEventId,
+        stage: "turn.ignored",
+        occurredAt: new Date().toISOString(),
+        clinicId: event.clinicId,
+        metadata: { reason: automationDecision.reason },
+      });
+      eventLog.info("job.processed", {
+        automationMode,
+        reason: automationDecision.reason,
+        durationMs: Date.now() - startedAt,
+      });
+      return { outcome: "processed", inboundEventId: event.id };
+    }
+
     let turnObservationSink: V1TurnObservationSink | undefined;
     if (automationMode === "live" && this.deps.createTurnObservationSink) {
       try {
@@ -225,7 +255,7 @@ export class ProcessMessageJobHandler {
       kind: "turn_gate_fact",
       turnId: inboundEventId,
       field: "automationEnabled",
-      value: automationMode === "live" && content.shouldReply,
+      value: content.shouldReply,
       source: "job_automation",
     });
 
@@ -241,8 +271,8 @@ export class ProcessMessageJobHandler {
         senderName: zapiPayload?.senderName || metaPayload?.senderName || undefined,
         senderPhoto: zapiPayload?.senderPhoto ?? null,
         timestamp: event.receivedAt,
-        replyEnabled: automationMode === "live" && content.shouldReply,
-        observationOnly: automationMode === "observe",
+        replyEnabled: content.shouldReply,
+        observationOnly: false,
         mediaUrl: content.mediaUrl,
         mediaType: content.mediaType,
         automationMode,

@@ -11,6 +11,7 @@ import {
   TenantEngineRouter,
   V2ShadowSelectionRegistry,
 } from "@/application/conversation-v2/tenant-engine-router";
+import { V2OnlyAutomationPolicy } from "@/application/automation/v2-only-automation-policy";
 
 const openAiCreate = vi.hoisted(() => vi.fn());
 vi.mock("openai", async (importOriginal) => {
@@ -39,7 +40,7 @@ function readyEvents(turnId: string): V1TurnObservationEvent[] {
 describe("Cycle I message worker composition", () => {
   beforeEach(() => openAiCreate.mockReset());
 
-  it("injects TenantEngineRouter as the only ProcessMessageJobHandler conversation handler", () => {
+  it("injects reasoned V2 admission while preserving the Task 4 handler boundary", () => {
     const runtime = createConversationV2Runtime({
       env: {
         CONVERSATION_V2_COMPARISON_HMAC_KEY: "x".repeat(32),
@@ -49,7 +50,7 @@ describe("Cycle I message worker composition", () => {
     });
 
     expect(runtime.conversationHandler).toBeInstanceOf(TenantEngineRouter);
-    expect(runtime.automationPolicy).toBeDefined();
+    expect(runtime.automationPolicy).toBeInstanceOf(V2OnlyAutomationPolicy);
     expect(runtime.decisionTraceSink).toBeDefined();
     expect(runtime.runSelectedShadowTurns).toEqual(expect.any(Function));
   });
@@ -260,6 +261,10 @@ describe("Cycle I message worker composition", () => {
 
   it("keeps route composition thin, post-sender, and independent from legacy shadowModeEnabled", () => {
     const source = readFileSync("src/app/api/cron/message-worker/route.ts", "utf8");
+    const runtimeSource = readFileSync(
+      "src/infrastructure/conversation-v2/create-conversation-v2-runtime.ts",
+      "utf8",
+    );
     expect(source).toContain("createConversationV2Runtime");
     expect(source).toContain("runAfterSenderDrainAttempt");
     expect(source).toContain("conversationHandler: conversationV2Runtime.conversationHandler");
@@ -267,6 +272,8 @@ describe("Cycle I message worker composition", () => {
     expect(source).toContain("decisionTraceSink: conversationV2Runtime.decisionTraceSink");
     expect(source).toContain("conversationV2Runtime.runSelectedShadowTurns");
     expect(source).not.toContain("shadowModeEnabled");
+    expect(runtimeSource).toContain("new V2OnlyAutomationPolicy");
+    expect(runtimeSource).not.toContain("new InternalLabAutomationPolicyReader");
     expect(source).not.toMatch(/Dental|bookSlot|confirmAppointment|OpenAI/);
     expect(source).not.toMatch(/new V2ShadowSelectionRegistry|runConversationV2ShadowBatch/);
     const processCall = source.indexOf("await drainMessageProcessQueue({");

@@ -247,7 +247,17 @@ async function runReplayScenario(
       inboundEventStore,
       // O sandbox valida o comportamento que a clínica teria quando ativada.
       // A segurança externa é garantida pelos adapters de captura abaixo.
-      automationPolicy: { getAutomationMode: async () => "live" as const },
+      automationPolicy: {
+        async decide(clinicId) {
+          return Object.freeze({
+            clinicId,
+            mode: "live" as const,
+            reason: "live_v2" as const,
+            authorityVersion: 2 as const,
+            runtimeControlVersion: 1,
+          });
+        },
+      },
       conversationHandler: new ConversationOrchestrator({
         decisionTraceSink: decisionTrace,
         calendarGatewayResolver,

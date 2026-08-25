@@ -28,7 +28,6 @@ import type { LeadRepository } from "@/domain/repositories/lead-repository";
 import type { SlotReservation } from "@/core/scheduling/SlotReservationService";
 import type { ConversationEnginePolicy } from "@/application/conversation-v2/engine-selection";
 import type { InternalLabEligibilityReader } from "@/application/ports/internal-lab-eligibility-reader";
-import type { ClinicAutomationPolicyReader } from "@/application/ports/clinic-automation-policy-reader";
 import { createConversationV2Runtime } from "@/infrastructure/conversation-v2/create-conversation-v2-runtime";
 import { V2LiveConversationHandler } from "@/application/conversation-v2/v2-live-conversation-handler";
 import { createLiveDentalUnderstanding } from "@/infrastructure/adapters/ai/live-dental-understanding";
@@ -619,17 +618,13 @@ function createHarness(options: { approvalPresent?: boolean } = {}) {
     async persistStopContact() {},
     now: () => now,
   });
-  const readerCalls = { automation: 0, eligibility: 0 };
+  const readerCalls = { policyFacts: 0, eligibility: 0 };
   const runtimeBindings = {
     tenantDigest: INTERNAL_LAB_TEST_BINDINGS.tenantDigest,
     channelDigest: INTERNAL_LAB_TEST_BINDINGS.channelDigest,
     configDigest: INTERNAL_LAB_TEST_BINDINGS.configDigest,
   };
-  const eligibilityReader: InternalLabEligibilityReader & ClinicAutomationPolicyReader = {
-    async getAutomationMode() {
-      readerCalls.automation += 1;
-      return "disabled";
-    },
+  const eligibilityReader: InternalLabEligibilityReader = {
     async getInternalLabEligibilityFacts() {
       readerCalls.eligibility += 1;
       return {
@@ -644,6 +639,27 @@ function createHarness(options: { approvalPresent?: boolean } = {}) {
     v2Handler,
     policyReader: policy,
     eligibilityReader,
+    clinicFactsReader: {
+      async getAutomationFacts(clinicId) {
+        readerCalls.policyFacts += 1;
+        return {
+          clinicId,
+          isTest: true,
+          isDemo: false,
+          operationalStatus: "active" as const,
+          autoReplyEnabled: true,
+          shadowModeEnabled: false,
+        };
+      },
+    },
+    conversationAuthorityStore: {
+      async getVersion() { return 2; },
+    },
+    conversationRuntimeControlStore: {
+      async getGlobal() {
+        return { liveOutboundEnabled: true, version: 1 };
+      },
+    },
     runtimeBindingsReader: {
       async resolve() { return Object.freeze({ ...runtimeBindings }); },
       async resolveDeliverySnapshot() { return Object.freeze({
@@ -714,21 +730,21 @@ function turn(messageId: string, messageText: string, minute: number): Conversat
 
 describe("Conversation V2 bidirectional rollback", () => {
   it.each(["tenantDigest", "channelDigest", "configDigest"] as const)(
-    "keeps the process worker disabled when the approved %s drifts",
+    "keeps V2 admission independent when the legacy approved %s drifts",
     async (field) => {
     const harness = createHarness();
       harness.runtimeBindings[field] = `hmac:${"b".repeat(64)}`;
 
-      await expect(harness.runtime.automationPolicy.getAutomationMode(clinic.id))
-        .resolves.toBe("disabled");
+      await expect(harness.runtime.automationPolicy.decide(clinic.id))
+        .resolves.toMatchObject({ mode: "live", reason: "live_v2" });
     },
   );
 
-  it("keeps the process worker disabled when Internal Lab approval is absent", async () => {
+  it("keeps V2 admission independent when Internal Lab approval is absent", async () => {
     const harness = createHarness({ approvalPresent: false });
 
-    await expect(harness.runtime.automationPolicy.getAutomationMode(clinic.id))
-      .resolves.toBe("disabled");
+    await expect(harness.runtime.automationPolicy.decide(clinic.id))
+      .resolves.toMatchObject({ mode: "live", reason: "live_v2" });
   });
 
   it("preserves one conversation, state, ordered outbox, dedupe, and one booking across V2 -> V1 -> V2", async () => {
@@ -764,7 +780,7 @@ describe("Conversation V2 bidirectional rollback", () => {
     expect((await harness.state.getCurrentState(conversationIds[0]!))?.state).toBe("idle");
     expect(harness.trace.getEvents().filter(({ stage }) => stage === "engine.selected")
       .map(({ metadata }) => metadata?.route)).toEqual(["v2", "v1", "v2"]);
-    expect(harness.readerCalls).toEqual({ automation: 3, eligibility: 5 });
+    expect(harness.readerCalls).toEqual({ policyFacts: 3, eligibility: 2 });
 
     await expect(harness.processTurn(second)).resolves.toEqual({
       outcome: "ignored", inboundEventId: "turn-2",

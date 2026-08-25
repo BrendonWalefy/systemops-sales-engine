@@ -102,6 +102,33 @@ describe("runtime DecisionTrace", () => {
     });
   });
 
+  it("preserva a decisão de automação V2 sem detalhes de leitura", () => {
+    expect(sanitizeDecisionTraceRecord({
+      turnId: "turn-policy",
+      stage: "tenant.config_loaded",
+      occurredAt: "2026-08-25T12:00:00.000Z",
+      clinicId: "clinic-1",
+      metadata: traceMetadata({
+        automationMode: "disabled",
+        reason: "global_kill_switch",
+        authorityVersion: 1,
+        runtimeControlVersion: 7,
+        sql: "select credential from private_table",
+      }),
+    })).toEqual({
+      turnId: "turn-policy",
+      stage: "tenant.config_loaded",
+      occurredAt: "2026-08-25T12:00:00.000Z",
+      clinicId: "clinic-1",
+      metadata: {
+        automationMode: "disabled",
+        reason: "global_kill_switch",
+        authorityVersion: 1,
+        runtimeControlVersion: 7,
+      },
+    });
+  });
+
   it("preserva somente o código da versão do plano no outbound persistido", () => {
     expect(sanitizeDecisionTraceRecord({
       turnId: "turn-planned",

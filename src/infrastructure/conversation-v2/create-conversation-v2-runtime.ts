@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import OpenAI from "openai";
-import { InternalLabAutomationPolicyReader } from "@/application/automation/internal-lab-automation-policy-reader";
+import { V2OnlyAutomationPolicy } from "@/application/automation/v2-only-automation-policy";
 import { LiveTurnLifecycle } from "@/application/conversation/live-turn-lifecycle";
 import type { InternalLabAuthorizationBindings } from "@/application/conversation-v2/internal-lab-authorization";
 import { parseAndRegisterDeployedInternalLabApproval } from "@/application/conversation-v2/internal-lab-approval";
@@ -31,7 +31,11 @@ import type { ConversationV2ComparisonSink } from "@/application/ports/conversat
 import type { JobQueue } from "@/application/ports/job-queue";
 import type { OutboundMessageStore } from "@/application/ports/outbound-message-store";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
-import type { ClinicAutomationPolicyReader } from "@/application/ports/clinic-automation-policy-reader";
+import type {
+  ClinicAutomationFactsReader,
+} from "@/application/ports/clinic-automation-policy-reader";
+import type { ConversationAuthorityStore } from "@/application/ports/conversation-authority-store";
+import type { ConversationRuntimeControlStore } from "@/application/ports/conversation-runtime-control-store";
 import type { InternalLabEligibilityReader } from "@/application/ports/internal-lab-eligibility-reader";
 import type { DecisionTraceSink } from "@/core/observability/DecisionTrace";
 import type { V1TurnObservationSink } from "@/core/observability/V1TurnObservation";
@@ -58,6 +62,8 @@ import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/driz
 import { DrizzleClinicAutomationPolicyReader } from "@/infrastructure/repositories/drizzle-clinic-automation-policy-reader";
 import { DrizzleConversationEnginePolicyReader } from "@/infrastructure/repositories/drizzle-conversation-engine-policy-reader";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
+import { DrizzleConversationAuthorityStore } from "@/infrastructure/repositories/drizzle-conversation-authority-store";
+import { DrizzleConversationRuntimeControlStore } from "@/infrastructure/repositories/drizzle-conversation-runtime-control-store";
 import { DrizzleConversationTurnLeaseStore } from "@/infrastructure/repositories/drizzle-conversation-turn-lease-store";
 import { DrizzleWhatsAppStreamAuthority } from "@/infrastructure/repositories/drizzle-whatsapp-stream-authority";
 import { DrizzleConversationV2ComparisonSink } from "@/infrastructure/repositories/drizzle-conversation-v2-comparison-sink";
@@ -237,7 +243,7 @@ function createLiveHandler(input: {
 
 export type ConversationV2Runtime = Readonly<{
   conversationHandler: TenantEngineRouter;
-  automationPolicy: InternalLabAutomationPolicyReader;
+  automationPolicy: V2OnlyAutomationPolicy;
   decisionTraceSink: DecisionTraceSink;
   createTurnObservationSink(binding: Readonly<{ turnId: string; clinicId: string; automationMode: "live" }>): V1TurnObservationSink;
   drainCapturedTurns(): readonly ShadowBatchTurn[];
@@ -259,7 +265,10 @@ export function createConversationV2Runtime(input: {
   decisionTraceSink?: DecisionTraceSink; v1Handler?: ConversationHandler; v2Handler?: ConversationHandler;
   authorizationBindings?: InternalLabAuthorizationBindings;
   runtimeBindingsReader?: InternalLabRuntimeBindingsReader;
-  eligibilityReader?: ClinicAutomationPolicyReader & InternalLabEligibilityReader;
+  eligibilityReader?: InternalLabEligibilityReader;
+  clinicFactsReader?: ClinicAutomationFactsReader;
+  conversationAuthorityStore?: Pick<ConversationAuthorityStore, "getVersion">;
+  conversationRuntimeControlStore?: Pick<ConversationRuntimeControlStore, "getGlobal">;
   jobQueue?: JobQueue;
   outboundMessageStore?: OutboundMessageStore;
 } = {}): ConversationV2Runtime {
@@ -277,8 +286,9 @@ export function createConversationV2Runtime(input: {
   const authorization = input.authorizationBindings ?? closedAuthorizationBindings(env);
   const apiKey = env.OPENAI_API_KEY?.trim() ?? "";
   const liveProviderReady = apiKey.length > 0;
-  const eligibilityReader = input.eligibilityReader
-    ?? new DrizzleClinicAutomationPolicyReader();
+  const defaultClinicReader = new DrizzleClinicAutomationPolicyReader();
+  const eligibilityReader = input.eligibilityReader ?? defaultClinicReader;
+  const clinicFactsReader = input.clinicFactsReader ?? defaultClinicReader;
   const runtimeBindingsReader = input.runtimeBindingsReader
     ?? new DrizzleInternalLabRuntimeBindingsReader();
   const jobQueue = input.jobQueue ?? new DrizzleJobQueue();
@@ -298,11 +308,12 @@ export function createConversationV2Runtime(input: {
     policyReader, eligibilityReader, runtimeBindingsReader, liveProviderReady,
     shadowSelections, decisionTraceSink, ...authorization,
   });
-  const automationPolicy = new InternalLabAutomationPolicyReader({
-    basePolicyReader: eligibilityReader,
-    eligibilityReader,
-    runtimeBindingsReader,
-    ...authorization,
+  const automationPolicy = new V2OnlyAutomationPolicy({
+    clinicFactsReader,
+    authorityStore: input.conversationAuthorityStore
+      ?? new DrizzleConversationAuthorityStore(),
+    runtimeControlStore: input.conversationRuntimeControlStore
+      ?? new DrizzleConversationRuntimeControlStore(),
   });
   const internalLabDeliveryGuard = createBoundInternalLabDeliveryGuard({
     authorization,

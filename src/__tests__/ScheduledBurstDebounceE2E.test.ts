@@ -399,6 +399,18 @@ function replyHandler(replies: string[]) {
   };
 }
 
+function liveAutomationPolicy() {
+  return {
+    decide: vi.fn(async (clinicId: string) => ({
+      clinicId,
+      mode: "live" as const,
+      reason: "live_v2" as const,
+      authorityVersion: 2 as const,
+      runtimeControlVersion: 1,
+    })),
+  };
+}
+
 function processHandler(
   inboundEventStore: InMemoryInboundEventStore,
   replies: string[],
@@ -406,7 +418,7 @@ function processHandler(
 ) {
   return new ProcessMessageJobHandler({
     inboundEventStore,
-    automationPolicy: { getAutomationMode: vi.fn().mockResolvedValue("live") },
+    automationPolicy: liveAutomationPolicy(),
     resolveInboundContent: vi.fn().mockImplementation(async ({ payload: input }) => ({
       messageText: input.text?.message ?? "",
       shouldReply: true,
@@ -468,7 +480,7 @@ describe("scheduled burst debounce through the durable inbox", () => {
 
     const processMessageHandler = new ProcessMessageJobHandler({
       inboundEventStore,
-      automationPolicy: { getAutomationMode: vi.fn().mockResolvedValue("live") },
+      automationPolicy: liveAutomationPolicy(),
       resolveInboundContent: vi.fn().mockImplementation(async ({ payload: input }) => ({
         messageText: input.text?.message ?? "",
         shouldReply: true,

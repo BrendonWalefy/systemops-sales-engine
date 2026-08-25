@@ -145,7 +145,6 @@ import {
 import * as schema from "@/infrastructure/db/schema";
 import { organizations, treatments } from "@/infrastructure/db/schema";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
-import { DrizzleClinicAutomationPolicyReader } from "@/infrastructure/repositories/drizzle-clinic-automation-policy-reader";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { DrizzleConversationTurnLeaseStore } from "@/infrastructure/repositories/drizzle-conversation-turn-lease-store";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
@@ -672,7 +671,17 @@ describe("V2-only runtime performance measurement worker", () => {
 
     const processDependencies = {
       inboundEventStore,
-      automationPolicy: new DrizzleClinicAutomationPolicyReader(),
+      automationPolicy: {
+        async decide(clinicId: string) {
+          return Object.freeze({
+            clinicId,
+            mode: "live" as const,
+            reason: "live_v2" as const,
+            authorityVersion: 2 as const,
+            runtimeControlVersion: 1,
+          });
+        },
+      },
       inboundHistoryRegistrar,
       transcribeAudio: async () => { throw new Error("runtime text fixtures never transcribe audio"); },
       createTurnObservationSink: ({ turnId }: { turnId: string }) => ({

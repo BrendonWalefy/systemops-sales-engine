@@ -4,6 +4,7 @@ import type { InboundEvent } from "@/application/ports/inbound-event-store";
 import type { JobRecord } from "@/application/ports/job-queue";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 import type { V1TurnObservationEvent } from "@/core/observability/V1TurnObservation";
+import type { V2AutomationDecision } from "@/application/automation/v2-only-automation-policy";
 
 const event: InboundEvent = {
   id: "event-1",
@@ -55,6 +56,19 @@ const job: JobRecord = {
   updatedAt: new Date("2026-06-23T12:00:00.000Z"),
 };
 
+function automationDecision(
+  patch: Partial<V2AutomationDecision> = {},
+): V2AutomationDecision {
+  return {
+    clinicId: "clinic-1",
+    mode: "live",
+    reason: "live_v2",
+    authorityVersion: 2,
+    runtimeControlVersion: 7,
+    ...patch,
+  };
+}
+
 function makeHandler(overrides: Partial<ConstructorParameters<typeof ProcessMessageJobHandler>[0]> = {}) {
   const inboundEventStore = {
     findInboundEvent: vi.fn().mockResolvedValue(event),
@@ -62,7 +76,9 @@ function makeHandler(overrides: Partial<ConstructorParameters<typeof ProcessMess
     markInboundEventProcessed: vi.fn().mockResolvedValue(undefined),
     markInboundEventIgnored: vi.fn().mockResolvedValue(undefined),
   };
-  const automationPolicy = { getAutomationMode: vi.fn().mockResolvedValue("live") };
+  const automationPolicy = {
+    decide: vi.fn().mockResolvedValue(automationDecision()),
+  };
   const conversationHandler = { handle: vi.fn().mockResolvedValue({ replied: true }) };
   const resolveInboundContent = vi.fn().mockResolvedValue({ messageText: "Olá", shouldReply: true });
   const decisionTraceSink = new InMemoryDecisionTraceSink();
@@ -170,9 +186,18 @@ describe("ProcessMessageJobHandler", () => {
     expect(inboundEventStore.markInboundEventProcessed).toHaveBeenCalledWith("event-1");
     expect(decisionTraceSink.getEvents("event-1").map((entry) => entry.stage)).toEqual([
       "ingress.received",
+      "tenant.config_loaded",
       "ingress.content_resolved",
       "orchestrator.completed",
     ]);
+    expect(decisionTraceSink.getEvents("event-1")[1]?.metadata).toEqual(
+      expect.objectContaining({
+        automationMode: "live",
+        reason: "live_v2",
+        authorityVersion: 2,
+        runtimeControlVersion: 7,
+      }),
+    );
   });
 
   it.each([
@@ -403,22 +428,34 @@ describe("ProcessMessageJobHandler", () => {
     expect(observations.some((event) => event.kind === "turn_terminal")).toBe(false);
   });
 
-  it("shadow registra a mensagem em modo observação sem autorizar efeitos da IA", async () => {
-    const automationPolicy = { getAutomationMode: vi.fn().mockResolvedValue("observe") };
-    const { handler, conversationHandler, resolveInboundContent } = makeHandler({
+  it("shadow registra observação sem despachar o handler completo", async () => {
+    const automationPolicy = {
+      decide: vi.fn().mockResolvedValue(automationDecision({
+        mode: "observe",
+        reason: "shadow_observe",
+      })),
+    };
+    const { handler, inboundEventStore, conversationHandler, resolveInboundContent, decisionTraceSink } = makeHandler({
       automationPolicy,
     });
 
-    await handler.processJob(job);
+    await expect(handler.processJob(job)).resolves.toEqual({
+      outcome: "processed",
+      inboundEventId: "event-1",
+    });
 
     expect(resolveInboundContent).toHaveBeenCalledWith(expect.objectContaining({
       replyEnabled: false,
       transcriptionEnabled: true,
     }));
-    expect(conversationHandler.handle).toHaveBeenCalledWith(expect.objectContaining({
-      replyEnabled: false,
-      observationOnly: true,
-    }));
+    expect(conversationHandler.handle).not.toHaveBeenCalled();
+    expect(inboundEventStore.markInboundEventProcessed).toHaveBeenCalledWith("event-1");
+    expect(decisionTraceSink.getEvents("event-1").at(-1)).toEqual(
+      expect.objectContaining({
+        stage: "turn.ignored",
+        metadata: { reason: "shadow_observe" },
+      }),
+    );
   });
 
   it("cria uma seam por turn live e só emite terminal depois do handle e acknowledgement", async () => {
@@ -500,21 +537,36 @@ describe("ProcessMessageJobHandler", () => {
     }
   });
 
-  it.each(["observe", "disabled"] as const)(
-    "não cria nem finaliza seam em automation %s",
-    async (automationMode) => {
+  it.each([
+    ["observe", "shadow_observe", true],
+    ["disabled", "global_kill_switch", false],
+  ] as const)(
+    "não despacha handler nem cria seam em automation %s",
+    async (automationMode, reason, transcriptionEnabled) => {
       const createTurnObservationSink = vi.fn();
-      const automationPolicy = { getAutomationMode: vi.fn().mockResolvedValue(automationMode) };
-      const { handler, conversationHandler } = makeHandler({
+      const automationPolicy = {
+        decide: vi.fn().mockResolvedValue(automationDecision({
+          mode: automationMode,
+          reason,
+        })),
+      };
+      const { handler, conversationHandler, resolveInboundContent, inboundEventStore } = makeHandler({
         automationPolicy,
         createTurnObservationSink,
       });
 
-      await handler.processJob(job);
+      await expect(handler.processJob(job)).resolves.toEqual({
+        outcome: "processed",
+        inboundEventId: "event-1",
+      });
 
-      expect(conversationHandler.handle).toHaveBeenCalled();
+      expect(conversationHandler.handle).not.toHaveBeenCalled();
       expect(createTurnObservationSink).not.toHaveBeenCalled();
-      expect(conversationHandler.handle.mock.calls[0]![0]).not.toHaveProperty("turnObservationSink");
+      expect(resolveInboundContent).toHaveBeenCalledWith(expect.objectContaining({
+        replyEnabled: false,
+        transcriptionEnabled,
+      }));
+      expect(inboundEventStore.markInboundEventProcessed).toHaveBeenCalledWith("event-1");
     },
   );
 
