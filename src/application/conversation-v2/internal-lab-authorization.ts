@@ -3,10 +3,16 @@ import type { CycleIRuntimeBuildIdentity } from "@/application/conversation-v2/c
 import {
   isRegisteredInternalLabApproval,
   isRegisteredInternalLabApprovalInstance,
+  computeInternalLabRuntimeDigest,
+  parseVerifiedInternalLabApprovalEvidence,
   serializeInternalLabApprovalClaims,
   type InternalLabApprovalClaims,
   type RegisteredInternalLabApproval,
 } from "@/application/conversation-v2/internal-lab-approval";
+import {
+  assertConfiguredInternalLabAuthorityBindings,
+  loadConfiguredInternalLabAuthority,
+} from "@/infrastructure/conversation-v2/configured-internal-lab-authority";
 
 export type InternalLabRegisteredApproval = RegisteredInternalLabApproval;
 
@@ -89,25 +95,44 @@ export function resolveCurrentInternalLabApprovalTarget(input: Readonly<{
  * Strictly projects the non-secret claims from a serialized approval artifact.
  * Raw approval parsing remains behind this canonical authorization boundary.
  */
-export function parseInternalLabRecoveryApprovalClaims(
-  serializedApproval: string | undefined,
-): InternalLabRecoveryApprovalClaims | null {
-  if (!serializedApproval) return null;
+export function parseInternalLabRecoveryApprovalClaims(input: Readonly<{
+  serializedApproval: string | undefined;
+  expectedTenantDigest: string;
+  expectedChannelDigest: string;
+  expectedConfigDigest: string;
+  now: Date;
+}>): InternalLabRecoveryApprovalClaims | null {
+  if (!input.serializedApproval) return null;
   try {
-    const artifact = JSON.parse(serializedApproval) as Record<string, unknown>;
+    const authority = loadConfiguredInternalLabAuthority();
+    assertConfiguredInternalLabAuthorityBindings(authority, {
+      serializedApproval: input.serializedApproval,
+      tenantDigest: input.expectedTenantDigest,
+      channelDigest: input.expectedChannelDigest,
+      configDigest: input.expectedConfigDigest,
+    });
+    const claims = parseVerifiedInternalLabApprovalEvidence({
+      serializedApproval: input.serializedApproval,
+      authority,
+      now: input.now,
+    });
     if (
-      !artifact
-      || typeof artifact !== "object"
-      || Array.isArray(artifact)
-      || Object.keys(artifact).length !== 2
-      || !("claims" in artifact)
-      || typeof artifact.signature !== "string"
-      || !/^ed25519:[a-f0-9]{128}$/.test(artifact.signature)
+      claims.tenantDigest !== input.expectedTenantDigest
+      || claims.channelDigest !== input.expectedChannelDigest
+      || claims.configDigest !== input.expectedConfigDigest
     ) return null;
     return JSON.parse(
-      serializeInternalLabApprovalClaims(artifact.claims),
+      serializeInternalLabApprovalClaims(claims),
     ) as InternalLabRecoveryApprovalClaims;
   } catch {
     return null;
   }
+}
+
+export function computeInternalLabRecoveryRuntimeDigest(runtime: Readonly<{
+  nodeVersion: string;
+  platform: NodeJS.Platform;
+  arch: string;
+}>): string {
+  return computeInternalLabRuntimeDigest(runtime);
 }

@@ -1,4 +1,11 @@
+import { generateKeyPairSync, sign } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  computeInternalLabRuntimeDigest,
+  serializeInternalLabApprovalClaims,
+} from "@/application/conversation-v2/internal-lab-approval";
+import { INTERNAL_LAB_APPROVAL_AUTHORITY_DOMAIN } from
+  "@/infrastructure/conversation-v2/configured-internal-lab-authority";
 
 const mocks = vi.hoisted(() => ({
   cookies: vi.fn(),
@@ -35,25 +42,35 @@ const ENV_KEYS = [
 
 const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 const digest = (character: string) => `hmac:${character.repeat(64)}`;
-const publicKey = (label: string) => `-----BEGIN PUBLIC KEY-----\n${label}\n-----END PUBLIC KEY-----`;
+const internalAuthority = generateKeyPairSync("ed25519");
+const gateAuthority = generateKeyPairSync("ed25519");
+const activationAuthority = generateKeyPairSync("ed25519");
+const publicKey = (key: typeof internalAuthority.publicKey) => key.export({
+  type: "spki",
+  format: "pem",
+}).toString().trim();
 
-function approval(commitSha = "a".repeat(40)): string {
-  return JSON.stringify({
-    claims: {
+function approval(input: Readonly<{
+  commitSha?: string;
+  runtimeDigest?: string;
+  criteria?: readonly string[];
+  signature?: string;
+}> = {}): string {
+  const claims = {
       schemaVersion: 1,
       decision: "INTERNAL_LAB_SMOKE_AUTHORIZED",
       authorityDomain: "systemops.conversation-v2.internal-lab-approval.v1",
-      commitSha,
+      commitSha: input.commitSha ?? "a".repeat(40),
       treeSha: "b".repeat(40),
       sourceDigest: digest("1"),
-      runtimeDigest: `sha256:${"2".repeat(64)}`,
+      runtimeDigest: input.runtimeDigest ?? `sha256:${"2".repeat(64)}`,
       tenantDigest: digest("3"),
       channelDigest: digest("4"),
       configDigest: digest("5"),
       cycleIGateDigest: digest("6"),
       cycleIDecision: "NO_GO",
       qualitativeStatus: "not_measurable",
-      criteria: [
+      criteria: input.criteria ?? [
         "h_safety_entailment_preserved",
         "tasks_1_7_closed",
         "architecture_review_clear",
@@ -72,20 +89,29 @@ function approval(commitSha = "a".repeat(40)): string {
       ],
       issuedAt: "2026-08-19T00:00:00.000Z",
       expiresAt: "2026-08-20T00:00:00.000Z",
-    },
-    signature: `ed25519:${"9".repeat(128)}`,
-  });
+  } as const;
+  const canonicalClaims = serializeInternalLabApprovalClaims(claims);
+  const signature = input.signature ?? `ed25519:${sign(
+    null,
+    Buffer.from(`${INTERNAL_LAB_APPROVAL_AUTHORITY_DOMAIN}\0${canonicalClaims}`),
+    internalAuthority.privateKey,
+  ).toString("hex")}`;
+  return JSON.stringify({ claims, signature });
 }
 
 function configureEnvironment(): void {
   process.env.SYSTEMOPS_LAB_CLINIC_ID = "92fe7ecf-f383-4ddc-8c4e-53271af8e3a0";
   process.env.CONVERSATION_V2_INTERNAL_LAB_APPROVAL_JSON = approval();
-  process.env.CONVERSATION_V2_INTERNAL_LAB_AUTHORITY_PUBLIC_KEY = publicKey("internal");
+  process.env.CONVERSATION_V2_INTERNAL_LAB_AUTHORITY_PUBLIC_KEY = publicKey(
+    internalAuthority.publicKey,
+  );
   process.env.CONVERSATION_V2_INTERNAL_LAB_TENANT_DIGEST = digest("3");
   process.env.CONVERSATION_V2_INTERNAL_LAB_CHANNEL_DIGEST = digest("4");
   process.env.CONVERSATION_V2_INTERNAL_LAB_CONFIG_DIGEST = digest("5");
-  process.env.CONVERSATION_V2_GATE_REPORT_AUTHORITY_PUBLIC_KEY = publicKey("gate");
-  process.env.CONVERSATION_V2_ACTIVATION_APPROVAL_AUTHORITY_PUBLIC_KEY = publicKey("activation");
+  process.env.CONVERSATION_V2_GATE_REPORT_AUTHORITY_PUBLIC_KEY = publicKey(gateAuthority.publicKey);
+  process.env.CONVERSATION_V2_ACTIVATION_APPROVAL_AUTHORITY_PUBLIC_KEY = publicKey(
+    activationAuthority.publicKey,
+  );
   process.env.CONVERSATION_V2_GATE_REPORT_DIGEST = digest("6");
   process.env.CONVERSATION_V2_POPULATION_DIGEST = digest("a");
   process.env.CONVERSATION_V2_DATASET_DIGEST = digest("b");
@@ -135,14 +161,14 @@ describe("Internal Lab authority recovery metadata", () => {
         configDigest: digest("5"),
       },
       cycleI: {
-        gateReportAuthorityPublicKey: publicKey("gate"),
-        activationApprovalAuthorityPublicKey: publicKey("activation"),
+        gateReportAuthorityPublicKey: publicKey(gateAuthority.publicKey),
+        activationApprovalAuthorityPublicKey: publicKey(activationAuthority.publicKey),
         gateReportDigest: digest("6"),
         populationDigest: digest("a"),
         datasetDigest: digest("b"),
         configDigest: digest("c"),
       },
-      internalLabAuthorityPublicKey: publicKey("internal"),
+      internalLabAuthorityPublicKey: publicKey(internalAuthority.publicKey),
       approval: {
         parsed: true,
         decision: "INTERNAL_LAB_SMOKE_AUTHORIZED",
@@ -184,6 +210,92 @@ describe("Internal Lab authority recovery metadata", () => {
       currentBuild: false,
       claims: null,
     });
+  });
+
+  it("fails closed for forged or semantically incomplete approval evidence", () => {
+    process.env.CONVERSATION_V2_INTERNAL_LAB_APPROVAL_JSON = approval({
+      signature: `ed25519:${"9".repeat(128)}`,
+    });
+    expect(describeInternalLabAuthorityRecoveryMetadata(process.env, {
+      nodeVersion: "v24.18.1",
+      platform: "linux",
+      arch: "x64",
+    }).approval.parsed).toBe(false);
+
+    process.env.CONVERSATION_V2_INTERNAL_LAB_APPROVAL_JSON = approval({
+      criteria: ["verify_green"],
+    });
+    expect(describeInternalLabAuthorityRecoveryMetadata(process.env, {
+      nodeVersion: "v24.18.1",
+      platform: "linux",
+      arch: "x64",
+    }).approval.parsed).toBe(false);
+  });
+
+  it("fails closed instead of echoing malformed public roots or digests", () => {
+    process.env.CONVERSATION_V2_INTERNAL_LAB_AUTHORITY_PUBLIC_KEY = "private-or-secret-value";
+    expect(() => describeInternalLabAuthorityRecoveryMetadata(process.env, {
+      nodeVersion: "v24.18.1",
+      platform: "linux",
+      arch: "x64",
+    })).toThrow(/public key/i);
+
+    process.env.CONVERSATION_V2_INTERNAL_LAB_AUTHORITY_PUBLIC_KEY = publicKey(
+      internalAuthority.publicKey,
+    );
+    process.env.CONVERSATION_V2_GATE_REPORT_DIGEST = "secret-without-a-public-digest-format";
+    expect(() => describeInternalLabAuthorityRecoveryMetadata(process.env, {
+      nodeVersion: "v24.18.1",
+      platform: "linux",
+      arch: "x64",
+    })).toThrow(/digest/i);
+  });
+
+  it("returns only canonical public material and supports the configured SPKI form", () => {
+    const canonicalPem = publicKey(internalAuthority.publicKey);
+    process.env.CONVERSATION_V2_INTERNAL_LAB_AUTHORITY_PUBLIC_KEY = [
+      canonicalPem,
+      "embedded-secret-value",
+      "-----END PUBLIC KEY-----",
+    ].join("\n");
+    expect(() => describeInternalLabAuthorityRecoveryMetadata(process.env, {
+      nodeVersion: "v24.18.1",
+      platform: "linux",
+      arch: "x64",
+    })).toThrow(/public key/i);
+
+    const spki = `spki-der-base64:${internalAuthority.publicKey.export({
+      type: "spki",
+      format: "der",
+    }).toString("base64")}`;
+    process.env.CONVERSATION_V2_INTERNAL_LAB_AUTHORITY_PUBLIC_KEY = spki;
+    expect(describeInternalLabAuthorityRecoveryMetadata(process.env, {
+      nodeVersion: "v24.18.1",
+      platform: "linux",
+      arch: "x64",
+    }).internalLabAuthorityPublicKey).toBe(spki);
+  });
+
+  it("requires both commit and runtime identity before reporting the current build", () => {
+    const runtime = {
+      nodeVersion: "v24.18.1",
+      platform: "linux" as const,
+      arch: "x64",
+    };
+    process.env.CONVERSATION_V2_INTERNAL_LAB_APPROVAL_JSON = approval({
+      commitSha: "d".repeat(40),
+      runtimeDigest: `sha256:${"2".repeat(64)}`,
+    });
+
+    expect(describeInternalLabAuthorityRecoveryMetadata(process.env, runtime)
+      .approval.currentBuild).toBe(false);
+
+    process.env.CONVERSATION_V2_INTERNAL_LAB_APPROVAL_JSON = approval({
+      commitSha: "d".repeat(40),
+      runtimeDigest: computeInternalLabRuntimeDigest(runtime),
+    });
+    expect(describeInternalLabAuthorityRecoveryMetadata(process.env, runtime)
+      .approval.currentBuild).toBe(true);
   });
 
   it("rejects non-owner sessions", async () => {
