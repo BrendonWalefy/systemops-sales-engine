@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, extname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -7,10 +7,27 @@ import {
 } from "@/infrastructure/conversation-v2/create-conversation-v2-runtime";
 
 const PROJECT_ROOT = process.cwd();
+function sourceFiles(directory: string): string[] {
+  return readdirSync(directory).flatMap((entry) => {
+    const path = resolve(directory, entry);
+    return statSync(path).isDirectory()
+      ? sourceFiles(path)
+      : path.endsWith(".ts") || path.endsWith(".tsx")
+        ? [path]
+        : [];
+  });
+}
+
+const LIVE_APP_ROOTS = sourceFiles(resolve(PROJECT_ROOT, "src/app"))
+  .filter((file) =>
+    !file.includes("/api/e2e/replay/") &&
+    // Read-only legacy build-identity inspection is not imported by webhook,
+    // worker, sender, or any productive conversation route. Task 7 deletes it.
+    !file.includes("/api/owner/runtime-identity/") &&
+    !file.includes("/api/owner/internal-lab-authority-status/"));
 const PRODUCTION_ROOTS = [
-  "src/app/api/cron/message-worker/route.ts",
-  "src/app/api/cron/sender-worker/route.ts",
-  "src/infrastructure/conversation-v2/create-conversation-v2-runtime.ts",
+  ...LIVE_APP_ROOTS,
+  resolve(PROJECT_ROOT, "src/infrastructure/conversation-v2/create-conversation-v2-runtime.ts"),
 ] as const;
 
 const FORBIDDEN_RUNTIME_MODULES = [
@@ -66,7 +83,7 @@ function resolveLocalImport(fromFile: string, specifier: string): string | null 
 }
 
 function reachableProductionFiles(): readonly string[] {
-  const pending = PRODUCTION_ROOTS.map((root) => resolve(PROJECT_ROOT, root));
+  const pending = [...PRODUCTION_ROOTS];
   const visited = new Set<string>();
   while (pending.length > 0) {
     const file = pending.pop()!;
@@ -103,6 +120,14 @@ describe("V2-only production runtime architecture", () => {
       const source = readFileSync(file, "utf8");
       expect(source).not.toMatch(/TenantEngineRouter|conversation-engine-policy|v1_with_v2_shadow|v2_internal/);
     }
+  });
+
+  it("keeps every live app route free from executable V1 orchestration", () => {
+    const violations = LIVE_APP_ROOTS.filter((file) =>
+      localImportSpecifiers(readFileSync(file, "utf8"))
+        .some((specifier) => specifier.includes("/core/pipeline/ConversationOrchestrator")));
+
+    expect(violations.map((file) => file.slice(PROJECT_ROOT.length + 1))).toEqual([]);
   });
 
   it("exposes only the worker V2 dependencies", () => {

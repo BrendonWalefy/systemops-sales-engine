@@ -40,6 +40,8 @@ import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzl
 import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
 import { DrizzleWhatsAppStreamAuthority } from "@/infrastructure/repositories/drizzle-whatsapp-stream-authority";
 import { persistStopContactDecision } from "@/infrastructure/repositories/drizzle-stop-contact-persistence";
+import { DrizzleV2ConversationHandoffStore } from "@/infrastructure/repositories/drizzle-v2-conversation-handoff-store";
+import { requireV2ConversationHandoff } from "@/application/conversation-v2/v2-conversation-handoff";
 import { resolveClinicVoiceConfig } from "@/lib/tts-send";
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
@@ -63,6 +65,7 @@ export class V2CalendarTenantScopeError extends Error {
 }
 
 type TenantScopedCalendarGatewayDependencies = Readonly<{
+  claimedClinicId: string;
   resolveGateway(clinicId: string): Promise<CalendarGateway>;
 }>;
 
@@ -73,31 +76,53 @@ function requireScopedClinicId(actual: string, expected: string): void {
 export function createTenantScopedCalendarGateway(
   deps: TenantScopedCalendarGatewayDependencies,
 ): CalendarGateway {
+  const scopedInput = <T extends object>(input: T): void => {
+    const requested = "clinicId" in input ? input.clinicId : deps.claimedClinicId;
+    if (requested !== deps.claimedClinicId) throw new V2CalendarTenantScopeError();
+  };
+  const gateway = () => deps.resolveGateway(deps.claimedClinicId);
   return Object.freeze({
     async listAvailableSlots(input) {
-      const slots = await (await deps.resolveGateway(input.clinicId)).listAvailableSlots(input);
-      for (const slot of slots) requireScopedClinicId(slot.clinicId, input.clinicId);
+      scopedInput(input);
+      const slots = await (await gateway()).listAvailableSlots(input);
+      for (const slot of slots) requireScopedClinicId(slot.clinicId, deps.claimedClinicId);
       return slots;
     },
     async createAppointment(input) {
-      const appointment = await (await deps.resolveGateway(input.clinicId))
+      scopedInput(input);
+      const appointment = await (await gateway())
         .createAppointment(input);
-      requireScopedClinicId(appointment.clinicId, input.clinicId);
+      requireScopedClinicId(appointment.clinicId, deps.claimedClinicId);
       return appointment;
     },
     async isSlotFree(input) {
-      return (await deps.resolveGateway(input.clinicId)).isSlotFree(input);
+      scopedInput(input);
+      return (await gateway()).isSlotFree(input);
     },
     async listBlockEvents(input) {
-      return (await deps.resolveGateway(input.clinicId)).listBlockEvents(input);
+      scopedInput(input);
+      return (await gateway()).listBlockEvents(input);
     },
     async createBlockEvent(input) {
-      return (await deps.resolveGateway(input.clinicId)).createBlockEvent(input);
+      scopedInput(input);
+      return (await gateway()).createBlockEvent(input);
     },
-    async cancelAppointment() { throw new V2CalendarTenantScopeError(); },
-    async deleteBlockEvent() { throw new V2CalendarTenantScopeError(); },
-    async updateBlockEvent() { throw new V2CalendarTenantScopeError(); },
-    async updateCalendarEvent() { throw new V2CalendarTenantScopeError(); },
+    async cancelAppointment(input) {
+      scopedInput(input);
+      return (await gateway()).cancelAppointment(input);
+    },
+    async deleteBlockEvent(input) {
+      scopedInput(input);
+      return (await gateway()).deleteBlockEvent(input);
+    },
+    async updateBlockEvent(input) {
+      scopedInput(input);
+      return (await gateway()).updateBlockEvent(input);
+    },
+    async updateCalendarEvent(input) {
+      scopedInput(input);
+      return (await gateway()).updateCalendarEvent(input);
+    },
   });
 }
 
@@ -136,8 +161,10 @@ function createLiveHandler(input: {
     now: () => new Date(),
     streamAuthority: new DrizzleWhatsAppStreamAuthority(),
   });
-  const calendar = createTenantScopedCalendarGateway({
-    async resolveGateway(clinicId) {
+  const resolveTenantScheduling = (claimedClinicId: string) => {
+    const calendar = createTenantScopedCalendarGateway({
+      claimedClinicId,
+      async resolveGateway(clinicId) {
       const clinic = await contextReader.findOrganization(clinicId);
       if (!clinic || clinic.id !== clinicId) throw new V2CalendarTenantScopeError();
       return resolveCalendarGateway({
@@ -148,15 +175,19 @@ function createLiveHandler(input: {
         businessHours: clinic.businessHours,
         postAppointmentBufferMinutes: clinic.postAppointmentBufferMinutes,
       });
-    },
-  });
-  const booking = new BookingService(
-    calendar,
-    appointmentRepository,
-    leadRepository,
-    reservations,
-    followUps,
-  );
+      },
+    });
+    return {
+      calendar,
+      booking: new BookingService(
+        calendar,
+        appointmentRepository,
+        leadRepository,
+        reservations,
+        followUps,
+      ),
+    };
+  };
   const client = new OpenAI({ apiKey: input.apiKey });
 
   return new V2LiveConversationHandler({
@@ -165,11 +196,10 @@ function createLiveHandler(input: {
     verbalizer: createLiveResponseVerbalizer(client),
     dental: {
       treatments: new DrizzleTreatmentRepository(),
-      calendar,
       state,
       appointments: appointmentRepository,
       reservations,
-      booking,
+      resolveTenantScheduling,
     },
     resolveTurnConfiguration: (configurationInput) =>
       resolveV2LiveTurnConfiguration(configurationInput, {
@@ -182,6 +212,10 @@ function createLiveHandler(input: {
       jobQueue: input.jobQueue,
     },
     persistStopContact: persistStopContactDecision,
+    persistHandoff: (handoff) => requireV2ConversationHandoff(
+      new DrizzleV2ConversationHandoffStore(),
+      handoff,
+    ),
     decisionTraceSink: input.decisionTraceSink,
   });
 }

@@ -13,6 +13,8 @@ export const DENTAL_REQUESTS = [
   "book-appointment",
   "confirm-slot",
   "confirm-appointment",
+  "cancel-appointment",
+  "reschedule-appointment",
 ] as const;
 
 export type DentalRequest = (typeof DENTAL_REQUESTS)[number];

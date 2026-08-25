@@ -9,12 +9,12 @@ ordered and complete by contract; no behavior may resolve to V1.
 | `catalog` | `v2_capability` | Dental catalog capability reads only the claimed tenant catalog. |
 | `authorized_price` | `v2_capability` | Catalog facts disclose only explicitly quotable prices. |
 | `objections` | `safe_handoff` | No deterministic V2 objection capability exists yet; unsupported cases end in explicit human attention. |
-| `multi_turn_pipeline` | `safe_handoff` | Legacy treatment pipeline conditionals are not copied into V2; a capability is required before automation. |
-| `media` | `safe_handoff` | Inbound media remains canonical history; unsupported interpretation does not invoke V1. |
-| `qualification` | `safe_handoff` | No generic V2 qualification writer exists yet; the turn is handed off without inventing state. |
+| `multi_turn_pipeline` | `shared_service` | Deterministic guided-pipeline state and operator-selected content remain shared; interpretation-dependent continuation durably pauses for human attention without V1 replay. |
+| `media` | `shared_service` | Canonical ingress/history persists media independently of runtime selection; unsupported interpretation creates no inferred effect or V1 call. |
+| `qualification` | `obsolete` | V2 does not infer and persist lead qualification as a side effect of model text; deterministic capabilities own explicit business effects. |
 | `scheduling_revalidation` | `v2_capability` | Dental scheduling capability uses BookingService and tenant-scoped calendar reads. |
 | `reservation` | `shared_service` | SlotReservationService and BookingService own reservation and double-booking safety. |
-| `deposit` | `safe_handoff` | Deposit effects require a dedicated deterministic V2 capability before automation. |
+| `deposit` | `shared_service` | Existing deterministic reservation, proof review and operator decision services own deposit effects; no V1 runtime selection is involved. |
 | `cancel_reschedule` | `safe_handoff` | Unscoped calendar mutations are rejected; a tenant-scoped V2 capability is required. |
 | `opt_out` | `shared_service` | Deterministic stop-contact policy persists consent and creates at most one confirmation. |
 | `handoff` | `v2_capability` | Dental escalation capability returns a human-action-required result. |

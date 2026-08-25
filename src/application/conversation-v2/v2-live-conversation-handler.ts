@@ -29,6 +29,7 @@ import {
 } from "@/core/observability/DecisionTrace";
 import type { TtsConfig } from "@/domain/entities/tts-config";
 import type { Treatment } from "@/domain/entities/treatment";
+import type { V2ConversationHandoffReason } from "@/application/conversation-v2/v2-conversation-handoff";
 import {
   createDentalPack,
   DENTAL_OUTCOME_SCHEMA,
@@ -77,6 +78,16 @@ type DynamicDentalDependencies =
   | "now"
   | "effectLifecycle";
 
+type StaticDentalDependencies = Omit<
+  DentalLiveAdapterDependencies,
+  DynamicDentalDependencies | "calendar" | "booking"
+> & Readonly<{
+  resolveTenantScheduling(claimedClinicId: string): Pick<
+    DentalLiveAdapterDependencies,
+    "calendar" | "booking"
+  >;
+}>;
+
 export type V2LiveConversationHandlerDependencies = Readonly<{
   lifecycle: Pick<LiveTurnLifecycle, "begin" | "loadSnapshot" | "complete" | "fail">;
   understanding: LiveDentalUnderstanding;
@@ -85,7 +96,7 @@ export type V2LiveConversationHandlerDependencies = Readonly<{
    * modelo reescreve essa mesma frase e o validador decide se ela pode sair.
    */
   verbalizer?: LiveResponseVerbalizer;
-  dental: Omit<DentalLiveAdapterDependencies, DynamicDentalDependencies>;
+  dental: StaticDentalDependencies;
   resolveTurnConfiguration(input: Readonly<{
     context: LiveTurnContext;
     snapshot: LiveTurnSnapshot;
@@ -102,6 +113,12 @@ export type V2LiveConversationHandlerDependencies = Readonly<{
     conversationId: string;
     clinicId: string;
     decision: StopContactDecision;
+  }>): Promise<void>;
+  persistHandoff(input: Readonly<{
+    clinicId: string;
+    conversationId: string;
+    reason: V2ConversationHandoffReason;
+    now: Date;
   }>): Promise<void>;
   now?: () => Date;
 }>;
@@ -208,6 +225,8 @@ export class V2LiveConversationHandler implements ConversationHandler {
     let deliveryConfiguration: Awaited<
       ReturnType<V2LiveConversationHandlerDependencies["resolveTurnConfiguration"]>
     > | null = null;
+    let handoffReason: V2ConversationHandoffReason | null = null;
+    let handoffPersisted = false;
 
     const trace = async (
       stage: "v2.understanding" | "v2.decision" | "v2.action_result"
@@ -246,8 +265,10 @@ export class V2LiveConversationHandler implements ConversationHandler {
         await this.deps.dental.treatments.listByClinic(context.clinicId),
         context.clinicId,
       );
+      const scheduling = this.deps.dental.resolveTenantScheduling(context.clinicId);
       const adapters = createDentalLiveAdapters({
         ...this.deps.dental,
+        ...scheduling,
         clinic: context.clinic,
         lead: context.lead,
         leadId: context.leadId,
@@ -283,6 +304,13 @@ export class V2LiveConversationHandler implements ConversationHandler {
               })),
             });
             understandingResolved = true;
+            if (result.request === "cancel-appointment" || result.request === "reschedule-appointment") {
+              handoffReason = "v2_cancel_reschedule_requires_human";
+            } else if (typeof result.signals.objection === "string" && result.signals.objection.trim()) {
+              handoffReason = "v2_objection_requires_human";
+            } else if (result.safety.emergency === true || result.safety.requestsHuman === true) {
+              handoffReason = "v2_explicit_human_request";
+            }
             if (result.safety.optOut === true) {
               const decision = resolveStopContactDecision({
                 classifiedIntent: "stop_contact",
@@ -460,6 +488,17 @@ export class V2LiveConversationHandler implements ConversationHandler {
               fallbackReason: "safe_fallback",
               requiresHandoff: validation.requiresHandoff,
             });
+          }
+          if (validation.requiresHandoff && !handoffPersisted) {
+            effectAttempted = true;
+            await this.deps.persistHandoff({
+              clinicId: context.clinicId,
+              conversationId: context.conversationId,
+              reason: handoffReason ?? "v2_explicit_human_request",
+              now: new Date(turnNow!.getTime()),
+            });
+            handoffPersisted = true;
+            effectCompleted = true;
           }
         },
         response: {

@@ -9,7 +9,9 @@ import { ConversationStateMachine } from "@/core/conversation/ConversationStateM
 import { SlotReservationService } from "@/core/scheduling/SlotReservationService";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { buildDepositRequestMessage } from "@/core/conversation/DepositTemplates";
-import { ConversationOrchestrator, nextActivePipelineStep } from "@/core/pipeline/ConversationOrchestrator";
+import { nextActivePipelineStep } from "@/core/conversation/conversation-response-parts";
+import { requireV2ConversationHandoff } from "@/application/conversation-v2/v2-conversation-handoff";
+import { DrizzleV2ConversationHandoffStore } from "@/infrastructure/repositories/drizzle-v2-conversation-handoff-store";
 import {
   buildGuidedPipelineContentDraft,
   buildGuidedPipelinePackage,
@@ -28,8 +30,6 @@ import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 
 export const dynamic = "force-dynamic";
-// Replay inclui classificação + composição LLM inline (a entrega em si sai pelo
-// outbox/sender-worker). 60s cobre a latência da composição.
 export const maxDuration = 60;
 
 type PipelineActionRequest = {
@@ -165,11 +165,9 @@ export async function GET(
   return NextResponse.json({ options });
 }
 
-// Coloca a conversa no trilho do pipeline do tratamento escolhido e reprocessa a
-// última mensagem de texto do lead pelo Orchestrator, como se tivesse acabado de
-// chegar. A IA responde answer-first (dúvida atual + próximo conteúdo) e os passos
-// seguintes avançam conforme as respostas do lead — idêntico ao fluxo orgânico.
-// Nada é despejado de uma vez: pacing, dedupe de conteúdo e ordem são os do motor.
+// Coloca a conversa no trilho determinístico escolhido. Conteúdo explicitamente
+// selecionado continua sendo entregue pelo fluxo manual; passos que dependeriam
+// de interpretação ficam em handoff V2 durável, sem replay pelo runtime V1.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ conversationId: string }> },
@@ -563,45 +561,35 @@ export async function POST(
   }
 
   if (selectedStepIndex !== undefined && firstActive.step.type === "qa") {
+    await requireV2ConversationHandoff(new DrizzleV2ConversationHandoffStore(), {
+      clinicId: conv.clinicId,
+      conversationId,
+      reason: "v2_guided_pipeline_requires_human",
+      now,
+    });
     return NextResponse.json({
       ok: true,
-      mode: "armed_selected_step",
+      mode: "safe_handoff",
       replied: false,
       stepIndex: firstActive.index,
     });
   }
 
-  // Gatilho do trilho: a última mensagem de TEXTO do lead é reprocessada pelo
-  // motor. Mídia não serve de gatilho ("[imagem recebida]" não carrega intenção)
-  // — sem texto do lead, o trilho fica armado e dispara na próxima mensagem.
-  const lastLeadText = [...history]
-    .reverse()
-    .find((m) => m.author === "lead" && !m.mediaType && m.body.trim().length > 0);
-
-  if (!lastLeadText) {
-    return NextResponse.json({ ok: true, mode: "armed_only", replied: false, stepIndex: firstActive.index });
-  }
-
   try {
-    const orchestrator = new ConversationOrchestrator();
-    const result = await orchestrator.handle({
+    await requireV2ConversationHandoff(new DrizzleV2ConversationHandoffStore(), {
       clinicId: conv.clinicId,
-      phone: lead?.phone ?? channelAddress,
-      whatsappLid: lead?.whatsappLid ?? null,
-      messageText: lastLeadText.body,
-      messageId: lastLeadText.externalId ?? lastLeadText.id,
-      timestamp: lastLeadText.sentAt,
-      replyEnabled: true,
-      replayOfMessageDbId: lastLeadText.id,
+      conversationId,
+      reason: "v2_guided_pipeline_requires_human",
+      now,
     });
     return NextResponse.json({
       ok: true,
-      mode: "rails_replay",
-      replied: result.replied,
+      mode: "safe_handoff",
+      replied: false,
       stepIndex: firstActive.index,
     });
   } catch (err) {
-    console.error("[PipelineActions] Replay falhou — trilho segue armado:", err);
-    return NextResponse.json({ ok: true, mode: "armed_only", replied: false, stepIndex: firstActive.index });
+    console.error("[PipelineActions] Handoff V2 falhou:", err);
+    return NextResponse.json({ error: "Falha ao registrar atenção humana" }, { status: 502 });
   }
 }

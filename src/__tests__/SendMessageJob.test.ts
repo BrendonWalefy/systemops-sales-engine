@@ -324,6 +324,37 @@ describe("SendMessageJobHandler", () => {
     expect(delivery).not.toHaveBeenCalled();
   });
 
+  it("fences every persisted live_stream_reply even when its payload has no obsolete sender marker", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue({
+      ...outbound,
+      authorization: {
+        kind: "live_stream_reply",
+        streamId: "stream-1",
+        streamGeneration: 4,
+        sourceInboundEventId: "event-4",
+        claimJobId: "job-4",
+        claimTokenDigest: `sha256:${"a".repeat(64)}`,
+        authorityVersion: 2,
+      },
+    });
+    const delivery = vi.fn().mockResolvedValue("must-not-send");
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: legacyConversationRepository(),
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
+      .resolves.toBe("ignored");
+    expect(store.markOutboundCancelled).toHaveBeenCalledWith(
+      outbound.id,
+      "v2_live_preflight_pending",
+    );
+    expect(delivery).not.toHaveBeenCalled();
+  });
+
   it("devolve a mensagem para espera quando existe uma saída anterior ativa", async () => {
     const store = makeStore();
     store.hasEarlierActiveMessage.mockResolvedValue(true);

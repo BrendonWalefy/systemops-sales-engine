@@ -503,4 +503,13 @@ describe("V2-only capability parity contract", () => {
     expect(rows.every(({ resolution }) => allowedResolutions.has(resolution))).toBe(true);
     expect(document).not.toMatch(/\|\s*`[^`]+`\s*\|\s*`?v1(?:\b|_)/i);
   });
+
+  it("uses safe_handoff only for behaviors with an executable durable V2 transition", () => {
+    const document = readFileSync("docs/architecture/v2-capability-parity.md", "utf8");
+    const safeHandoffs = document.split("\n")
+      .map((line) => /^\|\s*`([^`]+)`\s*\|\s*`safe_handoff`\s*\|/.exec(line)?.[1] ?? null)
+      .filter((behavior): behavior is string => behavior !== null);
+
+    expect(safeHandoffs).toEqual(["objections", "cancel_reschedule"]);
+  });
 });

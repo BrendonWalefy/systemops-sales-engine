@@ -48,12 +48,31 @@ type RuntimeControlStoreModule = Readonly<{
   DrizzleConversationRuntimeControlStore: new () => RuntimeControlStore;
 }>;
 
+type V2ConversationHandoffStore = Readonly<{
+  markRequired(input: Readonly<{
+    clinicId: string;
+    conversationId: string;
+    reason: string;
+    now: Date;
+  }>): Promise<boolean>;
+}>;
+
+type V2ConversationHandoffStoreModule = Readonly<{
+  DrizzleV2ConversationHandoffStore: new () => V2ConversationHandoffStore;
+}>;
+
 type TestDatabase = ReturnType<typeof drizzleNodePostgres>;
 
 async function loadRuntimeControlStore(): Promise<RuntimeControlStore> {
   const modulePath = "@/infrastructure/repositories/drizzle-conversation-runtime-control-store";
   const importedStore = await vi.importActual<RuntimeControlStoreModule>(modulePath);
   return new importedStore.DrizzleConversationRuntimeControlStore();
+}
+
+async function loadV2ConversationHandoffStore(): Promise<V2ConversationHandoffStore> {
+  const modulePath = "@/infrastructure/repositories/drizzle-v2-conversation-handoff-store";
+  const importedStore = await vi.importActual<V2ConversationHandoffStoreModule>(modulePath);
+  return new importedStore.DrizzleV2ConversationHandoffStore();
 }
 
 function databaseError(error: unknown): Readonly<{
@@ -327,5 +346,60 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
       order by id
     `);
     expect(after.rows).toEqual(before.rows);
+  });
+
+  it("persists one idempotent tenant-scoped handoff and never touches another tenant", async () => {
+    const store = await loadV2ConversationHandoffStore();
+    const tenantIds = [randomUUID(), randomUUID()];
+    const leadIds = [randomUUID(), randomUUID()];
+    const conversationIds = [randomUUID(), randomUUID()];
+    await database.execute(sql`
+      insert into organizations (id, name, slug, specialty)
+      values
+        (${tenantIds[0]}::uuid, 'Handoff tenant A', ${`handoff-a-${tenantIds[0]}`}, 'dental'),
+        (${tenantIds[1]}::uuid, 'Handoff tenant B', ${`handoff-b-${tenantIds[1]}`}, 'dental')
+    `);
+    await database.execute(sql`
+      insert into leads (id, organization_id, channel)
+      values
+        (${leadIds[0]}::uuid, ${tenantIds[0]}::uuid, 'whatsapp'),
+        (${leadIds[1]}::uuid, ${tenantIds[1]}::uuid, 'whatsapp')
+    `);
+    await database.execute(sql`
+      insert into conversations (id, organization_id, lead_id, channel)
+      values
+        (${conversationIds[0]}::uuid, ${tenantIds[0]}::uuid, ${leadIds[0]}::uuid, 'whatsapp'),
+        (${conversationIds[1]}::uuid, ${tenantIds[1]}::uuid, ${leadIds[1]}::uuid, 'whatsapp')
+    `);
+    const input = {
+      clinicId: tenantIds[0]!,
+      conversationId: conversationIds[0]!,
+      reason: "v2_objection_requires_human",
+      now: new Date("2026-08-25T20:00:00.000Z"),
+    };
+
+    await expect(store.markRequired(input)).resolves.toBe(true);
+    await expect(store.markRequired(input)).resolves.toBe(true);
+    await expect(store.markRequired({ ...input, clinicId: tenantIds[1]! })).resolves.toBe(false);
+
+    const result = await database.execute<{
+      id: string; ai_paused: boolean; needs_attention: boolean; attention_reason: string | null;
+    }>(sql`
+      select id, ai_paused, needs_attention, attention_reason
+      from conversations
+      where id in (${conversationIds[0]}::uuid, ${conversationIds[1]}::uuid)
+      order by id
+    `);
+    const byId = new Map(result.rows.map((row) => [row.id, row]));
+    expect(byId.get(conversationIds[0]!)).toMatchObject({
+      ai_paused: true,
+      needs_attention: true,
+      attention_reason: input.reason,
+    });
+    expect(byId.get(conversationIds[1]!)).toMatchObject({
+      ai_paused: false,
+      needs_attention: false,
+      attention_reason: null,
+    });
   });
 });

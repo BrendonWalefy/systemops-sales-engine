@@ -104,6 +104,7 @@ function makeHarness(options: {
   verbalizedText?: string;
   verbalizerFailure?: boolean;
   crossTenantTreatment?: boolean;
+  safeHandoffBehavior?: "objections" | "cancel_reschedule";
 } = {}) {
   const releaseLease = vi.fn().mockResolvedValue(undefined);
   const context: LiveTurnContext = Object.freeze({
@@ -184,6 +185,24 @@ function makeHarness(options: {
         signals: {}, safety, confidence: 1, ambiguity: null,
       };
     }
+    if (options.safeHandoffBehavior === "objections") {
+      return {
+        version: UNDERSTANDING_VERSION,
+        request: "other" as const,
+        dialogueMove: "new_topic" as const,
+        entities: {},
+        signals: { objection: "price" }, safety, confidence: 1, ambiguity: null,
+      };
+    }
+    if (options.safeHandoffBehavior === "cancel_reschedule") {
+      return {
+        version: UNDERSTANDING_VERSION,
+        request: "cancel-appointment" as const,
+        dialogueMove: "new_topic" as const,
+        entities: {},
+        signals: {}, safety, confidence: 1, ambiguity: null,
+      };
+    }
     return options.bookingTurn
       ? {
           version: UNDERSTANDING_VERSION,
@@ -222,6 +241,7 @@ function makeHarness(options: {
       });
   const trace = new InMemoryDecisionTraceSink();
   const persistStopContact = vi.fn().mockResolvedValue(undefined);
+  const persistHandoff = vi.fn().mockResolvedValue(undefined);
   const registeredUnderstanding = createLiveDentalUnderstanding({
     chat: {
       completions: {
@@ -266,16 +286,22 @@ function makeHarness(options: {
                 : treatment,
             ]),
       },
-      calendar: {
-        listAvailableSlots: vi.fn().mockResolvedValue([{
-          id: "calendar-slot-1",
-          clinicId: clinic.id,
-          professionalId: null,
-          startsAt: new Date("2026-08-18T18:00:00.000Z"),
-          endsAt: new Date("2026-08-18T19:00:00.000Z"),
-          source: "manual",
-        }]),
-      },
+      resolveTenantScheduling: vi.fn((claimedClinicId: string) => {
+        if (claimedClinicId !== clinic.id) throw new Error("cross-tenant scheduling");
+        return {
+          calendar: {
+            listAvailableSlots: vi.fn().mockResolvedValue([{
+              id: "calendar-slot-1",
+              clinicId: clinic.id,
+              professionalId: null,
+              startsAt: new Date("2026-08-18T18:00:00.000Z"),
+              endsAt: new Date("2026-08-18T19:00:00.000Z"),
+              source: "manual",
+            }]),
+          },
+          booking,
+        };
+      }),
       state: {
         getCurrentState: currentState,
         offerSlotsForTurn: vi.fn().mockResolvedValue([{
@@ -293,7 +319,6 @@ function makeHarness(options: {
         findByIdForClinicAndLead: vi.fn(),
       },
       reservations: { findActiveByPeriod: vi.fn().mockResolvedValue([]) },
-      booking,
     },
     resolveTurnConfiguration: vi.fn().mockImplementation((resolutionInput) => ({
       gateInput: {
@@ -336,6 +361,7 @@ function makeHarness(options: {
     },
     decisionTraceSink: trace,
     persistStopContact,
+    persistHandoff,
     now: options.clockFailure
       ? () => { throw new Error("clock unavailable"); }
       : () => new Date(now),
@@ -348,6 +374,7 @@ function makeHarness(options: {
     booking,
     createOutboundMessageAndEnqueue,
     persistStopContact,
+    persistHandoff,
     trace,
     verbalize,
   };
@@ -410,6 +437,27 @@ describe("V2LiveConversationHandler", () => {
       },
     });
   });
+
+  it.each([
+    ["objections", "v2_objection_requires_human"],
+    ["cancel_reschedule", "v2_cancel_reschedule_requires_human"],
+  ] as const)(
+    "persists the %s safe handoff with one stable tenant-scoped identity before replying",
+    async (safeHandoffBehavior, reason) => {
+      const harness = makeHarness({ safeHandoffBehavior });
+
+      await expect(harness.handler.handle(handleInput())).resolves.toEqual({ replied: true });
+
+      expect(harness.persistHandoff).toHaveBeenCalledOnce();
+      expect(harness.persistHandoff).toHaveBeenCalledWith({
+        clinicId: clinic.id,
+        conversationId: conversation.id,
+        reason,
+        now,
+      });
+      expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    },
+  );
   it("runs the real prepared pipeline and enqueues one authorized current-version reply", async () => {
     const harness = makeHarness();
 

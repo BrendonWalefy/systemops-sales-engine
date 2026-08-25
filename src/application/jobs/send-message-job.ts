@@ -201,6 +201,20 @@ export class SendMessageJobHandler {
       });
       return "ignored";
     }
+    // Task 4/5 rollout fence: persisted durable authorization is authoritative.
+    // No payload marker may make an otherwise-authorized live stream reply
+    // deliverable before the definitive sender-time safety preflight exists.
+    if (outbound.authorization.kind === "live_stream_reply") {
+      await this.deps.outboundMessageStore.markOutboundCancelled(
+        outbound.id,
+        "v2_live_preflight_pending",
+      );
+      log.warn("job.ignored", {
+        reason: "v2_live_preflight_pending",
+        durationMs: Date.now() - startedAt,
+      });
+      return "ignored";
+    }
     const outboundLog = log.child({
       clinicId: outbound.clinicId,
       conversationId: outbound.conversationId,

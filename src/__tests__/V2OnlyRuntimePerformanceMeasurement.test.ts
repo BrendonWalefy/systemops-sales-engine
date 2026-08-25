@@ -627,17 +627,19 @@ describe("V2-only runtime performance measurement worker", () => {
       verbalizer: v2Verbalizer,
       dental: {
         treatments: new DrizzleTreatmentRepository(),
-        calendar,
         state,
         appointments: appointmentRepository,
         reservations,
-        booking: new BookingService(
+        resolveTenantScheduling: () => ({
           calendar,
-          appointmentRepository,
-          leadRepository,
-          reservations,
-          followUpRepository,
-        ),
+          booking: new BookingService(
+            calendar,
+            appointmentRepository,
+            leadRepository,
+            reservations,
+            followUpRepository,
+          ),
+        }),
       },
       resolveTurnConfiguration: async () => {
         if (!activeV2Fixture) throw new Error("V2 configuration resolved outside a measured turn");
@@ -666,6 +668,7 @@ describe("V2-only runtime performance measurement worker", () => {
       outbound: { outboundMessageStore, jobQueue },
       decisionTraceSink: decisionTraceSink("v2_only"),
       persistStopContact: async () => {},
+      persistHandoff: async () => {},
       now: fixedDate,
     }), observations);
 
