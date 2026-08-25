@@ -11,13 +11,16 @@ import {
 
 const ENV = {
   CRON_SECRET: "cron-secret",
+  VERCEL_ENV: "production",
   VERCEL_URL: "deployment.example.test",
   NEXT_PUBLIC_APP_URL: "https://production.example.test",
 };
 
 describe("worker wake policy", () => {
-  it("targets the current deployment before the public production alias", () => {
-    expect(resolveWorkerBaseUrl(ENV)).toBe("https://deployment.example.test");
+  it("uses the public alias in production and the current deployment in preview", () => {
+    expect(resolveWorkerBaseUrl(ENV)).toBe("https://production.example.test");
+    expect(resolveWorkerBaseUrl({ ...ENV, VERCEL_ENV: "preview" }))
+      .toBe("https://deployment.example.test");
     expect(resolveWorkerBaseUrl({ NEXT_PUBLIC_APP_URL: "https://app.test/" }))
       .toBe("https://app.test");
   });
@@ -80,6 +83,32 @@ describe("worker wake policy", () => {
       .resolves.toEqual({ requested: false, reason: "failed" });
   });
 
+  it("rejects protected or failed HTTP responses instead of reporting a wake", async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 401 }));
+
+    await expect(requestSenderWorkerRun({ env: ENV, fetchImpl }))
+      .resolves.toEqual({ requested: false, reason: "rejected", status: 401 });
+  });
+
+  it("carries an exact deferred sender run_at into the one-shot wake", async () => {
+    const fetchImpl = vi.fn(async () => new Response(null, { status: 202 }));
+    const now = new Date("2026-08-25T12:00:00.000Z");
+    const notBefore = new Date("2026-08-25T12:00:01.000Z");
+
+    await expect(requestSenderWorkerRun({
+      env: ENV,
+      fetchImpl,
+      now,
+      notBefore,
+      deferredWake: true,
+    } as never))
+      .resolves.toEqual({ requested: true, status: 202 });
+
+    const [senderUrl] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new URL(senderUrl).searchParams.get("notBefore")).toBe(notBefore.toISOString());
+    expect(new URL(senderUrl).searchParams.get("deferredWake")).toBe("1");
+  });
+
   it("runs exactly one delayed task without polling", async () => {
     const scheduled: Array<() => Promise<void>> = [];
     const sleep = vi.fn().mockResolvedValue(undefined);
@@ -110,7 +139,7 @@ describe("worker wake policy", () => {
     expect(schedule).toHaveBeenCalledOnce();
   });
 
-  it("supports an immediate rollback switch without disabling fallback crons", async () => {
+  it("supports a deployment-scoped rollback switch without disabling fallback crons", async () => {
     const fetchImpl = vi.fn();
     await expect(requestSenderWorkerRun({
       env: { ...ENV, DISABLE_EVENT_DRIVEN_WORKERS: "1" },

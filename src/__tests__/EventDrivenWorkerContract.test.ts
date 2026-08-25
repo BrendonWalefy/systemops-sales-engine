@@ -24,6 +24,10 @@ describe("event-driven worker integration contract", () => {
     expect(senderWorker).toContain("requireCronAuthorization(request)");
     expect(senderWorker).toContain("schedule: after");
     expect(senderWorker).toContain("scheduleAcceptedWorkerRun");
+    expect(senderWorker).toContain("notBefore");
+    expect(senderWorker).toContain("scheduleSenderWorkerWake");
+    expect(senderWorker).toContain('deferredWake") === "1"');
+    expect(senderWorker).toContain("!isDeferredWake");
   });
 
   it("keeps both fallback crons while event-driven wakes are introduced", () => {

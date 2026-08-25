@@ -16,7 +16,11 @@ import {
   MAX_MESSAGE_SEND_BATCH_SIZE,
   resolveWorkerBatchSize,
 } from "@/application/jobs/worker-capacity";
-import { scheduleAcceptedWorkerRun } from "@/application/jobs/worker-wake";
+import {
+  requestSenderWorkerRun,
+  scheduleAcceptedWorkerRun,
+  scheduleSenderWorkerWake,
+} from "@/application/jobs/worker-wake";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -32,9 +36,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (unauthorized) return unauthorized;
 
   if (request.nextUrl.searchParams.get("ack") === "1") {
+    const isDeferredWake = request.nextUrl.searchParams.get("deferredWake") === "1";
+    const notBeforeValue = request.nextUrl.searchParams.get("notBefore");
+    const notBefore = notBeforeValue ? new Date(notBeforeValue) : undefined;
+    if (notBefore && Number.isNaN(notBefore.getTime())) {
+      return NextResponse.json({ error: "invalid_not_before" }, { status: 400 });
+    }
     const accepted = scheduleAcceptedWorkerRun({
       schedule: after,
-      run: runSenderWorker,
+      notBefore,
+      run: async () => {
+        const outcome = await runSenderWorker();
+        if (outcome.nextRunAt && !isDeferredWake) {
+          await requestSenderWorkerRun({
+            notBefore: outcome.nextRunAt,
+            deferredWake: true,
+          });
+        }
+      },
     });
     return accepted
       ? NextResponse.json({ accepted: true }, { status: 202 })
@@ -42,10 +61,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   const outcome = await runSenderWorker();
+  if (outcome.nextRunAt) {
+    scheduleSenderWorkerWake(after, {
+      notBefore: outcome.nextRunAt,
+      deferredWake: true,
+    });
+  }
   return NextResponse.json(outcome.body, { status: outcome.status });
 }
 
-type SenderWorkerRunOutcome = { body: Record<string, unknown>; status: number };
+type SenderWorkerRunOutcome = {
+  body: Record<string, unknown>;
+  status: number;
+  nextRunAt?: Date;
+};
 
 async function runSenderWorker(): Promise<SenderWorkerRunOutcome> {
 
@@ -84,7 +113,11 @@ async function runSenderWorker(): Promise<SenderWorkerRunOutcome> {
       orphanReconciliation,
       durationMs: Date.now() - startedAt,
     });
-    return { body: { ...result, orphanReconciliation }, status: 200 };
+    return {
+      body: { ...result, orphanReconciliation },
+      status: 200,
+      nextRunAt: result.nextRunAt ?? undefined,
+    };
   } catch (error) {
     log.error("worker.run.failed", error, { durationMs: Date.now() - startedAt });
     return { body: { error: "sender_worker_failed" }, status: 500 };

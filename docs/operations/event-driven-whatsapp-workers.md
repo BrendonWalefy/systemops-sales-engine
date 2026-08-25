@@ -13,6 +13,9 @@ time until a worker claims committed work.
   at most 30 seconds; it never polls or heartbeats.
 - A newly created authorized outbound and `message.send` job requests
   `sender-worker` only after the durable write has committed.
+- If ordering defers a sender job, the worker may schedule one delayed retry at
+  the persisted release time. That retry is hop-marked and cannot schedule
+  another retry; a still-blocked job returns to the durable fallback cron.
 - Duplicate provider deliveries and deduplicated sender jobs request no new
   wake.
 - Wake failures never roll back accepted ingress or committed outbound work.
@@ -101,15 +104,18 @@ does not change durable writes and it does not disable fallback crons.
 
 For a planned rollback that preserves the old latency:
 
-1. Revert only the cron-grid commit so both queue routes run every minute.
-2. Deploy and verify the one-minute schedules are active.
-3. Set `DISABLE_EVENT_DRIVEN_WORKERS=1` for the affected environment.
+1. Set `DISABLE_EVENT_DRIVEN_WORKERS=1` for the affected environment. This
+   changes no running deployment until a new deployment is created.
+2. Revert only the cron-grid commit so both queue routes run every minute.
+3. Deploy that revert; the new deployment must contain both the one-minute
+   schedules and the disable flag.
 4. Drain both queues and verify due count, locks and provider errors.
 5. Revert the worker-wake commit only if the flag is insufficient.
 
-For an active request storm, set the disable flag first, accept the temporary
-10-minute fallback bound, and immediately deploy the one-minute schedule
-rollback. Never delete queue rows or bypass sender authorization as rollback.
+For an active request storm, prepare the disable flag and immediately redeploy
+the last known-good code or the one-minute schedule rollback. Changing a Vercel
+environment variable without redeploying does not affect the running build.
+Never delete queue rows or bypass sender authorization as rollback.
 
 ## Neon autosuspend rollout
 

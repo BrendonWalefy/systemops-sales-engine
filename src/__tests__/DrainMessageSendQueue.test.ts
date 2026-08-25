@@ -45,13 +45,47 @@ describe("drainMessageSendQueue", () => {
       now: new Date("2026-06-23T12:00:00.000Z"),
     } as never);
 
-    expect(result).toMatchObject({ deferred: 1, sent: 0 });
+    expect(result).toMatchObject({
+      deferred: 1,
+      sent: 0,
+      nextRunAt: new Date("2026-06-23T12:00:01.000Z"),
+    });
     expect(deps.jobQueue.releaseJob).toHaveBeenCalledWith(
       "send-job-1",
       "sender-1",
       expect.any(Date),
     );
     expect(deps.jobQueue.completeJob).not.toHaveBeenCalled();
+  });
+
+  it("retains the earliest explicit run_at when several ordered jobs defer", async () => {
+    const deps = makeDeps();
+    deps.jobQueue.claimNextJob = vi.fn()
+      .mockResolvedValueOnce(job)
+      .mockResolvedValueOnce({ ...job, id: "send-job-2" })
+      .mockResolvedValue(null);
+
+    const result = await drainMessageSendQueue({
+      ...deps,
+      handler: {
+        processJob: vi.fn()
+          .mockResolvedValueOnce({
+            status: "deferred",
+            runAt: new Date("2026-06-23T12:00:05.000Z"),
+            reason: "quiet_hours",
+          })
+          .mockResolvedValueOnce({
+            status: "deferred",
+            runAt: new Date("2026-06-23T12:00:03.000Z"),
+            reason: "earlier_message_active",
+          }),
+      },
+      workerId: "sender-1",
+      maxJobs: 2,
+      now: new Date("2026-06-23T12:00:00.000Z"),
+    } as never);
+
+    expect(result.nextRunAt).toEqual(new Date("2026-06-23T12:00:03.000Z"));
   });
 
   it("retenta falha técnica e devolve a outbox para pending", async () => {

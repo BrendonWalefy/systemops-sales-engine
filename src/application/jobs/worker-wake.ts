@@ -14,15 +14,27 @@ export type WorkerWakeResult =
         | "delay_exceeds_limit"
         | "no_base_url"
         | "no_secret"
-        | "failed";
+        | "failed"
+        | "rejected";
+      status?: number;
     }>;
 
 export function resolveWorkerBaseUrl(env: WorkerWakeEnvironment): string | null {
+  const configuredUrl = env.NEXT_PUBLIC_APP_URL?.trim()
+    ?? env.VERCEL_PROJECT_PRODUCTION_URL?.trim()
+    ?? env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL?.trim();
   const deploymentUrl = env.VERCEL_URL?.trim();
-  if (deploymentUrl) return `https://${deploymentUrl.replace(/\/+$/, "")}`;
+  if (env.VERCEL_ENV === "production" && configuredUrl) {
+    return normalizeBaseUrl(configuredUrl);
+  }
+  if (deploymentUrl) return normalizeBaseUrl(deploymentUrl);
 
-  const configuredUrl = env.NEXT_PUBLIC_APP_URL?.trim();
-  return configuredUrl ? configuredUrl.replace(/\/+$/, "") : null;
+  return configuredUrl ? normalizeBaseUrl(configuredUrl) : null;
+}
+
+function normalizeBaseUrl(value: string): string {
+  const normalized = value.replace(/\/+$/, "");
+  return /^https?:\/\//.test(normalized) ? normalized : `https://${normalized}`;
 }
 
 export function resolveWorkerWakeDelay(input: {
@@ -43,6 +55,7 @@ export function resolveWorkerWakeDelay(input: {
 export async function requestWorkerRun(input: {
   worker: WorkerKind;
   notBefore?: Date;
+  deferredWake?: boolean;
   env?: WorkerWakeEnvironment;
   fetchImpl?: typeof fetch;
   now?: Date;
@@ -68,6 +81,7 @@ export async function requestWorkerRun(input: {
 
   const params = new URLSearchParams({ ack: "1" });
   if (input.notBefore) params.set("notBefore", input.notBefore.toISOString());
+  if (input.deferredWake) params.set("deferredWake", "1");
   const route = input.worker === "message" ? "message-worker" : "sender-worker";
 
   try {
@@ -80,7 +94,9 @@ export async function requestWorkerRun(input: {
         signal: AbortSignal.timeout(WORKER_WAKE_REQUEST_TIMEOUT_MS),
       },
     );
-    return { requested: true, status: response.status };
+    return response.status === 202
+      ? { requested: true, status: response.status }
+      : { requested: false, reason: "rejected", status: response.status };
   } catch {
     return { requested: false, reason: "failed" };
   }
@@ -96,8 +112,11 @@ export function requestMessageWorkerRun(input: {
 }
 
 export function requestSenderWorkerRun(input: {
+  notBefore?: Date;
+  deferredWake?: boolean;
   env?: WorkerWakeEnvironment;
   fetchImpl?: typeof fetch;
+  now?: Date;
 } = {}): Promise<WorkerWakeResult> {
   return requestWorkerRun({ ...input, worker: "sender" });
 }
@@ -117,6 +136,38 @@ export function scheduleMessageWorkerWake(
   } catch {
     // A wake is latency optimization only. The durable fallback cron owns recovery.
   }
+}
+
+export function scheduleSenderWorkerWake(
+  schedule: (task: () => Promise<void>) => void,
+  input: {
+    notBefore?: Date;
+    deferredWake?: boolean;
+    request?: () => Promise<unknown>;
+    onResult?: (result: WorkerWakeResult) => void;
+  } = {},
+): void {
+  try {
+    schedule(async () => {
+      try {
+        const result = input.request
+          ? await input.request()
+          : await requestSenderWorkerRun({
+              notBefore: input.notBefore,
+              deferredWake: input.deferredWake,
+            });
+        if (isWorkerWakeResult(result)) input.onResult?.(result);
+      } catch {
+        // The durable queue and fallback cron own recovery.
+      }
+    });
+  } catch {
+    // The caller may be outside a request scope. Durable recovery is unchanged.
+  }
+}
+
+function isWorkerWakeResult(value: unknown): value is WorkerWakeResult {
+  return Boolean(value && typeof value === "object" && "requested" in value);
 }
 
 export function scheduleAcceptedWorkerRun(input: {

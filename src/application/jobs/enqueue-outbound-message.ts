@@ -3,12 +3,17 @@ import type {
   OutboundMessageStore,
 } from "@/application/ports/outbound-message-store";
 import type { JobQueue } from "@/application/ports/job-queue";
-import { requestSenderWorkerRun } from "@/application/jobs/worker-wake";
+import { after } from "next/server";
+import {
+  requestSenderWorkerRun,
+  scheduleSenderWorkerWake,
+} from "@/application/jobs/worker-wake";
 
 type EnqueueOutboundMessageDependencies = {
   outboundMessageStore: OutboundMessageStore;
   jobQueue: JobQueue;
   requestSenderWake?: () => Promise<unknown>;
+  scheduleSenderWake?: (task: () => Promise<void>) => void;
 };
 
 export async function enqueueOutboundMessage(
@@ -18,7 +23,7 @@ export async function enqueueOutboundMessage(
   const turnId = getTurnId(input.payload);
   if (deps.outboundMessageStore.createOutboundMessageAndEnqueue) {
     const result = await deps.outboundMessageStore.createOutboundMessageAndEnqueue(input, { turnId });
-    await wakeSenderAfterCommit(result.jobWasNew, deps.requestSenderWake);
+    wakeSenderAfterCommit(result.jobWasNew, deps);
     return result;
   }
 
@@ -37,20 +42,18 @@ export async function enqueueOutboundMessage(
     messageWasNew: created.isNew,
     jobWasNew: enqueued.isNew,
   };
-  await wakeSenderAfterCommit(result.jobWasNew, deps.requestSenderWake);
+  wakeSenderAfterCommit(result.jobWasNew, deps);
   return result;
 }
 
-async function wakeSenderAfterCommit(
+function wakeSenderAfterCommit(
   jobWasNew: boolean,
-  requestSenderWake: () => Promise<unknown> = () => requestSenderWorkerRun(),
-): Promise<void> {
+  deps: Pick<EnqueueOutboundMessageDependencies, "requestSenderWake" | "scheduleSenderWake">,
+): void {
   if (!jobWasNew) return;
-  try {
-    await requestSenderWake();
-  } catch {
-    // The outbox and job are durable. The fallback cron recovers a missed wake.
-  }
+  scheduleSenderWorkerWake(deps.scheduleSenderWake ?? after, {
+    request: deps.requestSenderWake ?? (() => requestSenderWorkerRun()),
+  });
 }
 
 function getTurnId(payload: unknown): string | null {

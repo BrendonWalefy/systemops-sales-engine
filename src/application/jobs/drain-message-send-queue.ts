@@ -24,6 +24,7 @@ export type DrainMessageSendQueueResult = {
   retried: number;
   dead: number;
   recovered: number;
+  nextRunAt: Date | null;
 };
 
 export async function drainMessageSendQueue(params: {
@@ -45,6 +46,7 @@ export async function drainMessageSendQueue(params: {
     recovered: await params.jobQueue.recoverStaleJobs({
       olderThan: new Date(now.getTime() - 5 * 60_000),
     }),
+    nextRunAt: null,
   };
   const log = createLogger({
     scope: "MessageSendDrain",
@@ -71,13 +73,17 @@ export async function drainMessageSendQueue(params: {
     try {
       processingOutcome = await params.handler.processJob(job);
       if (isDeferredOutcome(processingOutcome)) {
+        const releaseAt = processingOutcome === "deferred"
+          ? new Date(now.getTime() + 1_000)
+          : processingOutcome.runAt;
         await params.jobQueue.releaseJob(
           job.id,
           params.workerId,
-          processingOutcome === "deferred"
-            ? new Date(Date.now() + 1_000)
-            : processingOutcome.runAt,
+          releaseAt,
         );
+        if (!result.nextRunAt || releaseAt < result.nextRunAt) {
+          result.nextRunAt = releaseAt;
+        }
         result.deferred++;
         jobLog.info("job.deferred", {
           reason: processingOutcome === "deferred" ? "handler_deferred" : processingOutcome.reason,
