@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { sql } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
 
-export const AUTHORITY_VALIDATION_METRICS = [
+export const AUTHORITY_BLOCKING_VALIDATION_METRICS = [
   "unresolved_events",
   "partial_claims",
   "identity_conflicts",
@@ -14,6 +14,15 @@ export const AUTHORITY_VALIDATION_METRICS = [
   "multiple_active_streams_per_conversation",
   "process_job_orphans",
   "invalid_outbound_authorization",
+] as const;
+
+export const AUTHORITY_INFORMATIONAL_VALIDATION_METRICS = [
+  "terminal_legacy_events",
+] as const;
+
+export const AUTHORITY_VALIDATION_METRICS = [
+  ...AUTHORITY_BLOCKING_VALIDATION_METRICS,
+  ...AUTHORITY_INFORMATIONAL_VALIDATION_METRICS,
 ] as const;
 
 export type AuthorityValidationMetric = typeof AUTHORITY_VALIDATION_METRICS[number];
@@ -40,6 +49,29 @@ export async function validateWhatsAppStreamAuthority(
     where event.organization_id = ${clinicId}::uuid
       and (event.stream_id is null or event.stream_generation is null)
       and event.processing_status <> 'identity_conflict'
+      and not (
+        event.processing_status = 'history_only'
+        and event.stream_id is null
+        and event.stream_generation is null
+        and event.claim_token is null
+        and event.claim_token_digest is null
+        and event.claim_job_id is null
+        and event.claimed_at is null
+        and event.processed_at is not null
+        and not exists (
+          select 1 from jobs terminal_job where terminal_job.inbound_event_id = event.id
+        )
+        and not exists (
+          select 1
+          from outbound_messages terminal_outbound
+          where terminal_outbound.organization_id = event.organization_id
+            and (
+              terminal_outbound.authorization_inbound_event_id = event.id
+              or terminal_outbound.payload->>'turnId' = event.id::text
+            )
+            and terminal_outbound.status not in ('sent', 'cancelled')
+        )
+      )
     union all
     select 'partial_claims', count(*)::bigint
     from inbound_events event
@@ -127,9 +159,38 @@ export async function validateWhatsAppStreamAuthority(
         or outbound.authorization_claim_token_digest is not null
       ))
     )
+    union all
+    select 'terminal_legacy_events', count(*)::bigint
+    from inbound_events event
+    where event.organization_id = ${clinicId}::uuid
+      and event.processing_status = 'history_only'
+      and event.stream_id is null
+      and event.stream_generation is null
+      and event.claim_token is null
+      and event.claim_token_digest is null
+      and event.claim_job_id is null
+      and event.claimed_at is null
+      and event.processed_at is not null
+      and not exists (
+        select 1 from jobs terminal_job where terminal_job.inbound_event_id = event.id
+      )
+      and not exists (
+        select 1
+        from outbound_messages terminal_outbound
+        where terminal_outbound.organization_id = event.organization_id
+          and (
+            terminal_outbound.authorization_inbound_event_id = event.id
+            or terminal_outbound.payload->>'turnId' = event.id::text
+          )
+          and terminal_outbound.status not in ('sent', 'cancelled')
+      )
   `);
   const metrics = result.rows.map((row) => ({ metric: row.metric, count: Number(row.count) }));
-  const issues = metrics.filter(({ count }) => count > 0)
+  const issues = metrics.filter(({ metric, count }) => (
+    count > 0 && AUTHORITY_BLOCKING_VALIDATION_METRICS.includes(
+      metric as typeof AUTHORITY_BLOCKING_VALIDATION_METRICS[number],
+    )
+  ))
     .map(({ metric, count }) => `${metric}=${count}`);
   return { clinicId, clean: issues.length === 0, issues, metrics };
 }

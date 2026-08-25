@@ -67,7 +67,7 @@ export type InboundRegistrationResult =
       jobWasNew: boolean;
     }>)
   | Readonly<{
-      outcome: "identity_conflict";
+      outcome: "identity_conflict" | "history_only";
       inboundEventId: string;
       jobId: null;
       eventWasNew: boolean;
