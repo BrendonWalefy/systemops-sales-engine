@@ -239,6 +239,46 @@ describe("WhatsApp durable stream authority schema", () => {
     ]);
     expect(checkNames(authority.checks)).toContain("conversation_authority_version_check");
   });
+
+  it("declares one global fail-closed runtime control with monotonic versions", () => {
+    const control = tableConfig("conversationRuntimeControl");
+    expect(control.columns.map((column) => column.name)).toEqual([
+      "key",
+      "live_outbound_enabled",
+      "version",
+      "updated_at",
+      "updated_by",
+    ]);
+    expect(control.columns.find((column) => column.name === "key")).toMatchObject({
+      notNull: true,
+      primary: true,
+    });
+    expect(control.columns.find(
+      (column) => column.name === "live_outbound_enabled",
+    )).toMatchObject({
+      dataType: "boolean",
+      notNull: true,
+      hasDefault: true,
+    });
+    expect(control.columns.find((column) => column.name === "version")).toMatchObject({
+      columnType: "PgBigInt53",
+      dataType: "number",
+      notNull: true,
+      hasDefault: true,
+    });
+    expect(control.columns.find((column) => column.name === "updated_at")).toMatchObject({
+      notNull: true,
+      hasDefault: true,
+    });
+    expect(control.columns.find((column) => column.name === "updated_by")).toMatchObject({
+      notNull: true,
+    });
+    expect(checkNames(control.checks)).toEqual(expect.arrayContaining([
+      "conversation_runtime_control_global_key_check",
+      "conversation_runtime_control_version_check",
+    ]));
+    expect(control.indexes).toHaveLength(0);
+  });
 });
 
 describe("WhatsApp durable stream authority generated migrations", () => {
@@ -260,6 +300,7 @@ describe("WhatsApp durable stream authority generated migrations", () => {
     const tables = await db.execute<{ name: string | null }>(sql`
       select to_regclass(name)::text as name
       from unnest(array[
+        'public.conversation_runtime_control',
         'public.whatsapp_streams',
         'public.whatsapp_stream_aliases',
         'public.conversation_authority'
@@ -268,6 +309,7 @@ describe("WhatsApp durable stream authority generated migrations", () => {
     `);
     expect(tables.rows.map((row) => row.name)).toEqual([
       "conversation_authority",
+      "conversation_runtime_control",
       "whatsapp_stream_aliases",
       "whatsapp_streams",
     ]);
@@ -285,11 +327,13 @@ describe("WhatsApp durable stream authority generated migrations", () => {
         'outbound_messages_authorization_stream_org_fk',
         'outbound_messages_authorization_inbound_fk',
         'outbound_messages_authorization_claim_job_id_jobs_id_fk',
-        'conversation_authority_version_check'
+        'conversation_authority_version_check',
+        'conversation_runtime_control_global_key_check',
+        'conversation_runtime_control_version_check'
       ])
       order by conname
     `);
-    expect(constraints.rows.map((row) => row.conname)).toHaveLength(10);
+    expect(constraints.rows.map((row) => row.conname)).toHaveLength(12);
 
     const indexes = await db.execute<{ indexname: string }>(sql`
       select indexname

@@ -14,6 +14,7 @@ const authoritySuite = [
   "src/__tests__/WhatsAppTerminalLegacyOutboundSettlementDatabase.test.ts",
   "src/__tests__/WhatsAppStreamPerformance.test.ts",
   "src/__tests__/SystemOpsDentalLabConfigDatabase.test.ts",
+  "src/__tests__/V2OnlyRuntimeDatabase.test.ts",
   "src/__tests__/helpers/embedded-authority-database.ts",
 ].map((path) => readFileSync(path, "utf8")).join("\n");
 
@@ -23,7 +24,7 @@ describe("database test command isolation", () => {
       "dotenv -e .env.test.local -- vitest run src/__tests__/calendar-import.test.ts",
     );
     expect(packageJson.scripts["test:db:authority"]).toBe(
-      "vitest run src/__tests__/ScheduledBurstDebounceDatabase.test.ts src/__tests__/WhatsAppAuthorityBackfillDatabase.test.ts src/__tests__/WhatsAppTerminalLegacySettlementDatabase.test.ts src/__tests__/WhatsAppTerminalLegacyOutboundSettlementDatabase.test.ts src/__tests__/WhatsAppStreamPerformance.test.ts src/__tests__/SystemOpsDentalLabConfigDatabase.test.ts --maxWorkers=1",
+      "vitest run src/__tests__/ScheduledBurstDebounceDatabase.test.ts src/__tests__/WhatsAppAuthorityBackfillDatabase.test.ts src/__tests__/WhatsAppTerminalLegacySettlementDatabase.test.ts src/__tests__/WhatsAppTerminalLegacyOutboundSettlementDatabase.test.ts src/__tests__/WhatsAppStreamPerformance.test.ts src/__tests__/SystemOpsDentalLabConfigDatabase.test.ts src/__tests__/V2OnlyRuntimeDatabase.test.ts --maxWorkers=1",
     );
     expect(packageJson.scripts["test:db:schema"]).toBe(
       "vitest run src/__tests__/WhatsAppStreamSchema.test.ts",
@@ -52,6 +53,9 @@ describe("database test command isolation", () => {
     );
     expect(packageJson.scripts.test).toContain(
       "--exclude src/__tests__/SystemOpsDentalLabConfigDatabase.test.ts",
+    );
+    expect(packageJson.scripts.test).toContain(
+      "--exclude src/__tests__/V2OnlyRuntimeDatabase.test.ts",
     );
   });
 

@@ -943,6 +943,31 @@ export const conversationAuthority = pgTable(
   }),
 );
 
+export const conversationRuntimeControl = pgTable(
+  "conversation_runtime_control",
+  {
+    key: text("key").primaryKey(),
+    liveOutboundEnabled: boolean("live_outbound_enabled")
+      .notNull()
+      .default(false),
+    version: bigint("version", { mode: "number" }).notNull().default(1),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedBy: text("updated_by").notNull(),
+  },
+  (table) => ({
+    globalKeyCheck: check(
+      "conversation_runtime_control_global_key_check",
+      sql`${table.key} = 'global'`,
+    ),
+    versionCheck: check(
+      "conversation_runtime_control_version_check",
+      sql`${table.version} >= 1`,
+    ),
+  }),
+);
+
 export const inboundEvents = pgTable(
   "inbound_events",
   {
