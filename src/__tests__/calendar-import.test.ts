@@ -440,11 +440,7 @@ describe.skipIf(databaseAccess.mode !== "authorized")("Calendar Import — Parse
     expect(finalAppointments.length).toBeGreaterThan(0);
   });
 
-  it("vincula ao profissional mencionado no texto, e ao default quando nenhum é mencionado", async () => {
-    // Caso real pedido pelo usuário: Vitalli tem Dr. Gregorie (funcionário) e
-    // Dr. Victor (dono). Só 3 de 24 eventos futuros reais mencionam
-    // "gregorie" no SUMMARY — os demais não indicam profissional nenhum e
-    // devem cair no default (Victor).
+  it("vincula menções ativas e não adivinha um default quando há vários ativos", async () => {
     const [gregorie] = await db
       .insert(professionals)
       .values({ clinicId: demoClinicId, name: "Dr. Gregorie", specialty: "Odontologia" })
@@ -479,7 +475,6 @@ END:VCALENDAR`;
     const parseResult = parseIcs(ics);
     await importCalendarEvents(demoClinicId, parseResult.events, {
       cutoffDate: FAR_PAST_CUTOFF,
-      defaultProfessionalId: victor.id,
     });
 
     const apts = await db.query.appointments.findMany({
@@ -490,6 +485,137 @@ END:VCALENDAR`;
     const byUid = new Map(apts.map((a) => [a.calendarEventId, a.professionalId]));
     expect(byUid.get("prof-test-1@test")).toBe(gregorie.id);
     expect(byUid.get("prof-test-2@test")).toBe(gregorie.id); // "GREGORI" sem o "e" final
-    expect(byUid.get("prof-test-3@test")).toBe(victor.id); // sem menção → default
+    expect(byUid.get("prof-test-3@test")).toBeNull(); // vários ativos → ambíguo
+    expect(victor.id).not.toBe(gregorie.id);
+  });
+
+  it("reimport substitui ou limpa um professionalId que ficou inativo", async () => {
+    await db
+      .update(professionals)
+      .set({ isActive: false })
+      .where(eq(professionals.clinicId, demoClinicId));
+
+    const [activeDefault] = await db
+      .insert(professionals)
+      .values({
+        clinicId: demoClinicId,
+        name: "Dra. Ana",
+        specialty: "Odontologia",
+        isActive: true,
+      })
+      .returning({ id: professionals.id });
+    const inactiveExisting = await db.query.professionals.findFirst({
+      where: and(
+        eq(professionals.clinicId, demoClinicId),
+        eq(professionals.isActive, false),
+      ),
+      columns: { id: true },
+    });
+    expect(inactiveExisting).toBeDefined();
+
+    const event = parseIcs(`BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART:20260712T110000Z
+DTEND:20260712T120000Z
+UID:prof-reimport-inactive@test
+SUMMARY:Vilma avaliação gregorie
+END:VEVENT
+END:VCALENDAR`).events[0];
+
+    await importCalendarEvents(demoClinicId, [event], { cutoffDate: FAR_PAST_CUTOFF });
+    const appointment = await db.query.appointments.findFirst({
+      where: and(
+        eq(appointments.clinicId, demoClinicId),
+        eq(appointments.calendarEventId, event.uid),
+      ),
+      columns: { id: true, professionalId: true },
+    });
+    expect(appointment?.professionalId).toBe(activeDefault.id);
+
+    await db
+      .update(appointments)
+      .set({ professionalId: inactiveExisting!.id })
+      .where(eq(appointments.id, appointment!.id));
+    await importCalendarEvents(demoClinicId, [event], { cutoffDate: FAR_PAST_CUTOFF });
+
+    const replaced = await db.query.appointments.findFirst({
+      where: eq(appointments.id, appointment!.id),
+      columns: { professionalId: true },
+    });
+    expect(replaced?.professionalId).toBe(activeDefault.id);
+
+    await db
+      .update(professionals)
+      .set({ isActive: false })
+      .where(eq(professionals.id, activeDefault.id));
+    await db
+      .update(appointments)
+      .set({ professionalId: inactiveExisting!.id })
+      .where(eq(appointments.id, appointment!.id));
+    await importCalendarEvents(demoClinicId, [event], { cutoffDate: FAR_PAST_CUTOFF });
+
+    const cleared = await db.query.appointments.findFirst({
+      where: eq(appointments.id, appointment!.id),
+      columns: { professionalId: true },
+    });
+    expect(cleared?.professionalId).toBeNull();
+  });
+
+  it("nunca usa o único profissional ativo de outro tenant como default", async () => {
+    await db
+      .update(professionals)
+      .set({ isActive: false })
+      .where(eq(professionals.clinicId, demoClinicId));
+
+    const otherClinicSlug = `test-calendar-other-${runId}`;
+    const [otherClinic] = await db
+      .insert(organizations)
+      .values({
+        name: `Other Calendar Tenant ${runId}`,
+        slug: otherClinicSlug,
+        specialty: "dental",
+        city: "São Paulo",
+        autoReplyEnabled: false,
+        isTest: true,
+        operationalStatus: "test",
+      })
+      .returning({ id: organizations.id });
+
+    try {
+      const [otherProfessional] = await db
+        .insert(professionals)
+        .values({
+          clinicId: otherClinic.id,
+          name: "Dra. Outro Tenant",
+          specialty: "Odontologia",
+          isActive: true,
+        })
+        .returning({ id: professionals.id });
+      const event = parseIcs(`BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART:20260713T110000Z
+DTEND:20260713T120000Z
+UID:prof-cross-tenant@test
+SUMMARY:Paciente avaliação
+END:VEVENT
+END:VCALENDAR`).events[0];
+
+      await importCalendarEvents(demoClinicId, [event], { cutoffDate: FAR_PAST_CUTOFF });
+      const imported = await db.query.appointments.findFirst({
+        where: and(
+          eq(appointments.clinicId, demoClinicId),
+          eq(appointments.calendarEventId, event.uid),
+        ),
+        columns: { professionalId: true },
+      });
+
+      expect(imported?.professionalId).toBeNull();
+      expect(imported?.professionalId).not.toBe(otherProfessional.id);
+    } finally {
+      await db.delete(professionals).where(eq(professionals.clinicId, otherClinic.id));
+      await db.delete(organizations).where(eq(organizations.id, otherClinic.id));
+    }
   });
 });

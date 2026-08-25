@@ -63,6 +63,7 @@ export type InboundRegistrationResult =
   | (InboundAuthorityTuple & Readonly<{
       outcome: "registered";
       jobId: string;
+      runAt: Date;
       eventWasNew: boolean;
       jobWasNew: boolean;
     }>)

@@ -139,7 +139,7 @@
             <i>→</i>
             <div><span>2</span><strong>Canal</strong><small>Z-API / Meta</small></div>
             <i>→</i>
-            <div><span>3</span><strong>Entrada durável</strong><small>webhook + inbox + job</small></div>
+            <div><span>3</span><strong>Entrada durável</strong><small>webhook + inbox + job + wake</small></div>
             <i>→</i>
             <div><span>4</span><strong>Core</strong><small>entende e decide</small></div>
             <i>→</i>
@@ -551,7 +551,7 @@
 
           <div class="maturity-grid">
             <article class="maturity-card reveal"><span>3/10</span><h3>Microsserviços</h3><p>Não implementados. O monólito modular mantém um deploy e um banco, com boundaries preparados para extração.</p></article>
-            <article class="maturity-card reveal"><span>8/10</span><h3>Event-driven</h3><p>Webhook, transactional inbox, jobs, workers, transactional outbox e automações assíncronas.</p></article>
+            <article class="maturity-card reveal"><span>8/10</span><h3>Event-driven</h3><p>Webhook, inbox/outbox transacionais, wakes one-shot após commit, jobs duráveis e crons de fallback.</p></article>
             <article class="maturity-card reveal"><span>0/10</span><h3>Kafka</h3><p>Não utilizado. O volume e o número de consumidores ainda não pagam o piso de custo e operação.</p></article>
             <article class="maturity-card reveal"><span>7,5/10</span><h3>Mensageria</h3><p>Fila PostgreSQL durável com claims, leases, retry e dedupe; ainda sem broker gerenciado.</p></article>
             <article class="maturity-card reveal"><span>8/10</span><h3>Patterns</h3><p>Inbox, Outbox, idempotência, backoff e DLQ existem. Strangler entra na primeira extração real.</p></article>

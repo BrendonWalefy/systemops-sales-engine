@@ -130,6 +130,7 @@ function makeHarness(options: HarnessOptions = {}) {
         streamId,
         streamGeneration,
         jobId: queued.job.id,
+        runAt: queued.job.runAt,
         eventWasNew: true,
         jobWasNew: queued.isNew,
       };

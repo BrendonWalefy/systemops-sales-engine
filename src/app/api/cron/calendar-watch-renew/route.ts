@@ -8,7 +8,6 @@ import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { importCalendarEvents } from "@/application/calendar/import-calendar-events";
-import { resolveDefaultProfessionalId } from "@/application/calendar/resolve-default-professional";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 
 export const dynamic = "force-dynamic";
@@ -57,10 +56,7 @@ async function renewForClinic(
     }
 
     if (events.length > 0) {
-      const defaultProfessionalId = await resolveDefaultProfessionalId(clinicId);
-      const importResult = await importCalendarEvents(clinicId, events, {
-        defaultProfessionalId: defaultProfessionalId ?? undefined,
-      });
+      const importResult = await importCalendarEvents(clinicId, events);
       if (importResult.errors.length > 0) {
         throw new Error(
           `Google Calendar import failed for ${importResult.errors.length} event(s): ${importResult.errors

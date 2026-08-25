@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { drainMessageProcessQueue } from "@/application/jobs/drain-message-process-queue";
 import { drainMessageSendQueue } from "@/application/jobs/drain-message-send-queue";
@@ -31,6 +31,7 @@ import {
   type ShadowBatchSummary,
 } from "@/application/conversation-v2/run-shadow-batch";
 import { createConversationV2Runtime } from "@/infrastructure/conversation-v2/create-conversation-v2-runtime";
+import { scheduleAcceptedWorkerRun } from "@/application/jobs/worker-wake";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -46,6 +47,30 @@ const MAX_JOBS_PER_RUN = resolveWorkerBatchSize(
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const unauthorized = requireCronAuthorization(request);
   if (unauthorized) return unauthorized;
+
+  if (request.nextUrl.searchParams.get("ack") === "1") {
+    const notBeforeValue = request.nextUrl.searchParams.get("notBefore");
+    const notBefore = notBeforeValue ? new Date(notBeforeValue) : undefined;
+    if (notBefore && Number.isNaN(notBefore.getTime())) {
+      return NextResponse.json({ error: "invalid_not_before" }, { status: 400 });
+    }
+    const accepted = scheduleAcceptedWorkerRun({
+      schedule: after,
+      notBefore,
+      run: runMessageWorker,
+    });
+    return accepted
+      ? NextResponse.json({ accepted: true }, { status: 202 })
+      : NextResponse.json({ accepted: false, fallback: "cron" }, { status: 422 });
+  }
+
+  const outcome = await runMessageWorker();
+  return NextResponse.json(outcome.body, { status: outcome.status });
+}
+
+type MessageWorkerRunOutcome = { body: Record<string, unknown>; status: number };
+
+async function runMessageWorker(): Promise<MessageWorkerRunOutcome> {
 
   const workerId = `message-worker:${randomUUID()}`;
   const log = createLogger({
@@ -165,9 +190,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       conversationV2Shadow,
       durationMs: Date.now() - startedAt,
     });
-    return NextResponse.json({ ...result, orphanReconciliation, sendDrain, conversationV2Shadow });
+    return {
+      body: { ...result, orphanReconciliation, sendDrain, conversationV2Shadow },
+      status: 200,
+    };
   } catch (error) {
     log.error("worker.run.failed", error, { durationMs: Date.now() - startedAt });
-    return NextResponse.json({ error: "message_worker_failed" }, { status: 500 });
+    return { body: { error: "message_worker_failed" }, status: 500 };
   }
 }

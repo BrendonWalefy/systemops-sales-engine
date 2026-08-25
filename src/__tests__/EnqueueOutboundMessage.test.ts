@@ -10,6 +10,8 @@ describe("enqueueOutboundMessage", () => {
     });
     const createOutboundMessage = vi.fn();
     const enqueueJob = vi.fn();
+    const requestSenderWake = vi.fn().mockResolvedValue(undefined);
+    const scheduled: Array<() => Promise<void>> = [];
 
     const result = await enqueueOutboundMessage(
       {
@@ -20,13 +22,15 @@ describe("enqueueOutboundMessage", () => {
         deliveryKind: "text",
         authorization: { kind: "legacy" },
       },
-      {
+      ({
         outboundMessageStore: {
           createOutboundMessageAndEnqueue,
           createOutboundMessage,
         } as never,
         jobQueue: { enqueueJob } as never,
-      },
+        requestSenderWake,
+        scheduleSenderWake: (task: () => Promise<void>) => scheduled.push(task),
+      } as never),
     );
 
     expect(createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
@@ -36,6 +40,132 @@ describe("enqueueOutboundMessage", () => {
     expect(result.outboundMessageId).toBe("outbound-atomic");
     expect(createOutboundMessage).not.toHaveBeenCalled();
     expect(enqueueJob).not.toHaveBeenCalled();
+    expect(requestSenderWake).not.toHaveBeenCalled();
+    expect(scheduled).toHaveLength(1);
+    await scheduled[0]!();
+    expect(requestSenderWake).toHaveBeenCalledOnce();
+  });
+
+  it("não acorda o sender quando o job deduplicado já existia", async () => {
+    const requestSenderWake = vi.fn().mockResolvedValue(undefined);
+    const result = await enqueueOutboundMessage(
+      {
+        clinicId: "clinic-1",
+        conversationId: "conversation-1",
+        channel: "whatsapp",
+        payload: { turnId: "turn-duplicate" },
+        deliveryKind: "text",
+        authorization: { kind: "legacy" },
+      },
+      ({
+        outboundMessageStore: {
+          createOutboundMessageAndEnqueue: vi.fn().mockResolvedValue({
+            outboundMessageId: "outbound-existing",
+            messageWasNew: false,
+            jobWasNew: false,
+          }),
+        } as never,
+        jobQueue: {} as never,
+        requestSenderWake,
+      } as never),
+    );
+
+    expect(result.jobWasNew).toBe(false);
+    expect(requestSenderWake).not.toHaveBeenCalled();
+  });
+
+  it("não desfaz a outbox autorizada quando o wake do sender falha", async () => {
+    const requestSenderWake = vi.fn().mockRejectedValue(new Error("wake unavailable"));
+    const scheduled: Array<() => Promise<void>> = [];
+
+    await expect(enqueueOutboundMessage(
+      {
+        clinicId: "clinic-1",
+        conversationId: "conversation-1",
+        channel: "whatsapp",
+        payload: { turnId: "turn-1" },
+        deliveryKind: "text",
+        authorization: { kind: "legacy" },
+      },
+      ({
+        outboundMessageStore: {
+          createOutboundMessageAndEnqueue: vi.fn().mockResolvedValue({
+            outboundMessageId: "outbound-1",
+            messageWasNew: true,
+            jobWasNew: true,
+          }),
+        } as never,
+        jobQueue: {} as never,
+        requestSenderWake,
+        scheduleSenderWake: (task: () => Promise<void>) => scheduled.push(task),
+      } as never),
+    )).resolves.toMatchObject({ outboundMessageId: "outbound-1", jobWasNew: true });
+    expect(scheduled).toHaveLength(1);
+    await expect(scheduled[0]!()).resolves.toBeUndefined();
+    expect(requestSenderWake).toHaveBeenCalledOnce();
+  });
+
+  it("returns committed business work before a slow sender wake starts", async () => {
+    const requestSenderWake = vi.fn().mockResolvedValue(undefined);
+    const scheduled: Array<() => Promise<void>> = [];
+
+    const result = await enqueueOutboundMessage(
+      {
+        clinicId: "clinic-1",
+        conversationId: "conversation-1",
+        channel: "whatsapp",
+        payload: { turnId: "turn-post-response" },
+        deliveryKind: "text",
+        authorization: { kind: "legacy" },
+      },
+      ({
+        outboundMessageStore: {
+          createOutboundMessageAndEnqueue: vi.fn().mockResolvedValue({
+            outboundMessageId: "outbound-post-response",
+            messageWasNew: true,
+            jobWasNew: true,
+          }),
+        } as never,
+        jobQueue: {} as never,
+        requestSenderWake,
+        scheduleSenderWake: (task: () => Promise<void>) => scheduled.push(task),
+      } as never),
+    );
+
+    expect(result.outboundMessageId).toBe("outbound-post-response");
+    expect(requestSenderWake).not.toHaveBeenCalled();
+    expect(scheduled).toHaveLength(1);
+  });
+
+  it("keeps committed business work when post-response scheduling is unavailable", async () => {
+    const requestSenderWake = vi.fn();
+
+    await expect(enqueueOutboundMessage(
+      {
+        clinicId: "clinic-1",
+        conversationId: "conversation-1",
+        channel: "whatsapp",
+        payload: { turnId: "turn-no-request-scope" },
+        deliveryKind: "text",
+        authorization: { kind: "legacy" },
+      },
+      ({
+        outboundMessageStore: {
+          createOutboundMessageAndEnqueue: vi.fn().mockResolvedValue({
+            outboundMessageId: "outbound-no-request-scope",
+            messageWasNew: true,
+            jobWasNew: true,
+          }),
+        } as never,
+        jobQueue: {} as never,
+        requestSenderWake,
+        scheduleSenderWake: () => { throw new Error("outside request scope"); },
+      } as never),
+    )).resolves.toMatchObject({
+      outboundMessageId: "outbound-no-request-scope",
+      jobWasNew: true,
+    });
+    expect(requestSenderWake).not.toHaveBeenCalled();
   });
 
   it("recria o job idempotente quando uma outbox já persistida é reencontrada", async () => {

@@ -1,6 +1,6 @@
 // Thin adapter: valida, resolve tenant e persiste a entrada antes de enfileirar.
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { randomUUID } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { organizations, conversations, messages, leads } from "@/infrastructure/db/schema";
@@ -57,6 +57,7 @@ import {
 import { sendButtonListMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { enqueueNoShowRecovery } from "@/application/conversations/enqueue-no-show-recovery";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
+import { scheduleMessageWorkerWake } from "@/application/jobs/worker-wake";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -575,6 +576,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       jobWasNew: result.jobWasNew,
       durationMs: Date.now() - startedAt,
     });
+    if (result.outcome === "registered" && result.jobWasNew) {
+      scheduleMessageWorkerWake(after, {
+        notBefore: result.runAt,
+        onResult: (wake) => clinicLog.info("webhook.worker_wake", wake),
+      });
+    }
   } catch (error) {
     // Returning an error asks Z-API to retry. A duplicate event retries only
     // the idempotent enqueue, repairing a prior persistence/enqueue split.

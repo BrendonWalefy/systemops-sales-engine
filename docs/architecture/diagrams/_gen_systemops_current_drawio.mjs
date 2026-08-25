@@ -100,7 +100,7 @@ function graph(pageWidth = 1920, pageHeight = 1200) {
 
 function page1() {
   const g = graph(1920, 1200);
-  g.addVertex("p1-title", titleLabel("SYSTEMOPS CORE • ESTADO ATUAL", "01 — Arquitetura técnica e integrações", "Monólito modular Next.js em Vercel • pipeline híbrido assíncrono • multi-tenant no Neon/PostgreSQL • atualizado em 06/08/2026"), 40, 25, 1840, 75, STYLES.title);
+  g.addVertex("p1-title", titleLabel("SYSTEMOPS CORE • ESTADO ATUAL", "01 — Arquitetura técnica e integrações", "Monólito modular Next.js em Vercel • pipeline event-driven durável • multi-tenant no Neon/PostgreSQL • atualizado em 25/08/2026"), 40, 25, 1840, 75, STYLES.title);
 
   g.addVertex("p1-vercel", "PLATAFORMA SYSTEMOPS • VERCEL", 260, 120, 1290, 990, STYLES.sectionBlue, "containers");
   g.addVertex("p1-runtime", "RUNTIME NEXT.JS 16 / TYPESCRIPT 5.8 / REACT 19", 300, 155, 1210, 190, STYLES.section, "containers");
@@ -115,7 +115,7 @@ function page1() {
 
   g.addVertex("p1-ui", label("App Router / SSR", "Home • Inbox • Agenda • Pipeline • Campanhas • Owner", "NEXT.JS"), 330, 205, 330, 100, STYLES.dark);
   g.addVertex("p1-api", label("Route Handlers + Server Actions", "sessão, tenancy, APIs finas e CRUD", "APP"), 700, 205, 330, 100, STYLES.blue);
-  g.addVertex("p1-cron", label("Vercel Cron", "workers, métricas, follow-ups, lembretes e saúde", "CRON"), 1070, 205, 200, 100, STYLES.orange);
+  g.addVertex("p1-cron", label("Vercel Cron", "fallback de workers, métricas, follow-ups, lembretes e saúde", "CRON"), 1070, 205, 200, 100, STYLES.orange);
   g.addVertex("p1-obs", label("Observabilidade", "logs estruturados • Decision Trace • Sentry", "OPS"), 1310, 205, 160, 100, STYLES.purple);
 
   g.addVertex("p1-ingress", label("Webhook ingress", "/api/whatsapp/zapi • /webhook Meta", "HTTP"), 330, 440, 185, 90, STYLES.green);
@@ -149,17 +149,17 @@ function page1() {
   g.addEdge("p1-team", "p1-ui", "HTTPS / sessão");
   g.addEdge("p1-ui", "p1-api", "SSR + actions", STYLES.edgeBlue);
   g.addEdge("p1-api", "p1-db", "Drizzle", STYLES.edgeDashed, [[680, 330], [680, 760]]);
-  g.addEdge("p1-cron", "p1-worker", "a cada minuto", STYLES.edgeBlue);
-  g.addEdge("p1-cron", "p1-sender", "a cada minuto", STYLES.edgeBlue, [[1020, 340], [1020, 560]]);
+  g.addEdge("p1-cron", "p1-worker", "fallback 10 min", STYLES.edgeBlue);
+  g.addEdge("p1-cron", "p1-sender", "fallback 10 min", STYLES.edgeBlue, [[1020, 340], [1020, 560]]);
   g.addEdge("p1-lead", "p1-zapi", "mensagem", STYLES.edgeGreen);
   g.addEdge("p1-zapi", "p1-ingress", "webhook", STYLES.edgeGreen);
   g.addEdge("p1-meta", "p1-ingress", "webhook compat.", STYLES.edgeDashed);
   g.addEdge("p1-ingress", "p1-inbound", "persiste");
-  g.addEdge("p1-inbound", "p1-processq", "enfileira");
+  g.addEdge("p1-inbound", "p1-processq", "enfileira + wake");
   g.addEdge("p1-processq", "p1-worker", "claim + lease");
   g.addEdge("p1-worker", "p1-core", "turno", STYLES.edgeBlue);
   g.addEdge("p1-core", "p1-outbox", "intenção de envio", STYLES.edgeBlue);
-  g.addEdge("p1-outbox", "p1-sendq", "job");
+  g.addEdge("p1-outbox", "p1-sendq", "job + wake");
   g.addEdge("p1-sendq", "p1-sender", "claim ordenado");
   g.addEdge("p1-sender", "p1-channel", "texto / áudio / mídia", STYLES.edgeBlue);
   g.addEdge("p1-channel", "p1-zapi", "API de envio", STYLES.edgeGreen, [[470, 620], [245, 620], [245, 575]]);
