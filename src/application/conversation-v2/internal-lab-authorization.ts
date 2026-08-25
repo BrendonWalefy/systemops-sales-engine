@@ -3,10 +3,14 @@ import type { CycleIRuntimeBuildIdentity } from "@/application/conversation-v2/c
 import {
   isRegisteredInternalLabApproval,
   isRegisteredInternalLabApprovalInstance,
+  serializeInternalLabApprovalClaims,
+  type InternalLabApprovalClaims,
   type RegisteredInternalLabApproval,
 } from "@/application/conversation-v2/internal-lab-approval";
 
 export type InternalLabRegisteredApproval = RegisteredInternalLabApproval;
+
+export type InternalLabRecoveryApprovalClaims = InternalLabApprovalClaims;
 
 export type CurrentInternalLabApprovalTarget = Readonly<{
   tenantDigest: string;
@@ -79,4 +83,31 @@ export function resolveCurrentInternalLabApprovalTarget(input: Readonly<{
     tenantDigest: input.approval.claims.tenantDigest,
     channelDigest: input.approval.claims.channelDigest,
   });
+}
+
+/**
+ * Strictly projects the non-secret claims from a serialized approval artifact.
+ * Raw approval parsing remains behind this canonical authorization boundary.
+ */
+export function parseInternalLabRecoveryApprovalClaims(
+  serializedApproval: string | undefined,
+): InternalLabRecoveryApprovalClaims | null {
+  if (!serializedApproval) return null;
+  try {
+    const artifact = JSON.parse(serializedApproval) as Record<string, unknown>;
+    if (
+      !artifact
+      || typeof artifact !== "object"
+      || Array.isArray(artifact)
+      || Object.keys(artifact).length !== 2
+      || !("claims" in artifact)
+      || typeof artifact.signature !== "string"
+      || !/^ed25519:[a-f0-9]{128}$/.test(artifact.signature)
+    ) return null;
+    return JSON.parse(
+      serializeInternalLabApprovalClaims(artifact.claims),
+    ) as InternalLabRecoveryApprovalClaims;
+  } catch {
+    return null;
+  }
 }

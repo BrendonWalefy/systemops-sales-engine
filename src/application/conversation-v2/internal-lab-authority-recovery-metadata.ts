@@ -1,10 +1,14 @@
 import {
-  serializeInternalLabApprovalClaims,
-  type DeploymentRuntime,
-  type InternalLabApprovalClaims,
-} from "@/application/conversation-v2/internal-lab-approval";
+  parseInternalLabRecoveryApprovalClaims,
+} from "@/application/conversation-v2/internal-lab-authorization";
 
 type RecoveryEnvironment = Readonly<Record<string, string | undefined>>;
+
+type RecoveryDeploymentRuntime = Readonly<{
+  nodeVersion: string;
+  platform: NodeJS.Platform;
+  arch: string;
+}>;
 
 type RequiredRecoveryEnvironmentName =
   | "SYSTEMOPS_LAB_CLINIC_ID"
@@ -26,33 +30,14 @@ function requiredValue(env: RecoveryEnvironment, name: RequiredRecoveryEnvironme
   return value;
 }
 
-function parseApprovalClaims(serializedApproval: string | undefined): InternalLabApprovalClaims | null {
-  if (!serializedApproval) return null;
-  try {
-    const artifact = JSON.parse(serializedApproval) as Record<string, unknown>;
-    if (
-      !artifact
-      || typeof artifact !== "object"
-      || Array.isArray(artifact)
-      || Object.keys(artifact).length !== 2
-      || !("claims" in artifact)
-      || typeof artifact.signature !== "string"
-      || !/^ed25519:[a-f0-9]{128}$/.test(artifact.signature)
-    ) return null;
-    return JSON.parse(
-      serializeInternalLabApprovalClaims(artifact.claims),
-    ) as InternalLabApprovalClaims;
-  } catch {
-    return null;
-  }
-}
-
 export function describeInternalLabAuthorityRecoveryMetadata(
   env: RecoveryEnvironment,
-  runtime: DeploymentRuntime,
+  runtime: RecoveryDeploymentRuntime,
 ) {
   const deploymentCommit = requiredValue(env, "VERCEL_GIT_COMMIT_SHA");
-  const claims = parseApprovalClaims(env.CONVERSATION_V2_INTERNAL_LAB_APPROVAL_JSON);
+  const claims = parseInternalLabRecoveryApprovalClaims(
+    env.CONVERSATION_V2_INTERNAL_LAB_APPROVAL_JSON,
+  );
   const expiresAt = claims?.expiresAt ?? null;
 
   return Object.freeze({
