@@ -86,9 +86,18 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
                 from inbound_events event
                 join whatsapp_streams stream
                   on stream.id = event.stream_id
-                 and stream.organization_id = event.organization_id
-                 and stream.conversation_id = ${input.conversationId}::uuid
-                 and stream.state = 'active'
+                  and stream.organization_id = event.organization_id
+                  and stream.conversation_id = ${input.conversationId}::uuid
+                  and (
+                    stream.state = 'active'
+                    or (
+                      stream.state = 'retired'
+                      and stream.retirement_reason in (
+                        'alias_convergence',
+                        'conversation_convergence'
+                      )
+                    )
+                  )
                 join jobs claim_job
                   on claim_job.id = event.claim_job_id
                  and claim_job.id = ${claimJobId}::uuid

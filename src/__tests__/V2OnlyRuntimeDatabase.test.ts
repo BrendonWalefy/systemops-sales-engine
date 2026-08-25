@@ -286,6 +286,46 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
     return { fixture, outboundMessageId: created.outboundMessageId, store };
   }
 
+  async function retireClaimedStreamAfterConvergence(
+    streamId: string,
+    reason: "alias_convergence" | "conversation_convergence" = "alias_convergence",
+  ): Promise<void> {
+    await database.execute(sql`
+      update whatsapp_streams
+      set
+        state = 'retired',
+        retired_at = '2026-08-25T21:00:01.000Z'::timestamptz,
+        retirement_reason = ${reason}
+      where id = ${streamId}::uuid
+    `);
+  }
+
+  async function moveStreamToDifferentConversation(input: Readonly<{
+    clinicId: string;
+    streamId: string;
+  }>): Promise<void> {
+    const otherLeadId = randomUUID();
+    const otherConversationId = randomUUID();
+    await database.execute(sql`
+      insert into leads (id, organization_id, channel)
+      values (${otherLeadId}::uuid, ${input.clinicId}::uuid, 'whatsapp')
+    `);
+    await database.execute(sql`
+      insert into conversations (id, organization_id, lead_id, channel)
+      values (
+        ${otherConversationId}::uuid,
+        ${input.clinicId}::uuid,
+        ${otherLeadId}::uuid,
+        'whatsapp'
+      )
+    `);
+    await database.execute(sql`
+      update whatsapp_streams
+      set conversation_id = ${otherConversationId}::uuid
+      where id = ${input.streamId}::uuid
+    `);
+  }
+
   beforeAll(async () => {
     runtime = await startEmbeddedAuthorityDatabase();
     database = drizzleNodePostgres(runtime.pool);
@@ -425,6 +465,109 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
     const { store, outboundMessageId } = await createEligibleLiveOutbound();
     await expect(store.authorizeOutboundMessageForSend(outboundMessageId))
       .resolves.toEqual({ authorized: true });
+  });
+
+  it("creates one live reply after its settled stream retires through alias convergence", async () => {
+    const fixture = await seedLiveOutboundAuthority({ liveOutboundEnabled: true });
+    await retireClaimedStreamAfterConvergence(fixture.streamId);
+    const store = await loadOutboundMessageStore();
+
+    const created = await store.createOutboundMessageAndEnqueue(
+      liveOutboundInput(fixture),
+      { turnId: fixture.inboundEventId },
+    );
+    const duplicate = await store.createOutboundMessageAndEnqueue(
+      liveOutboundInput(fixture),
+      { turnId: fixture.inboundEventId },
+    );
+
+    expect(duplicate.outboundMessageId).toBe(created.outboundMessageId);
+    const persisted = await database.execute<{ outbounds: string; jobs: string }>(sql`
+      select
+        (select count(*) from outbound_messages
+          where organization_id = ${fixture.clinicId}::uuid
+            and authorization_kind = 'live_stream_reply')::text as outbounds,
+        (select count(*) from jobs
+          where queue = 'message.send'
+            and payload->>'outboundMessageId' = ${created.outboundMessageId})::text as jobs
+    `);
+    expect(persisted.rows).toEqual([{ outbounds: "1", jobs: "1" }]);
+  });
+
+  it("keeps an existing live reply sender-authorized after settled stream retirement", async () => {
+    const { fixture, outboundMessageId, store } = await createEligibleLiveOutbound();
+    await retireClaimedStreamAfterConvergence(fixture.streamId);
+
+    await expect(store.authorizeOutboundMessageForSend(outboundMessageId))
+      .resolves.toEqual({ authorized: true });
+  });
+
+  it.each([
+    ["an unclaimed event", async (fixture: Awaited<ReturnType<typeof seedLiveOutboundAuthority>>) => {
+      await database.execute(sql`
+        update inbound_events
+        set
+          processing_status = 'pending',
+          claim_token = null,
+          claim_token_digest = null,
+          claim_job_id = null,
+          claimed_at = null
+        where id = ${fixture.inboundEventId}::uuid
+      `);
+    }],
+    ["a provisional stream", async (fixture: Awaited<ReturnType<typeof seedLiveOutboundAuthority>>) => {
+      await database.execute(sql`
+        update whatsapp_streams
+        set state = 'provisional'
+        where id = ${fixture.streamId}::uuid
+      `);
+    }],
+    ["a stream bound to another conversation", async (fixture: Awaited<ReturnType<typeof seedLiveOutboundAuthority>>) => {
+      await moveStreamToDifferentConversation(fixture);
+    }],
+  ] as const)("rejects live creation for %s", async (_label, mutate) => {
+    const fixture = await seedLiveOutboundAuthority({ liveOutboundEnabled: true });
+    await mutate(fixture);
+    const store = await loadOutboundMessageStore();
+
+    await expect(store.createOutboundMessageAndEnqueue(
+      liveOutboundInput(fixture),
+      { turnId: fixture.inboundEventId },
+    )).rejects.toMatchObject({
+      name: "LiveOutboundCreationRejectedError",
+      reason: "claim_mismatch",
+    });
+  });
+
+  it.each([
+    ["an unclaimed event", async (fixture: Awaited<ReturnType<typeof seedLiveOutboundAuthority>>) => {
+      await database.execute(sql`
+        update inbound_events
+        set
+          processing_status = 'pending',
+          claim_token = null,
+          claim_token_digest = null,
+          claim_job_id = null,
+          claimed_at = null
+        where id = ${fixture.inboundEventId}::uuid
+      `);
+    }],
+    ["a provisional stream", async (fixture: Awaited<ReturnType<typeof seedLiveOutboundAuthority>>) => {
+      await database.execute(sql`
+        update whatsapp_streams
+        set state = 'provisional'
+        where id = ${fixture.streamId}::uuid
+      `);
+    }],
+    ["a stream bound to another conversation", async (fixture: Awaited<ReturnType<typeof seedLiveOutboundAuthority>>) => {
+      await moveStreamToDifferentConversation(fixture);
+    }],
+  ] as const)("rejects sender preflight for %s", async (_label, mutate) => {
+    const { fixture, outboundMessageId, store } = await createEligibleLiveOutbound();
+    await mutate(fixture);
+
+    await expect(store.authorizeOutboundMessageForSend(outboundMessageId))
+      .resolves.toEqual({ authorized: false, reason: "claim_mismatch" });
   });
 
   it.each([
