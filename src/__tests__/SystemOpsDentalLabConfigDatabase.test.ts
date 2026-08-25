@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, mkdtemp, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -33,6 +34,8 @@ import {
 } from "./helpers/embedded-authority-database";
 
 const executeFile = promisify(execFile);
+const resolveModule = createRequire(import.meta.url);
+const TSX_CLI_PATH = resolveModule.resolve("tsx/cli");
 const LAB_ID = "00000000-0000-4000-8000-000000000101";
 const OWNER_ID = "00000000-0000-4000-8000-000000000102";
 const OTHER_ID = "00000000-0000-4000-8000-000000000103";
@@ -51,6 +54,17 @@ describe("SystemOps Dental Lab config — PostgreSQL adapter", () => {
       NODE_ENV: "test",
       PATH: process.env.PATH,
     };
+  }
+
+  function executeConfigCli(arguments_: readonly string[]) {
+    return executeFile(process.execPath, [
+      TSX_CLI_PATH,
+      "scripts/configure-systemops-dental-lab.ts",
+      ...arguments_,
+    ], {
+      cwd: process.cwd(),
+      env: commandEnvironment(),
+    });
   }
 
   async function managedStateDigest(): Promise<string> {
@@ -182,18 +196,13 @@ describe("SystemOps Dental Lab config — PostgreSQL adapter", () => {
     const unrelatedBefore = await database.select().from(treatments)
       .where(eq(treatments.clinicId, OTHER_ID));
     try {
-      const result = await executeFile("npx", [
-        "tsx",
-        "scripts/configure-systemops-dental-lab.ts",
+      const result = await executeConfigCli([
         "--clinic-id", LAB_ID,
         "--expected-channel-digest", channelDigest,
         "--expected-owner-membership-digest", ownerMembershipDigest,
         "--apply",
         "--snapshot-file", snapshotPath,
-      ], {
-        cwd: process.cwd(),
-        env: commandEnvironment(),
-      });
+      ]);
 
       expect(result.stderr).toBe("");
       expect(result.stdout).toContain('"configured":true');
@@ -221,17 +230,12 @@ describe("SystemOps Dental Lab config — PostgreSQL adapter", () => {
     const before = await database.select().from(treatments)
       .where(eq(treatments.clinicId, LAB_ID));
 
-    const result = await executeFile("npx", [
-      "tsx",
-      "scripts/configure-systemops-dental-lab.ts",
+    const result = await executeConfigCli([
       "--clinic-id", LAB_ID,
       "--expected-channel-digest", channelDigest,
       "--expected-owner-membership-digest", ownerMembershipDigest,
       "--dry-run",
-    ], {
-      cwd: process.cwd(),
-      env: commandEnvironment(),
-    });
+    ]);
 
     expect(result.stderr).toBe("");
     expect(result.stdout).toContain('"configured":false');
@@ -281,19 +285,14 @@ describe("SystemOps Dental Lab config — PostgreSQL adapter", () => {
     try {
       let failure: unknown;
       try {
-        await executeFile("npx", [
-          "tsx",
-          "scripts/configure-systemops-dental-lab.ts",
+        await executeConfigCli([
           "--clinic-id", LAB_ID,
           "--expected-channel-digest", channelDigest,
           "--expected-owner-membership-digest", ownerMembershipDigest,
           "--apply",
           "--snapshot-file", snapshotPath,
           "--resolved-artifact-file", resolvedArtifactPath,
-        ], {
-          cwd: process.cwd(),
-          env: commandEnvironment(),
-        });
+        ]);
       } catch (error) {
         failure = error;
       }
