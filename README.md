@@ -16,9 +16,11 @@ Fluxo principal:
 WhatsApp
   -> webhook autenticado e resolução do tenant
   -> inbox durável + job de processamento
+  -> wake one-shot após commit, com cron de fallback
   -> orquestrador + regras determinísticas + LLMs
   -> agenda, pipeline, handoff ou campanha
   -> outbox durável + job de envio
+  -> wake one-shot após commit, com cron de fallback
   -> safety gate + WhatsApp
 ```
 
@@ -80,6 +82,7 @@ A análise de maturidade, os gatilhos de migração e os custos estimados estão
 | WhatsApp | Z-API principal e Meta Cloud API compatível |
 | Agenda | Agenda interna e Google Calendar opt-in |
 | Assíncrono | `inbound_events`, `jobs`, `outbound_messages` e workers |
+| Acionamento | Wake one-shot após commit; crons de 10 minutos preservam recuperação durável |
 | Storage e entrega | Vercel, Vercel Blob, Resend e Web Push |
 | Observabilidade | Sentry, métricas operacionais e Decision Trace sanitizado |
 | Testes | Vitest, CI e replay E2E isolado |
