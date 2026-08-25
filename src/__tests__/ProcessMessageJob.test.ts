@@ -5,6 +5,8 @@ import type { JobRecord } from "@/application/ports/job-queue";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 import type { V1TurnObservationEvent } from "@/core/observability/V1TurnObservation";
 import type { V2AutomationDecision } from "@/application/automation/v2-only-automation-policy";
+import { BufferedDatabaseDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
+import type { AppendDecisionTraceBatchInput } from "@/infrastructure/repositories/drizzle-decision-trace-store";
 
 const event: InboundEvent = {
   id: "event-1",
@@ -332,6 +334,51 @@ describe("ProcessMessageJobHandler", () => {
     expect(result).toEqual({ outcome: "ignored", inboundEventId: "event-1" });
     expect(inboundEventStore.markInboundEventIgnored).toHaveBeenCalledWith("event-1");
     expect(conversationHandler.handle).not.toHaveBeenCalled();
+  });
+
+  it("persiste a decisão da política e o terminal ao ignorar conteúdo não suportado", async () => {
+    const persistedTraceRows = new Map<string, AppendDecisionTraceBatchInput>();
+    const decisionTraceSink = new BufferedDatabaseDecisionTraceSink({
+      async append(input) {
+        persistedTraceRows.set(input.turnId, input);
+      },
+    });
+    const createTurnObservationSink = vi.fn();
+    const { handler, inboundEventStore, conversationHandler } = makeHandler({
+      resolveInboundContent: vi.fn().mockResolvedValue(null),
+      decisionTraceSink,
+      createTurnObservationSink,
+    });
+
+    await expect(handler.processJob(job)).resolves.toEqual({
+      outcome: "ignored",
+      inboundEventId: "event-1",
+    });
+
+    expect(persistedTraceRows.get("event-1")).toEqual(expect.objectContaining({
+      turnId: "event-1",
+      clinicId: "clinic-1",
+      events: [
+        expect.objectContaining({ stage: "ingress.received" }),
+        expect.objectContaining({
+          stage: "tenant.config_loaded",
+          metadata: {
+            automationMode: "live",
+            reason: "live_v2",
+            authorityVersion: 2,
+            runtimeControlVersion: 7,
+          },
+        }),
+        expect.objectContaining({
+          stage: "turn.ignored",
+          metadata: { reason: "unsupported_content" },
+        }),
+      ],
+    }));
+    expect(inboundEventStore.markInboundEventIgnored).toHaveBeenCalledWith("event-1");
+    expect(inboundEventStore.markInboundEventProcessed).not.toHaveBeenCalled();
+    expect(conversationHandler.handle).not.toHaveBeenCalled();
+    expect(createTurnObservationSink).not.toHaveBeenCalled();
   });
 
   it("não reprocessa um evento que já foi concluído", async () => {

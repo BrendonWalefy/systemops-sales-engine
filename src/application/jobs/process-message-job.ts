@@ -205,6 +205,13 @@ export class ProcessMessageJobHandler {
 
     if (!content) {
       await this.deps.inboundEventStore.markInboundEventIgnored(event.id);
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId: inboundEventId,
+        stage: "turn.ignored",
+        occurredAt: new Date().toISOString(),
+        clinicId: event.clinicId,
+        metadata: { reason: "unsupported_content" },
+      });
       eventLog.info("job.ignored", { reason: "unsupported_content", durationMs: Date.now() - startedAt });
       return { outcome: "ignored", inboundEventId: event.id };
     }
