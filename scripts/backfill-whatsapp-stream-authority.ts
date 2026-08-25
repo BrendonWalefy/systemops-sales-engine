@@ -9,6 +9,10 @@ import type {
   InboundEventProvider,
   StreamAliasInput,
 } from "@/application/ports/inbound-event-store";
+import {
+  readTerminalLegacyEligibility,
+  readVersionOneAuthorityCutoff,
+} from "./whatsapp-terminal-legacy-policy";
 
 export type AuthorityBatchOptions = Readonly<{
   clinicId: string;
@@ -17,7 +21,7 @@ export type AuthorityBatchOptions = Readonly<{
   afterId: string | null;
 }>;
 
-type CandidateEventRow = {
+export type CandidateEventRow = {
   event_id: string;
   provider: InboundEventProvider;
   provider_message_id: string;
@@ -25,7 +29,7 @@ type CandidateEventRow = {
   payload: unknown;
 };
 
-type AuthorityEvidenceRow = {
+export type AuthorityEvidenceRow = {
   event_id: string;
   resolution: "backfillable" | "unresolved" | "conflict";
   resolved_stream_id: string | null;
@@ -45,9 +49,13 @@ export type AuthorityEvidenceInputCandidate = Readonly<{
 export type AuthorityBackfillResult = Readonly<{
   mode: "dry-run" | "apply";
   selected: number;
+  backfillable: number;
   backfilled: number;
+  terminalLegacyEligible: number;
   unresolved: number;
   conflicts: number;
+  backfillableEventIds: readonly string[];
+  terminalLegacyEventIds: readonly string[];
   nextAfterId: string | null;
 }>;
 
@@ -84,9 +92,27 @@ export async function backfillWhatsAppStreamAuthority(
     }
     return { candidate, decision };
   });
-  const unresolved = decisions.filter(({ decision }) => decision.resolution === "unresolved").length;
+  const unresolvedDecisions = decisions.filter(
+    ({ decision }) => decision.resolution === "unresolved",
+  );
+  const versionOneCutoff = unresolvedDecisions.length > 0
+    ? await readVersionOneAuthorityCutoff(options.clinicId)
+    : null;
+  const terminalEligibility = versionOneCutoff
+    ? await readTerminalLegacyEligibility({
+        clinicId: options.clinicId,
+        cutoff: versionOneCutoff,
+        eventIds: unresolvedDecisions.map(({ candidate }) => candidate.event_id),
+      })
+    : new Map<string, boolean>();
+  const terminalLegacy = unresolvedDecisions.filter(
+    ({ candidate }) => terminalEligibility.get(candidate.event_id) === true,
+  );
+  const unresolved = unresolvedDecisions.length - terminalLegacy.length;
   const conflicts = decisions.filter(({ decision }) => decision.resolution === "conflict").length;
   const backfillable = decisions.filter(({ decision }) => decision.resolution === "backfillable");
+  const backfillableEventIds = backfillable.map(({ candidate }) => candidate.event_id).sort();
+  const terminalLegacyEventIds = terminalLegacy.map(({ candidate }) => candidate.event_id).sort();
 
   if (options.apply && (unresolved > 0 || conflicts > 0)) {
     throw new Error(
@@ -105,9 +131,13 @@ export async function backfillWhatsAppStreamAuthority(
   return {
     mode: options.apply ? "apply" : "dry-run",
     selected: candidates.length,
+    backfillable: backfillable.length,
     backfilled: backfillable.length,
+    terminalLegacyEligible: terminalLegacy.length,
     unresolved,
     conflicts,
+    backfillableEventIds,
+    terminalLegacyEventIds,
     nextAfterId: candidates.at(-1)?.event_id ?? null,
   };
 }
@@ -124,7 +154,7 @@ async function readCandidateEvents(options: AuthorityBatchOptions): Promise<Cand
     where event.organization_id = ${options.clinicId}::uuid
       and event.stream_id is null
       and event.stream_generation is null
-      and event.processing_status <> 'identity_conflict'
+      and event.processing_status not in ('identity_conflict', 'history_only')
       and (${options.afterId}::uuid is null or event.id > ${options.afterId}::uuid)
     order by event.id
     limit ${options.batchSize}
@@ -188,7 +218,7 @@ async function applyReviewedCandidate(
        and event.provider_message_id = ${candidate.provider_message_id}
        and event.stream_id is null
        and event.stream_generation is null
-       and event.processing_status <> 'identity_conflict'
+       and event.processing_status not in ('identity_conflict', 'history_only')
       where decision.event_id = ${candidate.event_id}::uuid
         and decision.resolution = 'backfillable'
         and decision.resolved_stream_id = ${reviewedStreamId}::uuid
@@ -400,7 +430,7 @@ function serializeEvidenceInput(candidates: readonly AuthorityEvidenceInputCandi
   })));
 }
 
-function reconstructHistoricalAliases(candidate: CandidateEventRow): readonly StreamAliasInput[] {
+export function reconstructHistoricalAliases(candidate: CandidateEventRow): readonly StreamAliasInput[] {
   if (candidate.provider === "meta_cloud_api") {
     const message = parseMetaInboundTextMessage(candidate.payload);
     if (!message || message.messageId !== candidate.provider_message_id) return [];

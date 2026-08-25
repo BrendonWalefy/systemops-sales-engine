@@ -5,6 +5,7 @@ import { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { eq, sql } from "drizzle-orm";
 import {
+  conversationAuthority,
   conversations,
   inboundEvents,
   jobs,
@@ -113,6 +114,7 @@ async function createHistoricalEvent(input: Readonly<{
   providerInstanceId?: string;
   providerThreadId?: string;
   canonicalConversationId?: string;
+  processedAt?: Date | null;
 }>): Promise<string> {
   const providerThreadId = input.providerThreadId
     ?? input.whatsappLid
@@ -138,6 +140,7 @@ async function createHistoricalEvent(input: Readonly<{
     dedupeKey: `historical:${input.clinicId}:${input.providerMessageId}`,
     processingStatus: "processed",
     receivedAt: new Date("2026-07-01T00:00:00.000Z"),
+    processedAt: input.processedAt,
   });
   if (input.canonicalConversationId) {
     await testDb().insert(messages).values({
@@ -324,6 +327,67 @@ describe("historical WhatsApp authority backfill", () => {
       clinicId, apply: false, batchSize: 500, afterId: null,
     })).resolves.toMatchObject({ backfilled: 0, conflicts: 0, unresolved: 1 });
     expect(await readEventAuthority(eventId)).toMatchObject({
+      stream_id: null,
+      processing_status: "processed",
+    });
+  });
+
+  it("separates terminal legacy history from ordinary unresolved rows and applies only authority winners", async () => {
+    const clinicId = await createOrganization("Backfill terminal legacy split");
+    const cutoff = new Date("2026-08-24T18:00:00.000Z");
+    await testDb().insert(conversationAuthority).values({
+      clinicId,
+      version: 1,
+      activatedBy: "Brendon Walefy",
+      updatedAt: cutoff,
+    });
+    const winner = await createStream({ clinicId });
+    const backfillableId = await createHistoricalEvent({
+      clinicId,
+      providerMessageId: "terminal-split-winner",
+      canonicalConversationId: winner.conversationId,
+      processedAt: new Date("2026-08-24T17:00:00.000Z"),
+    });
+    const terminalId = await createHistoricalEvent({
+      clinicId,
+      providerMessageId: "terminal-split-zero-authority",
+      providerInstanceId: "terminal-split-instance",
+      providerThreadId: "terminal-split-thread",
+      processedAt: new Date("2026-08-24T17:00:00.000Z"),
+    });
+
+    const dryRun = await backfillWhatsAppStreamAuthority({
+      clinicId, apply: false, batchSize: 500, afterId: null,
+    });
+    expect(dryRun).toMatchObject({
+      selected: 2,
+      backfillable: 1,
+      backfilled: 1,
+      terminalLegacyEligible: 1,
+      unresolved: 0,
+      conflicts: 0,
+      backfillableEventIds: [backfillableId],
+      terminalLegacyEventIds: [terminalId],
+    });
+    expect(await readEventAuthority(backfillableId)).toMatchObject({ stream_id: null });
+    expect(await readEventAuthority(terminalId)).toMatchObject({
+      stream_id: null,
+      processing_status: "processed",
+    });
+
+    const applied = await backfillWhatsAppStreamAuthority({
+      clinicId, apply: true, batchSize: 500, afterId: null,
+    });
+    expect(applied).toMatchObject({
+      backfillable: 1,
+      terminalLegacyEligible: 1,
+      unresolved: 0,
+      conflicts: 0,
+      backfillableEventIds: [backfillableId],
+      terminalLegacyEventIds: [terminalId],
+    });
+    expect(await readEventAuthority(backfillableId)).toMatchObject({ stream_id: winner.streamId });
+    expect(await readEventAuthority(terminalId)).toMatchObject({
       stream_id: null,
       processing_status: "processed",
     });

@@ -22,6 +22,7 @@ const ZERO_METRICS: readonly AuthorityValidationIssue[] = [
   { metric: "multiple_active_streams_per_conversation", count: 0 },
   { metric: "process_job_orphans", count: 0 },
   { metric: "invalid_outbound_authorization", count: 0 },
+  { metric: "terminal_legacy_events", count: 0 },
 ];
 
 function validationReport(
@@ -68,7 +69,9 @@ describe("WhatsApp authority activation fence", () => {
     expect(store.compareAndSetVersion).toHaveBeenCalledOnce();
   });
 
-  it.each(ZERO_METRICS.filter(({ metric }) => metric !== "unresolved_events"))(
+  it.each(ZERO_METRICS.filter(({ metric }) => (
+    metric !== "unresolved_events" && metric !== "terminal_legacy_events"
+  )))(
     "blocks 0 -> 1 when $metric is non-zero",
     async ({ metric }) => {
       const store = storeAt(0);
@@ -117,6 +120,20 @@ describe("WhatsApp authority activation fence", () => {
       now: NOW,
       store,
       validate: vi.fn().mockResolvedValue(validationReport()),
+    })).resolves.toEqual({ activated: true, version: 2, unresolvedEvents: 0 });
+    expect(store.compareAndSetVersion).toHaveBeenCalledOnce();
+  });
+
+  it("treats terminal legacy history as audited information during 1 -> 2", async () => {
+    const store = storeAt(1);
+    await expect(activateWhatsAppStreamAuthority({
+      clinicId: CLINIC_ID,
+      expectedVersion: 1,
+      nextVersion: 2,
+      actor: "principal-review",
+      now: NOW,
+      store,
+      validate: vi.fn().mockResolvedValue(validationReport("terminal_legacy_events", 50)),
     })).resolves.toEqual({ activated: true, version: 2, unresolvedEvents: 0 });
     expect(store.compareAndSetVersion).toHaveBeenCalledOnce();
   });

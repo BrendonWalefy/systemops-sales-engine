@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import type {
   InboundEvent,
   InboundEventStore,
@@ -16,7 +16,7 @@ import { db } from "@/infrastructure/db/client";
 import { inboundEvents } from "@/infrastructure/db/schema";
 
 type RegistrationRow = {
-  outcome: "registered" | "identity_conflict";
+  outcome: "registered" | "identity_conflict" | "history_only";
   inbound_event_id: string;
   stream_id: string | null;
   stream_generation: number | string | null;
@@ -98,7 +98,7 @@ export class DrizzleInboundEventStore implements InboundEventStore {
           from inbound_events event
           where ${eventByProviderIdentity}
             and event.stream_id is null
-            and event.processing_status <> 'identity_conflict'
+            and event.processing_status not in ('identity_conflict', 'history_only')
           on conflict (id) do nothing
           returning id
         `,
@@ -123,7 +123,7 @@ export class DrizzleInboundEventStore implements InboundEventStore {
           cross join lateral (${aliasInput}) input
           where ${eventByProviderIdentity}
             and event.stream_id is null
-            and event.processing_status <> 'identity_conflict'
+            and event.processing_status not in ('identity_conflict', 'history_only')
           on conflict (organization_id, kind, provider_scope, normalized_value)
             where retired_at is null
           do update set normalized_value = excluded.normalized_value
@@ -180,7 +180,7 @@ export class DrizzleInboundEventStore implements InboundEventStore {
             from decision
             where ${eventByProviderIdentity}
               and event.stream_id is null
-              and event.processing_status <> 'identity_conflict'
+              and event.processing_status not in ('identity_conflict', 'history_only')
               and decision.active_count > 1
             returning event.id
           ),
@@ -239,7 +239,7 @@ export class DrizzleInboundEventStore implements InboundEventStore {
             from inbound_events event
             where ${eventByProviderIdentity}
               and event.stream_id is null
-              and event.processing_status <> 'identity_conflict'
+              and event.processing_status not in ('identity_conflict', 'history_only')
           ),
           active_authority as (
             select min(stream.id::text)::uuid as stream_id,
@@ -286,7 +286,7 @@ export class DrizzleInboundEventStore implements InboundEventStore {
           from whatsapp_streams stream
           where ${eventByProviderIdentity}
             and event.stream_id is null
-            and event.processing_status <> 'identity_conflict'
+            and event.processing_status not in ('identity_conflict', 'history_only')
             and stream.organization_id = event.organization_id
             and stream.latest_inbound_event_id = event.id
             and stream.state = 'active'
@@ -327,6 +327,8 @@ export class DrizzleInboundEventStore implements InboundEventStore {
         statement: sql`
           select
             case
+              when event.processing_status = 'history_only'
+                then 'history_only'::text
               when event.processing_status = 'identity_conflict'
                 then 'identity_conflict'::text
               else 'registered'::text
@@ -343,7 +345,14 @@ export class DrizzleInboundEventStore implements InboundEventStore {
                 and event.stream_generation is null
                 and job.id is null
                 then 1
-              when event.processing_status <> 'identity_conflict'
+              when event.processing_status = 'history_only'
+                and event.stream_id is null
+                and event.stream_generation is null
+                and event.claim_token is null
+                and event.claim_job_id is null
+                and job.id is null
+                then 1
+              when event.processing_status not in ('identity_conflict', 'history_only')
                 and event.stream_id is not null
                 and event.stream_generation is not null
                 and job.id is not null
@@ -364,9 +373,9 @@ export class DrizzleInboundEventStore implements InboundEventStore {
     if (!row) {
       throw new Error("Atomic inbound authority registration returned no row");
     }
-    if (row.outcome === "identity_conflict") {
+    if (row.outcome === "identity_conflict" || row.outcome === "history_only") {
       return {
-        outcome: "identity_conflict",
+        outcome: row.outcome,
         inboundEventId: row.inbound_event_id,
         jobId: null,
         eventWasNew: row.event_was_new,
@@ -397,23 +406,38 @@ export class DrizzleInboundEventStore implements InboundEventStore {
   }
 
   async markInboundEventProcessing(id: string): Promise<void> {
-    await db.update(inboundEvents).set({ processingStatus: "processing" }).where(eq(inboundEvents.id, id));
+    await db.update(inboundEvents).set({ processingStatus: "processing" }).where(and(
+      eq(inboundEvents.id, id),
+      ne(inboundEvents.processingStatus, "history_only"),
+    ));
   }
 
   async markInboundEventPending(id: string): Promise<void> {
-    await db.update(inboundEvents).set({ processingStatus: "pending" }).where(eq(inboundEvents.id, id));
+    await db.update(inboundEvents).set({ processingStatus: "pending" }).where(and(
+      eq(inboundEvents.id, id),
+      ne(inboundEvents.processingStatus, "history_only"),
+    ));
   }
 
   async markInboundEventProcessed(id: string, processedAt = new Date()): Promise<void> {
-    await db.update(inboundEvents).set({ processingStatus: "processed", processedAt }).where(eq(inboundEvents.id, id));
+    await db.update(inboundEvents).set({ processingStatus: "processed", processedAt }).where(and(
+      eq(inboundEvents.id, id),
+      ne(inboundEvents.processingStatus, "history_only"),
+    ));
   }
 
   async markInboundEventFailed(id: string): Promise<void> {
-    await db.update(inboundEvents).set({ processingStatus: "failed" }).where(eq(inboundEvents.id, id));
+    await db.update(inboundEvents).set({ processingStatus: "failed" }).where(and(
+      eq(inboundEvents.id, id),
+      ne(inboundEvents.processingStatus, "history_only"),
+    ));
   }
 
   async markInboundEventIgnored(id: string, processedAt = new Date()): Promise<void> {
-    await db.update(inboundEvents).set({ processingStatus: "ignored", processedAt }).where(eq(inboundEvents.id, id));
+    await db.update(inboundEvents).set({ processingStatus: "ignored", processedAt }).where(and(
+      eq(inboundEvents.id, id),
+      ne(inboundEvents.processingStatus, "history_only"),
+    ));
   }
 }
 
