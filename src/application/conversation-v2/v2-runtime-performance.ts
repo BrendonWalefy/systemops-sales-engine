@@ -1,0 +1,102 @@
+import { z } from "zod";
+
+export type RuntimeArmMetrics = Readonly<{
+  arm: "v1_current" | "v2_only";
+  turns: number;
+  latencyMs: Readonly<{ p50: number; p95: number }>;
+  modelCalls: Readonly<{ mean: number; p95: number }>;
+  tokens: Readonly<{ mean: number; p95: number }>;
+  database: Readonly<{
+    statementsP95: number;
+    roundTripsP95: number;
+    lockHoldP95Ms: number;
+  }>;
+  cardinality: Readonly<{
+    events: number;
+    processJobs: number;
+    liveReplies: number;
+    sendJobs: number;
+  }>;
+}>;
+
+export type RuntimePerformanceReport = Readonly<{
+  version: "v2-only-runtime-performance.v1";
+  population: Readonly<{ cases: 17; repetitions: 6; turnsPerArm: 102 }>;
+  arms: readonly [RuntimeArmMetrics, RuntimeArmMetrics];
+}>;
+
+export type RuntimePerformanceEvaluation = Readonly<{
+  passed: boolean;
+  violations: readonly string[];
+}>;
+
+const nonNegative = z.number().finite().nonnegative();
+const armMetricsSchema = z.object({
+  arm: z.enum(["v1_current", "v2_only"]),
+  turns: z.number().int().positive(),
+  latencyMs: z.object({ p50: nonNegative, p95: nonNegative }).strict(),
+  modelCalls: z.object({ mean: nonNegative, p95: nonNegative }).strict(),
+  tokens: z.object({ mean: nonNegative, p95: nonNegative }).strict(),
+  database: z.object({
+    statementsP95: nonNegative,
+    roundTripsP95: nonNegative,
+    lockHoldP95Ms: nonNegative,
+  }).strict(),
+  cardinality: z.object({
+    events: z.number().int().nonnegative(),
+    processJobs: z.number().int().nonnegative(),
+    liveReplies: z.number().int().nonnegative(),
+    sendJobs: z.number().int().nonnegative(),
+  }).strict(),
+}).strict();
+
+const reportSchema = z.object({
+  version: z.literal("v2-only-runtime-performance.v1"),
+  population: z.object({
+    cases: z.literal(17),
+    repetitions: z.literal(6),
+    turnsPerArm: z.literal(102),
+  }).strict(),
+  arms: z.tuple([armMetricsSchema, armMetricsSchema]),
+}).strict().superRefine((report, ctx) => {
+  const [first, second] = report.arms;
+  if (first.arm !== "v1_current" || second.arm !== "v2_only") {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "runtime arms must be v1_current then v2_only" });
+  }
+  for (const arm of report.arms) {
+    if (arm.turns !== report.population.turnsPerArm) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "arm turn count must match the fixed population" });
+    }
+  }
+});
+
+export function parseRuntimePerformanceReport(input: unknown): RuntimePerformanceReport {
+  return reportSchema.parse(input) as RuntimePerformanceReport;
+}
+
+function exceeds(candidate: number, baseline: number, factor: number, absolute?: number): boolean {
+  return candidate > baseline * factor || (absolute !== undefined && candidate - baseline > absolute);
+}
+
+export function evaluateRuntimePerformance(
+  candidate: RuntimeArmMetrics,
+  baseline: RuntimeArmMetrics,
+): RuntimePerformanceEvaluation {
+  const violations: string[] = [];
+  if (exceeds(candidate.latencyMs.p50, baseline.latencyMs.p50, 1.10, 100)) violations.push("latencyMs.p50");
+  if (exceeds(candidate.latencyMs.p95, baseline.latencyMs.p95, 1.10, 250)) violations.push("latencyMs.p95");
+  if (candidate.modelCalls.mean > baseline.modelCalls.mean) violations.push("modelCalls.mean");
+  if (candidate.modelCalls.p95 > baseline.modelCalls.p95) violations.push("modelCalls.p95");
+  if (candidate.tokens.mean > baseline.tokens.mean * 1.10) violations.push("tokens.mean");
+  if (candidate.tokens.p95 > baseline.tokens.p95 * 1.15) violations.push("tokens.p95");
+  if (candidate.database.statementsP95 > baseline.database.statementsP95 * 1.10) violations.push("database.statementsP95");
+  if (candidate.database.roundTripsP95 > baseline.database.roundTripsP95 + 2) violations.push("database.roundTripsP95");
+  if (exceeds(candidate.database.lockHoldP95Ms, baseline.database.lockHoldP95Ms, 1.10, 5)) violations.push("database.lockHoldP95Ms");
+
+  if (candidate.cardinality.events !== candidate.turns) violations.push("cardinality.events");
+  if (candidate.cardinality.processJobs !== candidate.cardinality.events) violations.push("cardinality.processJobs");
+  if (candidate.cardinality.liveReplies > candidate.turns) violations.push("cardinality.liveReplies");
+  if (candidate.cardinality.sendJobs !== candidate.cardinality.liveReplies) violations.push("cardinality.sendJobs");
+
+  return Object.freeze({ passed: violations.length === 0, violations: Object.freeze(violations) });
+}

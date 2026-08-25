@@ -1,0 +1,64 @@
+{
+  "version": "v2-only-runtime-performance.v1",
+  "population": {
+    "cases": 17,
+    "repetitions": 6,
+    "turnsPerArm": 102
+  },
+  "arms": [
+    {
+      "arm": "v1_current",
+      "turns": 102,
+      "latencyMs": {
+        "p50": 12,
+        "p95": 18
+      },
+      "modelCalls": {
+        "mean": 1.6470588235294117,
+        "p95": 2
+      },
+      "tokens": {
+        "mean": 27.58823529411765,
+        "p95": 40
+      },
+      "database": {
+        "statementsP95": 60,
+        "roundTripsP95": 60,
+        "lockHoldP95Ms": 0
+      },
+      "cardinality": {
+        "events": 102,
+        "processJobs": 102,
+        "liveReplies": 102,
+        "sendJobs": 102
+      }
+    },
+    {
+      "arm": "v2_only",
+      "turns": 102,
+      "latencyMs": {
+        "p50": 7,
+        "p95": 7
+      },
+      "modelCalls": {
+        "mean": 1,
+        "p95": 1
+      },
+      "tokens": {
+        "mean": 16.764705882352942,
+        "p95": 20
+      },
+      "database": {
+        "statementsP95": 36,
+        "roundTripsP95": 36,
+        "lockHoldP95Ms": 0
+      },
+      "cardinality": {
+        "events": 102,
+        "processJobs": 102,
+        "liveReplies": 0,
+        "sendJobs": 0
+      }
+    }
+  ]
+}
