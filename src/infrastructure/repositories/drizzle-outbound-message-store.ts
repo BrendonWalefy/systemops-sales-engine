@@ -9,11 +9,20 @@ import type {
   OutboundMessageStore,
   OutboundSendAuthorizationResult,
 } from "@/application/ports/outbound-message-store";
+import {
+  LiveOutboundCreationRejectedError,
+  isLiveOutboundPreflightReason,
+} from "@/application/ports/live-outbound-preflight";
 import { digestInboundClaimToken } from "@/application/jobs/inbound-claim-token";
 import { db } from "@/infrastructure/db/client";
 import { outboundMessages } from "@/infrastructure/db/schema";
+import { DrizzleLiveOutboundPreflight } from "@/infrastructure/repositories/drizzle-live-outbound-preflight";
 
 export class DrizzleOutboundMessageStore implements OutboundMessageStore {
+  constructor(
+    private readonly liveOutboundPreflight = new DrizzleLiveOutboundPreflight(),
+  ) {}
+
   async createOutboundMessageAndEnqueue(
     input: CreateOutboundMessageInput,
     options?: { turnId?: string | null },
@@ -35,16 +44,25 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
     const claimJobId = isLiveReply ? authorization.claimJobId : null;
     const turnId = options?.turnId ?? readTurnId(input.payload);
     const statement = sql`
-      with authority_version as materialized (
-        select coalesce((
-          select authority.version
-          from conversation_authority authority
-          where authority.organization_id = ${input.clinicId}::uuid
-        ), 0)::integer as version
-      ), validated_authorization as materialized (
-        select authority_version.version
-        from authority_version
-        where not exists (
+      with creation_context as materialized (
+        select
+          organization.id is not null as organization_exists,
+          organization.operational_status,
+          organization.auto_reply_enabled,
+          organization.shadow_mode_enabled,
+          organization.is_demo,
+          coalesce(authority.version, 0)::integer as authority_version,
+          control.live_outbound_enabled
+        from (select ${input.clinicId}::uuid as organization_id) requested
+        left join organizations organization on organization.id = requested.organization_id
+        left join conversation_authority authority
+          on authority.organization_id = requested.organization_id
+        left join conversation_runtime_control control on control.key = 'global'
+      ), creation_decision as materialized (
+        select
+          creation_context.authority_version as version,
+          case
+            when exists (
           select 1
           from inbound_events terminal_event
           where terminal_event.organization_id = ${input.clinicId}::uuid
@@ -52,41 +70,61 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
             and terminal_event.processing_status = 'history_only'
             and terminal_event.stream_id is null
             and terminal_event.stream_generation is null
-        ) and ((
-          ${authorization.kind} <> 'live_stream_reply'
-          and not (${authorization.kind} = 'legacy' and authority_version.version >= 2)
-          and (
+            ) then 'outbound_not_sendable'
+            when ${authorization.kind} = 'live_stream_reply' then case
+              when creation_context.authority_version < 2 then 'authority_below_v2'
+              when ${input.category ?? "reply"} <> 'reply' then 'claim_mismatch'
+              when not exists (
+                select 1
+                from inbound_events event
+                join whatsapp_streams stream
+                  on stream.id = event.stream_id
+                 and stream.organization_id = event.organization_id
+                 and stream.conversation_id = ${input.conversationId}::uuid
+                 and stream.state = 'active'
+                join jobs claim_job
+                  on claim_job.id = event.claim_job_id
+                 and claim_job.id = ${claimJobId}::uuid
+                 and claim_job.inbound_event_id = event.id
+                 and claim_job.queue = 'message.process'
+                where event.id = ${sourceInboundEventId}::uuid
+                  and event.organization_id = ${input.clinicId}::uuid
+                  and event.stream_id = ${streamId}::uuid
+                  and event.stream_generation = ${streamGeneration}
+                  and event.claim_token = ${isLiveReply ? authorization.claimToken : null}
+                  and event.claim_token_digest = ${claimTokenDigest}
+                  and event.claim_job_id = ${claimJobId}::uuid
+                  and event.claimed_at is not null
+              ) then 'claim_mismatch'
+              when creation_context.organization_exists is not true
+                or creation_context.operational_status is distinct from 'active'
+                then 'clinic_not_active'
+              when creation_context.auto_reply_enabled is distinct from true
+                then 'auto_reply_disabled'
+              when creation_context.shadow_mode_enabled is distinct from false
+                or creation_context.is_demo is distinct from false
+                then 'shadow_observe'
+              when creation_context.live_outbound_enabled is distinct from true
+                then 'global_kill_switch'
+              else null
+            end
+            when ${authorization.kind} = 'legacy' and creation_context.authority_version >= 2
+              then 'outbound_not_sendable'
+            when (
             (${authorization.kind} = 'follow_up' and ${input.category ?? "reply"} = 'follow_up')
             or (${authorization.kind} = 'reminder' and ${input.category ?? "reply"} = 'reminder')
             or (${authorization.kind} = 'campaign' and ${input.category ?? "reply"} = 'campaign')
             or (${authorization.kind} = 'recovery' and ${input.category ?? "reply"} = 'recovery')
             or (${authorization.kind} = 'operational' and ${input.category ?? "reply"} = 'operational')
             or (${authorization.kind} in ('human_manual', 'system', 'legacy') and ${input.category ?? "reply"} = 'reply')
-          )
-        ) or (
-          ${authorization.kind} = 'live_stream_reply'
-          and ${input.category ?? "reply"} = 'reply'
-          and exists (
-            select 1
-            from inbound_events event
-            join whatsapp_streams stream
-              on stream.id = event.stream_id
-             and stream.organization_id = event.organization_id
-            join jobs claim_job
-              on claim_job.id = event.claim_job_id
-             and claim_job.id = ${claimJobId}::uuid
-             and claim_job.inbound_event_id = event.id
-             and claim_job.queue = 'message.process'
-            where event.id = ${sourceInboundEventId}::uuid
-              and event.organization_id = ${input.clinicId}::uuid
-              and event.stream_id = ${streamId}::uuid
-              and event.stream_generation = ${streamGeneration}
-              and event.claim_token = ${isLiveReply ? authorization.claimToken : null}
-              and event.claim_token_digest = ${claimTokenDigest}
-              and event.claim_job_id = ${claimJobId}::uuid
-              and event.claimed_at is not null
-          )
-        ))
+            ) then null
+            else 'outbound_not_sendable'
+          end as reason
+        from creation_context
+      ), validated_authorization as materialized (
+        select version
+        from creation_decision
+        where reason is null
       ), reserved_sequence as (
         update conversations
         set next_outbound_sequence = next_outbound_sequence + 1
@@ -169,20 +207,31 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
       select
         persisted_message.id::text as outbound_message_id,
         persisted_message.id = ${outboundMessageId}::uuid as message_was_new,
-        persisted_job.id = ${jobId}::uuid as job_was_new
+        persisted_job.id = ${jobId}::uuid as job_was_new,
+        null::text as rejection_reason
       from persisted_message
       cross join persisted_job
+      union all
+      select
+        null::text as outbound_message_id,
+        false as message_was_new,
+        false as job_was_new,
+        creation_decision.reason as rejection_reason
+      from creation_decision
+      where creation_decision.reason is not null
     `;
     let result: Awaited<ReturnType<typeof db.execute<{
-      outbound_message_id: string;
+      outbound_message_id: string | null;
       message_was_new: boolean;
       job_was_new: boolean;
+      rejection_reason: string | null;
     }>>>;
     try {
       result = await db.execute<{
-        outbound_message_id: string;
+        outbound_message_id: string | null;
         message_was_new: boolean;
         job_was_new: boolean;
+        rejection_reason: string | null;
       }>(statement);
     } catch {
       // Drizzle's low-level query error includes bound parameters. Replacing it
@@ -190,7 +239,10 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
       throw new Error("Atomic outbound creation failed");
     }
     const row = result.rows[0];
-    if (!row) {
+    if (isLiveReply && isLiveOutboundPreflightReason(row?.rejection_reason)) {
+      throw new LiveOutboundCreationRejectedError(row.rejection_reason);
+    }
+    if (!row?.outbound_message_id) {
       throw new Error(
         `Outbound authorization rejected or conversation not found: ${input.conversationId}`,
       );
@@ -224,91 +276,7 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
   async authorizeOutboundMessageForSend(
     id: string,
   ): Promise<OutboundSendAuthorizationResult> {
-    const result = await db.execute<{ authorized: boolean; reason: string }>(sql`
-      select
-        case
-          when exists (
-            select 1
-            from inbound_events terminal_event
-            where terminal_event.organization_id = outbound.organization_id
-              and terminal_event.id::text = outbound.payload->>'turnId'
-              and terminal_event.processing_status = 'history_only'
-              and terminal_event.stream_id is null
-              and terminal_event.stream_generation is null
-          ) then false
-          when coalesce(authority.version, 0) < 2
-            and outbound.authorization_kind is null then true
-          when coalesce(authority.version, 0) >= 2
-            and (outbound.authorization_kind is null or outbound.authorization_kind = 'legacy') then false
-          when outbound.authorization_kind = 'live_stream_reply' then
-            outbound.category = 'reply'
-            and outbound.authorization_version = coalesce(authority.version, 0)
-            and exists (
-            select 1
-            from inbound_events event
-            join whatsapp_streams stream
-              on stream.id = event.stream_id
-             and stream.organization_id = event.organization_id
-            join jobs claim_job
-              on claim_job.id = event.claim_job_id
-             and claim_job.id = outbound.authorization_claim_job_id
-             and claim_job.inbound_event_id = event.id
-             and claim_job.queue = 'message.process'
-            where event.id = outbound.authorization_inbound_event_id
-              and event.organization_id = outbound.organization_id
-              and event.stream_id = outbound.authorization_stream_id
-              and event.stream_generation = outbound.authorization_generation
-              and event.claim_token_digest = outbound.authorization_claim_token_digest
-              and event.claimed_at is not null
-          )
-          when outbound.authorization_kind = 'follow_up' then shape.valid and outbound.category = 'follow_up'
-          when outbound.authorization_kind = 'reminder' then shape.valid and outbound.category = 'reminder'
-          when outbound.authorization_kind = 'campaign' then shape.valid and outbound.category = 'campaign'
-          when outbound.authorization_kind = 'recovery' then shape.valid and outbound.category = 'recovery'
-          when outbound.authorization_kind = 'operational' then shape.valid and outbound.category = 'operational'
-          when outbound.authorization_kind in ('human_manual', 'system') then shape.valid and outbound.category = 'reply'
-          when outbound.authorization_kind = 'legacy' then shape.valid and coalesce(authority.version, 0) < 2
-          else false
-        end as authorized,
-        case
-          when exists (
-            select 1
-            from inbound_events terminal_event
-            where terminal_event.organization_id = outbound.organization_id
-              and terminal_event.id::text = outbound.payload->>'turnId'
-              and terminal_event.processing_status = 'history_only'
-              and terminal_event.stream_id is null
-              and terminal_event.stream_generation is null
-          ) then 'terminal_legacy_history'
-          when coalesce(authority.version, 0) >= 2
-            and (outbound.authorization_kind is null or outbound.authorization_kind = 'legacy')
-            then 'authority_version_activated'
-          when outbound.authorization_kind = 'live_stream_reply' then 'invalid_live_stream_authority'
-          else 'invalid_outbound_authorization'
-        end as reason
-      from outbound_messages outbound
-      join conversations conversation
-        on conversation.id = outbound.conversation_id
-       and conversation.organization_id = outbound.organization_id
-      left join conversation_authority authority
-        on authority.organization_id = outbound.organization_id
-      cross join lateral (
-        select (
-          outbound.authorization_stream_id is null
-          and outbound.authorization_generation is null
-          and outbound.authorization_inbound_event_id is null
-          and outbound.authorization_claim_job_id is null
-          and outbound.authorization_claim_token_digest is null
-          and outbound.authorization_version is not null
-        ) as valid
-      ) shape
-      where outbound.id = ${id}::uuid
-        and outbound.status in ('pending', 'processing')
-      limit 1
-    `);
-    const row = result.rows[0];
-    if (!row) return { authorized: false, reason: "outbound_not_sendable" };
-    return row.authorized ? { authorized: true } : { authorized: false, reason: row.reason };
+    return this.liveOutboundPreflight.authorizeOutboundMessageForSend(id);
   }
 
   async findConversationReplyByTurnId(input: {

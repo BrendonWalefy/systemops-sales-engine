@@ -5,6 +5,7 @@ import type {
   OutboundAuthorizationInput,
   OutboundMessage,
 } from "@/application/ports/outbound-message-store";
+import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 
 const claimToken = "a".repeat(43);
 
@@ -71,7 +72,7 @@ describe("WhatsApp outbound durable authorization", () => {
       findOutboundMessage: vi.fn().mockResolvedValue(outbound),
       authorizeOutboundMessageForSend: vi.fn().mockResolvedValue({
         authorized: false,
-        reason: "authority_version_activated",
+        reason: "authority_below_v2",
       }),
       hasEarlierActiveMessage: vi.fn().mockResolvedValue(false),
       markOutboundProcessing: vi.fn().mockResolvedValue(true),
@@ -89,6 +90,62 @@ describe("WhatsApp outbound durable authorization", () => {
       .resolves.toBe("ignored");
     expect(store.authorizeOutboundMessageForSend).toHaveBeenCalledWith(outbound.id);
     expect(delivery).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "authority_below_v2",
+    "claim_mismatch",
+    "clinic_not_active",
+    "auto_reply_disabled",
+    "shadow_observe",
+    "human_takeover",
+    "consent_revoked",
+    "opted_out",
+    "safety_blocked",
+    "global_kill_switch",
+    "outbound_not_sendable",
+  ] as const)("cancels %s immediately before provider delivery", async (reason) => {
+    const delivery = vi.fn();
+    const trace = new InMemoryDecisionTraceSink();
+    const store = {
+      findOutboundMessage: vi.fn().mockResolvedValue(outbound),
+      authorizeOutboundMessageForSend: vi.fn().mockResolvedValue({
+        authorized: false,
+        reason,
+      }),
+      hasEarlierActiveMessage: vi.fn().mockResolvedValue(false),
+      markOutboundProcessing: vi.fn().mockResolvedValue(true),
+      markOutboundDelivered: vi.fn(),
+      markOutboundPending: vi.fn(),
+      markOutboundCancelled: vi.fn(),
+      countSentSince: vi.fn().mockResolvedValue(0),
+    };
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: {
+        appendMessage: vi.fn().mockResolvedValue(true),
+        findMessageById: vi.fn(),
+      },
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+      decisionTraceSink: trace,
+      delivery,
+    });
+
+    await expect(handler.processJob({
+      payload: { outboundMessageId: outbound.id, turnId: "turn-preflight" },
+    }))
+      .resolves.toBe("ignored");
+    expect(store.markOutboundProcessing).toHaveBeenCalledOnce();
+    expect(store.authorizeOutboundMessageForSend).toHaveBeenCalledOnce();
+    expect(store.markOutboundProcessing.mock.invocationCallOrder[0])
+      .toBeLessThan(store.authorizeOutboundMessageForSend.mock.invocationCallOrder[0]!);
+    expect(store.markOutboundCancelled).toHaveBeenCalledWith(outbound.id, reason);
+    expect(delivery).not.toHaveBeenCalled();
+    expect(trace.getEvents("turn-preflight")).toContainEqual(expect.objectContaining({
+      stage: "turn.ignored",
+      metadata: { reason },
+    }));
+    expect(JSON.stringify(trace.getEvents("turn-preflight"))).not.toContain(claimToken);
   });
 
   it("never places a raw token or token digest in the message.send payload", () => {

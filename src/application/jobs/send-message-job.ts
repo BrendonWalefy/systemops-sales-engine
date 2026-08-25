@@ -188,33 +188,6 @@ export class SendMessageJobHandler {
       log.info("job.ignored", { reason: "outbound_terminal_or_missing", durationMs: Date.now() - startedAt });
       return "ignored";
     }
-    const sendAuthorization = await this.deps.outboundMessageStore
-      .authorizeOutboundMessageForSend(outbound.id);
-    if (!sendAuthorization.authorized) {
-      await this.deps.outboundMessageStore.markOutboundCancelled(
-        outbound.id,
-        sendAuthorization.reason,
-      );
-      log.warn("job.ignored", {
-        reason: sendAuthorization.reason,
-        durationMs: Date.now() - startedAt,
-      });
-      return "ignored";
-    }
-    // Task 4/5 rollout fence: persisted durable authorization is authoritative.
-    // No payload marker may make an otherwise-authorized live stream reply
-    // deliverable before the definitive sender-time safety preflight exists.
-    if (outbound.authorization.kind === "live_stream_reply") {
-      await this.deps.outboundMessageStore.markOutboundCancelled(
-        outbound.id,
-        "v2_live_preflight_pending",
-      );
-      log.warn("job.ignored", {
-        reason: "v2_live_preflight_pending",
-        durationMs: Date.now() - startedAt,
-      });
-      return "ignored";
-    }
     const outboundLog = log.child({
       clinicId: outbound.clinicId,
       conversationId: outbound.conversationId,
@@ -276,22 +249,6 @@ export class SendMessageJobHandler {
       clinicId: outbound.clinicId,
       payload: outbound.payload,
     };
-    if (
-      isConversationOutboundPayload(outbound.payload)
-      && outbound.payload.agentMessagePersistence === "sender"
-      && !useSyntheticCapture
-    ) {
-      await this.deps.outboundMessageStore.markOutboundCancelled(
-        outbound.id,
-        "v2_live_preflight_pending",
-      );
-      outboundLog.warn("job.ignored", {
-        reason: "v2_live_preflight_pending",
-        durationMs: Date.now() - startedAt,
-      });
-      return "ignored";
-    }
-
     if (isConversationOutboundPayload(outbound.payload)) {
       const placeholder = {
         id: outbound.payload.agentMessageId,
@@ -305,7 +262,10 @@ export class SendMessageJobHandler {
         intent: outbound.payload.intent,
         deliveryFormat: null,
       } as const;
-      if (outbound.payload.agentMessagePersistence === "sender") {
+      if (
+        outbound.authorization.kind === "live_stream_reply"
+        || outbound.payload.agentMessagePersistence === "sender"
+      ) {
         const inserted = await this.conversationRepository.appendMessage(placeholder);
         if (!inserted) {
           const existing = await this.conversationRepository.findMessageById(placeholder.id);
@@ -496,6 +456,34 @@ export class SendMessageJobHandler {
         });
         return "ignored";
       }
+    }
+
+    // This is intentionally the last database authorization read before the
+    // provider boundary. The outbound claim above serializes competing sender
+    // workers; this preflight then revalidates current tenant, claim and safety
+    // state after any queued delay.
+    const sendAuthorization = await this.deps.outboundMessageStore
+      .authorizeOutboundMessageForSend(outbound.id);
+    if (!sendAuthorization.authorized) {
+      await this.deps.outboundMessageStore.markOutboundCancelled(
+        outbound.id,
+        sendAuthorization.reason,
+      );
+      if (turnId) {
+        await recordDecisionTrace(this.deps.decisionTraceSink, {
+          turnId,
+          stage: "turn.ignored",
+          occurredAt: this.now().toISOString(),
+          clinicId: outbound.clinicId,
+          conversationId: outbound.conversationId,
+          metadata: { reason: sendAuthorization.reason },
+        });
+      }
+      outboundLog.warn("job.ignored", {
+        reason: sendAuthorization.reason,
+        durationMs: Date.now() - startedAt,
+      });
+      return "ignored";
     }
 
     if (turnId) {

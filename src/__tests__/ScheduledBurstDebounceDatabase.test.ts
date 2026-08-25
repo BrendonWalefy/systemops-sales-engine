@@ -1471,6 +1471,28 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
       const [conversation] = await testDb().insert(conversations).values({
         clinicId: clinicId!, leadId: lead.id, channel: "whatsapp",
       }).returning();
+      await testDb().execute(sql`
+        update whatsapp_streams
+        set conversation_id = ${conversation.id}::uuid,
+            conversation_stream_order = 1,
+            bound_at = '2026-08-24T22:00:15.000Z'::timestamptz
+        where id = ${claim.streamId}::uuid
+          and organization_id = ${clinicId!}::uuid
+      `);
+      await testDb().execute(sql`
+        update organizations
+        set operational_status = 'active',
+            auto_reply_enabled = true,
+            shadow_mode_enabled = false,
+            is_demo = false
+        where id = ${clinicId!}::uuid
+      `);
+      await testDb().execute(sql`
+        insert into conversation_runtime_control (
+          key, live_outbound_enabled, version, updated_by
+        ) values ('global', true, 1, 'scheduled-burst-authority-test')
+        on conflict (key) do update set live_outbound_enabled = true
+      `);
       await testDb().insert(conversationAuthority).values({
         clinicId: clinicId!, version: 2,
       }).onConflictDoUpdate({
@@ -1482,7 +1504,7 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
         clinicId: clinicId!,
         conversationId: conversation.id,
         channel: "whatsapp" as const,
-        payload: { turnId: "outbound-authority-a" },
+        payload: { turnId: "outbound-authority-a", leadId: lead.id },
         deliveryKind: "text" as const,
         category: "reply" as const,
         dedupeKey: "outbound-authority-a",
@@ -1503,7 +1525,10 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
         ...input,
         dedupeKey: "invalid-token-must-not-reuse-live-authority",
         authorization: { ...input.authorization, claimToken: "z".repeat(43) },
-      })).rejects.toThrow("Outbound authorization rejected");
+      })).rejects.toMatchObject({
+        name: "LiveOutboundCreationRejectedError",
+        reason: "claim_mismatch",
+      });
       await testDb().execute(sql`
         update outbound_messages set status = 'dead'
         where id = ${firstOutbox.outboundMessageId}::uuid
@@ -1584,7 +1609,7 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
           and authorization_kind = 'legacy'
       `);
       await expect(store.authorizeOutboundMessageForSend(legacy.rows[0]!.id))
-        .resolves.toEqual({ authorized: false, reason: "authority_version_activated" });
+        .resolves.toEqual({ authorized: false, reason: "outbound_not_sendable" });
 
       const missingId = randomUUID();
       await testDb().insert(outboundMessages).values({
@@ -1598,7 +1623,7 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
         sequence: 100,
       });
       await expect(store.authorizeOutboundMessageForSend(missingId))
-        .resolves.toEqual({ authorized: false, reason: "authority_version_activated" });
+        .resolves.toEqual({ authorized: false, reason: "outbound_not_sendable" });
     });
 
     it("advances organization authority by durable monotonic compare-and-set", async () => {

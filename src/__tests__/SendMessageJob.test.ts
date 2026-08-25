@@ -49,10 +49,6 @@ const internalLabBinding = {
   configDigest: `sha256:${"3".repeat(64)}`,
 };
 
-function allowingInternalLabDeliveryGuard() {
-  return { authorize: vi.fn().mockResolvedValue(true) };
-}
-
 function makeStore() {
   return {
     findOutboundMessage: vi.fn().mockResolvedValue(outbound),
@@ -292,39 +288,42 @@ describe("SendMessageJobHandler", () => {
     expect(store.markOutboundCancelled).not.toHaveBeenCalled();
   });
 
-  it("keeps sender-owned V2 delivery fail-closed until Task 5 installs preflight", async () => {
+  it("delivers sender-owned V2 after durable preflight without an Internal Lab binding", async () => {
     const store = makeStore();
     store.findOutboundMessage.mockResolvedValue({
       ...outbound,
+      authorization: {
+        kind: "live_stream_reply",
+        streamId: "stream-v2",
+        streamGeneration: 2,
+        sourceInboundEventId: "event-v2",
+        claimJobId: "job-v2",
+        claimTokenDigest: "a".repeat(43),
+        authorityVersion: 2,
+      },
       payload: {
         ...(outbound.payload as Record<string, unknown>),
         turnId: "turn-v2",
-        agentMessagePersistence: "sender",
-        internalLabBinding,
       },
     });
-    const delivery = vi.fn();
-    const appendMessage = vi.fn();
+    const delivery = vi.fn().mockResolvedValue("provider-v2");
+    const appendMessage = vi.fn().mockResolvedValue(true);
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       conversationRepository: { appendMessage, findMessageById: vi.fn() },
-      internalLabDeliveryGuard: allowingInternalLabDeliveryGuard(),
       delivery,
       conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
     });
 
     await expect(handler.processJob({
       payload: { outboundMessageId: outbound.id, turnId: "turn-v2" },
-    })).resolves.toBe("ignored");
-    expect(store.markOutboundCancelled).toHaveBeenCalledWith(
-      outbound.id,
-      "v2_live_preflight_pending",
-    );
-    expect(appendMessage).not.toHaveBeenCalled();
-    expect(delivery).not.toHaveBeenCalled();
+    })).resolves.toBe("sent");
+    expect(appendMessage).toHaveBeenCalledOnce();
+    expect(delivery).toHaveBeenCalledOnce();
+    expect(store.markOutboundCancelled).not.toHaveBeenCalled();
   });
 
-  it("fences every persisted live_stream_reply even when its payload has no obsolete sender marker", async () => {
+  it("fences every persisted live_stream_reply when definitive preflight denies it", async () => {
     const store = makeStore();
     store.findOutboundMessage.mockResolvedValue({
       ...outbound,
@@ -338,10 +337,17 @@ describe("SendMessageJobHandler", () => {
         authorityVersion: 2,
       },
     });
+    store.authorizeOutboundMessageForSend.mockResolvedValue({
+      authorized: false,
+      reason: "global_kill_switch",
+    });
     const delivery = vi.fn().mockResolvedValue("must-not-send");
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
-      conversationRepository: legacyConversationRepository(),
+      conversationRepository: {
+        appendMessage: vi.fn().mockResolvedValue(true),
+        findMessageById: vi.fn(),
+      },
       delivery,
       conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
     });
@@ -350,9 +356,48 @@ describe("SendMessageJobHandler", () => {
       .resolves.toBe("ignored");
     expect(store.markOutboundCancelled).toHaveBeenCalledWith(
       outbound.id,
-      "v2_live_preflight_pending",
+      "global_kill_switch",
     );
     expect(delivery).not.toHaveBeenCalled();
+  });
+
+  it("lets only one concurrent sender claim reach provider for a live reply", async () => {
+    const store = makeStore();
+    const liveOutbound: OutboundMessage = {
+      ...outbound,
+      authorization: {
+        kind: "live_stream_reply",
+        streamId: "stream-1",
+        streamGeneration: 4,
+        sourceInboundEventId: "event-4",
+        claimJobId: "job-4",
+        claimTokenDigest: "a".repeat(43),
+        authorityVersion: 2,
+      },
+    };
+    store.findOutboundMessage.mockResolvedValue(liveOutbound);
+    store.markOutboundProcessing
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    const delivery = vi.fn().mockResolvedValue("provider-live-1");
+    const appendMessage = vi.fn().mockResolvedValue(true);
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: { appendMessage, findMessageById: vi.fn() },
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    const results = await Promise.all([
+      handler.processJob({ id: "send-job-a", payload: { outboundMessageId: outbound.id } }),
+      handler.processJob({ id: "send-job-b", payload: { outboundMessageId: outbound.id } }),
+    ]);
+
+    expect(results.sort()).toEqual(["ignored", "sent"]);
+    expect(store.authorizeOutboundMessageForSend).toHaveBeenCalledOnce();
+    expect(appendMessage).toHaveBeenCalledOnce();
+    expect(delivery).toHaveBeenCalledOnce();
+    expect(store.markOutboundDelivered).toHaveBeenCalledOnce();
   });
 
   it("devolve a mensagem para espera quando existe uma saída anterior ativa", async () => {
