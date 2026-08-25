@@ -252,6 +252,71 @@ export type SystemOpsDentalLabExactTarget = Readonly<{
   expectedSnapshotDigest?: string;
 }>;
 
+export type SystemOpsDentalLabConfigStage =
+  | "command_inspection"
+  | "snapshot_write"
+  | "transaction_entry"
+  | "transaction_lock"
+  | "organization_convergence"
+  | "professional_convergence"
+  | "treatment_convergence"
+  | "playbook_convergence"
+  | "post_apply_verification"
+  | "rollback"
+  | "artifact_resolution"
+  | "artifact_write"
+  | "command_entry";
+
+const SAFE_ERROR_CLASSES = new Set([
+  "AggregateError",
+  "Error",
+  "PostgresError",
+  "RangeError",
+  "SyntaxError",
+  "TypeError",
+]);
+
+function safeErrorClass(error: unknown): string {
+  if (!(error instanceof Error)) return "UnknownError";
+  return SAFE_ERROR_CLASSES.has(error.name) ? error.name : "Error";
+}
+
+export class SystemOpsDentalLabConfigOperationError extends Error {
+  readonly stage: SystemOpsDentalLabConfigStage;
+  readonly rootErrorClass: string;
+
+  constructor(stage: SystemOpsDentalLabConfigStage, cause: unknown) {
+    super(`SystemOps Dental Lab config failed at ${stage}`, { cause });
+    this.name = "SystemOpsDentalLabConfigOperationError";
+    this.stage = stage;
+    this.rootErrorClass = cause instanceof SystemOpsDentalLabConfigOperationError
+      ? cause.rootErrorClass
+      : safeErrorClass(cause);
+  }
+}
+
+export function describeSystemOpsDentalLabConfigFailure(error: unknown): Readonly<{
+  stage: SystemOpsDentalLabConfigStage;
+  errorClass: string;
+}> {
+  if (error instanceof SystemOpsDentalLabConfigOperationError) {
+    return Object.freeze({ stage: error.stage, errorClass: error.rootErrorClass });
+  }
+  return Object.freeze({ stage: "command_entry", errorClass: safeErrorClass(error) });
+}
+
+async function runConfigStage<T>(
+  stage: SystemOpsDentalLabConfigStage,
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof SystemOpsDentalLabConfigOperationError) throw error;
+    throw new SystemOpsDentalLabConfigOperationError(stage, error);
+  }
+}
+
 function digest(domain: string, value: unknown): string {
   return `sha256:${createHash("sha256")
     .update(`${SYSTEMOPS_DENTAL_LAB_CONFIG_SCHEMA}\0${domain}\0`)
@@ -561,34 +626,53 @@ export async function applySystemOpsDentalLabConfig(
   }
   const expectedSnapshotDigest = target.expectedSnapshotDigest ?? inspectedDigest;
 
-  return store.transaction(target.clinicId, async (transaction) => {
-    const locked = await transaction.readSnapshotForUpdate(target.clinicId);
-    assertExactTarget(locked, target);
-    if (digestSystemOpsDentalLabSnapshot(locked) !== expectedSnapshotDigest) {
-      throw new Error("SystemOps Dental Lab changed after inspection");
-    }
+  return runConfigStage("transaction_entry", () => store.transaction(target.clinicId, async (transaction) => {
+    await runConfigStage("transaction_lock", async () => {
+      const current = await transaction.readSnapshotForUpdate(target.clinicId);
+      assertExactTarget(current, target);
+      if (digestSystemOpsDentalLabSnapshot(current) !== expectedSnapshotDigest) {
+        throw new Error("SystemOps Dental Lab changed after inspection");
+      }
+    });
 
-    await transaction.writeOrganization(target.clinicId, expectedOrganization());
-    await transaction.upsertProfessional(
-      target.clinicId,
-      SYSTEMOPS_DENTAL_LAB_CONFIG.professional,
+    await runConfigStage(
+      "organization_convergence",
+      () => transaction.writeOrganization(target.clinicId, expectedOrganization()),
+    );
+    await runConfigStage(
+      "professional_convergence",
+      () => transaction.upsertProfessional(
+        target.clinicId,
+        SYSTEMOPS_DENTAL_LAB_CONFIG.professional,
+      ),
     );
     for (const treatment of SYSTEMOPS_DENTAL_LAB_CONFIG.treatments) {
-      await transaction.upsertTreatment(target.clinicId, {
-        ...treatment,
-        aliases: [...treatment.aliases],
-        pipelineSteps: [...treatment.pipelineSteps],
-      });
+      await runConfigStage(
+        "treatment_convergence",
+        () => transaction.upsertTreatment(target.clinicId, {
+          ...treatment,
+          aliases: [...treatment.aliases],
+          pipelineSteps: [...treatment.pipelineSteps],
+        }),
+      );
     }
-    await transaction.publishPlaybook(target.clinicId, SYSTEMOPS_DENTAL_LAB_CONFIG.playbook);
+    await runConfigStage(
+      "playbook_convergence",
+      () => transaction.publishPlaybook(
+        target.clinicId,
+        SYSTEMOPS_DENTAL_LAB_CONFIG.playbook,
+      ),
+    );
 
-    const applied = await transaction.readSnapshot(target.clinicId);
-    const errors = validateSystemOpsDentalLabSnapshot(applied);
-    if (errors.length > 0) {
-      throw new Error(`SystemOps Dental Lab apply postcondition failed: ${errors.join(",")}`);
-    }
-    return applied;
-  });
+    return runConfigStage("post_apply_verification", async () => {
+      const applied = await transaction.readSnapshot(target.clinicId);
+      const errors = validateSystemOpsDentalLabSnapshot(applied);
+      if (errors.length > 0) {
+        throw new Error(`SystemOps Dental Lab apply postcondition failed: ${errors.join(",")}`);
+      }
+      return applied;
+    });
+  }));
 }
 
 export async function rollbackSystemOpsDentalLabConfig(
