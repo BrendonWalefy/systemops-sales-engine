@@ -2,7 +2,7 @@
 
 **Data:** 2026-08-25
 
-**Status:** aprovado em princípio pelo owner; aguardando revisão deste documento
+**Status:** direção aprovada pelo owner; correções arquiteturais obrigatórias incorporadas
 
 **Escopo:** seleção do runtime conversacional, política operacional, falhas, entrega e retirada da V1 do caminho produtivo
 
@@ -36,6 +36,10 @@ O corte V2-only transforma lacunas em trabalho explícito. Uma funcionalidade ne
 8. **Durabilidade preservada:** stream authority, claim, dedupe, retry, outbox e sender continuam sendo as fronteiras irreversíveis.
 9. **Isolamento por tenant:** toda leitura, capability, ação, outbox e trace conserva o `clinicId` resolvido no webhook/job.
 10. **Falha visível:** nenhuma falha é mascarada por V1; trace, atenção humana e estado terminal/retry tornam a causa observável.
+11. **Authority V2 obrigatória:** qualquer automação `live` exige `conversation_authority.version >= 2`. Ausência da linha, versão 0/1 ou leitura inconclusiva termina fail-closed, sem V1, sem outbound e sem ativação implícita.
+12. **Ativação explícita:** futuras ativações são tenant-scoped, precedidas por validação limpa e avançam a authority por compare-and-set monotônico. Deploy, `is_test`, status ou configuração editorial nunca promovem authority.
+13. **Kill switch global:** um controle global fail-closed bloqueia tanto a criação quanto a entrega de novos outbounds live. Ele complementa os freios por tenant e nunca redireciona trabalho para a V1.
+14. **Dupla autorização:** criação de outbox e entrega são decisões separadas. O sender revalida o estado atual imediatamente antes do provider; autorização persistida não é passe irrevogável para envio.
 
 ## 4. Topologia alvo
 
@@ -45,7 +49,7 @@ WhatsApp webhook
   -> claim durável e quiet-window
   -> política operacional do tenant
      -> disabled/observe/takeover: histórico e término sem engine de resposta
-     -> live: V2LiveConversationHandler
+     -> live + authority >= 2 + kill switch aberto: V2LiveConversationHandler
         -> LiveTurnLifecycle
         -> Understanding estruturado
         -> coordenação de capabilities
@@ -56,7 +60,7 @@ WhatsApp webhook
         -> validator/fallback V2
         -> outbox live_stream_reply
   -> sender
-     -> preflight de authority + safety gate + configuração de canal
+     -> preflight completo de authority + política atual + safety + kill switch
      -> provider
 ```
 
@@ -70,11 +74,13 @@ V2-only não significa resposta automática incondicional. A escolha da engine d
 - status pausado ou cancelado: não executa resposta automática;
 - takeover humano ativo: preserva o inbound e não disputa com o operador;
 - shadow/observe: não produz efeitos produtivos nem outbound real;
-- live: executa exclusivamente a V2.
+- authority ausente ou abaixo de 2: não executa resposta automática e não cria outbound;
+- kill switch global fechado, ausente ou ilegível: não cria nem entrega outbound live;
+- live: executa exclusivamente a V2 quando todos os gates acima permitem.
 
 O SystemOps Dental Lab permanece identificado por `is_test=true`, mas assume `operational_status=active`, `auto_reply_enabled=true` e `shadow_mode_enabled=false`. Isso usa a mesma política live de qualquer tenant, sem exceção por UUID. `is_test` continua classificando os dados e o ambiente; não seleciona engine.
 
-Antes do corte, uma auditoria read-only deve provar quais tenants estão em condição live. O deploy não pode ativar silenciosamente tenant pausado, cancelado, prospect, demo ou com auto-reply desligado.
+Antes do corte, uma auditoria read-only deve provar quais tenants estão em condição live e quais possuem authority V2. O deploy não pode ativar silenciosamente tenant pausado, desabilitado, cancelado, prospect, demo, sem authority V2 ou com auto-reply desligado. Esses tenants conservam exatamente seu estado operacional e não recebem escrita de ativação durante o corte.
 
 ## 6. V2 como reconstrução, não cópia
 
@@ -128,6 +134,19 @@ Falhas são tratadas conforme o ponto de irreversibilidade:
 
 Ausência de provider de Understanding, configuração inválida ou capability conflict são falhas V2 observáveis. Nenhuma delas autoriza silêncio indefinido ou execução da V1.
 
+### 8.1 Budget de retry e estados terminais
+
+O budget pertence ao job durável, não a loops internos da engine. Cada execução usa a mesma authority, claim, `turnId`, ActionResults persistidos e chaves de dedupe:
+
+| Fase | Budget | Regra de retry | Estado terminal |
+| --- | --- | --- | --- |
+| processamento antes de efeito | no máximo 3 claims do mesmo `message.process`; backoff durável de 5 s e 10 s antes da terceira tentativa | pode repetir somente leitura/Understanding não confirmada; nenhum loop inline além do retry tipado já pertencente ao adapter de modelo | exatamente uma resposta segura determinística, se autorizável, ou `handoff_required`; job `dead` somente depois de registrar a resolução terminal |
+| efeito tentado/concluído | no máximo as 3 execuções do mesmo job, sem executar novamente efeito com receipt existente | relê o ActionResult/receipt; nunca recompõe ou reaplica o efeito | outbox derivada do resultado confirmado ou `handoff_required`; falha fica auditável |
+| criação atômica da outbox | usa o budget restante do mesmo process job | repete a mesma operação idempotente e a mesma dedupe key | uma outbox ou handoff; nunca duas respostas |
+| entrega ao provider | no máximo 10 claims do mesmo `message.send`, preservando o contrato atual e backoff exponencial limitado a 15 min | relê a mesma outbox; não chama modelo, capability ou composer | `sent`, `cancelled` por preflight, ou `dead` com atenção humana |
+
+`handoff_required`, `sent`, `cancelled` e `dead` são terminais para o turno/outbound correspondente. Um reconciliador pode recuperar lease órfão, mas não pode zerar tentativas, criar token, recompor efeito ou gerar outra outbox. O monitor alerta antes e no esgotamento do budget. Assim, todo turno live termina em no máximo uma resposta segura autorizada ou handoff explícito; não há silêncio indefinido, loop ilimitado nem efeitos recompostos.
+
 ## 9. Entrega e remoção do binding Internal Lab
 
 O payload live V2 atual carrega `internalLabBinding` e o sender exige uma approval Internal Lab antes da entrega. Esse contrato é temporário e deve sair do caminho produtivo.
@@ -141,9 +160,24 @@ O sender V2-only usa as autoridades já duráveis:
 - configuração de canal resolvida pelo repositório tenant-scoped;
 - safety gate, consentimento, takeover e ordem da conversa.
 
-Nenhum digest de approval ou commit é necessário para enviar. O mecanismo de captura sintética do Lab/replay continua isolado e explicitamente autorizado apenas nos adapters de teste; ele não condiciona o envio real.
+Imediatamente antes de qualquer chamada ao provider, uma única boundary fail-closed do sender relê e exige cumulativamente:
+
+- `conversation_authority.version >= 2` para o tenant exato;
+- correspondência exata de stream, geração, inbound event, claim job e digest do token persistidos no outbound;
+- `operational_status=active` e `auto_reply_enabled=true`;
+- shadow/observe desativado;
+- ausência de takeover humano;
+- consentimento válido e ausência de opt-out;
+- todos os safety gates e limites de entrega aplicáveis;
+- kill switch global explicitamente aberto.
+
+Falha, ausência ou inconsistência em qualquer leitura cancela ou bloqueia a entrega segundo o estado durável; não chama o provider e não tenta V1. A mesma política é consultada antes de criar `live_stream_reply`, reduzindo trabalho inútil, mas a revalidação no sender é obrigatória porque o estado pode mudar enquanto a outbox aguarda.
+
+Nenhum digest de approval ou commit é necessário para enviar. Remover `internalLabBinding` e approval por build não relaxa authority, estado operacional, consentimento, takeover, safety ou kill switch. O mecanismo de captura sintética do Lab/replay continua isolado e explicitamente autorizado apenas nos adapters de teste; ele não condiciona o envio real.
 
 ## 10. Configuração e schema legados
+
+O primeiro corte inclui uma única expansão de segurança gerada pelo Drizzle: a tabela singleton `conversation_runtime_control`. A linha canônica usa chave estável `global`, `live_outbound_enabled boolean not null default false`, `version bigint not null`, `updated_at` e `updated_by`. Abertura e fechamento usam compare-and-set pela versão esperada; linha ausente, duplicada ou leitura falha significa switch fechado. A mesma leitura tipada é usada na criação e no sender. A migration nasce de `schema.ts` seguido de `drizzle-kit generate`; SQL gerado não é editado à mão.
 
 O primeiro corte não precisa de migration destrutiva:
 
@@ -166,7 +200,9 @@ Enquanto a V1 permanecer no repositório:
 - um teste arquitetural percorre imports e falha se houver caminho produtivo até V1;
 - documentação deve chamar a V1 de legado inalcançável, não de rollback.
 
-Rollback operacional após o corte significa: desabilitar auto-reply, preservar inbox/outbox, fazer handoff ou redeployar o último build V2-only estável. Voltar para V1 não é rollback aceito.
+Rollback operacional depois de existir um release V2-only comprovado significa: fechar o kill switch, desabilitar auto-reply quando necessário, preservar inbox/outbox, fazer handoff ou redeployar o último build V2-only estável. Voltar para V1 não é rollback aceito.
+
+O primeiro release é uma exceção operacional importante: antes dele não existe build V2-only comprovadamente estável para redeploy. Seu rollback imediato é fechar o kill switch global, manter/retomar o SystemOpsLab pausado, preservar inbox/outbox e encaminhar atendimento humano enquanto uma correção forward é preparada. Redeploy de build V2-only passa a ser opção somente depois de um release V2-only saudável ter sido comprovado e registrado.
 
 ## 12. Observabilidade e investigação de respostas
 
@@ -201,6 +237,9 @@ Trace não armazena telefone, prompt, corpo, resposta ou payload bruto. A invest
 - Duplicata de provider não cria novo turno nem resposta.
 - Test tenants não se tornam live por `is_test`; apenas a política operacional explícita os habilita.
 - Nenhuma mudança em produção pode atingir tenants por consulta ampla sem predicado e contagem revisada.
+- Tenant pausado, desabilitado, demo, prospect ou sem authority V2 permanece inalterado e não é ativado pelo deploy.
+- Ativação futura exige validação tenant-scoped, versão esperada exata e compare-and-set que avance uma versão; erro de concorrência não é reinterpretado como sucesso.
+- O kill switch global fecha criação e envio live, mas não altera configuração, authority ou status de nenhum tenant.
 
 ## 14. Estratégia de implementação e corte
 
@@ -212,7 +251,7 @@ O trabalho será dividido em commits independentemente revisáveis:
 4. entrega V2 normal sem `internalLabBinding`/approval;
 5. remoção de router, policy reader e approvals do caminho produtivo;
 6. atualização de documentação, comandos e testes legados;
-7. verificação de banco descartável, replay e performance;
+7. verificação de banco descartável, replay e performance comparativa V1 atual × V2-only;
 8. rollout controlado e ativação operacional do SystemOpsLab.
 
 Cada fase segue RED -> GREEN -> refactor. Não se publica um runtime parcialmente V2-only que ainda possua fallback oculto.
@@ -249,20 +288,36 @@ Cada fase segue RED -> GREEN -> refactor. Não se publica um runtime parcialment
 - auditoria read-only dos tenants live antes do deploy;
 - smoke real apenas pelo owner do SystemOpsLab após autorização humana específica.
 
+### Performance e custo
+
+O commit-base anterior ao corte é o braço V1 atual; o candidato é o braço V2-only. A mesma população sanitizada, relógio, adapters e banco descartável deve medir os dois braços, sem provider ou tenant produtivo. O plano executável congela o relatório-base antes de alterar o runtime e aplica limites relativos e absolutos explícitos a:
+
+- latência end-to-end e por estágio do turno, incluindo p50/p95;
+- chamadas ao modelo por turno;
+- tokens de entrada e saída;
+- queries e round trips ao banco;
+- duração e espera de locks por stream;
+- jobs criados e outbounds criados por inbound;
+- consumo Neon ocioso, incluindo compute-active time e wake-ups.
+
+Jobs e outbounds têm gate estrutural absoluto: um provider event físico cria no máximo um `message.process`; uma geração settled cria no máximo um `live_stream_reply` e um `message.send`. O corte não introduz polling, heartbeat nem worker contínuo. Ausência de baseline mensurável é RED e não pode ser convertida em “sem regressão”.
+
 ## 16. Rollout e rollback
 
 1. Implementar e validar em branch isolada a partir de `develop`.
-2. Auditar, por metadados, tenants que a política operacional considera live.
+2. Congelar baseline V1 e auditar, por metadados, todos os tenants que a política operacional considera live. O primeiro corte só prossegue se o SystemOpsLab for o único tenant live autorizado; qualquer outro caso exige decisão explícita e não sofre alteração automática.
 3. Resolver toda lacuna bloqueante da matriz de paridade antes do merge.
-4. Promover pelo fluxo `develop -> main` com CI verde.
-5. Drenar workers antigos antes do corte.
-6. Implantar o build V2-only.
-7. Alterar somente o SystemOpsLab para `operational_status=active`, mantendo `is_test=true`, auto-reply ligado e shadow desligado, com compare-and-set e uma linha afetada.
-8. Validar filas, traces, authority v2 e isolamento.
-9. Solicitar um único smoke real ao owner; não gerar mensagem sintética automaticamente.
-10. Remover variáveis de approval obsoletas após comprovar que o runtime não as lê.
+4. Abrir o kill switch apenas no ambiente controlado de validação; em produção ele permanece fechado durante o corte.
+5. Pausar temporariamente somente o SystemOpsLab com predicado pelo UUID, estado esperado e compare-and-set de exatamente uma linha. Authority permanece 2.
+6. Drenar `message.process`, `message.send` e outbounds sendable. Registrar zero leases ativos, zero jobs pendentes/processando e zero outbounds pending/processing para o tenant.
+7. Promover pelo fluxo `develop -> main` com CI verde e implantar o build V2-only ainda com o kill switch fechado.
+8. Provar que nenhum worker/build antigo pode receber trabalho novo: produção aponta para o novo SHA; os invocations antigos foram drenados/expiraram; nenhuma URL de wake referencia deployment antigo; filas continuam vazias; jobs novos carregam o contrato V2-only aceito pelo novo composition root.
+9. Validar runtime, sender, authority e isolamento em modo sem envio: nenhum import V1, authority 2 limpa, preflight completo, kill switch bloqueando criação e entrega, demais tenants sem mutação.
+10. Abrir `conversation_runtime_control.live_outbound_enabled` por compare-and-set da versão global esperada e reativar somente o SystemOpsLab com compare-and-set de uma linha, mantendo `is_test=true`, auto-reply ligado e shadow desligado.
+11. Solicitar ao owner um único smoke real; não gerar mensagem sintética. Confirmar uma geração, um claim, V2 live, uma outbox autorizada, um send e zero duplicatas.
+12. Remover variáveis de approval obsoletas somente após comprovar que o runtime e sender não as leem.
 
-Se surgir regressão, o primeiro mecanismo é kill switch/handoff tenant-scoped. O segundo é redeploy do último build V2-only estável. É proibido restaurar roteamento V1 como correção emergencial.
+No primeiro corte, qualquer regressão fecha imediatamente o kill switch, pausa o Lab e transfere para handoff; a correção é forward. Depois que esse release for comprovado saudável, o último build V2-only estável também pode ser redeployado. É proibido restaurar roteamento V1 como correção emergencial.
 
 ## 17. Critério de conclusão
 
@@ -278,6 +333,10 @@ O corte está concluído quando:
 8. V1 está marcada e testada como legado inalcançável;
 9. documentação canônica descreve V2 como runtime único;
 10. produção está estável sem jobs pendentes, duplicações ou efeitos cross-tenant.
+11. todo live exige authority >= 2 e o sender revalida authority, claim, operação, consentimento, takeover, safety e kill switch;
+12. tenants não elegíveis permanecem inalterados;
+13. retries terminam em uma resposta segura ou handoff dentro do budget;
+14. os gates comparativos não mostram regressão acima dos limites aprovados nem aumento relevante de Neon ocioso.
 
 ## 18. Fora de escopo deste corte
 
