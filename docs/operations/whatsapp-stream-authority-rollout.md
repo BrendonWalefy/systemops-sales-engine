@@ -6,7 +6,7 @@ This runbook governs the durable burst-debounce authority introduced by PR #306.
 
 - Version `0`: historical compatibility; legacy conversation replies can still send.
 - Version `1`: compatibility build and explicit outbound classifications are present while backfill and validation run.
-- Version `2`: durable activation fence. Missing, unknown, or `legacy` conversation authorization fails closed at sender preflight.
+- Version `2`: durable activation fence. Missing, unknown, or `legacy` conversation authorization fails closed at sender preflight. A pre-activation row that is already terminal `sent` may retain `legacy` only as audited history; it is never sendable work.
 - Version `3`: reserved for a separately reviewed future contract migration.
 
 Authority versions are monotonic. There is no downgrade command. After version 2, rollback means deploying a compatibility-safe build that still enforces the version-2 sender fence, or disabling live conversation automation for the organization.
@@ -30,15 +30,28 @@ Authority versions are monotonic. There is no downgrade command. After version 2
    ```
 
    Dry-run writes nothing. Apply revalidates the evidence and terminal predicates and updates only the reviewed IDs to no-stream `history_only`. The audit result records mode, organization, actor, version-1 cutoff, counts, event IDs, and SHA-256 review digest without payload or message content. Settled rows cannot be claimed, repaired, re-enqueued, or used to authorize an outbound reply.
-6. **Validate.** Run `scripts/validate-whatsapp-stream-authority.ts --clinic-id <uuid>`. Resolve every non-zero blocking metric. Validation checks ordinary unresolved events, tuple consistency, alias/generation conflicts, active orphans, process-job orphans, outbound authorization, and active conversation ownership. `terminal_legacy_events` remains visible as a non-blocking audited metric.
-7. **Drain old workers.** Stop new invocations of the previous build and wait for its maximum invocation duration plus queue visibility. Confirm no processing job remains locked by that build. A worker started before activation must reach the current sender preflight before provider delivery.
-8. **Activate version 2.** Run `scripts/activate-whatsapp-stream-authority.ts` first as dry-run, then with `--apply`, exact organization ID, expected version 1, next version 2, and the named actor. The command revalidates and uses durable compare-and-set. Version 1 to 2 requires every blocking metric, including ordinary `unresolved_events`, to be zero. The informational `terminal_legacy_events` count does not block activation.
-9. **Monitor.** Observe sender authorization rejections, identity conflicts, orphan counts, queue age, provider error rate, lock wait, transaction duration, CPU, rows scanned, and compute-active time. Do not reinterpret an authorization rejection as a retryable provider failure.
-10. **Contract later.** A separate approved PR may add row-kind nullability/check constraints only after all intended organizations are version 2 or disabled and the observation window has no legacy creation.
+6. **Settle explicitly authorized terminal legacy outbounds.** This recovery operation is only for an organization already at version 2 and requires a separate human decision for the exact reviewed outbound IDs. A candidate must have null authorization, status exactly `sent`, a non-null `sent_at`, creation and send timestamps before the durable version-2 activation cutoff, category `reply` or `reminder`, no authority tuple, and no pending, processing, failed, or locked sender job. It does not resend, recreate, delete, or change delivery evidence. Run dry first, preserve the JSON result, then apply the exact IDs and digest:
+
+   ```bash
+   npx tsx scripts/settle-whatsapp-terminal-legacy-outbounds.ts \
+     --clinic-id <uuid> --actor <actor> --batch-size 500
+
+   npx tsx scripts/settle-whatsapp-terminal-legacy-outbounds.ts \
+     --clinic-id <uuid> --actor <actor> --apply \
+     --reviewed-outbound-ids <comma-separated-reviewed-ids> \
+     --review-digest <review-digest>
+   ```
+
+   Apply sets only `authorization_kind='legacy'` and `authorization_version=1`. Status, category, payload, provider ID, sequence, timestamps, and all stream/event/job/token authority references remain unchanged. The command is tenant-scoped, keyset-bounded to at most 500 rows, dry-run by default, and fails closed if reviewed IDs cross tenants or eligibility changes.
+7. **Validate.** Run `scripts/validate-whatsapp-stream-authority.ts --clinic-id <uuid>`. Resolve every non-zero blocking metric. Validation checks ordinary unresolved events, tuple consistency, alias/generation conflicts, active orphans, process-job orphans, outbound authorization, and active conversation ownership. `terminal_legacy_events` and `terminal_legacy_outbounds` remain visible as non-blocking audited metrics. A terminal legacy outbound is informational only when its immutable delivery evidence satisfies the exact pre-activation terminal policy; missing authorization and malformed, retryable, active, or post-activation legacy rows remain blocking.
+8. **Drain old workers.** Stop new invocations of the previous build and wait for its maximum invocation duration plus queue visibility. Confirm no processing job remains locked by that build. A worker started before activation must reach the current sender preflight before provider delivery.
+9. **Activate version 2.** Run `scripts/activate-whatsapp-stream-authority.ts` first as dry-run, then with `--apply`, exact organization ID, expected version 1, next version 2, and the named actor. Dry-run and apply validate against the projected `nextVersion` and proposed activation timestamp before the durable compare-and-set, so missing historical authorization cannot be hidden by the current version-1 policy. Version 1 to 2 requires every blocking metric, including ordinary `unresolved_events` and malformed outbound authorization, to be zero. The informational terminal-legacy counts do not block activation.
+10. **Monitor.** Observe sender authorization rejections, identity conflicts, orphan counts, queue age, provider error rate, lock wait, transaction duration, CPU, rows scanned, and compute-active time. Do not reinterpret an authorization rejection as a retryable provider failure.
+11. **Contract later.** A separate approved PR may add row-kind nullability/check constraints only after all intended organizations are version 2 or disabled and the observation window has no legacy creation.
 
 ## Bounded maintenance
 
-- Backfill and cleanup are dry-run by default, keyset-paginated by UUID, and capped at 500 rows per invocation.
+- Backfill, terminal settlement, and cleanup are dry-run by default, keyset-paginated by UUID, and capped at 500 rows per invocation.
 - Backfill dry-run and apply use the same structured evidence decision. Apply revalidates the exact event and reviewed stream immediately before serialized generation assignment. Historical backfill creates no processing or sender job. Terminal settlement is a separate dry-run-default command and never assigns a stream or creates a job, canonical message, or outbound record.
 - Cleanup has a fixed minimum age of 30 days. It deletes only `alias_convergence` provisional remnants with no inbound event, canonical message, outbound reference, or active alias.
 - No command adds polling, a heartbeat, a continuous worker, or an automatic retention schedule.

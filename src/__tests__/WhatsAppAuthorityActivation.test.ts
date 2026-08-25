@@ -23,6 +23,7 @@ const ZERO_METRICS: readonly AuthorityValidationIssue[] = [
   { metric: "process_job_orphans", count: 0 },
   { metric: "invalid_outbound_authorization", count: 0 },
   { metric: "terminal_legacy_events", count: 0 },
+  { metric: "terminal_legacy_outbounds", count: 0 },
 ];
 
 function validationReport(
@@ -70,7 +71,9 @@ describe("WhatsApp authority activation fence", () => {
   });
 
   it.each(ZERO_METRICS.filter(({ metric }) => (
-    metric !== "unresolved_events" && metric !== "terminal_legacy_events"
+    metric !== "unresolved_events"
+    && metric !== "terminal_legacy_events"
+    && metric !== "terminal_legacy_outbounds"
   )))(
     "blocks 0 -> 1 when $metric is non-zero",
     async ({ metric }) => {
@@ -122,6 +125,59 @@ describe("WhatsApp authority activation fence", () => {
       validate: vi.fn().mockResolvedValue(validationReport()),
     })).resolves.toEqual({ activated: true, version: 2, unresolvedEvents: 0 });
     expect(store.compareAndSetVersion).toHaveBeenCalledOnce();
+  });
+
+  it("validates the projected version before the durable 1 -> 2 compare-and-set", async () => {
+    const store = storeAt(1);
+    const validate = vi.fn().mockImplementation(async (
+      _clinicId: string,
+      projection?: { version: number; activatedAt: Date },
+    ) => projection?.version === 2
+      ? validationReport("invalid_outbound_authorization", 1)
+      : validationReport());
+
+    await expect(activateWhatsAppStreamAuthority({
+      clinicId: CLINIC_ID,
+      expectedVersion: 1,
+      nextVersion: 2,
+      actor: "principal-review",
+      now: NOW,
+      store,
+      validate,
+    })).rejects.toThrow("invalid_outbound_authorization=1");
+
+    expect(validate).toHaveBeenCalledWith(CLINIC_ID, {
+      version: 2,
+      activatedAt: NOW,
+    });
+    expect(store.compareAndSetVersion).not.toHaveBeenCalled();
+  });
+
+  it("uses the same projected version-2 blocking policy for dry-run", async () => {
+    const store = storeAt(1);
+    const validate = vi.fn().mockImplementation(async (
+      _clinicId: string,
+      projection?: { version: number; activatedAt: Date },
+    ) => projection?.version === 2
+      ? validationReport("invalid_outbound_authorization", 1)
+      : validationReport());
+
+    await expect(activateWhatsAppStreamAuthority({
+      clinicId: CLINIC_ID,
+      expectedVersion: 1,
+      nextVersion: 2,
+      actor: "principal-review",
+      now: NOW,
+      store,
+      validate,
+      apply: false,
+    })).rejects.toThrow("invalid_outbound_authorization=1");
+
+    expect(validate).toHaveBeenCalledWith(CLINIC_ID, {
+      version: 2,
+      activatedAt: NOW,
+    });
+    expect(store.compareAndSetVersion).not.toHaveBeenCalled();
   });
 
   it("treats terminal legacy history as audited information during 1 -> 2", async () => {
