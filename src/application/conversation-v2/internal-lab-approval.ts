@@ -255,7 +255,11 @@ function sameOrderedValues(left: readonly string[], right: readonly string[]): b
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
-function assertDecisionRequirements(claims: InternalLabApprovalClaims, now: Date): void {
+function assertDecisionRequirements(
+  claims: InternalLabApprovalClaims,
+  now: Date,
+  options: Readonly<{ allowExpired?: boolean }> = {},
+): void {
   if (!Number.isFinite(now.getTime())) throw new Error("Internal Lab approval now is invalid");
   const issuedAt = new Date(claims.issuedAt);
   if (issuedAt.getTime() > now.getTime()) {
@@ -274,7 +278,9 @@ function assertDecisionRequirements(claims: InternalLabApprovalClaims, now: Date
     if (expiresAt.getTime() <= issuedAt.getTime()) {
       throw new Error("Internal Lab SMOKE expiresAt must be after issuedAt");
     }
-    if (expiresAt.getTime() <= now.getTime()) throw new Error("Internal Lab SMOKE approval is expired");
+    if (!options.allowExpired && expiresAt.getTime() <= now.getTime()) {
+      throw new Error("Internal Lab SMOKE approval is expired");
+    }
     return;
   }
 
@@ -316,6 +322,42 @@ export function serializeInternalLabApprovalClaims(input: unknown, now?: Date): 
   const claims = parseClaims(input);
   if (now) assertDecisionRequirements(claims, now);
   return JSON.stringify(canonicalClaimsObject(claims));
+}
+
+/**
+ * Verifies a configured approval as historical evidence without registering it
+ * as live authority. Expiry may be observed by recovery tooling, but every
+ * structural, decision and cryptographic invariant still applies.
+ */
+export function parseVerifiedInternalLabApprovalEvidence(input: Readonly<{
+  serializedApproval: string;
+  authority: ConfiguredInternalLabAuthority;
+  now: Date;
+}>): InternalLabApprovalClaims {
+  if (!isRegisteredConfiguredInternalLabAuthority(input.authority)) {
+    throw new Error("Internal Lab approval authority is not registered by the configured loader");
+  }
+  if (typeof input.serializedApproval !== "string") {
+    throw new Error("Internal Lab approval must be serialized JSON");
+  }
+
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(input.serializedApproval);
+  } catch {
+    throw new Error("Internal Lab approval JSON is invalid");
+  }
+  const record = snapshotPlainRecord(decoded, approvalKeys, "invalid Internal Lab approval artifact");
+  const claims = parseClaims(record.claims);
+  const signature = signatureSchema.parse(record.signature);
+  const canonicalPayload = Buffer.from(JSON.stringify(canonicalClaimsObject(claims)));
+  if (!input.authority.verifyCanonicalPayload(
+    canonicalPayload,
+    Buffer.from(signature.slice("ed25519:".length), "hex"),
+  )) throw new Error("Internal Lab approval signature is invalid");
+
+  assertDecisionRequirements(claims, input.now, { allowExpired: true });
+  return freezeClaims(claims);
 }
 
 export function computeInternalLabRuntimeDigest(runtime: Readonly<{

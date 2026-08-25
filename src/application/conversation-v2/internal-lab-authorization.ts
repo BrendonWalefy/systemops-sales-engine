@@ -3,10 +3,20 @@ import type { CycleIRuntimeBuildIdentity } from "@/application/conversation-v2/c
 import {
   isRegisteredInternalLabApproval,
   isRegisteredInternalLabApprovalInstance,
+  computeInternalLabRuntimeDigest,
+  parseVerifiedInternalLabApprovalEvidence,
+  serializeInternalLabApprovalClaims,
+  type InternalLabApprovalClaims,
   type RegisteredInternalLabApproval,
 } from "@/application/conversation-v2/internal-lab-approval";
+import {
+  assertConfiguredInternalLabAuthorityBindings,
+  loadConfiguredInternalLabAuthority,
+} from "@/infrastructure/conversation-v2/configured-internal-lab-authority";
 
 export type InternalLabRegisteredApproval = RegisteredInternalLabApproval;
+
+export type InternalLabRecoveryApprovalClaims = InternalLabApprovalClaims;
 
 export type CurrentInternalLabApprovalTarget = Readonly<{
   tenantDigest: string;
@@ -79,4 +89,50 @@ export function resolveCurrentInternalLabApprovalTarget(input: Readonly<{
     tenantDigest: input.approval.claims.tenantDigest,
     channelDigest: input.approval.claims.channelDigest,
   });
+}
+
+/**
+ * Strictly projects the non-secret claims from a serialized approval artifact.
+ * Raw approval parsing remains behind this canonical authorization boundary.
+ */
+export function parseInternalLabRecoveryApprovalClaims(input: Readonly<{
+  serializedApproval: string | undefined;
+  expectedTenantDigest: string;
+  expectedChannelDigest: string;
+  expectedConfigDigest: string;
+  now: Date;
+}>): InternalLabRecoveryApprovalClaims | null {
+  if (!input.serializedApproval) return null;
+  try {
+    const authority = loadConfiguredInternalLabAuthority();
+    assertConfiguredInternalLabAuthorityBindings(authority, {
+      serializedApproval: input.serializedApproval,
+      tenantDigest: input.expectedTenantDigest,
+      channelDigest: input.expectedChannelDigest,
+      configDigest: input.expectedConfigDigest,
+    });
+    const claims = parseVerifiedInternalLabApprovalEvidence({
+      serializedApproval: input.serializedApproval,
+      authority,
+      now: input.now,
+    });
+    if (
+      claims.tenantDigest !== input.expectedTenantDigest
+      || claims.channelDigest !== input.expectedChannelDigest
+      || claims.configDigest !== input.expectedConfigDigest
+    ) return null;
+    return JSON.parse(
+      serializeInternalLabApprovalClaims(claims),
+    ) as InternalLabRecoveryApprovalClaims;
+  } catch {
+    return null;
+  }
+}
+
+export function computeInternalLabRecoveryRuntimeDigest(runtime: Readonly<{
+  nodeVersion: string;
+  platform: NodeJS.Platform;
+  arch: string;
+}>): string {
+  return computeInternalLabRuntimeDigest(runtime);
 }
