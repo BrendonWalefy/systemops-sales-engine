@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { drainMessageSendQueue } from "@/application/jobs/drain-message-send-queue";
 import { SendMessageJobHandler } from "@/application/jobs/send-message-job";
@@ -16,6 +16,7 @@ import {
   MAX_MESSAGE_SEND_BATCH_SIZE,
   resolveWorkerBatchSize,
 } from "@/application/jobs/worker-capacity";
+import { scheduleAcceptedWorkerRun } from "@/application/jobs/worker-wake";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -29,6 +30,24 @@ const MAX_JOBS_PER_RUN = resolveWorkerBatchSize(
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const unauthorized = requireCronAuthorization(request);
   if (unauthorized) return unauthorized;
+
+  if (request.nextUrl.searchParams.get("ack") === "1") {
+    const accepted = scheduleAcceptedWorkerRun({
+      schedule: after,
+      run: runSenderWorker,
+    });
+    return accepted
+      ? NextResponse.json({ accepted: true }, { status: 202 })
+      : NextResponse.json({ accepted: false, fallback: "cron" }, { status: 422 });
+  }
+
+  const outcome = await runSenderWorker();
+  return NextResponse.json(outcome.body, { status: outcome.status });
+}
+
+type SenderWorkerRunOutcome = { body: Record<string, unknown>; status: number };
+
+async function runSenderWorker(): Promise<SenderWorkerRunOutcome> {
 
   const workerId = `sender-worker:${randomUUID()}`;
   const log = createLogger({
@@ -65,9 +84,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       orphanReconciliation,
       durationMs: Date.now() - startedAt,
     });
-    return NextResponse.json({ ...result, orphanReconciliation });
+    return { body: { ...result, orphanReconciliation }, status: 200 };
   } catch (error) {
     log.error("worker.run.failed", error, { durationMs: Date.now() - startedAt });
-    return NextResponse.json({ error: "sender_worker_failed" }, { status: 500 });
+    return { body: { error: "sender_worker_failed" }, status: 500 };
   }
 }

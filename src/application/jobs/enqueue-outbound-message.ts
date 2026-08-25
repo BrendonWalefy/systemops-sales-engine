@@ -3,14 +3,23 @@ import type {
   OutboundMessageStore,
 } from "@/application/ports/outbound-message-store";
 import type { JobQueue } from "@/application/ports/job-queue";
+import { requestSenderWorkerRun } from "@/application/jobs/worker-wake";
+
+type EnqueueOutboundMessageDependencies = {
+  outboundMessageStore: OutboundMessageStore;
+  jobQueue: JobQueue;
+  requestSenderWake?: () => Promise<unknown>;
+};
 
 export async function enqueueOutboundMessage(
   input: CreateOutboundMessageInput,
-  deps: { outboundMessageStore: OutboundMessageStore; jobQueue: JobQueue },
+  deps: EnqueueOutboundMessageDependencies,
 ): Promise<{ outboundMessageId: string; messageWasNew: boolean; jobWasNew: boolean }> {
   const turnId = getTurnId(input.payload);
   if (deps.outboundMessageStore.createOutboundMessageAndEnqueue) {
-    return deps.outboundMessageStore.createOutboundMessageAndEnqueue(input, { turnId });
+    const result = await deps.outboundMessageStore.createOutboundMessageAndEnqueue(input, { turnId });
+    await wakeSenderAfterCommit(result.jobWasNew, deps.requestSenderWake);
+    return result;
   }
 
   const created = await deps.outboundMessageStore.createOutboundMessage(input);
@@ -23,11 +32,25 @@ export async function enqueueOutboundMessage(
     dedupeKey: `outbound-message:${created.message.id}`,
   });
 
-  return {
+  const result = {
     outboundMessageId: created.message.id,
     messageWasNew: created.isNew,
     jobWasNew: enqueued.isNew,
   };
+  await wakeSenderAfterCommit(result.jobWasNew, deps.requestSenderWake);
+  return result;
+}
+
+async function wakeSenderAfterCommit(
+  jobWasNew: boolean,
+  requestSenderWake: () => Promise<unknown> = () => requestSenderWorkerRun(),
+): Promise<void> {
+  if (!jobWasNew) return;
+  try {
+    await requestSenderWake();
+  } catch {
+    // The outbox and job are durable. The fallback cron recovers a missed wake.
+  }
 }
 
 function getTurnId(payload: unknown): string | null {

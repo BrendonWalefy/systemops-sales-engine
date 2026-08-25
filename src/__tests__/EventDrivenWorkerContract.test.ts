@@ -15,14 +15,14 @@ describe("event-driven worker integration contract", () => {
   });
 
   it("accepts a bounded post-response message wake tied to the persisted run_at", () => {
-    expect(messageWorker).toContain("after(");
+    expect(messageWorker).toContain("schedule: after");
     expect(messageWorker).toContain("notBefore");
     expect(messageWorker).toContain("scheduleAcceptedWorkerRun");
   });
 
   it("accepts a post-response sender wake without weakening cron authorization", () => {
     expect(senderWorker).toContain("requireCronAuthorization(request)");
-    expect(senderWorker).toContain("after(");
+    expect(senderWorker).toContain("schedule: after");
     expect(senderWorker).toContain("scheduleAcceptedWorkerRun");
   });
 
