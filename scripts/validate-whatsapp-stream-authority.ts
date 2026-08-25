@@ -18,6 +18,7 @@ export const AUTHORITY_BLOCKING_VALIDATION_METRICS = [
 
 export const AUTHORITY_INFORMATIONAL_VALIDATION_METRICS = [
   "terminal_legacy_events",
+  "terminal_legacy_outbounds",
 ] as const;
 
 export const AUTHORITY_VALIDATION_METRICS = [
@@ -39,11 +40,57 @@ export type AuthorityValidationReport = Readonly<{
 
 type MetricRow = { metric: AuthorityValidationMetric; count: number | string };
 
+export type AuthorityValidationProjection = Readonly<{
+  version: 0 | 1 | 2 | 3;
+  activatedAt: Date;
+}>;
+
 export async function validateWhatsAppStreamAuthority(
   clinicId: string,
+  projection?: AuthorityValidationProjection,
 ): Promise<AuthorityValidationReport> {
   assertUuid(clinicId, "clinic id");
   const result = await db.execute<MetricRow>(sql`
+    with effective_authority as materialized (
+      select
+        coalesce(${projection?.version ?? null}::integer, authority.version, 0)::integer as version,
+        case
+          when ${projection?.version ?? null}::integer is not null
+            then ${projection?.activatedAt ?? null}::timestamptz
+          else authority.activated_at
+        end as activated_at
+      from (values (1)) singleton(value)
+      left join conversation_authority authority
+        on authority.organization_id = ${clinicId}::uuid
+    ), terminal_legacy_outbound as materialized (
+      select outbound.id
+      from outbound_messages outbound
+      cross join effective_authority authority
+      where outbound.organization_id = ${clinicId}::uuid
+        and authority.version >= 2
+        and authority.activated_at is not null
+        and outbound.authorization_kind = 'legacy'
+        and outbound.authorization_version = 1
+        and outbound.authorization_stream_id is null
+        and outbound.authorization_generation is null
+        and outbound.authorization_inbound_event_id is null
+        and outbound.authorization_claim_job_id is null
+        and outbound.authorization_claim_token_digest is null
+        and outbound.status = 'sent'
+        and outbound.sent_at is not null
+        and outbound.created_at < authority.activated_at
+        and outbound.sent_at < authority.activated_at
+        and not exists (
+          select 1
+          from jobs sender_job
+          where sender_job.queue = 'message.send'
+            and sender_job.payload->>'outboundMessageId' = outbound.id::text
+            and (
+              sender_job.status in ('pending', 'processing', 'failed')
+              or sender_job.locked_at is not null
+            )
+        )
+    )
     select 'unresolved_events' as metric, count(*)::bigint as count
     from inbound_events event
     where event.organization_id = ${clinicId}::uuid
@@ -136,11 +183,17 @@ export async function validateWhatsAppStreamAuthority(
     union all
     select 'invalid_outbound_authorization', count(*)::bigint
     from outbound_messages outbound
-    left join conversation_authority authority
-      on authority.organization_id = outbound.organization_id
+    cross join effective_authority authority
     where outbound.organization_id = ${clinicId}::uuid and (
       (coalesce(authority.version, 0) >= 2 and (
-        outbound.authorization_kind is null or outbound.authorization_kind = 'legacy'
+        outbound.authorization_kind is null
+        or (
+          outbound.authorization_kind = 'legacy'
+          and not exists (
+            select 1 from terminal_legacy_outbound terminal
+            where terminal.id = outbound.id
+          )
+        )
       ))
       or (outbound.authorization_kind = 'live_stream_reply' and not exists (
         select 1 from inbound_events event
@@ -184,6 +237,9 @@ export async function validateWhatsAppStreamAuthority(
           )
           and terminal_outbound.status not in ('sent', 'cancelled')
       )
+    union all
+    select 'terminal_legacy_outbounds', count(*)::bigint
+    from terminal_legacy_outbound
   `);
   const metrics = result.rows.map((row) => ({ metric: row.metric, count: Number(row.count) }));
   const issues = metrics.filter(({ metric, count }) => (

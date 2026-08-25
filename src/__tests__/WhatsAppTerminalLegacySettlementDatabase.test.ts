@@ -509,4 +509,41 @@ describe("terminal legacy WhatsApp history settlement", () => {
     expect(blocked.metrics).toContainEqual({ metric: "unresolved_events", count: 2 });
     expect(blocked.metrics).toContainEqual({ metric: "terminal_legacy_events", count: 1 });
   });
+
+  it("accepts a pre-activation sent legacy outbound as version-2 audit history", async () => {
+    const clinicId = await createOrganization("Terminal outbound validation");
+    const conversationId = await createConversation(clinicId);
+    await testDb().update(conversationAuthority).set({
+      version: 2,
+      activatedAt: CUTOFF,
+      updatedAt: CUTOFF,
+    }).where(eq(conversationAuthority.clinicId, clinicId));
+    await testDb().insert(outboundMessages).values({
+      clinicId,
+      conversationId,
+      channel: "whatsapp",
+      payload: { version: 1, kind: "fixture" },
+      deliveryKind: "text",
+      category: "reminder",
+      sequence: 1,
+      status: "sent",
+      providerMessageId: "terminal-outbound-provider-id",
+      authorizationKind: "legacy",
+      authorizationVersion: 1,
+      createdAt: BEFORE_CUTOFF,
+      sentAt: BEFORE_CUTOFF,
+    });
+
+    const report = await validateWhatsAppStreamAuthority(clinicId);
+
+    expect(report.clean).toBe(true);
+    expect(report.metrics).toContainEqual({
+      metric: "invalid_outbound_authorization",
+      count: 0,
+    });
+    expect(report.metrics).toContainEqual({
+      metric: "terminal_legacy_outbounds",
+      count: 1,
+    });
+  });
 });
