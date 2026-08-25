@@ -1,5 +1,50 @@
 {
   "version": "v2-only-runtime-performance.v1",
+  "provenance": {
+    "commit": "1816187c98af35c0d788a8a2c2acd5bd248157f4",
+    "node": "v25.9.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "database": {
+      "embeddedPostgresql": {
+        "package": "embedded-postgres",
+        "packageVersion": "18.4.0-beta.17",
+        "serverVersion": "18.4"
+      },
+      "nodePostgres": {
+        "package": "pg",
+        "packageVersion": "8.23.0"
+      }
+    },
+    "populationDigest": "sha256:71b1c570048ac4675c6f17e2d45fbf75d7a9f6d875c263461625f30e2073e569",
+    "armOrderPolicy": "alternate-by-repetition.v1-first-even.v2-first-odd",
+    "armOrder": [
+      [
+        "v1_current",
+        "v2_only"
+      ],
+      [
+        "v2_only",
+        "v1_current"
+      ],
+      [
+        "v1_current",
+        "v2_only"
+      ],
+      [
+        "v2_only",
+        "v1_current"
+      ],
+      [
+        "v1_current",
+        "v2_only"
+      ],
+      [
+        "v2_only",
+        "v1_current"
+      ]
+    ]
+  },
   "population": {
     "cases": 17,
     "repetitions": 6,
@@ -10,21 +55,21 @@
       "arm": "v1_current",
       "turns": 102,
       "latencyMs": {
-        "p50": 12,
-        "p95": 18
+        "p50": 28.73395800000071,
+        "p95": 34.03170799999998
       },
       "modelCalls": {
-        "mean": 1.6470588235294117,
+        "mean": 1.9411764705882353,
         "p95": 2
       },
       "tokens": {
-        "mean": 27.58823529411765,
-        "p95": 40
+        "mean": 38.1764705882353,
+        "p95": 46
       },
       "database": {
-        "statementsP95": 60,
-        "roundTripsP95": 60,
-        "lockHoldP95Ms": 0
+        "statementsP95": 119,
+        "roundTripsP95": 99,
+        "lockHoldP95Ms": 5.367165999999997
       },
       "cardinality": {
         "events": 102,
@@ -37,27 +82,27 @@
       "arm": "v2_only",
       "turns": 102,
       "latencyMs": {
-        "p50": 7,
-        "p95": 7
+        "p50": 25.75745900000038,
+        "p95": 29.456750000000284
       },
       "modelCalls": {
         "mean": 1,
         "p95": 1
       },
       "tokens": {
-        "mean": 16.764705882352942,
-        "p95": 20
+        "mean": 20.764705882352942,
+        "p95": 24
       },
       "database": {
-        "statementsP95": 36,
-        "roundTripsP95": 36,
-        "lockHoldP95Ms": 0
+        "statementsP95": 103,
+        "roundTripsP95": 87,
+        "lockHoldP95Ms": 5.45416699999987
       },
       "cardinality": {
         "events": 102,
         "processJobs": 102,
-        "liveReplies": 0,
-        "sendJobs": 0
+        "liveReplies": 102,
+        "sendJobs": 102
       }
     }
   ]
