@@ -45,11 +45,6 @@ import { db } from "@/infrastructure/db/client";
 import { organizations, messages, followUps, leads, conversations } from "@/infrastructure/db/schema";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
-import {
-  consumeInternalLabDeliveryAuthorization,
-  type InternalLabDeliveryAuthorization,
-  type InternalLabDeliveryGuard,
-} from "@/application/conversation-v2/internal-lab-delivery-guard";
 import type { ChannelConfigSnapshot } from "@/application/ports/channel-config-snapshot";
 import {
   isInternalLabSyntheticAddress,
@@ -73,9 +68,17 @@ export type SendMessageJobDependencies = {
     payload: OutboundPayload;
     clinicId: string;
     conversationId: string;
-    internalLabDeliveryAuthorization?: InternalLabDeliveryAuthorization;
+    senderOwnedDeliveryAuthorized?: boolean;
+    /** @deprecated ignored by the V2-only sender boundary */
+    internalLabDeliveryAuthorization?: unknown;
   }) => Promise<string | null>;
-  internalLabDeliveryGuard?: InternalLabDeliveryGuard;
+  /** Replay-only compatibility; never authorizes a real destination. */
+  internalLabDeliveryGuard?: Readonly<{
+    authorize(input: Readonly<{
+      clinicId: string;
+      binding: unknown;
+    }>): Promise<unknown>;
+  }>;
   internalLabSyntheticRunAuthorization?: InternalLabSyntheticRunAuthorization;
 };
 
@@ -206,6 +209,9 @@ export class SendMessageJobHandler {
     const outboundDestination = getOutboundDestination(outbound.payload);
     const syntheticCandidate = outboundDestination !== null
       && isInternalLabSyntheticAddressCandidate(outboundDestination);
+    const conversationPayload = isConversationOutboundPayload(outbound.payload)
+      ? outbound.payload
+      : null;
     let useSyntheticCapture = false;
     if (syntheticCandidate) {
       useSyntheticCapture = isInternalLabSyntheticAddress(outboundDestination)
@@ -216,18 +222,16 @@ export class SendMessageJobHandler {
           address: outboundDestination,
           now: this.now(),
         });
+      useSyntheticCapture = useSyntheticCapture
+        && conversationPayload !== null;
       if (
         useSyntheticCapture
-        && isConversationOutboundPayload(outbound.payload)
-        && outbound.payload.agentMessagePersistence === "sender"
+        && conversationPayload?.agentMessagePersistence === "sender"
       ) {
-        const preflightAuthorization = await this.deps.internalLabDeliveryGuard?.authorize({
+        useSyntheticCapture = Boolean(await this.deps.internalLabDeliveryGuard?.authorize({
           clinicId: outbound.clinicId,
-          binding: outbound.payload.internalLabBinding,
-        }) ?? undefined;
-        useSyntheticCapture = preflightAuthorization !== undefined;
-      } else {
-        useSyntheticCapture = false;
+          binding: conversationPayload.internalLabBinding,
+        }));
       }
       if (!useSyntheticCapture) {
         await this.deps.outboundMessageStore.markOutboundPending(
@@ -258,26 +262,20 @@ export class SendMessageJobHandler {
       clinicId: outbound.clinicId,
       payload: outbound.payload,
     };
-    let internalLabDeliveryAuthorization: InternalLabDeliveryAuthorization | undefined;
     if (
       isConversationOutboundPayload(outbound.payload)
       && outbound.payload.agentMessagePersistence === "sender"
+      && !useSyntheticCapture
     ) {
-      internalLabDeliveryAuthorization = await this.deps.internalLabDeliveryGuard?.authorize({
-        clinicId: outbound.clinicId,
-        binding: outbound.payload.internalLabBinding,
-      }) ?? undefined;
-      if (!internalLabDeliveryAuthorization) {
-        await this.deps.outboundMessageStore.markOutboundCancelled(
-          outbound.id,
-          "internal_lab_binding_drift",
-        );
-        outboundLog.warn("job.ignored", {
-          reason: "internal_lab_binding_drift",
-          durationMs: Date.now() - startedAt,
-        });
-        return "ignored";
-      }
+      await this.deps.outboundMessageStore.markOutboundCancelled(
+        outbound.id,
+        "v2_live_preflight_pending",
+      );
+      outboundLog.warn("job.ignored", {
+        reason: "v2_live_preflight_pending",
+        durationMs: Date.now() - startedAt,
+      });
+      return "ignored";
     }
 
     if (isConversationOutboundPayload(outbound.payload)) {
@@ -508,7 +506,7 @@ export class SendMessageJobHandler {
         payload: outbound.payload,
         clinicId: outbound.clinicId,
         conversationId: outbound.conversationId,
-        internalLabDeliveryAuthorization,
+        senderOwnedDeliveryAuthorized: useSyntheticCapture,
       });
     } catch (error) {
       if (turnId) {
@@ -812,14 +810,14 @@ async function deliverOutboundPayload(input: {
   payload: OutboundPayload;
   clinicId: string;
   conversationId: string;
-  internalLabDeliveryAuthorization?: InternalLabDeliveryAuthorization;
+  senderOwnedDeliveryAuthorized?: boolean;
 }, boundary: OutboundDeliveryBoundary): Promise<string | null> {
   if (isConversationOutboundPayload(input.payload)) {
     return deliverConversationOutbound({
       payload: input.payload,
       clinicId: input.clinicId,
       conversationId: input.conversationId,
-      internalLabDeliveryAuthorization: input.internalLabDeliveryAuthorization,
+      senderOwnedDeliveryAuthorized: input.senderOwnedDeliveryAuthorized,
     }, boundary);
   }
   if (isAutomationOutboundPayload(input.payload)) {
@@ -893,13 +891,10 @@ async function deliverConversationOutbound(input: {
   payload: ConversationOutboundPayload;
   clinicId: string;
   conversationId: string;
-  internalLabDeliveryAuthorization?: InternalLabDeliveryAuthorization;
+  senderOwnedDeliveryAuthorized?: boolean;
 }, boundary: OutboundDeliveryBoundary): Promise<string | null> {
-  const authorizedChannelConfig = input.payload.agentMessagePersistence === "sender"
-    ? consumeInternalLabDeliveryAuthorization(input.internalLabDeliveryAuthorization)
-    : null;
-  if (input.payload.agentMessagePersistence === "sender" && !authorizedChannelConfig) {
-    throw new Error("invalid or consumed Internal Lab delivery authorization");
+  if (input.payload.agentMessagePersistence === "sender" && !input.senderOwnedDeliveryAuthorized) {
+    throw new Error("V2 live sender preflight is not installed");
   }
   const [clinic] = await db
     .select()
@@ -914,7 +909,7 @@ async function deliverConversationOutbound(input: {
     return deliverShadowOutbound(input, boundary);
   }
 
-  const config: ChannelConfigSnapshot = authorizedChannelConfig ?? resolveChannelConfig(clinic);
+  const config: ChannelConfigSnapshot = resolveChannelConfig(clinic);
   const conversationRepository = new DrizzleConversationRepository();
   const appointmentRepository = new DrizzleAppointmentRepository();
   const followUpRepository = new DrizzleFollowUpRepository();

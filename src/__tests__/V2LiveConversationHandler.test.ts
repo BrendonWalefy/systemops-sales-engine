@@ -103,6 +103,7 @@ function makeHarness(options: {
   safetyOptOut?: boolean;
   verbalizedText?: string;
   verbalizerFailure?: boolean;
+  crossTenantTreatment?: boolean;
 } = {}) {
   const releaseLease = vi.fn().mockResolvedValue(undefined);
   const context: LiveTurnContext = Object.freeze({
@@ -259,7 +260,11 @@ function makeHarness(options: {
       treatments: {
         listByClinic: options.decisionFailure
           ? vi.fn().mockRejectedValue(new Error("catalog unavailable"))
-          : vi.fn().mockResolvedValue([treatment]),
+          : vi.fn().mockResolvedValue([
+              options.crossTenantTreatment
+                ? { ...treatment, clinicId: "clinic-other" }
+                : treatment,
+            ]),
       },
       calendar: {
         listAvailableSlots: vi.fn().mockResolvedValue([{
@@ -321,12 +326,6 @@ function makeHarness(options: {
       },
       useVoice: false,
       ttsConfig: { provider: "nova", speed: 0.92 },
-      deliveryBinding: {
-        schemaVersion: "conversation-v2.internal-lab-delivery-binding.v1",
-        tenantDigest: `sha256:${"1".repeat(64)}`,
-        channelDigest: `sha256:${"2".repeat(64)}`,
-        configDigest: `sha256:${"3".repeat(64)}`,
-      },
     })),
     outbound: {
       outboundMessageStore: {
@@ -427,7 +426,6 @@ describe("V2LiveConversationHandler", () => {
           kind: "conversation_reply",
           turnId,
           to: lead.phone,
-          agentMessagePersistence: "sender",
           replyText: expect.stringContaining("R$ 800,00"),
         }),
       }),
@@ -495,6 +493,21 @@ describe("V2LiveConversationHandler", () => {
     expect(harness.trace.getEvents(turnId).at(-1)).toMatchObject({
       stage: "turn.failed",
       metadata: expect.objectContaining({ phase: "decision", reason: "decision_failed" }),
+    });
+  });
+
+  it("rejects a cross-tenant catalog result before understanding or scheduling effects", async () => {
+    const harness = makeHarness({ crossTenantTreatment: true });
+
+    await expect(harness.handler.handle(handleInput())).resolves.toEqual({
+      replied: false,
+      reason: "decision_failed",
+    });
+    expect(harness.understand).not.toHaveBeenCalled();
+    expect(harness.booking.book).not.toHaveBeenCalled();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue.mock.calls[0]?.[0]).toMatchObject({
+      payload: expect.objectContaining({ replyText: V2_SAFE_FAILURE_REPLY_TEXT }),
     });
   });
 

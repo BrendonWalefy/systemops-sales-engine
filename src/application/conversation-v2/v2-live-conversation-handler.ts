@@ -20,7 +20,6 @@ import { DeterministicResponseComposer } from "@/conversation-core/composer/dete
 import type { SpeakerProfile, VerbalizationOutcome } from "@/conversation-core/composer/verbalization";
 import type { ActionResult } from "@/conversation-core/decision";
 import type { TurnGateInput } from "@/conversation-core/gate";
-import type { InternalLabDeliveryBinding } from "@/application/conversation-v2/internal-lab-delivery-guard";
 import { completeTurnPipeline, prepareTurnPipeline } from "@/conversation-core/turn-pipeline";
 import { resolveStopContactDecision, type StopContactDecision } from "@/application/channel-safety/stop-contact-policy";
 import { takeRecentConversationHistory } from "@/core/intelligence/ConversationHistoryWindow";
@@ -66,7 +65,6 @@ export type V2LiveTurnConfiguration = Readonly<{
   speaker: SpeakerProfile;
   useVoice: boolean;
   ttsConfig: TtsConfig;
-  deliveryBinding: InternalLabDeliveryBinding;
 }>;
 
 type DynamicDentalDependencies =
@@ -129,11 +127,23 @@ function coreState(snapshot: LiveTurnSnapshot): ConversationState {
   });
 }
 
+export class V2TreatmentTenantScopeError extends Error {
+  readonly code = "v2_treatment_tenant_scope_mismatch";
+
+  constructor() {
+    super("V2 treatment tenant scope mismatch");
+    this.name = "V2TreatmentTenantScopeError";
+  }
+}
+
 function scopedTreatments(
   treatments: readonly Treatment[],
   clinicId: string,
 ): readonly Treatment[] {
-  return Object.freeze(treatments.filter((treatment) => treatment.clinicId === clinicId));
+  if (treatments.some((treatment) => treatment.clinicId !== clinicId)) {
+    throw new V2TreatmentTenantScopeError();
+  }
+  return Object.freeze([...treatments]);
 }
 
 function historyForUnderstanding(
@@ -304,7 +314,6 @@ export class V2LiveConversationHandler implements ConversationHandler {
                     turnId: context.turnId,
                     to: context.outboundAddress,
                     agentMessageId: deterministicUuid(`conversation-v2-agent:${context.turnId}`),
-                    agentMessagePersistence: "sender",
                     replyText: decision.confirmationText,
                     intent: "stop_contact",
                     useVoice: false,
@@ -313,7 +322,6 @@ export class V2LiveConversationHandler implements ConversationHandler {
                     mediaParts: [],
                     leadId: context.leadId,
                     pipelineAdvance: null,
-                    internalLabBinding: configuration.deliveryBinding,
                   },
                 }, this.deps.outbound);
                 stopContactConfirmationEnqueued = true;
@@ -489,7 +497,6 @@ export class V2LiveConversationHandler implements ConversationHandler {
           turnId: context.turnId,
           to: context.outboundAddress,
           agentMessageId: deterministicUuid(`conversation-v2-agent:${context.turnId}`),
-          agentMessagePersistence: "sender",
           replyText: completed.response.text,
           intent: null,
           useVoice: configuration.useVoice,
@@ -498,7 +505,6 @@ export class V2LiveConversationHandler implements ConversationHandler {
           mediaParts: [],
           leadId: context.leadId,
           pipelineAdvance: null,
-          internalLabBinding: configuration.deliveryBinding,
         },
       }, this.deps.outbound);
       await trace("v2.outbox", {
@@ -575,7 +581,6 @@ export class V2LiveConversationHandler implements ConversationHandler {
           turnId: context.turnId,
           to: context.outboundAddress,
           agentMessageId: deterministicUuid(`conversation-v2-agent:${context.turnId}`),
-          agentMessagePersistence: "sender",
           replyText: V2_SAFE_FAILURE_REPLY_TEXT,
           intent: "safe_failure",
           useVoice: false,
@@ -584,7 +589,6 @@ export class V2LiveConversationHandler implements ConversationHandler {
           mediaParts: [],
           leadId: context.leadId,
           pipelineAdvance: null,
-          internalLabBinding: configuration.deliveryBinding,
         },
       }, this.deps.outbound);
       return true;

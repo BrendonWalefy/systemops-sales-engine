@@ -487,14 +487,12 @@ async function executeDurablePersona(input: Readonly<{
       throw new Error("SystemOps Lab persona runner accepts text turns only");
     },
     decisionTraceSink: runtime.decisionTraceSink,
-    createTurnObservationSink: runtime.createTurnObservationSink,
   });
   const sendMessageHandler = new SendMessageJobHandler({
     outboundMessageStore,
     safetyContextReader: new DrizzleOutboundSafetyContextReader(),
     conversationRepository: new DrizzleConversationRepository(),
     decisionTraceSink: runtime.decisionTraceSink,
-    internalLabDeliveryGuard: runtime.internalLabDeliveryGuard,
     internalLabSyntheticRunAuthorization: syntheticAuthorization,
     outboundBoundary: capture.createBoundary(),
   });

@@ -505,22 +505,13 @@ describe("ProcessMessageJobHandler", () => {
     );
   });
 
-  it("cria uma seam por turn live e só emite terminal depois do handle e acknowledgement", async () => {
+  it("does not create or pass a V1 observation seam on a live V2 turn", async () => {
     const order: string[] = [];
-    const events: V1TurnObservationEvent[] = [];
-    const createTurnObservationSink = vi.fn((input: { turnId: string; clinicId: string; automationMode: "live" }) => {
-      expect(input).toEqual({ turnId: "event-1", clinicId: "clinic-1", automationMode: "live" });
-      return {
-        record(observation: V1TurnObservationEvent) {
-          events.push(observation);
-          order.push(observation.kind);
-        },
-      };
-    });
+    const createTurnObservationSink = vi.fn();
     const conversationHandler = {
       handle: vi.fn(async (input: Record<string, unknown>) => {
         expect(input.turnId).toBe("event-1");
-        expect(input.turnObservationSink).toBeDefined();
+        expect(input).not.toHaveProperty("turnObservationSink");
         order.push("handle");
         return { replied: false, reason: "intentional_silence" };
       }),
@@ -539,22 +530,8 @@ describe("ProcessMessageJobHandler", () => {
 
     await handler.processJob(job);
 
-    expect(createTurnObservationSink).toHaveBeenCalledTimes(1);
-    expect(events[0]).toEqual({
-      kind: "turn_gate_fact",
-      turnId: "event-1",
-      field: "automationEnabled",
-      value: true,
-      source: "job_automation",
-    });
-    expect(events.at(-1)).toEqual({
-      kind: "turn_terminal",
-      turnId: "event-1",
-      replied: false,
-      reason: "intentional_silence",
-    });
-    expect(order.indexOf("turn_terminal")).toBeGreaterThan(order.indexOf("handle"));
-    expect(order.indexOf("turn_terminal")).toBeGreaterThan(order.indexOf("acknowledgement"));
+    expect(createTurnObservationSink).not.toHaveBeenCalled();
+    expect(order).toEqual(["handle", "acknowledgement"]);
   });
 
   it("não emite terminal quando V1 ou acknowledgement falha", async () => {
