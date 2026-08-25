@@ -3,8 +3,14 @@ import { createHmac } from "node:crypto";
 import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
+  after: vi.fn(),
   resolveMetaWebhookTenant: vi.fn(),
   persistInboundEventAndEnqueue: vi.fn(),
+}));
+
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: mocks.after,
 }));
 
 vi.mock("@/application/tenancy/resolve-clinic", () => ({
@@ -56,12 +62,18 @@ function metaTextPayload() {
 describe("Meta webhook durable ingestion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.after.mockReset();
     mocks.resolveMetaWebhookTenant.mockResolvedValue({
       clinicId: "clinic-1",
       encryptedAppSecret: META_APP_SECRET,
     });
     mocks.persistInboundEventAndEnqueue.mockResolvedValue({
+      outcome: "registered",
       inboundEventId: "event-1",
+      streamId: "stream-1",
+      streamGeneration: 1,
+      jobId: "job-1",
+      runAt: new Date("2026-08-25T12:00:15.000Z"),
       eventWasNew: true,
       jobWasNew: true,
     });
@@ -84,6 +96,37 @@ describe("Meta webhook durable ingestion", () => {
       }),
       expect.any(Object),
     );
+    expect(mocks.after).toHaveBeenCalledOnce();
+  });
+
+  it("não agenda outro wake para uma entrega duplicada do provedor", async () => {
+    mocks.persistInboundEventAndEnqueue.mockResolvedValue({
+      outcome: "registered",
+      inboundEventId: "event-1",
+      streamId: "stream-1",
+      streamGeneration: 1,
+      jobId: "job-1",
+      runAt: new Date("2026-08-25T12:00:15.000Z"),
+      eventWasNew: false,
+      jobWasNew: false,
+    });
+
+    const response = await POST(request(metaTextPayload()));
+
+    expect(response.status).toBe(200);
+    expect(mocks.after).not.toHaveBeenCalled();
+  });
+
+  it("mantém o webhook bem-sucedido quando o agendamento do wake falha", async () => {
+    mocks.after.mockImplementation(() => {
+      throw new Error("request scope unavailable");
+    });
+
+    const response = await POST(request(metaTextPayload()));
+
+    expect(response.status).toBe(200);
+    expect(mocks.persistInboundEventAndEnqueue).toHaveBeenCalledOnce();
+    expect(mocks.after).toHaveBeenCalledOnce();
   });
 
   it("ignora status update sem criar trabalho", async () => {

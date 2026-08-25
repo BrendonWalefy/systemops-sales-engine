@@ -251,14 +251,20 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
           const persisted = rows.rows.find((row) => row.id === registration.inboundEventId);
           expect(persisted?.raw.stream_id).toBe(registration.streamId);
           expect(persisted?.raw.stream_generation).toBe(registration.streamGeneration);
-          const job = await testDb().execute<{ id: string; inbound_event_id: string }>(sql`
-            select id::text, inbound_event_id::text
+          const job = await testDb().execute<{
+            id: string;
+            inbound_event_id: string;
+            run_at: Date;
+          }>(sql`
+            select id::text, inbound_event_id::text, run_at
             from jobs where id = ${registration.jobId}::uuid
           `);
-          expect(job.rows[0]).toEqual({
+          expect(job.rows[0]).toMatchObject({
             id: registration.jobId,
             inbound_event_id: registration.inboundEventId,
           });
+          expect((registration as typeof registration & { runAt?: Date }).runAt)
+            .toEqual(new Date(job.rows[0]!.run_at));
         }
       }
 

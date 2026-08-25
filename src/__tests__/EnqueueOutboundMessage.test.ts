@@ -10,6 +10,7 @@ describe("enqueueOutboundMessage", () => {
     });
     const createOutboundMessage = vi.fn();
     const enqueueJob = vi.fn();
+    const requestSenderWake = vi.fn().mockResolvedValue(undefined);
 
     const result = await enqueueOutboundMessage(
       {
@@ -20,13 +21,14 @@ describe("enqueueOutboundMessage", () => {
         deliveryKind: "text",
         authorization: { kind: "legacy" },
       },
-      {
+      ({
         outboundMessageStore: {
           createOutboundMessageAndEnqueue,
           createOutboundMessage,
         } as never,
         jobQueue: { enqueueJob } as never,
-      },
+        requestSenderWake,
+      } as never),
     );
 
     expect(createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
@@ -36,6 +38,62 @@ describe("enqueueOutboundMessage", () => {
     expect(result.outboundMessageId).toBe("outbound-atomic");
     expect(createOutboundMessage).not.toHaveBeenCalled();
     expect(enqueueJob).not.toHaveBeenCalled();
+    expect(requestSenderWake).toHaveBeenCalledOnce();
+  });
+
+  it("não acorda o sender quando o job deduplicado já existia", async () => {
+    const requestSenderWake = vi.fn().mockResolvedValue(undefined);
+    const result = await enqueueOutboundMessage(
+      {
+        clinicId: "clinic-1",
+        conversationId: "conversation-1",
+        channel: "whatsapp",
+        payload: { turnId: "turn-duplicate" },
+        deliveryKind: "text",
+        authorization: { kind: "legacy" },
+      },
+      ({
+        outboundMessageStore: {
+          createOutboundMessageAndEnqueue: vi.fn().mockResolvedValue({
+            outboundMessageId: "outbound-existing",
+            messageWasNew: false,
+            jobWasNew: false,
+          }),
+        } as never,
+        jobQueue: {} as never,
+        requestSenderWake,
+      } as never),
+    );
+
+    expect(result.jobWasNew).toBe(false);
+    expect(requestSenderWake).not.toHaveBeenCalled();
+  });
+
+  it("não desfaz a outbox autorizada quando o wake do sender falha", async () => {
+    const requestSenderWake = vi.fn().mockRejectedValue(new Error("wake unavailable"));
+
+    await expect(enqueueOutboundMessage(
+      {
+        clinicId: "clinic-1",
+        conversationId: "conversation-1",
+        channel: "whatsapp",
+        payload: { turnId: "turn-1" },
+        deliveryKind: "text",
+        authorization: { kind: "legacy" },
+      },
+      ({
+        outboundMessageStore: {
+          createOutboundMessageAndEnqueue: vi.fn().mockResolvedValue({
+            outboundMessageId: "outbound-1",
+            messageWasNew: true,
+            jobWasNew: true,
+          }),
+        } as never,
+        jobQueue: {} as never,
+        requestSenderWake,
+      } as never),
+    )).resolves.toMatchObject({ outboundMessageId: "outbound-1", jobWasNew: true });
+    expect(requestSenderWake).toHaveBeenCalledOnce();
   });
 
   it("recria o job idempotente quando uma outbox já persistida é reencontrada", async () => {
