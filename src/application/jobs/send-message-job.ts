@@ -249,6 +249,7 @@ export class SendMessageJobHandler {
       clinicId: outbound.clinicId,
       payload: outbound.payload,
     };
+    let senderOwnedConversationMessage: Message | null = null;
     if (isConversationOutboundPayload(outbound.payload)) {
       const placeholder = {
         id: outbound.payload.agentMessageId,
@@ -266,13 +267,7 @@ export class SendMessageJobHandler {
         outbound.authorization.kind === "live_stream_reply"
         || outbound.payload.agentMessagePersistence === "sender"
       ) {
-        const inserted = await this.conversationRepository.appendMessage(placeholder);
-        if (!inserted) {
-          const existing = await this.conversationRepository.findMessageById(placeholder.id);
-          if (!isExactConversationAgentMessage(existing, placeholder)) {
-            throw new Error("sender-owned agent message is missing or mismatched");
-          }
-        }
+        senderOwnedConversationMessage = placeholder;
       } else {
         const existing = await this.conversationRepository.findMessageById(placeholder.id);
         const existedBeforeOutbox = existing != null &&
@@ -484,6 +479,23 @@ export class SendMessageJobHandler {
         durationMs: Date.now() - startedAt,
       });
       return "ignored";
+    }
+
+    // No canonical agent history is created until the definitive sender
+    // authorization has passed. Rejected work therefore cannot leave a reply
+    // placeholder that was never eligible for provider delivery.
+    if (senderOwnedConversationMessage) {
+      const inserted = await this.conversationRepository.appendMessage(
+        senderOwnedConversationMessage,
+      );
+      if (!inserted) {
+        const existing = await this.conversationRepository.findMessageById(
+          senderOwnedConversationMessage.id,
+        );
+        if (!isExactConversationAgentMessage(existing, senderOwnedConversationMessage)) {
+          throw new Error("sender-owned agent message is missing or mismatched");
+        }
+      }
     }
 
     if (turnId) {

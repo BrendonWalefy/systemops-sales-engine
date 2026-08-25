@@ -14,13 +14,26 @@ import { db } from "@/infrastructure/db/client";
 export class DrizzleLiveOutboundPreflight implements LiveOutboundPreflight {
   async authorizeOutboundMessageForSend(id: string): Promise<LiveOutboundPreflightResult> {
     const result = await db.execute<{ authorized: boolean; reason: string | null }>(sql`
-      with candidate as materialized (
+      with outbound_candidate as materialized (
+        select
+          outbound.*,
+          case
+            when jsonb_typeof(outbound.payload->'turnId') = 'string'
+              and outbound.payload->>'turnId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+              then (outbound.payload->>'turnId')::uuid
+            else null
+          end as payload_turn_id
+        from outbound_messages outbound
+        where outbound.id = ${id}::uuid
+        limit 1
+      ), candidate as materialized (
         select
           outbound.status,
           outbound.category,
           outbound.authorization_kind,
           outbound.authorization_version,
           outbound.payload,
+          outbound.payload_turn_id,
           organization.operational_status,
           organization.auto_reply_enabled,
           organization.shadow_mode_enabled,
@@ -34,7 +47,6 @@ export class DrizzleLiveOutboundPreflight implements LiveOutboundPreflight {
           lead.contact_consent_revoked_at,
           lead.contact_consent_source,
           event.id as bound_event_id,
-          event.received_at as bound_event_received_at,
           stream.id as bound_stream_id,
           claim_job.id as bound_claim_job_id,
           control.live_outbound_enabled,
@@ -42,7 +54,7 @@ export class DrizzleLiveOutboundPreflight implements LiveOutboundPreflight {
             select 1
             from inbound_events terminal_event
             where terminal_event.organization_id = outbound.organization_id
-              and terminal_event.id::text = outbound.payload->>'turnId'
+              and terminal_event.id = outbound.payload_turn_id
               and terminal_event.processing_status = 'history_only'
               and terminal_event.stream_id is null
               and terminal_event.stream_generation is null
@@ -55,7 +67,7 @@ export class DrizzleLiveOutboundPreflight implements LiveOutboundPreflight {
             and outbound.authorization_claim_token_digest is null
             and outbound.authorization_version is not null
           ) as non_live_shape_valid
-        from outbound_messages outbound
+        from outbound_candidate outbound
         left join organizations organization
           on organization.id = outbound.organization_id
         left join conversations conversation
@@ -85,7 +97,6 @@ export class DrizzleLiveOutboundPreflight implements LiveOutboundPreflight {
          and claim_job.queue = 'message.process'
         left join conversation_runtime_control control
           on control.key = 'global'
-        where outbound.id = ${id}::uuid
         limit 1
       ), evaluated as (
         select case
@@ -101,6 +112,7 @@ export class DrizzleLiveOutboundPreflight implements LiveOutboundPreflight {
               or bound_claim_job_id is null
               or bound_conversation_id is null
               or bound_lead_id is null
+              or payload_turn_id is distinct from bound_event_id
               or payload->>'leadId' is distinct from bound_lead_id::text
               or category <> 'reply'
               then 'claim_mismatch'
@@ -114,14 +126,16 @@ export class DrizzleLiveOutboundPreflight implements LiveOutboundPreflight {
               or (takeover_expires_at is not null and takeover_expires_at > now())
               then 'human_takeover'
             when contact_consent_revoked_at is not null
-              and contact_consent_source = 'lead_message'
               and (
-                payload->>'intent' is distinct from 'stop_contact'
-                or bound_event_received_at is null
-                or contact_consent_revoked_at < bound_event_received_at
+                contact_consent_source = 'lead_message'
+                or contact_consent_source like 'lead_message:%'
+              )
+              and (
+                contact_consent_source is distinct from 'lead_message:' || bound_event_id::text
+                or payload->>'intent' is distinct from 'stop_contact'
               ) then 'opted_out'
             when contact_consent_revoked_at is not null
-              and contact_consent_source is distinct from 'lead_message'
+              and contact_consent_source is distinct from 'lead_message:' || bound_event_id::text
               then 'consent_revoked'
             when channel_safety_mode = 'frozen'
               then 'safety_blocked'

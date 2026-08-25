@@ -342,10 +342,11 @@ describe("SendMessageJobHandler", () => {
       reason: "global_kill_switch",
     });
     const delivery = vi.fn().mockResolvedValue("must-not-send");
+    const appendMessage = vi.fn().mockResolvedValue(true);
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       conversationRepository: {
-        appendMessage: vi.fn().mockResolvedValue(true),
+        appendMessage,
         findMessageById: vi.fn(),
       },
       delivery,
@@ -358,6 +359,7 @@ describe("SendMessageJobHandler", () => {
       outbound.id,
       "global_kill_switch",
     );
+    expect(appendMessage).not.toHaveBeenCalled();
     expect(delivery).not.toHaveBeenCalled();
   });
 

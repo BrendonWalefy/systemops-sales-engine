@@ -120,6 +120,28 @@ async function captureDatabaseError(operation: () => Promise<unknown>) {
   throw new Error("expected PostgreSQL to reject the invalid runtime control row");
 }
 
+async function waitForBlockedQuery(
+  runtime: EmbeddedAuthorityDatabase,
+  queryPattern: string,
+): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const blocked = await runtime.pool.query<{ blocked: boolean }>(
+      `select exists (
+         select 1 from pg_stat_activity
+         where datname = current_database()
+           and pid <> pg_backend_pid()
+           and wait_event_type = 'Lock'
+           and query ilike $1
+       ) as blocked`,
+      [queryPattern],
+    );
+    if (blocked.rows[0]?.blocked) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`expected PostgreSQL lock wait for ${queryPattern}`);
+}
+
 describe("V2-only global runtime control — PostgreSQL adapter", () => {
   let runtime: EmbeddedAuthorityDatabase | undefined;
   let database: TestDatabase;
@@ -311,6 +333,54 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
     expect(persisted.rows).toEqual([{ outbound_count: "0", send_job_count: "0" }]);
   });
 
+  it("serializes switch close before live creation through the singleton row lock", async () => {
+    const fixture = await seedLiveOutboundAuthority({ liveOutboundEnabled: true });
+    const store = await loadOutboundMessageStore();
+    const client = await runtime!.pool.connect();
+    try {
+      await client.query("begin");
+      const current = await client.query<{ version: string }>(
+        "select version from conversation_runtime_control where key = 'global'",
+      );
+      const expectedVersion = Number(current.rows[0]!.version);
+      const closed = await client.query(
+        `update conversation_runtime_control
+         set live_outbound_enabled = false, version = version + 1,
+             updated_by = 'concurrent-close-test', updated_at = now()
+         where key = 'global' and version = $1
+         returning key`,
+        [expectedVersion],
+      );
+      expect(closed.rowCount).toBe(1);
+
+      let creationSettled = false;
+      const creation = store.createOutboundMessageAndEnqueue(
+        liveOutboundInput(fixture),
+        { turnId: fixture.inboundEventId },
+      ).finally(() => {
+        creationSettled = true;
+      });
+      await waitForBlockedQuery(runtime!, "%locked_runtime_control%");
+      expect(creationSettled).toBe(false);
+
+      await client.query("commit");
+      await expect(creation).rejects.toMatchObject({
+        name: "LiveOutboundCreationRejectedError",
+        reason: "global_kill_switch",
+      });
+    } finally {
+      await client.query("rollback").catch(() => undefined);
+      client.release();
+    }
+
+    const persisted = await database.execute<{ outbounds: string; jobs: string }>(sql`
+      select
+        (select count(*) from outbound_messages where organization_id = ${fixture.clinicId}::uuid)::text as outbounds,
+        (select count(*) from jobs where queue = 'message.send' and payload->>'outboundMessageId' is not null)::text as jobs
+    `);
+    expect(persisted.rows).toEqual([{ outbounds: "0", jobs: "0" }]);
+  });
+
   it.each([
     ["authority_below_v2", async (fixture: Awaited<ReturnType<typeof seedLiveOutboundAuthority>>) => {
       await database.execute(sql`update conversation_authority set version = 1 where organization_id = ${fixture.clinicId}::uuid`);
@@ -420,7 +490,7 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
     await database.execute(sql`
       update leads set
         contact_consent_revoked_at = '2026-08-25T21:00:01.000Z'::timestamptz,
-        contact_consent_source = 'lead_message'
+        contact_consent_source = ${`lead_message:${fixture.inboundEventId}`}
       where id = ${fixture.leadId}::uuid
     `);
     await database.execute(sql`
@@ -431,6 +501,82 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
 
     await expect(store.authorizeOutboundMessageForSend(outboundMessageId))
       .resolves.toEqual({ authorized: true });
+  });
+
+  it.each([
+    ["plain historical source", "lead_message"],
+    ["different inbound event", `lead_message:${randomUUID()}`],
+  ])("fails closed for an opt-out confirmation bound to %s", async (_label, consentSource) => {
+    const { fixture, outboundMessageId, store } = await createEligibleLiveOutbound();
+    await database.execute(sql`
+      update leads set
+        contact_consent_revoked_at = '2026-08-25T21:00:01.000Z'::timestamptz,
+        contact_consent_source = ${consentSource}
+      where id = ${fixture.leadId}::uuid
+    `);
+    await database.execute(sql`
+      update outbound_messages
+      set payload = jsonb_set(payload, '{intent}', '"stop_contact"'::jsonb)
+      where id = ${outboundMessageId}::uuid
+    `);
+
+    await expect(store.authorizeOutboundMessageForSend(outboundMessageId))
+      .resolves.toEqual({ authorized: false, reason: "opted_out" });
+  });
+
+  it("fails closed on a malformed live turn UUID without throwing or scanning UUID text", async () => {
+    const fixture = await seedLiveOutboundAuthority({ liveOutboundEnabled: true });
+    const store = await loadOutboundMessageStore();
+
+    await expect(store.createOutboundMessageAndEnqueue(
+      liveOutboundInput(fixture),
+      { turnId: "not-a-uuid" },
+    )).rejects.toMatchObject({
+      name: "LiveOutboundCreationRejectedError",
+      reason: "claim_mismatch",
+    });
+
+    const source = await import("node:fs/promises").then(({ readFile }) => Promise.all([
+      readFile("src/infrastructure/repositories/drizzle-outbound-message-store.ts", "utf8"),
+      readFile("src/infrastructure/repositories/drizzle-live-outbound-preflight.ts", "utf8"),
+    ]));
+    expect(source.join("\n")).not.toMatch(/terminal_event\.id::text/);
+    expect(source.join("\n")).toMatch(/terminal_event\.id\s*=\s*/);
+  });
+
+  it("fails sender preflight when a persisted live payload turn UUID becomes malformed", async () => {
+    const { outboundMessageId, store } = await createEligibleLiveOutbound();
+    await database.execute(sql`
+      update outbound_messages
+      set payload = jsonb_set(payload, '{turnId}', '"not-a-uuid"'::jsonb)
+      where id = ${outboundMessageId}::uuid
+    `);
+
+    await expect(store.authorizeOutboundMessageForSend(outboundMessageId))
+      .resolves.toEqual({ authorized: false, reason: "claim_mismatch" });
+  });
+
+  it("keeps terminal history lookup indexable on the inbound UUID primary key", async () => {
+    const eventId = randomUUID();
+    const client = await runtime!.pool.connect();
+    try {
+      await client.query("begin");
+      await client.query("set local enable_seqscan = off");
+      const explained = await client.query(
+        `explain (format json)
+         select 1
+         from inbound_events terminal_event
+         where terminal_event.id = $1::uuid
+           and terminal_event.processing_status = 'history_only'`,
+        [eventId],
+      );
+      const plan = JSON.stringify(explained.rows);
+      expect(plan).toMatch(/"Node Type":"Index(?: Only)? Scan"/);
+      expect(plan).toContain('"Index Cond":"(id =');
+    } finally {
+      await client.query("rollback").catch(() => undefined);
+      client.release();
+    }
   });
 
   it("defaults the only valid singleton row to closed at version one", async () => {
@@ -595,6 +741,53 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
       liveOutboundEnabled: winner.liveOutboundEnabled,
       version: 2,
     });
+  });
+
+  it("makes a switch close wait when live creation owns the singleton share lock", async () => {
+    const fixture = await seedLiveOutboundAuthority({ liveOutboundEnabled: true });
+    const outboundStore = await loadOutboundMessageStore();
+    const controlStore = await loadRuntimeControlStore();
+    const client = await runtime!.pool.connect();
+    try {
+      await client.query("begin");
+      databaseMock.set(drizzleNodePostgres(client));
+      const created = await outboundStore.createOutboundMessageAndEnqueue(
+        liveOutboundInput(fixture),
+        { turnId: fixture.inboundEventId },
+      );
+      databaseMock.set(database);
+
+      const current = await controlStore.getGlobal();
+      let closeSettled = false;
+      const close = controlStore.compareAndSetGlobal({
+        expectedVersion: current.version,
+        liveOutboundEnabled: false,
+        actor: "creation-first-close-test",
+        now: new Date("2026-08-25T22:00:00.000Z"),
+      }).finally(() => {
+        closeSettled = true;
+      });
+      await waitForBlockedQuery(runtime!, "%update%conversation_runtime_control%");
+      expect(closeSettled).toBe(false);
+
+      await client.query("commit");
+      await expect(close).resolves.toBe(true);
+      await expect(outboundStore.authorizeOutboundMessageForSend(created.outboundMessageId))
+        .resolves.toEqual({ authorized: false, reason: "global_kill_switch" });
+
+      await database.execute(sql`
+        delete from jobs
+        where queue = 'message.send'
+          and payload->>'outboundMessageId' = ${created.outboundMessageId}
+      `);
+      await database.execute(sql`
+        delete from outbound_messages where id = ${created.outboundMessageId}::uuid
+      `);
+    } finally {
+      databaseMock.set(database);
+      await client.query("rollback").catch(() => undefined);
+      client.release();
+    }
   });
 
   it("propagates an unreadable singleton instead of converting it to an open state", async () => {

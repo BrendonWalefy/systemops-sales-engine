@@ -43,8 +43,15 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
     const sourceInboundEventId = isLiveReply ? authorization.sourceInboundEventId : null;
     const claimJobId = isLiveReply ? authorization.claimJobId : null;
     const turnId = options?.turnId ?? readTurnId(input.payload);
+    const turnEventId = parseUuid(turnId);
     const statement = sql`
-      with creation_context as materialized (
+      with locked_runtime_control as materialized (
+        select control.live_outbound_enabled
+        from conversation_runtime_control control
+        where control.key = 'global'
+          and ${isLiveReply}
+        for share
+      ), creation_context as materialized (
         select
           organization.id is not null as organization_exists,
           organization.operational_status,
@@ -52,12 +59,12 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
           organization.shadow_mode_enabled,
           organization.is_demo,
           coalesce(authority.version, 0)::integer as authority_version,
-          control.live_outbound_enabled
+          locked_runtime_control.live_outbound_enabled
         from (select ${input.clinicId}::uuid as organization_id) requested
         left join organizations organization on organization.id = requested.organization_id
         left join conversation_authority authority
           on authority.organization_id = requested.organization_id
-        left join conversation_runtime_control control on control.key = 'global'
+        left join locked_runtime_control on true
       ), creation_decision as materialized (
         select
           creation_context.authority_version as version,
@@ -66,7 +73,7 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
           select 1
           from inbound_events terminal_event
           where terminal_event.organization_id = ${input.clinicId}::uuid
-            and terminal_event.id::text = ${turnId}
+            and terminal_event.id = ${turnEventId}::uuid
             and terminal_event.processing_status = 'history_only'
             and terminal_event.stream_id is null
             and terminal_event.stream_generation is null
@@ -88,6 +95,7 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
                  and claim_job.inbound_event_id = event.id
                  and claim_job.queue = 'message.process'
                 where event.id = ${sourceInboundEventId}::uuid
+                  and event.id = ${turnEventId}::uuid
                   and event.organization_id = ${input.clinicId}::uuid
                   and event.stream_id = ${streamId}::uuid
                   and event.stream_generation = ${streamGeneration}
@@ -385,6 +393,12 @@ function readTurnId(payload: unknown): string | null {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
   const turnId = (payload as Record<string, unknown>).turnId;
   return typeof turnId === "string" && turnId.length > 0 ? turnId : null;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function parseUuid(value: string | null): string | null {
+  return value && UUID_PATTERN.test(value) ? value.toLowerCase() : null;
 }
 
 function mapOutboundMessage(row: typeof outboundMessages.$inferSelect): OutboundMessage {

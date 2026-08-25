@@ -112,6 +112,7 @@ export type V2LiveConversationHandlerDependencies = Readonly<{
     leadId: string;
     conversationId: string;
     clinicId: string;
+    sourceInboundEventId: string;
     decision: StopContactDecision;
   }>): Promise<void>;
   persistHandoff(input: Readonly<{
@@ -318,12 +319,17 @@ export class V2LiveConversationHandler implements ConversationHandler {
                 now: new Date(turnNow!.getTime()),
               });
               if (decision) {
+                const sourceInboundEventId = context.inboundAuthority?.inboundEventId;
+                if (!sourceInboundEventId) {
+                  throw new Error("V2 stop-contact requires exact inbound authority");
+                }
                 effectAttempted = true;
                 phase = "action";
                 await this.deps.persistStopContact({
                   leadId: context.leadId,
                   conversationId: context.conversationId,
                   clinicId: context.clinicId,
+                  sourceInboundEventId,
                   decision,
                 });
                 effectCompleted = true;

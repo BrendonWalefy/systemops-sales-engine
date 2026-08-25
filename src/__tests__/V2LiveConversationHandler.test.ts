@@ -13,6 +13,7 @@ import { createLiveResponseVerbalizer } from "@/infrastructure/adapters/ai/live-
 
 const now = new Date("2026-08-17T12:00:00.000Z");
 const turnId = "turn-v2-live-1";
+const inboundEventId = "91eca071-354d-48a2-848d-dee2a7029e16";
 
 const clinic = {
   id: "clinic-1",
@@ -119,7 +120,13 @@ function makeHarness(options: {
     inboundMessage: inbound,
     outboundAddress: lead.phone!,
     editorial: null,
-    inboundAuthority: null,
+    inboundAuthority: {
+      inboundEventId,
+      streamId: "d4d87572-92e8-4865-a1fc-fc9b53fd4f34",
+      streamGeneration: 1,
+      claimJobId: "097cad6b-c6f6-4d15-8118-5e10aeb814dc",
+      claimToken: "A".repeat(43),
+    },
     releaseLease,
   });
   const offeredState = {
@@ -406,6 +413,7 @@ describe("V2LiveConversationHandler", () => {
       leadId: lead.id,
       conversationId: conversation.id,
       clinicId: clinic.id,
+      sourceInboundEventId: inboundEventId,
       decision: expect.objectContaining({ source: "lead_message" }),
     }));
     expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();

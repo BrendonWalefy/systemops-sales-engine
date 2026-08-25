@@ -1504,7 +1504,7 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
         clinicId: clinicId!,
         conversationId: conversation.id,
         channel: "whatsapp" as const,
-        payload: { turnId: "outbound-authority-a", leadId: lead.id },
+        payload: { turnId: claim.inboundEventId, leadId: lead.id },
         deliveryKind: "text" as const,
         category: "reply" as const,
         dedupeKey: "outbound-authority-a",
