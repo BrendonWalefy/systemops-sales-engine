@@ -10,6 +10,7 @@ import postgres from "postgres";
 import { getClinicModules } from "@/application/modules/module-gate";
 import {
   applySystemOpsDentalLabConfig,
+  describeSystemOpsDentalLabConfigFailure,
   deterministicSystemOpsDentalLabEntityId,
   digestSystemOpsDentalLabConfig,
   digestSystemOpsDentalLabOwnerMembership,
@@ -18,6 +19,7 @@ import {
   projectSystemOpsDentalLabRuntimeArtifact,
   rollbackSystemOpsDentalLabConfig,
   SYSTEMOPS_DENTAL_LAB_CONFIG,
+  SystemOpsDentalLabConfigOperationError,
   SYSTEMOPS_DENTAL_LAB_SNAPSHOT_SCHEMA,
   validateSystemOpsDentalLabSnapshot,
   type SystemOpsDentalLabConfigSnapshot,
@@ -27,6 +29,7 @@ import {
   type SystemOpsDentalLabPlaybookSnapshot,
   type SystemOpsDentalLabProfessionalSnapshot,
   type SystemOpsDentalLabTreatmentSnapshot,
+  type SystemOpsDentalLabConfigStage,
 } from "@/application/labs/systemops-dental-lab-config";
 import {
   computeInternalLabRuntimeBindings,
@@ -78,6 +81,23 @@ type CommandDependencies = Readonly<{
   resolveRuntimeArtifact(clinicId: string): Promise<InternalLabRuntimeArtifact>;
   write(line: string): void;
 }>;
+
+async function runCommandStage<T>(
+  stage: SystemOpsDentalLabConfigStage,
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof SystemOpsDentalLabConfigOperationError) throw error;
+    throw new SystemOpsDentalLabConfigOperationError(stage, error);
+  }
+}
+
+export function formatSystemOpsDentalLabCommandFailure(error: unknown): string {
+  const failure = describeSystemOpsDentalLabConfigFailure(error);
+  return `stage=${failure.stage} reasonCodes=command_failed errorClass=${failure.errorClass}`;
+}
 
 function flagValue(argv: readonly string[], flag: string): string | null {
   const indexes = argv.flatMap((value, index) => value === flag ? [index] : []);
@@ -206,35 +226,47 @@ export async function runSystemOpsDentalLabConfigCommand(
   configDigest: string;
   errors: readonly string[];
 }>> {
-  const inspected = await deps.inspect(command.clinicId);
+  const inspected = await runCommandStage(
+    "command_inspection",
+    () => deps.inspect(command.clinicId),
+  );
   assertTarget(inspected, command);
   const desiredConfigDigest = digestSystemOpsDentalLabConfig();
   let finalSnapshot = inspected;
 
   if (command.mode === "apply") {
     if (!command.snapshotPath) throw new Error("apply snapshot path is missing");
-    await deps.writeOwnerOnlyFile(command.snapshotPath, snapshotArtifact(inspected));
-    finalSnapshot = await deps.apply({
-      clinicId: command.clinicId,
-      expectedChannelDigest: command.expectedChannelDigest,
-      expectedOwnerMembershipDigest: command.expectedOwnerMembershipDigest,
-      expectedSnapshotDigest: digestSystemOpsDentalLabSnapshot(inspected),
-    });
+    await runCommandStage(
+      "snapshot_write",
+      () => deps.writeOwnerOnlyFile(command.snapshotPath!, snapshotArtifact(inspected)),
+    );
+    finalSnapshot = await runCommandStage("transaction_entry", () => deps.apply({
+        clinicId: command.clinicId,
+        expectedChannelDigest: command.expectedChannelDigest,
+        expectedOwnerMembershipDigest: command.expectedOwnerMembershipDigest,
+        expectedSnapshotDigest: digestSystemOpsDentalLabSnapshot(inspected),
+      }));
   } else if (command.mode === "rollback") {
     if (!command.snapshotPath) throw new Error("rollback snapshot path is missing");
-    const snapshot = parseSnapshotArtifact(await deps.readOwnerOnlyFile(command.snapshotPath));
+    const snapshot = parseSnapshotArtifact(await runCommandStage(
+      "rollback",
+      () => deps.readOwnerOnlyFile(command.snapshotPath!),
+    ));
     assertTarget(snapshot, command);
-    finalSnapshot = await deps.rollback({
+    finalSnapshot = await runCommandStage("rollback", () => deps.rollback({
       clinicId: command.clinicId,
       expectedChannelDigest: command.expectedChannelDigest,
       expectedOwnerMembershipDigest: command.expectedOwnerMembershipDigest,
       snapshot,
-    });
+    }));
   }
 
   const errors = validateSystemOpsDentalLabSnapshot(finalSnapshot);
   if ((command.mode === "apply" || command.mode === "verify") && errors.length > 0) {
-    throw new Error(`SystemOps Dental Lab verification failed: ${errors.join(",")}`);
+    throw new SystemOpsDentalLabConfigOperationError(
+      "post_apply_verification",
+      new Error(`SystemOps Dental Lab verification failed: ${errors.join(",")}`),
+    );
   }
 
   deps.write(JSON.stringify({
@@ -248,7 +280,10 @@ export async function runSystemOpsDentalLabConfigCommand(
   }));
 
   if (command.resolvedArtifactPath) {
-    const currentArtifact = await deps.resolveRuntimeArtifact(command.clinicId);
+    const currentArtifact = await runCommandStage(
+      "artifact_resolution",
+      () => deps.resolveRuntimeArtifact(command.clinicId),
+    );
     const artifact = command.mode === "dry-run"
       ? projectSystemOpsDentalLabRuntimeArtifact({
           current: currentArtifact,
@@ -257,9 +292,12 @@ export async function runSystemOpsDentalLabConfigCommand(
       : currentArtifact;
     const protectedArtifact = protectInternalLabRuntimeArtifactForFile(artifact);
     const bindings = computeInternalLabRuntimeBindings(protectedArtifact);
-    await deps.writeOwnerOnlyFile(
-      command.resolvedArtifactPath,
-      `${JSON.stringify(protectedArtifact, null, 2)}\n`,
+    await runCommandStage(
+      "artifact_write",
+      () => deps.writeOwnerOnlyFile(
+        command.resolvedArtifactPath!,
+        `${JSON.stringify(protectedArtifact, null, 2)}\n`,
+      ),
     );
     deps.write(JSON.stringify({
       resolvedArtifact: "written_owner_only_outside_worktree",
@@ -271,6 +309,10 @@ export async function runSystemOpsDentalLabConfigCommand(
 }
 
 type LabDatabase = ReturnType<typeof drizzle<typeof import("@/infrastructure/db/schema")>>;
+type LabDatabaseExecutor = Pick<
+  LabDatabase,
+  "delete" | "execute" | "insert" | "select" | "update"
+>;
 
 function channelDigestForOrganization(row: typeof organizations.$inferSelect): string {
   return computeInternalLabRuntimeBindings({
@@ -284,7 +326,7 @@ function channelDigestForOrganization(row: typeof organizations.$inferSelect): s
 
 class DrizzleSystemOpsDentalLabConfigTransaction
 implements SystemOpsDentalLabConfigTransaction {
-  constructor(private readonly database: LabDatabase) {}
+  constructor(private readonly database: LabDatabaseExecutor) {}
 
   async readSnapshotForUpdate(clinicId: string) {
     await this.database.execute(drizzleSql`
@@ -573,7 +615,7 @@ implements SystemOpsDentalLabConfigTransaction {
 }
 
 async function readDatabaseSnapshot(
-  database: LabDatabase,
+  database: LabDatabaseExecutor,
   clinicId: string,
 ): Promise<SystemOpsDentalLabConfigSnapshot | null> {
   const [
@@ -708,12 +750,9 @@ class DrizzleSystemOpsDentalLabConfigStore implements SystemOpsDentalLabConfigSt
     _clinicId: string,
     operation: (transaction: SystemOpsDentalLabConfigTransaction) => Promise<T>,
   ): Promise<T> {
-    return this.client.begin(async (transactionClient) => operation(
-      new DrizzleSystemOpsDentalLabConfigTransaction(drizzle(
-        transactionClient as unknown as ReturnType<typeof postgres>,
-        { schema },
-      )),
-    )) as Promise<T>;
+    return this.database.transaction((transaction) => operation(
+      new DrizzleSystemOpsDentalLabConfigTransaction(transaction),
+    ));
   }
 }
 
@@ -825,8 +864,8 @@ async function main(): Promise<void> {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  void main().catch(() => {
-    process.stderr.write("reasonCodes=command_failed\n");
+  void main().catch((error: unknown) => {
+    process.stderr.write(`${formatSystemOpsDentalLabCommandFailure(error)}\n`);
     process.exitCode = 1;
   });
 }
