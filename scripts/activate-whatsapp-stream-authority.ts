@@ -12,6 +12,7 @@ import {
   validateWhatsAppStreamAuthority,
   type AuthorityValidationIssue,
   type AuthorityValidationMetric,
+  type AuthorityValidationProjection,
   type AuthorityValidationReport,
 } from "./validate-whatsapp-stream-authority";
 
@@ -64,7 +65,10 @@ export async function activateWhatsAppStreamAuthority(input: Readonly<{
   actor: string;
   now: Date;
   store: ConversationAuthorityStore;
-  validate: (clinicId: string) => Promise<AuthorityValidationReport>;
+  validate: (
+    clinicId: string,
+    projection: AuthorityValidationProjection,
+  ) => Promise<AuthorityValidationReport>;
   apply?: boolean;
 }>): Promise<AuthorityActivationResult> {
   assertUuid(input.clinicId, "clinic id");
@@ -78,7 +82,10 @@ export async function activateWhatsAppStreamAuthority(input: Readonly<{
   if (current !== input.expectedVersion) {
     return { activated: false, version: current, unresolvedEvents: 0 };
   }
-  const validation = await input.validate(input.clinicId);
+  const validation = await input.validate(input.clinicId, {
+    version: input.nextVersion,
+    activatedAt: input.now,
+  });
   const assessment = assessWhatsAppStreamAuthorityTransition({
     expectedVersion: input.expectedVersion,
     nextVersion: input.nextVersion,
