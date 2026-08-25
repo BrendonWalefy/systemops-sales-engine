@@ -161,3 +161,61 @@ export function evaluateRuntimePerformance(
 
   return Object.freeze({ passed: violations.length === 0, violations: Object.freeze(violations) });
 }
+
+function samePopulation(
+  current: RuntimePerformanceReport["population"],
+  frozen: RuntimePerformanceReport["population"],
+): boolean {
+  return current.cases === frozen.cases
+    && current.repetitions === frozen.repetitions
+    && current.turnsPerArm === frozen.turnsPerArm;
+}
+
+function sameArmOrder(
+  current: RuntimePerformanceReport["provenance"]["armOrder"],
+  frozen: RuntimePerformanceReport["provenance"]["armOrder"],
+): boolean {
+  return current.every((pair, index) => (
+    pair[0] === frozen[index]?.[0] && pair[1] === frozen[index]?.[1]
+  ));
+}
+
+function structuralCardinalityViolations(
+  report: RuntimePerformanceReport,
+  source: "current" | "frozen",
+): string[] {
+  const violations: string[] = [];
+  for (const arm of report.arms) {
+    for (const field of ["events", "processJobs", "liveReplies", "sendJobs"] as const) {
+      if (arm.cardinality[field] !== arm.turns) {
+        violations.push(`${source}.${arm.arm}.cardinality.${field}`);
+      }
+    }
+  }
+  return violations;
+}
+
+export function evaluateRuntimePerformanceReport(
+  current: RuntimePerformanceReport,
+  frozen: RuntimePerformanceReport,
+): RuntimePerformanceEvaluation {
+  const violations: string[] = [];
+  if (current.provenance.populationDigest !== frozen.provenance.populationDigest) {
+    violations.push("protocol.populationDigest");
+  }
+  if (!samePopulation(current.population, frozen.population)) violations.push("protocol.population");
+  if (current.provenance.armOrderPolicy !== frozen.provenance.armOrderPolicy) {
+    violations.push("protocol.armOrderPolicy");
+  }
+  if (!sameArmOrder(current.provenance.armOrder, frozen.provenance.armOrder)) {
+    violations.push("protocol.armOrder");
+  }
+  violations.push(...structuralCardinalityViolations(frozen, "frozen"));
+  violations.push(...structuralCardinalityViolations(current, "current"));
+
+  if (violations.length > 0) {
+    return Object.freeze({ passed: false, violations: Object.freeze(violations) });
+  }
+
+  return evaluateRuntimePerformance(current.arms[1], current.arms[0]);
+}

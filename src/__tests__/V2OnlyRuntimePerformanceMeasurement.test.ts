@@ -35,14 +35,23 @@ const v1Model = vi.hoisted(() => {
   let caseId = "unset";
   let calls = 0;
   let tokens = 0;
+  let classifiedIntent = "general_question";
+  let classification: Record<string, unknown> = {};
   return {
-    begin(nextCaseId: string) { caseId = nextCaseId; calls = 0; tokens = 0; },
+    begin(nextCaseId: string, nextClassification: Record<string, unknown>) {
+      caseId = nextCaseId;
+      calls = 0;
+      tokens = 0;
+      classification = nextClassification;
+      classifiedIntent = String(nextClassification.intent);
+    },
     record(inputTokens: number, outputTokens: number) {
       calls += 1;
       tokens += inputTokens + outputTokens;
     },
-    snapshot() { return Object.freeze({ calls, tokens }); },
+    snapshot() { return Object.freeze({ calls, tokens, classifiedIntent }); },
     get caseId() { return caseId; },
+    get classification() { return classification; },
   };
 });
 
@@ -68,21 +77,7 @@ vi.mock("openai", () => ({
             choices: [{
               message: {
                 content: classifier
-                  ? JSON.stringify({
-                      intent: "general_question",
-                      slotPreference: {
-                        preferredDate: null,
-                        preferredPeriod: null,
-                        preferredTime: null,
-                        slotChoice: null,
-                        identifiedTreatment: null,
-                        ambiguousTreatmentMatches: null,
-                      },
-                      confidence: 1,
-                      shouldAskClarification: false,
-                      clarificationQuestion: null,
-                      handoffReason: null,
-                    })
+                  ? JSON.stringify(v1Model.classification)
                   : "Posso ajudar com essa informação.",
               },
             }],
@@ -116,12 +111,18 @@ import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import { DefaultUsageCostTracker } from "@/application/services/default-usage-cost-tracker";
 import { RegisterIncomingMessage } from "@/application/use-cases/leads/register-incoming-message";
 import { ConversationStateMachine } from "@/core/conversation/ConversationStateMachine";
+import type { ConversationStateType } from "@/core/conversation/ConversationStateMachine";
+import type { IntentClassification, IntentType } from "@/core/intelligence/IntentClassifier";
+import type { DecisionTraceRecord, DecisionTraceSink } from "@/core/observability/DecisionTrace";
+import type { V1TurnObservationEvent } from "@/core/observability/V1TurnObservation";
 import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrator";
 import { ConversationTurnCoordinator } from "@/core/pipeline/ConversationTurnCoordinator";
 import { BookingService } from "@/core/scheduling/BookingService";
 import { SlotReservationService } from "@/core/scheduling/SlotReservationService";
 import { runWithRuntimeClock } from "@/core/time/RuntimeClock";
 import type { Appointment } from "@/domain/entities/calendar-slot";
+import type { Conversation, Message } from "@/domain/entities/conversation";
+import type { Lead } from "@/domain/entities/lead";
 import { createLiveDentalUnderstanding } from "@/infrastructure/adapters/ai/live-dental-understanding";
 import { createEmbeddedAtomicDatabaseBatch } from "@/__tests__/helpers/embedded-authority-database";
 import {
@@ -243,6 +244,85 @@ function expectedReply(fixture: CorpusCase): boolean {
   return REPLY_ACTION_TYPES.has(fixture.labels.expectedActionResult.type);
 }
 
+function expectedLegacyIntent(fixture: CorpusCase): IntentType {
+  switch (fixture.labels.expectedActionResult.type) {
+    case "slots_found": return fixture.labels.understanding.request === "book-appointment"
+      ? "book_appointment"
+      : "check_availability";
+    case "appointment_confirmed": return "confirm_slot";
+    case "appointment_confirmation_accepted": return "acknowledgment";
+    case "price_inquiry":
+    case "clarification_needed": return "price_inquiry";
+    case "greeting": return "general_question";
+    case "general_question": return "general_question";
+    default: throw new Error(`unsupported runtime action ${fixture.labels.expectedActionResult.type}`);
+  }
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function optionalStringArray(value: unknown): string[] | null {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string")
+    ? value
+    : null;
+}
+
+function legacyClassificationFor(fixture: CorpusCase): IntentClassification {
+  const expected = fixture.labels.expectedActionResult;
+  const entities = fixture.labels.understanding.entities;
+  const clarificationNeeded = expected.type === "clarification_needed";
+  const ambiguousTreatmentMatches = optionalStringArray(expected.ambiguousTreatmentMatches);
+  const identifiedTreatment = clarificationNeeded || ambiguousTreatmentMatches
+    ? null
+    : optionalString(expected.identifiedTreatment) ?? entities.service ?? null;
+  const preferredPeriod = entities.period === "manhã"
+    ? "morning"
+    : entities.period === "tarde"
+      ? "afternoon"
+      : entities.period === "noite"
+        ? "evening"
+        : null;
+
+  return {
+    intent: expectedLegacyIntent(fixture),
+    slotPreference: {
+      preferredDate: entities.date ?? null,
+      preferredPeriod,
+      preferredTime: entities.time ?? null,
+      slotChoice: entities.ordinal ?? null,
+      identifiedTreatment,
+      ambiguousTreatmentMatches,
+    },
+    confidence: 1,
+    shouldAskClarification: clarificationNeeded,
+    clarificationQuestion: clarificationNeeded ? optionalString(expected.question) : null,
+    handoffReason: null,
+  };
+}
+
+function expectedLegacyActions(fixture: CorpusCase): readonly string[] {
+  return [...new Set([
+    fixture.labels.expectedActionResult.type,
+    expectedLegacyIntent(fixture),
+    ...(fixture.labels.expectedActionResult.type === "appointment_confirmed" ? ["slots_found"] : []),
+  ])];
+}
+
+function serviceKey(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token && !["de", "da", "das", "do", "dos", "em"].includes(token))
+    .join(" ");
+}
+
+function serviceQueryMatches(query: string, serviceName: string): boolean {
+  const serviceTokens = new Set(serviceKey(serviceName).split(" "));
+  const queryTokens = serviceKey(query).split(" ");
+  return queryTokens.length > 0 && queryTokens.every((token) => serviceTokens.has(token));
+}
+
 function understandingFor(fixture: CorpusCase): Record<string, unknown> {
   const source = fixture.labels.understanding;
   const entities = source.entities;
@@ -277,18 +357,20 @@ function understandingFor(fixture: CorpusCase): Record<string, unknown> {
 }
 
 function createCalendar(): CalendarGateway {
-  const startsAt = new Date("2026-08-27T12:00:00.000Z");
-  const endsAt = new Date("2026-08-27T13:00:00.000Z");
+  const slots = [
+    { startsAt: new Date("2026-08-26T12:00:00.000Z"), endsAt: new Date("2026-08-26T13:00:00.000Z") },
+    { startsAt: new Date("2026-08-27T12:00:00.000Z"), endsAt: new Date("2026-08-27T13:00:00.000Z") },
+  ];
   return Object.freeze({
     async listAvailableSlots(input) {
-      return [{
-        id: `runtime-slot-${input.clinicId}`,
+      return slots.map((slot, index) => ({
+        id: `runtime-slot-${input.clinicId}-${index}`,
         clinicId: input.clinicId,
         professionalId: null,
-        startsAt: new Date(startsAt.getTime()),
-        endsAt: new Date(endsAt.getTime()),
+        startsAt: new Date(slot.startsAt.getTime()),
+        endsAt: new Date(slot.endsAt.getTime()),
         source: "manual" as const,
-      }];
+      }));
     },
     async createAppointment(input): Promise<Appointment> {
       return {
@@ -327,13 +409,17 @@ function observeHandler(
 
 describe("V2-only runtime performance measurement worker", () => {
   let runtime: EmbeddedAuthorityDatabase | undefined;
-  let clinicId = "";
   let fixtures: CorpusCase[] = [];
   let populationDigest = "";
   let databaseServerVersion = "";
   let inboundEventStore: DrizzleInboundEventStore;
   let jobQueue: DrizzleJobQueue;
   let outboundMessageStore: DrizzleOutboundMessageStore;
+  let leadRepository: DrizzleLeadRepository;
+  let conversationRepository: DrizzleConversationRepository;
+  let state: ConversationStateMachine;
+  let appointmentRepository: DrizzleAppointmentRepository;
+  let reservations: SlotReservationService;
   let processHandlers: Record<ArmName, ProcessMessageJobHandler>;
   let sender: SendMessageJobHandler;
   let sqlRecorder: ReturnType<typeof installRuntimePerformanceSqlRecorder> | undefined;
@@ -342,6 +428,13 @@ describe("V2-only runtime performance measurement worker", () => {
   let activeV2Tokens = 0;
   let providerDeliveries = 0;
   const observations = new Map<string, ConversationHandleResult>();
+  const decisionTraces: Record<ArmName, Map<string, DecisionTraceRecord[]>> = {
+    v1_current: new Map(),
+    v2_only: new Map(),
+  };
+  const v1TurnObservations = new Map<string, V1TurnObservationEvent[]>();
+  const clinicIdsByCase = new Map<string, string>();
+  const expectedV2OutcomesByCase = new Map<string, string>();
   const samples: Record<ArmName, TurnSample[]> = { v1_current: [], v2_only: [] };
 
   beforeAll(async () => {
@@ -381,42 +474,102 @@ describe("V2-only runtime performance measurement worker", () => {
       })),
     )).digest("hex")}`;
 
-    const [organization] = await database.insert(organizations).values({
-      name: "Runtime measurement",
-      slug: "runtime-measurement",
-      specialty: "dental",
-      operationalStatus: "active",
-      isTest: true,
-      isDemo: false,
-      autoReplyEnabled: true,
-      calendarMode: "internal",
-      timezone: "America/Sao_Paulo",
-      businessHours: "Seg-Sex 08:00-18:00",
-      messageDebounceMs: 0,
-    }).returning({ id: organizations.id });
-    clinicId = organization!.id;
-    const serviceAliases = [...new Set(fixtures.flatMap((fixture) => {
-      const service = fixture.labels.understanding.entities.service;
-      return typeof service === "string" && service ? [service] : [];
-    }))];
-    await database.insert(treatments).values({
-      clinicId,
-      name: "Runtime service",
-      durationMinutes: 60,
-      description: "Runtime measurement service",
-      aliases: serviceAliases,
-      priceCents: 10_000,
-      priceQuotableInChat: true,
-      priceKind: "fixed",
-    });
+    for (const [fixtureIndex, fixture] of fixtures.entries()) {
+      const configRef = fixture.input.tenantConfigRef;
+      const config = JSON.parse(readFileSync(
+        join(process.cwd(), "evals/corpus/tenant-configs", `${configRef}.json`),
+        "utf8",
+      )) as {
+        timezone?: unknown;
+        businessHours?: unknown;
+        services?: unknown;
+      };
+      if (!Array.isArray(config.services)) throw new Error(`runtime fixture ${configRef} has no services`);
+      const fixtureServices = config.services.map((candidate, serviceIndex) => {
+        if (!candidate || typeof candidate !== "object") {
+          throw new Error(`runtime fixture ${configRef} service ${serviceIndex} is invalid`);
+        }
+        const service = candidate as Record<string, unknown>;
+        const name = optionalString(service.name);
+        if (!name) throw new Error(`runtime fixture ${configRef} service ${serviceIndex} has no name`);
+        return { service, name };
+      });
+      const aliasesByService = new Map<string, Set<string>>();
+      const serviceQuery = fixture.labels.understanding.entities.service;
+      const expected = fixture.labels.expectedActionResult;
+      const targetNames = optionalStringArray(expected.ambiguousTreatmentMatches)
+        ?? (optionalString(expected.identifiedTreatment) ? [String(expected.identifiedTreatment)] : []);
+      const targets = targetNames.length > 0
+        ? fixtureServices.filter(({ name }) => targetNames.some((target) => serviceKey(target) === serviceKey(name)))
+        : typeof serviceQuery === "string"
+          ? fixtureServices.filter(({ name }) => serviceQueryMatches(serviceQuery, name))
+          : [];
+      if (typeof serviceQuery === "string") {
+        for (const target of targets) {
+          const aliases = aliasesByService.get(target.name) ?? new Set<string>();
+          aliases.add(serviceQuery);
+          aliasesByService.set(target.name, aliases);
+        }
+      }
+      const expectedOutcome = expected.type === "slots_found"
+        ? "slots_found"
+        : expected.type === "appointment_confirmed"
+          ? "appointment_created"
+          : expected.type === "appointment_confirmation_accepted"
+            ? "appointment_confirmed"
+            : targets.length > 1
+              ? "service_options_offered"
+              : targets.length === 1 && (
+                fixture.labels.understanding.request === "service-availability"
+                || typeof targets[0]!.service.priceCents === "number"
+              )
+                ? "catalog_answered"
+                : "clarification_required";
+      expectedV2OutcomesByCase.set(fixture.caseId, expectedOutcome);
+      const [organization] = await database.insert(organizations).values({
+        name: `Runtime measurement ${fixtureIndex + 1}`,
+        slug: `runtime-measurement-${fixtureIndex + 1}`,
+        specialty: "dental",
+        operationalStatus: "active",
+        isTest: true,
+        isDemo: false,
+        autoReplyEnabled: true,
+        calendarMode: "internal",
+        timezone: optionalString(config.timezone) ?? "America/Sao_Paulo",
+        businessHours: optionalString(config.businessHours) ?? "Seg-Sex 08:00-18:00",
+        messageDebounceMs: 0,
+      }).returning({ id: organizations.id });
+      clinicIdsByCase.set(fixture.caseId, organization!.id);
+      const servicesToSeed = fixture.labels.understanding.request === "book-appointment"
+        ? (targets.length > 0 ? targets : fixtureServices.slice(0, 1))
+        : fixture.labels.understanding.request === "confirm-slot"
+          || fixture.labels.understanding.request === "confirm-appointment"
+          ? fixtureServices.slice(0, 1)
+          : fixtureServices;
+      for (const { service, name } of servicesToSeed) {
+        const priceCents = typeof service.priceCents === "number" ? service.priceCents : null;
+        const aliases = new Set(optionalStringArray(service.aliases) ?? []);
+        for (const alias of aliasesByService.get(name) ?? []) aliases.add(alias);
+        await database.insert(treatments).values({
+          clinicId: organization!.id,
+          name,
+          durationMinutes: 60,
+          description: optionalString(service.description),
+          aliases: [...aliases],
+          priceCents,
+          priceQuotableInChat: priceCents !== null,
+          priceKind: "fixed",
+        });
+      }
+    }
     const version = await runtime.pool.query<{ server_version: string }>("show server_version");
     databaseServerVersion = version.rows[0]?.server_version ?? "unknown";
 
     inboundEventStore = new DrizzleInboundEventStore(embeddedBatch);
     jobQueue = new DrizzleJobQueue();
     outboundMessageStore = new DrizzleOutboundMessageStore();
-    const leadRepository = new DrizzleLeadRepository();
-    const conversationRepository = new DrizzleConversationRepository();
+    leadRepository = new DrizzleLeadRepository();
+    conversationRepository = new DrizzleConversationRepository();
     const followUpRepository = new DrizzleFollowUpRepository();
     const streamAuthority = new DrizzleWhatsAppStreamAuthority(embeddedBatch);
     const makeRegisterIncomingMessage = () => new RegisterIncomingMessage({
@@ -437,14 +590,25 @@ describe("V2-only runtime performance measurement worker", () => {
       now: fixedDate,
     });
 
+    const decisionTraceSink = (arm: ArmName): DecisionTraceSink => ({
+      record(record) {
+        const records = decisionTraces[arm].get(record.turnId) ?? [];
+        records.push(record);
+        decisionTraces[arm].set(record.turnId, records);
+      },
+    });
+    const calendar = createCalendar();
     const v1Handler = observeHandler(
-      new ConversationOrchestrator({ suppressAuxiliaryExternalEffects: true }),
+      new ConversationOrchestrator({
+        suppressAuxiliaryExternalEffects: true,
+        decisionTraceSink: decisionTraceSink("v1_current"),
+        calendarGatewayResolver: () => calendar,
+      }),
       observations,
     );
-    const state = new ConversationStateMachine();
-    const reservations = new SlotReservationService();
-    const calendar = createCalendar();
-    const appointmentRepository = new DrizzleAppointmentRepository();
+    state = new ConversationStateMachine();
+    reservations = new SlotReservationService();
+    appointmentRepository = new DrizzleAppointmentRepository();
     const v2Lifecycle = new LiveTurnLifecycle({
       registerIncomingMessage: makeRegisterIncomingMessage(),
       conversationRepository,
@@ -519,6 +683,7 @@ describe("V2-only runtime performance measurement worker", () => {
         },
       }),
       outbound: { outboundMessageStore, jobQueue },
+      decisionTraceSink: decisionTraceSink("v2_only"),
       persistStopContact: async () => {},
       now: fixedDate,
     }), observations);
@@ -528,6 +693,13 @@ describe("V2-only runtime performance measurement worker", () => {
       automationPolicy: new DrizzleClinicAutomationPolicyReader(),
       inboundHistoryRegistrar,
       transcribeAudio: async () => { throw new Error("runtime text fixtures never transcribe audio"); },
+      createTurnObservationSink: ({ turnId }: { turnId: string }) => ({
+        record(event: V1TurnObservationEvent) {
+          const events = v1TurnObservations.get(turnId) ?? [];
+          events.push(event);
+          v1TurnObservations.set(turnId, events);
+        },
+      }),
     };
     processHandlers = {
       v1_current: new ProcessMessageJobHandler({ ...processDependencies, conversationHandler: v1Handler }),
@@ -594,8 +766,163 @@ describe("V2-only runtime performance measurement worker", () => {
     };
   }
 
+  async function readDurableReplyIntent(inboundEventId: string): Promise<string | null> {
+    const result = await runtime!.pool.query<{ intent: string | null }>(`
+      select payload ->> 'intent' as intent
+        from outbound_messages
+       where category = 'reply'
+         and authorization_inbound_event_id = $1::uuid
+    `, [inboundEventId]);
+    expect(result.rows, `${inboundEventId} has one durable reply path`).toHaveLength(1);
+    return result.rows[0]?.intent ?? null;
+  }
+
+  async function seedFixtureContext(
+    arm: ArmName,
+    fixture: CorpusCase,
+    turnIndex: number,
+    phone: string,
+    clinicId: string,
+  ): Promise<void> {
+    const now = fixedDate();
+    const lead = await leadRepository.ensureWhatsAppIdentity({
+      id: randomUUID(),
+      clinicId,
+      name: null,
+      phone,
+      whatsappLid: null,
+      email: null,
+      channel: "whatsapp",
+      campaignId: null,
+      treatmentInterest: null,
+      profilePicUrl: null,
+      status: "new",
+      temperature: null,
+      assignedToUserId: null,
+      nextActionAt: null,
+      lostReason: null,
+      createdAt: now,
+      updatedAt: now,
+    } satisfies Lead);
+    const conversation = await conversationRepository.ensureConversation({
+      id: randomUUID(),
+      clinicId,
+      leadId: lead.id,
+      channel: "whatsapp",
+      category: "sales",
+      externalThreadId: phone,
+      summary: null,
+      aiPaused: false,
+      takeoverExpiresAt: null,
+      needsAttention: false,
+      attentionReason: null,
+      consecutiveUnclearCount: 0,
+      lastMessageAt: null,
+      createdAt: now,
+      updatedAt: now,
+    } satisfies Conversation);
+
+    for (const [index, history] of fixture.input.history.entries()) {
+      const inserted = await conversationRepository.appendMessage({
+        id: randomUUID(),
+        conversationId: conversation.id,
+        author: history.author === "operator" ? "clinic_user" : history.author,
+        body: history.body,
+        sentAt: new Date(FIXED_NOW.getTime() - (fixture.input.history.length - index + 1) * 60_000),
+        externalId: null,
+        intent: null,
+        deliveryFormat: null,
+      } satisfies Message);
+      expect(inserted, `${arm}/${fixture.caseId}/${turnIndex} history row ${index}`).toBe(true);
+    }
+
+    const supportedStates = new Set<ConversationStateType>([
+      "idle",
+      "slots_offered",
+      "awaiting_confirmation",
+      "booking_pending",
+      "menu_offered",
+      "procedure_list_offered",
+      "treatment_pipeline_active",
+      "awaiting_appointment_confirmation",
+      "awaiting_deposit_proof",
+      "deposit_proof_received",
+    ]);
+    if (fixture.input.state !== null) {
+      if (!supportedStates.has(fixture.input.state as ConversationStateType)) {
+        throw new Error(`unsupported runtime fixture state ${fixture.input.state}`);
+      }
+      await state.transition(conversation.id, fixture.input.state as ConversationStateType);
+    }
+
+    const persistedHistory = await conversationRepository.listMessages(conversation.id);
+    expect(
+      persistedHistory.map(({ author, body }) => ({ author, body })),
+      `${arm}/${fixture.caseId}/${turnIndex} durable history`,
+    ).toEqual(fixture.input.history.map(({ author, body }) => ({
+      author: author === "operator" ? "clinic_user" : author,
+      body,
+    })));
+    expect((await state.getCurrentState(conversation.id))?.state ?? null)
+      .toBe(fixture.input.state);
+
+    if (fixture.labels.expectedActionResult.type === "appointment_confirmed") {
+      const [treatment] = await new DrizzleTreatmentRepository().listByClinic(clinicId);
+      if (!treatment) throw new Error(`missing runtime treatment for ${fixture.caseId}`);
+      await state.transition(conversation.id, "slots_offered", {
+        slots: [
+          {
+            index: 1,
+            startsAt: "2026-08-26T17:00:00.000Z",
+            endsAt: "2026-08-26T18:00:00.000Z",
+            label: "quarta às 14h",
+          },
+          {
+            index: 2,
+            startsAt: "2026-08-26T18:00:00.000Z",
+            endsAt: "2026-08-26T19:00:00.000Z",
+            label: optionalString(fixture.labels.expectedActionResult.slot) ?? "quarta às 15h",
+          },
+        ],
+        expiresAt: "2026-08-26T20:00:00.000Z",
+        treatmentId: treatment.id,
+        treatmentName: treatment.name,
+        durationMinutes: 60,
+      }, 1_920);
+    } else if (fixture.labels.expectedActionResult.type === "appointment_confirmation_accepted") {
+      const appointmentId = randomUUID();
+      const appointmentLabel = optionalString(fixture.labels.expectedActionResult.appointmentLabel) ?? "horário confirmado";
+      await appointmentRepository.save({
+        id: appointmentId,
+        clinicId,
+        leadId: lead.id,
+        professionalId: null,
+        roomId: null,
+        calendarEventId: randomUUID(),
+        calendarEventUrl: null,
+        startsAt: new Date("2026-08-25T19:00:00.000Z"),
+        endsAt: new Date("2026-08-25T20:00:00.000Z"),
+        status: "scheduled",
+        source: "app",
+        origin: null,
+        reminderSentAt: null,
+        treatmentId: null,
+        valueCents: null,
+        description: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await state.transition(conversation.id, "awaiting_appointment_confirmation", {
+        appointmentId,
+        appointmentLabel,
+      });
+    }
+  }
+
   async function runTurn(arm: ArmName, fixture: CorpusCase, repetition: number): Promise<void> {
     const turnIndex = repetition * fixtures.length + fixtures.indexOf(fixture);
+    const clinicId = clinicIdsByCase.get(fixture.caseId);
+    if (!clinicId) throw new Error(`missing runtime clinic ${fixture.caseId}`);
     const messageId = `runtime-${arm}-${repetition}-${fixture.caseId}`;
     const phone = arm === "v1_current"
       ? `551170${String(turnIndex).padStart(7, "0")}`
@@ -629,7 +956,8 @@ describe("V2-only runtime performance measurement worker", () => {
       receivedAt: fixedDate(),
     };
 
-    v1Model.begin(fixture.caseId);
+    await seedFixtureContext(arm, fixture, turnIndex, phone, clinicId);
+    v1Model.begin(fixture.caseId, legacyClassificationFor(fixture));
     activeV2Fixture = fixture;
     activeV2Calls = 0;
     activeV2Tokens = 0;
@@ -668,6 +996,32 @@ describe("V2-only runtime performance measurement worker", () => {
       expect(observed, `${arm}/${fixture.caseId}/${repetition} crossed the unchanged handler`).toBeDefined();
       expect(observed?.reason, `${arm}/${fixture.caseId}/${repetition} must not be a safe failure`).toBeUndefined();
       expect(observed?.replied, `${arm}/${fixture.caseId}/${repetition} reply disposition`).toBe(expectedReply(fixture));
+      if (arm === "v1_current") {
+        const plans = (v1TurnObservations.get(recorded.inboundEventId) ?? [])
+          .filter((event): event is Extract<V1TurnObservationEvent, { kind: "v1_response_plan" }> =>
+            event.kind === "v1_response_plan");
+        if (plans.length > 0) {
+          expect(
+            plans.some((plan) => expectedLegacyActions(fixture).includes(plan.outcomeSummary)),
+            `${arm}/${fixture.caseId}/${repetition} legacy action path`,
+          ).toBe(true);
+        } else {
+          expect(await readDurableReplyIntent(recorded.inboundEventId), `${arm}/${fixture.caseId}/${repetition} durable legacy path`)
+            .toBe(expectedLegacyIntent(fixture));
+        }
+      } else {
+        const v2Traces = decisionTraces.v2_only.get(recorded.inboundEventId) ?? [];
+        const understoodRequests = v2Traces
+          .filter((record) => record.stage === "v2.understanding")
+          .map((record) => record.metadata?.request);
+        expect(understoodRequests, `${arm}/${fixture.caseId}/${repetition} V2 understanding path`)
+          .toContain(fixture.labels.understanding.request);
+        const actionOutcomes = v2Traces
+          .filter((record) => record.stage === "v2.action_result")
+          .flatMap((record) => String(record.metadata?.outcomeTypes ?? "").split(","));
+        expect(actionOutcomes, `${arm}/${fixture.caseId}/${repetition} V2 action path`)
+          .toContain(expectedV2OutcomesByCase.get(fixture.caseId));
+      }
 
       const sendResult = await runWithRuntimeClock({ now: fixedDate }, () =>
         drainMessageSendQueue({
@@ -691,12 +1045,27 @@ describe("V2-only runtime performance measurement worker", () => {
         sendJobs: 1,
         sentReplies: 1,
       });
+      if (arm === "v1_current") {
+        expect(v1Model.snapshot().classifiedIntent, `${fixture.caseId} legacy classifier mapping`)
+          .toBe(expectedLegacyIntent(fixture));
+      }
       const telemetry = arm === "v1_current"
         ? v1Model.snapshot()
         : { calls: activeV2Calls, tokens: activeV2Tokens };
       expect(telemetry.calls).toBeGreaterThan(0);
       expect(telemetry.tokens).toBeGreaterThan(0);
       samples[arm].push(Object.freeze({ latencyMs, modelCalls: telemetry.calls, tokens: telemetry.tokens, sql, cardinality }));
+      if (fixture.labels.expectedActionResult.type === "appointment_confirmed") {
+        const createdAppointments = await appointmentRepository.findByPeriod(
+          clinicId,
+          new Date("2026-08-26T00:00:00.000Z"),
+          new Date("2026-08-27T00:00:00.000Z"),
+        );
+        for (const appointment of createdAppointments) {
+          await appointmentRepository.save({ ...appointment, status: "cancelled", updatedAt: fixedDate() });
+          await reservations.releaseBySlot(clinicId, appointment.startsAt);
+        }
+      }
     } finally {
       if (!sql) sqlRecorder!.endTurn();
       activeV2Fixture = undefined;

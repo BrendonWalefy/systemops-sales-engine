@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   evaluateRuntimePerformance,
+  evaluateRuntimePerformanceReport,
   parseRuntimePerformanceReport,
   type RuntimeArmMetrics,
   type RuntimePerformanceReport,
@@ -17,7 +18,7 @@ function metrics(arm: RuntimeArmMetrics["arm"]): RuntimeArmMetrics {
     modelCalls: { mean: 1, p95: 1 },
     tokens: { mean: 500, p95: 800 },
     database: { statementsP95: 12, roundTripsP95: 4, lockHoldP95Ms: 10 },
-    cardinality: { events: 102, processJobs: 102, liveReplies: 96, sendJobs: 96 },
+    cardinality: { events: 102, processJobs: 102, liveReplies: 102, sendJobs: 102 },
   };
 }
 
@@ -130,6 +131,115 @@ describe("V2-only runtime performance baseline", () => {
       "latencyMs.p95",
       "database.lockHoldP95Ms",
     ]);
+  });
+
+  it("rejects population digest drift before comparing volatile metrics", () => {
+    const frozen = report();
+    const current = {
+      ...report(),
+      provenance: {
+        ...report().provenance,
+        populationDigest: `sha256:${"b".repeat(64)}`,
+      },
+    } satisfies RuntimePerformanceReport;
+
+    expect(evaluateRuntimePerformanceReport(current, frozen)).toEqual({
+      passed: false,
+      violations: ["protocol.populationDigest"],
+    });
+  });
+
+  it("uses paired current arms so a host-wide timing shift does not false-fail", () => {
+    const frozen = report();
+    const source = report();
+    const current = {
+      ...source,
+      arms: [
+        { ...source.arms[0], latencyMs: { p50: 1_000, p95: 2_000 }, database: { ...source.arms[0].database, lockHoldP95Ms: 100 } },
+        { ...source.arms[1], latencyMs: { p50: 1_000, p95: 2_000 }, database: { ...source.arms[1].database, lockHoldP95Ms: 100 } },
+      ],
+    } satisfies RuntimePerformanceReport;
+
+    expect(evaluateRuntimePerformanceReport(current, frozen)).toEqual({
+      passed: true,
+      violations: [],
+    });
+  });
+
+  it("fails a V2-only regression against the paired current V1 arm", () => {
+    const frozen = report();
+    const source = report();
+    const current = {
+      ...source,
+      arms: [
+        { ...source.arms[0], latencyMs: { p50: 1_000, p95: 2_000 }, database: { ...source.arms[0].database, lockHoldP95Ms: 100 } },
+        { ...source.arms[1], latencyMs: { p50: 1_101, p95: 2_251 }, database: { ...source.arms[1].database, lockHoldP95Ms: 106 } },
+      ],
+    } satisfies RuntimePerformanceReport;
+
+    expect(evaluateRuntimePerformanceReport(current, frozen)).toEqual({
+      passed: false,
+      violations: ["latencyMs.p50", "latencyMs.p95", "database.lockHoldP95Ms"],
+    });
+  });
+
+  it("rejects protocol population, arm-order, and structural cardinality drift", () => {
+    const frozen = report();
+    const source = report();
+    const current = {
+      ...source,
+      population: { cases: 18, repetitions: 6, turnsPerArm: 108 },
+      provenance: {
+        ...source.provenance,
+        armOrder: [["v2_only", "v1_current"], ...source.provenance.armOrder.slice(1)],
+      },
+      arms: [
+        { ...source.arms[0], cardinality: { ...source.arms[0].cardinality, liveReplies: 101 } },
+        source.arms[1],
+      ],
+    } as unknown as RuntimePerformanceReport;
+
+    expect(evaluateRuntimePerformanceReport(current, frozen)).toEqual({
+      passed: false,
+      violations: [
+        "protocol.population",
+        "protocol.armOrder",
+        "current.v1_current.cardinality.liveReplies",
+      ],
+    });
+  });
+
+  it("rejects arm-order policy drift and invalid frozen cardinality", () => {
+    const source = report();
+    const current = {
+      ...source,
+      provenance: { ...source.provenance, armOrderPolicy: "run-v1-then-v2" },
+    } as unknown as RuntimePerformanceReport;
+    const frozen = {
+      ...source,
+      arms: [
+        source.arms[0],
+        { ...source.arms[1], cardinality: { ...source.arms[1].cardinality, sendJobs: 101 } },
+      ],
+    } satisfies RuntimePerformanceReport;
+
+    expect(evaluateRuntimePerformanceReport(current, frozen)).toEqual({
+      passed: false,
+      violations: [
+        "protocol.armOrderPolicy",
+        "frozen.v2_only.cardinality.sendJobs",
+      ],
+    });
+  });
+
+  it("keeps the measurement suite isolated behind the dedicated package command", () => {
+    const packageJson = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    const exclusion = "--exclude src/__tests__/V2OnlyRuntimePerformanceMeasurement.test.ts";
+
+    expect(packageJson.scripts.test?.split(exclusion)).toHaveLength(2);
+    expect(packageJson.scripts["measure:v2-only-runtime"]).toBe("tsx scripts/measure-v2-only-runtime.ts");
   });
 
   it.each(["--baseline", "--write-baseline"])("rejects a missing value for %s", (flag) => {

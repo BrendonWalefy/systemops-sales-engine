@@ -12,7 +12,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --exclude src/__tests__/ScheduledBurstDebounceDatabase.test.ts --exclude src/__tests__/WhatsAppAuthorityBackfillDatabase.test.ts --exclude src/__tests__/WhatsAppTerminalLegacySettlementDatabase.test.ts --exclude src/__tests__/WhatsAppTerminalLegacyOutboundSettlementDatabase.test.ts --exclude src/__tests__/WhatsAppStreamPerformance.test.ts --exclude src/__tests__/WhatsAppStreamSchema.test.ts --exclude src/__tests__/SystemOpsDentalLabConfigDatabase.test.ts",
+    "test": "vitest run --exclude src/__tests__/ScheduledBurstDebounceDatabase.test.ts --exclude src/__tests__/WhatsAppAuthorityBackfillDatabase.test.ts --exclude src/__tests__/WhatsAppTerminalLegacySettlementDatabase.test.ts --exclude src/__tests__/WhatsAppTerminalLegacyOutboundSettlementDatabase.test.ts --exclude src/__tests__/WhatsAppStreamPerformance.test.ts --exclude src/__tests__/WhatsAppStreamSchema.test.ts --exclude src/__tests__/SystemOpsDentalLabConfigDatabase.test.ts --exclude src/__tests__/V2OnlyRuntimePerformanceMeasurement.test.ts",
     "test:db": "npm run test:db:authority",
     "test:db:calendar": "dotenv -e .env.test.local -- vitest run src/__tests__/calendar-import.test.ts",
     "test:db:authority": "vitest run src/__tests__/ScheduledBurstDebounceDatabase.test.ts src/__tests__/WhatsAppAuthorityBackfillDatabase.test.ts src/__tests__/WhatsAppTerminalLegacySettlementDatabase.test.ts src/__tests__/WhatsAppTerminalLegacyOutboundSettlementDatabase.test.ts src/__tests__/WhatsAppStreamPerformance.test.ts src/__tests__/SystemOpsDentalLabConfigDatabase.test.ts --maxWorkers=1",

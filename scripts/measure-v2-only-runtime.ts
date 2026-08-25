@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSyn
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
-import { parseRuntimePerformanceReport, evaluateRuntimePerformance } from "../src/application/conversation-v2/v2-runtime-performance";
+import { evaluateRuntimePerformanceReport, parseRuntimePerformanceReport } from "../src/application/conversation-v2/v2-runtime-performance";
 
 type BaselineAction = Readonly<{ kind: "write" | "compare"; path: string }> | null;
 
@@ -71,7 +71,7 @@ function main(): void {
       writeFileSync(action.path, JSON.stringify(report, null, 2) + "\n");
     } else if (action?.kind === "compare") {
       const baseline = parseRuntimePerformanceReport(JSON.parse(readFileSync(action.path, "utf8")));
-      const evaluation = evaluateRuntimePerformance(report.arms[1], baseline.arms[0]);
+      const evaluation = evaluateRuntimePerformanceReport(report, baseline);
       console.log(JSON.stringify({ passed: evaluation.passed, violations: evaluation.violations }));
       if (!evaluation.passed) process.exitCode = 1;
     } else {
