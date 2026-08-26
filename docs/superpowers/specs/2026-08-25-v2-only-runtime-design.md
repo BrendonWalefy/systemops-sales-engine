@@ -301,6 +301,12 @@ O commit-base anterior ao corte é o braço V1 atual; o candidato é o braço V2
 - jobs criados e outbounds criados por inbound;
 - consumo Neon ocioso, incluindo compute-active time e wake-ups.
 
+O relatório congelado preserva ambos os braços. A diferença V1→V2 já observada no baseline é
+informacional e não é redefinida como regressão do candidato. Todo limite bloqueante — latência,
+lock, chamadas, tokens, SQL e cardinalidade — compara a V2 candidata diretamente com o braço V2
+congelado. Assim, drift ou lentidão do comparador V1 não pode mascarar regressão. A V1 só é
+executada nesse harness offline isolado e nunca volta a um composition root produtivo.
+
 Jobs e outbounds têm gate estrutural absoluto: um provider event físico cria no máximo um `message.process`; uma geração settled cria no máximo um `live_stream_reply` e um `message.send`. O corte não introduz polling, heartbeat nem worker contínuo. Ausência de baseline mensurável é RED e não pode ser convertida em “sem regressão”.
 
 ## 16. Rollout e rollback

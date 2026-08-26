@@ -94,20 +94,25 @@ expect(() => parseRuntimePerformanceReport({ ...report, modelCalls: null })).toT
 Assert these exact gates:
 
 ```text
-p50 turn latency: candidate <= baseline * 1.10 AND delta <= 100 ms
-p95 turn latency: candidate <= baseline * 1.10 AND delta <= 250 ms
-mean model calls/turn: candidate <= baseline
-p95 model calls/turn: candidate <= baseline
-mean total tokens/turn: candidate <= baseline * 1.10
-p95 total tokens/turn: candidate <= baseline * 1.15
-p95 SQL statements/turn: candidate <= baseline * 1.10
-p95 sequential DB round trips/turn: candidate <= baseline + 2
-p95 stream-lock hold: candidate <= baseline * 1.10 AND delta <= 5 ms
+p50 turn latency: candidate V2 <= frozen V2 * 1.10 AND delta <= 100 ms
+p95 turn latency: candidate V2 <= frozen V2 * 1.10 AND delta <= 250 ms
+mean model calls/turn: candidate V2 <= frozen V2
+p95 model calls/turn: candidate V2 <= frozen V2
+mean total tokens/turn: candidate V2 <= frozen V2 * 1.10
+p95 total tokens/turn: candidate V2 <= frozen V2 * 1.15
+p95 SQL statements/turn: candidate V2 <= frozen V2 * 1.10
+p95 sequential DB round trips/turn: candidate V2 <= frozen V2 + 2
+p95 stream-lock hold: candidate V2 <= frozen V2 * 1.10 AND delta <= 5 ms
 process jobs/provider event: exactly 1
 live replies/settled generation: 0 or 1; exactly 1 only when the fixture expects a reply
 send jobs/live reply: exactly 1
 duplicate provider fixture: 1 event, 1 process job, 1 reply, 1 send job
 ```
+
+The V1 arm is an offline historical comparator only. The frozen V1→V2 difference is reported, not
+silently rebased and not treated as a new candidate regression. No production root imports this
+measurement harness. Every blocking threshold is independent of current V1, so comparator drift
+cannot authorize a slower V2.
 
 - [ ] **Step 2: Run RED**
 

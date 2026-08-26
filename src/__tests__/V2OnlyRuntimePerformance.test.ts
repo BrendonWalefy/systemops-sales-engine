@@ -151,14 +151,119 @@ describe("V2-only runtime performance baseline", () => {
     });
   });
 
-  it("uses paired current arms so a host-wide timing shift does not false-fail", () => {
+  it("fails closed when host timing exceeds the direct frozen V2 budget", () => {
     const frozen = report();
     const source = report();
     const current = {
       ...source,
       arms: [
-        { ...source.arms[0], latencyMs: { p50: 1_000, p95: 2_000 }, database: { ...source.arms[0].database, lockHoldP95Ms: 100 } },
-        { ...source.arms[1], latencyMs: { p50: 1_000, p95: 2_000 }, database: { ...source.arms[1].database, lockHoldP95Ms: 100 } },
+        { ...source.arms[0], latencyMs: { p50: 150, p95: 300 }, database: { ...source.arms[0].database, lockHoldP95Ms: 15 } },
+        { ...source.arms[1], latencyMs: { p50: 150, p95: 300 }, database: { ...source.arms[1].database, lockHoldP95Ms: 15 } },
+      ],
+    } satisfies RuntimePerformanceReport;
+
+    expect(evaluateRuntimePerformanceReport(current, frozen).violations).toEqual([
+      "latencyMs.p50",
+      "latencyMs.p95",
+      "database.lockHoldP95Ms",
+    ]);
+  });
+
+  it("handles zero metrics and cannot be masked by a drifting V1 comparator", () => {
+    const source = report();
+    const zeroReference = {
+      ...source,
+      arms: [
+        {
+          ...source.arms[0],
+          latencyMs: { p50: 0, p95: 0 },
+          database: { ...source.arms[0].database, lockHoldP95Ms: 0 },
+        },
+        {
+          ...source.arms[1],
+          latencyMs: { p50: 10, p95: 20 },
+          database: { ...source.arms[1].database, lockHoldP95Ms: 1 },
+        },
+      ],
+    } satisfies RuntimePerformanceReport;
+    const zeroCurrent = {
+      ...zeroReference,
+      arms: [
+        zeroReference.arms[0],
+        {
+          ...zeroReference.arms[1],
+          latencyMs: { p50: 12, p95: 23 },
+          database: { ...zeroReference.arms[1].database, lockHoldP95Ms: 1.2 },
+        },
+      ],
+    } satisfies RuntimePerformanceReport;
+    expect(evaluateRuntimePerformanceReport(zeroCurrent, zeroReference).violations).toEqual([
+      "latencyMs.p50",
+      "latencyMs.p95",
+      "database.lockHoldP95Ms",
+    ]);
+
+    const allZero = {
+      ...source,
+      arms: source.arms.map((arm) => ({
+        ...arm,
+        latencyMs: { p50: 0, p95: 0 },
+        database: { ...arm.database, lockHoldP95Ms: 0 },
+      })) as unknown as RuntimePerformanceReport["arms"],
+    } satisfies RuntimePerformanceReport;
+    expect(evaluateRuntimePerformanceReport(allZero, allZero)).toEqual({
+      passed: true,
+      violations: [],
+    });
+
+    const driftingComparator = {
+      ...source,
+      arms: [
+        {
+          ...source.arms[0],
+          latencyMs: { p50: 1_000, p95: 2_000 },
+          database: { ...source.arms[0].database, lockHoldP95Ms: 100 },
+        },
+        {
+          ...source.arms[1],
+          latencyMs: { p50: 190, p95: 380 },
+          database: { ...source.arms[1].database, lockHoldP95Ms: 19 },
+        },
+      ],
+    } satisfies RuntimePerformanceReport;
+    expect(evaluateRuntimePerformanceReport(driftingComparator, source).violations).toEqual([
+      "latencyMs.p50",
+      "latencyMs.p95",
+      "database.lockHoldP95Ms",
+    ]);
+  });
+
+  it("budgets model and token cost against the frozen V2 arm, not against V1", () => {
+    const source = report();
+    const frozen = {
+      ...source,
+      arms: [
+        {
+          ...source.arms[0],
+          modelCalls: { mean: 1.8, p95: 2 },
+          tokens: { mean: 36, p95: 46 },
+        },
+        {
+          ...source.arms[1],
+          modelCalls: { mean: 2, p95: 2 },
+          tokens: { mean: 48, p95: 50 },
+        },
+      ],
+    } satisfies RuntimePerformanceReport;
+    const current = {
+      ...frozen,
+      arms: [
+        {
+          ...frozen.arms[0],
+          modelCalls: { mean: 1.7, p95: 2 },
+          tokens: { mean: 35, p95: 45 },
+        },
+        frozen.arms[1],
       ],
     } satisfies RuntimePerformanceReport;
 
@@ -166,9 +271,27 @@ describe("V2-only runtime performance baseline", () => {
       passed: true,
       violations: [],
     });
+
+    const regressed = {
+      ...current,
+      arms: [
+        current.arms[0],
+        {
+          ...current.arms[1],
+          modelCalls: { mean: 2.1, p95: 3 },
+          tokens: { mean: 53, p95: 58 },
+        },
+      ],
+    } satisfies RuntimePerformanceReport;
+    expect(evaluateRuntimePerformanceReport(regressed, frozen).violations).toEqual([
+      "modelCalls.mean",
+      "modelCalls.p95",
+      "tokens.mean",
+      "tokens.p95",
+    ]);
   });
 
-  it("fails a V2-only regression against the paired current V1 arm", () => {
+  it("fails a V2-only latency regression against the frozen V2 arm", () => {
     const frozen = report();
     const source = report();
     const current = {
@@ -185,7 +308,7 @@ describe("V2-only runtime performance baseline", () => {
     });
   });
 
-  it("rejects protocol population, arm-order, and structural cardinality drift", () => {
+  it("rejects protocol drift while treating V1 cardinality as informational", () => {
     const frozen = report();
     const source = report();
     const current = {
@@ -206,8 +329,24 @@ describe("V2-only runtime performance baseline", () => {
       violations: [
         "protocol.population",
         "protocol.armOrder",
-        "current.v1_current.cardinality.liveReplies",
       ],
+    });
+  });
+
+  it("fails closed on V2 structural cardinality drift", () => {
+    const frozen = report();
+    const source = report();
+    const current = {
+      ...source,
+      arms: [
+        source.arms[0],
+        { ...source.arms[1], cardinality: { ...source.arms[1].cardinality, liveReplies: 101 } },
+      ],
+    } satisfies RuntimePerformanceReport;
+
+    expect(evaluateRuntimePerformanceReport(current, frozen)).toEqual({
+      passed: false,
+      violations: ["current.v2_only.cardinality.liveReplies"],
     });
   });
 

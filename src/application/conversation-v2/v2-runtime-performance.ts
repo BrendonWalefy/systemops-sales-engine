@@ -193,11 +193,10 @@ function structuralCardinalityViolations(
   source: "current" | "frozen",
 ): string[] {
   const violations: string[] = [];
-  for (const arm of report.arms) {
-    for (const field of ["events", "processJobs", "liveReplies", "sendJobs"] as const) {
-      if (arm.cardinality[field] !== arm.turns) {
-        violations.push(`${source}.${arm.arm}.cardinality.${field}`);
-      }
+  const arm = report.arms[1];
+  for (const field of ["events", "processJobs", "liveReplies", "sendJobs"] as const) {
+    if (arm.cardinality[field] !== arm.turns) {
+      violations.push(`${source}.${arm.arm}.cardinality.${field}`);
     }
   }
   return violations;
@@ -231,5 +230,5 @@ export function evaluateRuntimePerformanceReport(
     return Object.freeze({ passed: false, violations: Object.freeze(violations) });
   }
 
-  return evaluateRuntimePerformance(current.arms[1], current.arms[0]);
+  return evaluateRuntimePerformance(current.arms[1], frozen.arms[1]);
 }

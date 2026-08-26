@@ -176,13 +176,15 @@ O baseline congelado está em `evals/v2-only/runtime-baseline.json` e usa 17 cas
 102 turnos por braço. O candidato precisa manter cardinalidade exata: um event e um process job por
 turno, no máximo um live reply e um send job por reply.
 
-Limites do avaliador:
+Limites do avaliador. Todo custo candidato é comparado diretamente ao braço V2 congelado; V1
+permanece no mesmo relatório somente como referência histórica, nunca como runtime, fallback ou
+normalizador capaz de autorizar regressão:
 
-- latência p50/p95: no máximo 10% acima do baseline; também não mais que +100 ms/+250 ms;
-- chamadas ao modelo: média e p95 não podem aumentar;
-- tokens: média até +10%, p95 até +15%;
-- statements p95 até +10%; round trips p95 até +2;
-- lock hold p95 até +10% e nunca mais que +5 ms absoluto;
+- latência V2 p50/p95: até +10% e crescimento absoluto de até +100 ms/+250 ms;
+- chamadas ao modelo V2: média e p95 não podem aumentar sobre a V2 congelada;
+- tokens V2: média até +10%, p95 até +15% sobre a V2 congelada;
+- statements V2 p95 até +10%; round trips V2 p95 até +2 sobre a V2 congelada;
+- lock hold V2: até +10% e crescimento absoluto de até +5 ms;
 - concorrência por stream repetida 50 vezes, sem geração duplicada ou bloqueio cross-stream;
 - idle Neon: mesma contagem de wakes/SQL do baseline em duas janelas de 30 minutos e no máximo
   +5 segundos de compute-active. Use somente branch descartável autorizada.
