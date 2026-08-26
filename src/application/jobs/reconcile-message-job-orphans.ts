@@ -59,6 +59,7 @@ export async function reconcileMessageJobOrphans(input: {
         ...(turnId ? { turnId } : {}),
       },
       dedupeKey: `outbound-message:${message.id}`,
+      maxAttempts: 10,
     });
   }));
   const outboundRepaired = outboundResults.filter((result) => result.isNew).length;

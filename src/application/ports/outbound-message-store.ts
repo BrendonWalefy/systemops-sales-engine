@@ -1,4 +1,5 @@
 import type { Channel } from "@/domain/value-objects/channel";
+import type { LiveOutboundPreflightResult } from "@/application/ports/live-outbound-preflight";
 
 export type OutboundMessageDeliveryKind = "text" | "audio" | "image" | "video" | "document";
 export type OutboundMessageCategory =
@@ -52,9 +53,7 @@ export type PersistedOutboundAuthorization = Readonly<{
   authorityVersion: number | null;
 }>;
 
-export type OutboundSendAuthorizationResult =
-  | Readonly<{ authorized: true }>
-  | Readonly<{ authorized: false; reason: string }>;
+export type OutboundSendAuthorizationResult = LiveOutboundPreflightResult;
 
 export type OutboundMessage = {
   id: string;

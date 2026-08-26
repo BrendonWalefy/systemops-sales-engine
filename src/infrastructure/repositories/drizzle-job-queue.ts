@@ -323,7 +323,7 @@ export class DrizzleJobQueue implements JobQueue {
 
   async failJob(input: FailJobInput): Promise<JobStatus | null> {
     const now = input.now ?? new Date();
-    const terminal = input.job.attempts >= input.job.maxAttempts;
+    const terminal = input.forceDead === true || input.job.attempts >= input.job.maxAttempts;
     const [updated] = await db
       .update(jobs)
       .set({

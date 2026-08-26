@@ -42,31 +42,26 @@ describe("Clinic automation policy", () => {
     ).toBe(false);
   });
 
-  it("shadow mode coleta sem autorizar composição produtiva", () => {
-    for (const operationalStatus of ["prospect", "paused", "test"] as const) {
-      const clinic = {
-          autoReplyEnabled: false,
-          operationalStatus,
-          shadowModeEnabled: true,
-      };
-      expect(resolveClinicAutomationMode(clinic)).toBe("observe");
-      expect(shouldSendAutomatedClinicOutbound(clinic)).toBe(false);
-    }
+  it("shadow mode observa somente uma clínica operacionalmente elegível", () => {
+    const clinic = {
+      autoReplyEnabled: true,
+      operationalStatus: "active" as const,
+      shadowModeEnabled: true,
+    };
+    expect(resolveClinicAutomationMode(clinic)).toBe("observe");
+    expect(shouldSendAutomatedClinicOutbound(clinic)).toBe(false);
   });
 
-  it("shadow mode nunca compõe para clínica arquivada (cancelled)", () => {
-    expect(
-      shouldSendAutomatedClinicOutbound({
-        autoReplyEnabled: true,
-        operationalStatus: "cancelled",
-        shadowModeEnabled: true,
-      }),
-    ).toBe(false);
-    expect(resolveClinicAutomationMode({
-      autoReplyEnabled: true,
-      operationalStatus: "cancelled",
-      shadowModeEnabled: true,
-    })).toBe("disabled");
+  it.each([
+    ["prospect", true],
+    ["test", true],
+    ["paused", true],
+    ["cancelled", true],
+    ["active", false],
+  ] as const)("shadow não observa status=%s com autoReply=%s", (operationalStatus, autoReplyEnabled) => {
+    const clinic = { autoReplyEnabled, operationalStatus, shadowModeEnabled: true };
+    expect(resolveClinicAutomationMode(clinic)).toBe("disabled");
+    expect(shouldSendAutomatedClinicOutbound(clinic)).toBe(false);
   });
 
   it("shadow mode desligado preserva o comportamento normal", () => {

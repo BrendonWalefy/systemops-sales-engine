@@ -135,14 +135,13 @@ describe("Cycle I final runtime boundaries", () => {
     const source = readFileSync("src/app/api/cron/message-worker/route.ts", "utf8");
 
     expect(source).toContain("createConversationV2Runtime");
-    expect(source).toContain("runAfterSenderDrainAttempt");
-    expect(source).toContain("conversationV2Runtime.runSelectedShadowTurns");
-    expect(source).not.toMatch(/resolveConversationEngine|V2ShadowRunner|V2ShadowSelectionRegistry|runConversationV2ShadowBatch|createDentalPack|DentalUnderstanding|bookSlot|confirmAppointment|v2_internal/);
+    expect(source).not.toMatch(/runAfterSenderDrainAttempt|runSelectedShadowTurns/);
+    expect(source).not.toMatch(/resolveConversationEngine|TenantEngineRouter|V2ShadowRunner|V2ShadowSelectionRegistry|runConversationV2ShadowBatch|createDentalPack|DentalUnderstanding|bookSlot|confirmAppointment|v1_with_v2_shadow|v2_internal/);
     expect(source).not.toContain("shadowModeEnabled");
     expect(source.match(/export async function GET/g)).toHaveLength(1);
   });
 
-  it("mantém TenantEngineRouter como único boundary de seleção live", () => {
+  it("mantém o runtime V2 como único boundary de composição live", () => {
     const production = sourceFiles("src").filter((file) => !file.includes("/__tests__/"));
     const liveHandlerReferences = production.filter((file) =>
       /\bV2LiveConversationHandler\b/.test(readFileSync(file, "utf8")));

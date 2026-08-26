@@ -218,6 +218,36 @@ describe("OutboundDeliveryService — ordem de entrega texto/mídia", () => {
     ]);
   });
 
+  it("propagates an indeterminate media failure after entering the provider", async () => {
+    const onProviderBoundaryEntered = vi.fn();
+    const service = new OutboundDeliveryService({
+      minGapMs: 0,
+      sendMedia: vi.fn(async (...args) => {
+        const markProviderBoundaryEntered = args[6] as (() => void) | undefined;
+        markProviderBoundaryEntered?.();
+        throw new Error("provider response lost");
+      }),
+    });
+
+    await expect(service.deliver({
+      to: "55119",
+      parts: [{
+        type: "media",
+        mediaId: "vid-1",
+        url: "https://blob/v1.mp4",
+        mediaType: "video",
+        title: "Vídeo",
+      }],
+      config: zapiConfig,
+      log: silentLog,
+      sendText: vi.fn(),
+      onTextSent: vi.fn(),
+      onMediaSent: vi.fn(),
+      onProviderBoundaryEntered,
+    })).rejects.toThrow("provider response lost");
+    expect(onProviderBoundaryEntered).toHaveBeenCalledOnce();
+  });
+
   it("não consulta status quando msgId é null (envio desabilitado) ou provider não é z_api", async () => {
     const events: string[] = [];
     const { service, statusCalls } = makeService({

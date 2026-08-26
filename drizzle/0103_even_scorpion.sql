@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ADD COLUMN "live_automation_enabled" boolean DEFAULT false NOT NULL;

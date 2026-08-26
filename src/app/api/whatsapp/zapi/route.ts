@@ -31,7 +31,8 @@ import {
 import { DrizzleHumanReviewRequestRepository } from "@/infrastructure/repositories/drizzle-human-review-request-repository";
 import { sendTextMessage } from "@/infrastructure/adapters/channels/whatsapp/whatsapp-sender";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
-import { ConversationOrchestrator } from "@/core/pipeline/ConversationOrchestrator";
+import { requireV2ConversationHandoff } from "@/application/conversation-v2/v2-conversation-handoff";
+import { DrizzleV2ConversationHandoffStore } from "@/infrastructure/repositories/drizzle-v2-conversation-handoff-store";
 import {
   buildDepositProofDecisionConfirmation,
   buildDepositProofInvalidReplyMessage,
@@ -396,10 +397,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         parsedReviewReply.decision === "approved_direct_booking" ||
         parsedReviewReply.decision === "needs_evaluation"
       ) {
-        await new ConversationOrchestrator().resumeAfterHumanReviewDecision({
+        await requireV2ConversationHandoff(new DrizzleV2ConversationHandoffStore(), {
           clinicId,
-          reviewRequestId: decidedReview.id,
-          decision: parsedReviewReply.decision,
+          conversationId: pendingReview.conversationId,
+          reason: "v2_human_review_continuation_requires_human",
+          now: new Date(),
         });
       }
 

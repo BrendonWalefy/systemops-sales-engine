@@ -5,6 +5,7 @@ import type { OutboundMessage } from "@/application/ports/outbound-message-store
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 import { isConversationOutboundPayload } from "@/application/jobs/conversation-outbound-payload";
 import { buildInitialAgentMessage } from "@/core/pipeline/outbound-message-persistence";
+import { V2TerminalHandoffRequiredError } from "@/application/conversation-v2/v2-terminal-failure-policy";
 
 const outbound: OutboundMessage = {
   id: "outbound-1",
@@ -41,17 +42,6 @@ const outbound: OutboundMessage = {
   createdAt: new Date("2026-06-23T12:00:00.000Z"),
   sentAt: null,
 };
-
-const internalLabBinding = {
-  schemaVersion: "conversation-v2.internal-lab-delivery-binding.v1" as const,
-  tenantDigest: `sha256:${"1".repeat(64)}`,
-  channelDigest: `sha256:${"2".repeat(64)}`,
-  configDigest: `sha256:${"3".repeat(64)}`,
-};
-
-function allowingInternalLabDeliveryGuard() {
-  return { authorize: vi.fn().mockResolvedValue(true) };
-}
 
 function makeStore() {
   return {
@@ -146,16 +136,17 @@ function makeAutomationDispatchLifecycle() {
 }
 
 describe("SendMessageJobHandler", () => {
-  it.each([
-    { ...(outbound.payload as Record<string, unknown>), agentMessagePersistence: "sender" },
-    { ...(outbound.payload as Record<string, unknown>), internalLabBinding },
-    { ...(outbound.payload as Record<string, unknown>), unexpected: true },
-    {
+  it("accepts sender-owned persistence without a build approval binding", () => {
+    expect(isConversationOutboundPayload({
       ...(outbound.payload as Record<string, unknown>),
       agentMessagePersistence: "sender",
-      internalLabBinding: { ...internalLabBinding, unexpected: true },
-    },
-  ])("rejects half-paired or unknown conversation payload fields", (payload) => {
+    })).toBe(true);
+  });
+
+  it.each([
+    { ...(outbound.payload as Record<string, unknown>), internalLabBinding: {} },
+    { ...(outbound.payload as Record<string, unknown>), unexpected: true },
+  ])("rejects obsolete or unknown conversation payload fields", (payload) => {
     expect(isConversationOutboundPayload(payload)).toBe(false);
   });
 
@@ -292,207 +283,119 @@ describe("SendMessageJobHandler", () => {
     expect(store.markOutboundCancelled).not.toHaveBeenCalled();
   });
 
-  it("passes the exact delivery authorization returned immediately before V2 delivery", async () => {
+  it("delivers sender-owned V2 after durable preflight without an Internal Lab binding", async () => {
     const store = makeStore();
     store.findOutboundMessage.mockResolvedValue({
       ...outbound,
+      authorization: {
+        kind: "live_stream_reply",
+        streamId: "stream-v2",
+        streamGeneration: 2,
+        sourceInboundEventId: "event-v2",
+        claimJobId: "job-v2",
+        claimTokenDigest: "a".repeat(43),
+        authorityVersion: 2,
+      },
       payload: {
         ...(outbound.payload as Record<string, unknown>),
-        agentMessagePersistence: "sender",
-        internalLabBinding,
+        turnId: "turn-v2",
       },
     });
-    const authorization = Object.freeze({ schemaVersion: "test.authorization" });
-    const delivery = vi.fn().mockResolvedValue("provider-1");
-    const handler = new SendMessageJobHandler({
-      outboundMessageStore: store as never,
-      conversationRepository: {
-        appendMessage: vi.fn().mockResolvedValue(true),
-        findMessageById: vi.fn(),
-      },
-      internalLabDeliveryGuard: {
-        authorize: vi.fn().mockResolvedValue(authorization),
-      } as never,
-      delivery,
-      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
-    });
-
-    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
-      .resolves.toBe("sent");
-    expect(delivery).toHaveBeenCalledWith(expect.objectContaining({
-      internalLabDeliveryAuthorization: authorization,
-    }));
-  });
-
-  it("suppresses a V2 reply when channel bindings drift after outbox enqueue", async () => {
-    const store = makeStore();
-    store.findOutboundMessage.mockResolvedValue({
-      ...outbound,
-      payload: {
-        ...(outbound.payload as Record<string, unknown>),
-        turnId: "turn-v2-drift",
-        agentMessagePersistence: "sender",
-        internalLabBinding: {
-          schemaVersion: "conversation-v2.internal-lab-delivery-binding.v1",
-          tenantDigest: `sha256:${"1".repeat(64)}`,
-          channelDigest: `sha256:${"2".repeat(64)}`,
-          configDigest: `sha256:${"3".repeat(64)}`,
-        },
-      },
-    });
-    const delivery = vi.fn();
-    const authorize = vi.fn().mockResolvedValue(false);
+    const delivery = vi.fn().mockResolvedValue("provider-v2");
     const appendMessage = vi.fn().mockResolvedValue(true);
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       conversationRepository: { appendMessage, findMessageById: vi.fn() },
-      internalLabDeliveryGuard: { authorize },
       delivery,
       conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
     });
 
     await expect(handler.processJob({
-      payload: { outboundMessageId: outbound.id, turnId: "turn-v2-drift" },
-    })).resolves.toBe("ignored");
+      payload: { outboundMessageId: outbound.id, turnId: "turn-v2" },
+    })).resolves.toBe("sent");
+    expect(appendMessage).toHaveBeenCalledOnce();
+    expect(delivery).toHaveBeenCalledOnce();
+    expect(store.markOutboundCancelled).not.toHaveBeenCalled();
+  });
 
-    expect(authorize).toHaveBeenCalledWith(expect.objectContaining({
-      clinicId: outbound.clinicId,
-      binding: expect.objectContaining({ channelDigest: `sha256:${"2".repeat(64)}` }),
-    }));
+  it("fences every persisted live_stream_reply when definitive preflight denies it", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue({
+      ...outbound,
+      authorization: {
+        kind: "live_stream_reply",
+        streamId: "stream-1",
+        streamGeneration: 4,
+        sourceInboundEventId: "event-4",
+        claimJobId: "job-4",
+        claimTokenDigest: `sha256:${"a".repeat(64)}`,
+        authorityVersion: 2,
+      },
+    });
+    store.authorizeOutboundMessageForSend.mockResolvedValue({
+      authorized: false,
+      reason: "global_kill_switch",
+    });
+    const delivery = vi.fn().mockResolvedValue("must-not-send");
+    const appendMessage = vi.fn().mockResolvedValue(true);
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository: {
+        appendMessage,
+        findMessageById: vi.fn(),
+      },
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
+      .resolves.toBe("ignored");
     expect(store.markOutboundCancelled).toHaveBeenCalledWith(
       outbound.id,
-      "internal_lab_binding_drift",
+      "global_kill_switch",
     );
     expect(appendMessage).not.toHaveBeenCalled();
     expect(delivery).not.toHaveBeenCalled();
   });
 
-  it("persiste a mensagem agent no sender quando o payload live V2 delega essa ownership", async () => {
+  it("lets only one concurrent sender claim reach provider for a live reply", async () => {
     const store = makeStore();
-    store.findOutboundMessage.mockResolvedValue({
+    const liveOutbound: OutboundMessage = {
       ...outbound,
-      payload: {
-        ...(outbound.payload as Record<string, unknown>),
-        turnId: "turn-v2",
-        agentMessagePersistence: "sender",
-        internalLabBinding,
+      authorization: {
+        kind: "live_stream_reply",
+        streamId: "stream-1",
+        streamGeneration: 4,
+        sourceInboundEventId: "event-4",
+        claimJobId: "job-4",
+        claimTokenDigest: "a".repeat(43),
+        authorityVersion: 2,
       },
-    });
+    };
+    store.findOutboundMessage.mockResolvedValue(liveOutbound);
+    store.markOutboundProcessing
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+    const delivery = vi.fn().mockResolvedValue("provider-live-1");
     const appendMessage = vi.fn().mockResolvedValue(true);
-    const delivery = vi.fn().mockResolvedValue("provider-message-v2");
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       conversationRepository: { appendMessage, findMessageById: vi.fn() },
-      internalLabDeliveryGuard: allowingInternalLabDeliveryGuard(),
       delivery,
       conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
     });
 
-    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id, turnId: "turn-v2" } }))
-      .resolves.toBe("sent");
+    const results = await Promise.all([
+      handler.processJob({ id: "send-job-a", payload: { outboundMessageId: outbound.id } }),
+      handler.processJob({ id: "send-job-b", payload: { outboundMessageId: outbound.id } }),
+    ]);
 
-    expect(appendMessage).toHaveBeenCalledTimes(1);
-    expect(appendMessage).toHaveBeenCalledWith(expect.objectContaining({
-      id: "agent-message-1",
-      conversationId: "conversation-1",
-      author: "agent",
-      body: "Olá",
-      externalId: null,
-    }));
-    expect(appendMessage.mock.invocationCallOrder[0]).toBeLessThan(
-      delivery.mock.invocationCallOrder[0]!,
-    );
-  });
-
-  it("reuses the exact deterministic sender-owned placeholder on a legitimate retry", async () => {
-    const store = makeStore();
-    store.findOutboundMessage.mockResolvedValue({
-      ...outbound,
-      payload: {
-        ...(outbound.payload as Record<string, unknown>),
-        turnId: "turn-v2",
-        agentMessagePersistence: "sender",
-        internalLabBinding,
-      },
-    });
-    const appendMessage = vi.fn().mockResolvedValue(false);
-    const findMessageById = vi.fn().mockResolvedValue({
-      id: "agent-message-1",
-      conversationId: "conversation-1",
-      author: "agent",
-      body: "Olá",
-      mediaUrl: null,
-      mediaType: null,
-      sentAt: new Date("2026-08-17T12:00:00.000Z"),
-      externalId: null,
-      intent: null,
-      deliveryFormat: null,
-    });
-    const delivery = vi.fn().mockResolvedValue("provider-message-v2");
-    const handler = new SendMessageJobHandler({
-      outboundMessageStore: store as never,
-      conversationRepository: { appendMessage, findMessageById },
-      internalLabDeliveryGuard: allowingInternalLabDeliveryGuard(),
-      delivery,
-      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
-    });
-
-    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id, turnId: "turn-v2" } }))
-      .resolves.toBe("sent");
-
-    expect(findMessageById).toHaveBeenCalledWith("agent-message-1");
+    expect(results.sort()).toEqual(["ignored", "sent"]);
+    expect(store.authorizeOutboundMessageForSend).toHaveBeenCalledOnce();
+    expect(appendMessage).toHaveBeenCalledOnce();
     expect(delivery).toHaveBeenCalledOnce();
+    expect(store.markOutboundDelivered).toHaveBeenCalledOnce();
   });
-
-  it.each([
-    ["missing", null],
-    ["conversation", { conversationId: "other-conversation" }],
-    ["author", { author: "lead" }],
-    ["body", { body: "conteúdo diferente" }],
-    ["intent", { intent: "different-intent" }],
-    ["delivery", { deliveryFormat: "text" }],
-  ] as const)(
-    "fails before external delivery when the existing sender-owned placeholder has a %s mismatch",
-    async (_case, patch) => {
-      const store = makeStore();
-      store.findOutboundMessage.mockResolvedValue({
-        ...outbound,
-        payload: {
-          ...(outbound.payload as Record<string, unknown>),
-          turnId: "turn-v2",
-          agentMessagePersistence: "sender",
-          internalLabBinding,
-        },
-      });
-      const appendMessage = vi.fn().mockResolvedValue(false);
-      const existing = patch === null ? null : {
-        id: "agent-message-1",
-        conversationId: "conversation-1",
-        author: "agent",
-        body: "Olá",
-        mediaUrl: null,
-        mediaType: null,
-        sentAt: new Date("2026-08-17T12:00:00.000Z"),
-        externalId: null,
-        intent: null,
-        deliveryFormat: null,
-        ...patch,
-      };
-      const findMessageById = vi.fn().mockResolvedValue(existing);
-      const delivery = vi.fn();
-      const handler = new SendMessageJobHandler({
-        outboundMessageStore: store as never,
-        conversationRepository: { appendMessage, findMessageById },
-        internalLabDeliveryGuard: allowingInternalLabDeliveryGuard(),
-        delivery,
-        conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
-      });
-
-      await expect(handler.processJob({ payload: { outboundMessageId: outbound.id, turnId: "turn-v2" } }))
-        .rejects.toThrow(/sender-owned agent message/i);
-      expect(delivery).not.toHaveBeenCalled();
-    },
-  );
 
   it("devolve a mensagem para espera quando existe uma saída anterior ativa", async () => {
     const store = makeStore();
@@ -553,13 +456,76 @@ describe("SendMessageJobHandler", () => {
 
     await expect(handler.processJob({
       payload: { outboundMessageId: "outbound-1", turnId: "turn-1" },
-    })).rejects.toThrow("provider unavailable");
+    })).rejects.toMatchObject({
+      name: "V2TerminalHandoffRequiredError",
+      message: "v2_terminal_handoff_required:delivery_outcome_indeterminate",
+    });
     expect(decisionTraceSink.getEvents("turn-1").map((entry) => entry.stage))
       .toEqual(["delivery.started", "turn.failed"]);
     expect(decisionTraceSink.getEvents("turn-1").at(-1)?.metadata).toEqual({
       phase: "delivery",
       errorName: "Error",
     });
+  });
+
+  it("keeps a proven pre-provider pipeline failure retryable", async () => {
+    const store = makeStore();
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      delivery: vi.fn().mockRejectedValue(new Error("configuration unavailable")),
+      deliveryFailureBoundary: "tracked_pipeline",
+      conversationRepository: legacyConversationRepository(),
+    });
+
+    await expect(handler.processJob({
+      payload: { outboundMessageId: "outbound-1" },
+    })).rejects.toThrow("configuration unavailable");
+  });
+
+  it("closes delivery when the provider accepts but sent persistence fails", async () => {
+    const store = makeStore();
+    store.markOutboundDelivered.mockRejectedValue(new Error("database unavailable"));
+    const delivery = vi.fn().mockResolvedValue("provider-accepted-1");
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      delivery,
+      conversationRepository: legacyConversationRepository(),
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({
+      id: "send-job-1",
+      payload: { outboundMessageId: "outbound-1" },
+    })).rejects.toEqual(new V2TerminalHandoffRequiredError("delivery_outcome_indeterminate"));
+    expect(delivery).toHaveBeenCalledOnce();
+    expect(store.markOutboundDelivered).toHaveBeenCalledOnce();
+  });
+
+  it("never resends after sent persistence succeeds and lifecycle reconciliation fails", async () => {
+    const store = makeStore();
+    const delivery = vi.fn().mockResolvedValue("provider-accepted-1");
+    const automationDispatchLifecycle = makeAutomationDispatchLifecycle();
+    automationDispatchLifecycle.markDelivered.mockRejectedValue(
+      new Error("lifecycle unavailable"),
+    );
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      delivery,
+      conversationRepository: legacyConversationRepository(),
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+      automationDispatchLifecycle,
+    });
+
+    await expect(handler.processJob({
+      id: "send-job-1",
+      payload: { outboundMessageId: "outbound-1" },
+    })).rejects.toThrow("lifecycle unavailable");
+    store.findOutboundMessage.mockResolvedValue({ ...outbound, status: "sent" });
+    await expect(handler.processJob({
+      id: "send-job-1",
+      payload: { outboundMessageId: "outbound-1" },
+    })).rejects.toThrow("lifecycle unavailable");
+    expect(delivery).toHaveBeenCalledOnce();
   });
 
   it("não reenfileira uma saída já entregue", async () => {
@@ -894,6 +860,7 @@ describe("SendMessageJobHandler", () => {
     const result = await drainMessageSendQueue({
       jobQueue: jobQueue as never,
       outboundMessageStore: store as never,
+      terminalHandoffStore: { markForOutboundMessage: vi.fn().mockResolvedValue(true) },
       handler,
       workerId: "worker-1",
       maxJobs: 2,

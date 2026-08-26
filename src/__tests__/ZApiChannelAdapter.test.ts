@@ -220,15 +220,34 @@ describe("sendTextMessage", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
+    const onProviderBoundaryEntered = vi.fn();
     await expect(
       sendTextMessage("5511999999999", "Oi", {
         provider: "z_api",
         zapi: null,
         meta: null,
-      }),
+      }, onProviderBoundaryEntered),
     ).resolves.toBeNull();
 
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(onProviderBoundaryEntered).not.toHaveBeenCalled();
+  });
+
+  it("marca a fronteira somente imediatamente antes do request ao provider", async () => {
+    const onProviderBoundaryEntered = vi.fn();
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      expect(onProviderBoundaryEntered).toHaveBeenCalledOnce();
+      return new Response(JSON.stringify({ messageId: "provider-1" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(sendTextMessage("5511999999999", "Oi", {
+      provider: "z_api",
+      zapi: { instanceId: "instance-1", token: "token-1" },
+      meta: null,
+    }, onProviderBoundaryEntered)).resolves.toBe("provider-1");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 });
 

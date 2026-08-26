@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolveInternalLabLiveTurnConfiguration } from "@/application/conversation-v2/internal-lab-live-turn-configuration";
+import {
+  resolveV2LiveTurnConfiguration,
+  V2TurnTenantScopeError,
+} from "@/application/conversation-v2/resolve-v2-live-turn-configuration";
 
 const now = new Date("2026-08-17T15:00:00.000Z");
 
@@ -8,8 +11,13 @@ function context(overrides: Record<string, unknown> = {}) {
     clinicId: "clinic-lab",
     conversationId: "conversation-1",
     clinic: { id: "clinic-lab" },
-    lead: { id: "lead-1", contactConsentRevokedAt: null },
-    conversation: { id: "conversation-1", aiPaused: false, takeoverExpiresAt: null },
+    lead: { id: "lead-1", clinicId: "clinic-lab", contactConsentRevokedAt: null },
+    conversation: {
+      id: "conversation-1",
+      clinicId: "clinic-lab",
+      aiPaused: false,
+      takeoverExpiresAt: null,
+    },
     editorial: { toneOfVoice: "acolhedor e humano" },
     ...overrides,
   } as never;
@@ -28,28 +36,21 @@ function turnInput(overrides: Record<string, unknown> = {}) {
   } as never;
 }
 
-const resolveDeliveryBinding = vi.fn().mockResolvedValue({
-  tenantDigest: `sha256:${"1".repeat(64)}`,
-  channelDigest: `sha256:${"2".repeat(64)}`,
-  configDigest: `sha256:${"3".repeat(64)}`,
-});
-
-describe("Internal Lab live turn configuration", () => {
+describe("V2 live turn configuration", () => {
   it("derives reply, persistent consent, editorial style and voice from real turn sources", async () => {
     const resolveVoice = vi.fn().mockResolvedValue({
       voiceEnabled: true,
       ttsConfig: { provider: "elevenlabs", speed: 1, elevenLabsVoiceId: "voice-1" },
     });
-    const configuration = await resolveInternalLabLiveTurnConfiguration({
+    const configuration = await resolveV2LiveTurnConfiguration({
       context: context({
-        lead: { id: "lead-1", contactConsentRevokedAt: now },
+        lead: { id: "lead-1", clinicId: "clinic-lab", contactConsentRevokedAt: now },
       }),
       turnInput: turnInput({ replyEnabled: false }),
       now,
     }, {
       resolveVoice,
       resumeExpiredTakeover: vi.fn(),
-      resolveDeliveryBinding,
     });
 
     expect(resolveVoice).toHaveBeenCalledWith("clinic-lab");
@@ -73,28 +74,30 @@ describe("Internal Lab live turn configuration", () => {
       voiceEnabled: false,
       ttsConfig: { provider: "nova", speed: 0.92 },
     });
-    const expired = await resolveInternalLabLiveTurnConfiguration({
+    const expired = await resolveV2LiveTurnConfiguration({
       context: context({
         conversation: {
           id: "conversation-1",
+          clinicId: "clinic-lab",
           aiPaused: true,
           takeoverExpiresAt: new Date("2026-08-17T14:59:59.999Z"),
         },
       }),
       turnInput: turnInput(),
       now,
-    }, { resolveVoice, resumeExpiredTakeover, resolveDeliveryBinding });
-    const manual = await resolveInternalLabLiveTurnConfiguration({
+    }, { resolveVoice, resumeExpiredTakeover });
+    const manual = await resolveV2LiveTurnConfiguration({
       context: context({
         conversation: {
           id: "conversation-2",
+          clinicId: "clinic-lab",
           aiPaused: true,
           takeoverExpiresAt: null,
         },
       }),
       turnInput: turnInput(),
       now,
-    }, { resolveVoice, resumeExpiredTakeover, resolveDeliveryBinding });
+    }, { resolveVoice, resumeExpiredTakeover });
 
     expect(resumeExpiredTakeover).toHaveBeenCalledOnce();
     expect(resumeExpiredTakeover).toHaveBeenCalledWith("conversation-1");
@@ -103,7 +106,7 @@ describe("Internal Lab live turn configuration", () => {
   });
 
   it("leva a voz da empresa para dentro da resposta, sem levar fato que ninguém autorizou", async () => {
-    const configuration = await resolveInternalLabLiveTurnConfiguration({
+    const configuration = await resolveV2LiveTurnConfiguration({
       context: context({
         clinic: { id: "clinic-lab", name: "SystemOps Dental Lab" },
         editorial: {
@@ -130,7 +133,6 @@ describe("Internal Lab live turn configuration", () => {
         ttsConfig: { provider: "nova", speed: 0.92 },
       }),
       resumeExpiredTakeover: vi.fn(),
-      resolveDeliveryBinding,
     });
 
     expect(configuration.speaker).toEqual({
@@ -143,7 +145,7 @@ describe("Internal Lab live turn configuration", () => {
   });
 
   it("não inventa voz quando a organização ainda não publicou playbook", async () => {
-    const configuration = await resolveInternalLabLiveTurnConfiguration({
+    const configuration = await resolveV2LiveTurnConfiguration({
       context: context({
         clinic: { id: "clinic-lab", name: "SystemOps Dental Lab" },
         editorial: null,
@@ -156,7 +158,6 @@ describe("Internal Lab live turn configuration", () => {
         ttsConfig: { provider: "nova", speed: 0.92 },
       }),
       resumeExpiredTakeover: vi.fn(),
-      resolveDeliveryBinding,
     });
 
     expect(configuration.speaker).toEqual({
@@ -166,5 +167,24 @@ describe("Internal Lab live turn configuration", () => {
       toneOfVoice: null,
       guidelines: [],
     });
+  });
+
+  it.each([
+    ["claimed turn", { turnInput: turnInput({ clinicId: "clinic-other" }) }],
+    ["loaded organization", { context: context({ clinic: { id: "clinic-other" } }) }],
+  ])("rejects a cross-tenant %s before resolving voice or takeover", async (_case, override) => {
+    const resolveVoice = vi.fn();
+    const resumeExpiredTakeover = vi.fn();
+
+    await expect(resolveV2LiveTurnConfiguration({
+      context: "context" in override ? override.context : context(),
+      turnInput: "turnInput" in override ? override.turnInput : turnInput(),
+      now,
+    }, { resolveVoice, resumeExpiredTakeover })).rejects.toBeInstanceOf(
+      V2TurnTenantScopeError,
+    );
+
+    expect(resolveVoice).not.toHaveBeenCalled();
+    expect(resumeExpiredTakeover).not.toHaveBeenCalled();
   });
 });

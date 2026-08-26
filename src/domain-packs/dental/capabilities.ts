@@ -67,6 +67,7 @@ export type DentalEscalationClaimPayload = {
   kind: "escalation";
   emergency: boolean;
   requestsHuman: boolean;
+  reason: "structured_safety_signal" | "objection" | "cancel_reschedule";
 };
 
 export type DentalClaimPayload =
@@ -184,10 +185,12 @@ export function createDentalCatalogCapability(
     id: "dental-catalog",
     claim(understanding) {
       const serviceQuery = stringEntity(understanding, "service");
+      const hasObjection = typeof understanding.signals.objection === "string" &&
+        understanding.signals.objection.trim().length > 0;
       if (
         (understanding.request !== "price-of-service" &&
           understanding.request !== "service-availability") ||
-        !serviceQuery
+        !serviceQuery || hasObjection
       ) {
         return null;
       }
@@ -644,13 +647,22 @@ export function createDentalEscalationCapability(): Capability<
   return {
     id: "dental-escalation",
     claim(understanding) {
+      const objection = typeof understanding.signals.objection === "string" &&
+        understanding.signals.objection.trim().length > 0;
+      const cancelReschedule = understanding.request === "cancel-appointment" ||
+        understanding.request === "reschedule-appointment";
       return understanding.safety.emergency ||
-        understanding.safety.requestsHuman
+        understanding.safety.requestsHuman || objection || cancelReschedule
         ? {
             ...ownedClaim("dental-escalation", understanding.confidence, {
               kind: "escalation",
               emergency: understanding.safety.emergency ?? false,
               requestsHuman: understanding.safety.requestsHuman ?? false,
+              reason: cancelReschedule
+                ? "cancel_reschedule"
+                : objection
+                  ? "objection"
+                  : "structured_safety_signal",
             }),
             conflictsWith: ["dental-catalog", "dental-scheduling"],
           }
@@ -692,6 +704,7 @@ export function createDentalReceptionCapability(): Capability<
     claim(understanding) {
       if (understanding.request !== "greeting" && understanding.request !== "other") return null;
       if (understanding.safety.emergency || understanding.safety.requestsHuman) return null;
+      if (typeof understanding.signals.objection === "string" && understanding.signals.objection.trim()) return null;
       return ownedClaim("dental-reception", understanding.confidence, {
         kind: "reception",
         request: understanding.request,

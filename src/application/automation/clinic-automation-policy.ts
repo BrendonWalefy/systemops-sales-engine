@@ -19,11 +19,11 @@ export type ClinicAutomationMode = "live" | "observe" | "disabled";
 export function resolveClinicAutomationMode(
   clinic: ClinicAutomationToggle,
 ): ClinicAutomationMode {
-  if (clinic.operationalStatus === "cancelled") return "disabled";
+  if (clinic.autoReplyEnabled === false || clinic.operationalStatus !== "active") {
+    return "disabled";
+  }
   if (clinic.shadowModeEnabled) return "observe";
-  return clinic.autoReplyEnabled !== false && clinic.operationalStatus === "active"
-    ? "live"
-    : "disabled";
+  return "live";
 }
 
 export function shouldSendAutomatedClinicOutbound(

@@ -1,13 +1,6 @@
-import type { ClinicOperationalStatus } from "@/application/clinics/clinic-operational-status";
+import type { ClinicAutomationFacts } from "@/application/ports/clinic-automation-policy-reader";
 
-export type InternalLabEligibilityFacts = Readonly<{
-  clinicId: string;
-  isTest: boolean;
-  isDemo: boolean;
-  operationalStatus: ClinicOperationalStatus;
-  autoReplyEnabled: boolean;
-  shadowModeEnabled: boolean;
-}>;
+export type InternalLabEligibilityFacts = ClinicAutomationFacts;
 
 export interface InternalLabEligibilityReader {
   getInternalLabEligibilityFacts(

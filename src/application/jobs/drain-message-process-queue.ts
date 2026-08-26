@@ -9,6 +9,12 @@ import {
   type JobResult,
 } from "@/application/jobs/process-message-job";
 import { createLogger } from "@/infrastructure/logging/logger";
+import {
+  isV2TerminalHandoffRequiredError,
+  resolveV2TerminalFailure,
+  V2TerminalHandoffRequiredError,
+  type V2TerminalHandoffStore,
+} from "@/application/conversation-v2/v2-terminal-failure-policy";
 
 export type MessageProcessJobHandler = {
   processClaimedJob(work: ClaimInboundWorkResult): Promise<JobResult>;
@@ -27,6 +33,7 @@ export type DrainMessageProcessQueueResult = {
 export async function drainMessageProcessQueue(params: {
   jobQueue: JobQueue;
   inboundEventStore: InboundEventStore;
+  terminalHandoffStore: Pick<V2TerminalHandoffStore, "markForInboundEvent">;
   handler: MessageProcessJobHandler;
   workerId: string;
   maxJobs: number;
@@ -71,6 +78,9 @@ export async function drainMessageProcessQueue(params: {
       jobLog.info("job.claimed", { attempt: job.attempts });
       let processingResult: JobResult | null = null;
       try {
+        if (work.outcome === "claimed" && isV2TerminalHandoffRequiredError(job.lastError)) {
+          throw new V2TerminalHandoffRequiredError("effect_outbox_failed");
+        }
         processingResult = work.outcome === "history_only"
           ? await params.handler.processHistoryOnlyJob(work)
           : await params.handler.processClaimedJob(work);
@@ -89,14 +99,50 @@ export async function drainMessageProcessQueue(params: {
           return;
         }
 
+        const retryAt = getJobRetryAt(job, now);
+        const terminalResolution = resolveV2TerminalFailure({
+          attempt: job.attempts,
+          maxAttempts: job.maxAttempts,
+          effectState: "attempted",
+          safeReplyState: "unavailable",
+        });
+        const inboundEventId = getInboundEventId(job);
+        if (terminalResolution === "handoff_required") {
+          try {
+            if (!inboundEventId) throw new Error("terminal process job has no inbound event");
+            const event = await params.inboundEventStore.findInboundEvent(inboundEventId);
+            if (!event) throw new Error("terminal process inbound event is missing");
+            const handedOff = await params.terminalHandoffStore.markForInboundEvent({
+              clinicId: event.clinicId,
+              inboundEventId,
+              claimJobId: job.id,
+              reason: "v2_terminal_processing_failure",
+              now: new Date(),
+            });
+            if (!handedOff) throw new Error("terminal process handoff binding mismatch");
+          } catch (handoffError) {
+            const released = await params.jobQueue.releaseJob(
+              job.id,
+              params.workerId,
+              retryAt,
+              new Date(),
+            );
+            if (released) result.retried++;
+            jobLog.error("job.terminal_resolution.failed", handoffError, {
+              status: released ? "pending" : "processing",
+              durationMs: Date.now() - startedAt,
+            });
+            return;
+          }
+        }
+
         const status = await params.jobQueue.failJob({
           job,
           workerId: params.workerId,
           error: error instanceof Error ? error.message : String(error),
-          retryAt: getJobRetryAt(job, now),
+          retryAt,
           now: new Date(),
         });
-        const inboundEventId = getInboundEventId(job);
         if (inboundEventId && status === "pending" && work.outcome === "claimed") {
           await params.inboundEventStore.markInboundEventPending(inboundEventId);
         }

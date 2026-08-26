@@ -22,6 +22,7 @@ Este diretório contém somente documentação que orienta o produto, a arquitet
 - [Staging CI](operations/staging-ci-setup.md): teste de migrations em branch Neon descartável.
 - [Controle de spend Vercel](operations/vercel-pro-spend-control.md): limites e alertas da plataforma.
 - [Workers event-driven e autosuspend](operations/event-driven-whatsapp-workers.md): wakes duráveis, crons de fallback, monitoramento e rollback do Neon.
+- [Rollout do runtime V2-only](operations/v2-only-runtime-rollout.md): authority, kill switch, corte inicial, smoke e rollback sem V1.
 
 ## Operação
 

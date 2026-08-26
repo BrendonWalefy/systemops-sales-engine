@@ -107,7 +107,7 @@ Before adding a new constant, config, or rule, identify which category it fits. 
 |------|-----------------|----------------|
 | Editorial content (tone, objections, policy, playbook) | `playbook_versions` table | `resolveActiveEditorialConfig(clinicId)` |
 | Clinic operational config (hours, timezone, buffer, limits) | `clinics` table | `Clinic` entity |
-| Universal conversational behavior (not clinic-specific) | LLM prompt strings in `src/core/intelligence/` | Never duplicated in DB |
+| Universal conversational behavior (not clinic-specific) | V2 Understanding/capabilities/Decision/verbalization | `src/application/conversation-v2/` and V2 domain core; never duplicated in DB |
 | Constants that *could* vary by clinic | `clinics.*` field + code fallback | `clinic.field ?? CODE_DEFAULT` |
 | Time/timezone logic | `ClinicTimezone` (`src/core/scheduling/ClinicTimezone.ts`) | Always use `getTimeGreeting()`, `toLocalParts()` — never manual offsets |
 
@@ -116,7 +116,7 @@ Before adding a new constant, config, or rule, identify which category it fits. 
 - Do not hardcode clinic-specific behavior in prompt strings (policy, hours, tone). These must come from the DB via `resolveActiveEditorialConfig` or the `Clinic` entity.
 - Do not duplicate a business rule between code and an LLM prompt. If the rule is in `ClinicTimezone.ts`, the prompt must reference the value injected at runtime — not re-declare it as a string.
 - Do not add a new code constant for something that should be configurable per clinic (rate limits, slot lookahead, thresholds). Add a nullable column to `clinics` with a code default instead.
-- Do not use different context-window sizes in `IntentClassifier` and `ResponseComposer`. Both must use the same `.slice(-N)` value so classification and composition see the same conversation history.
+- Do not give V2 Understanding and verbalization different conversation histories. Both consume the same canonical turn history resolved by the V2 lifecycle.
 - The full audit of what is and is not configurable per clinic lives in [`docs/architecture/sources-of-truth.md`](docs/architecture/sources-of-truth.md).
 
 ## Content Ownership — Cada dado tem um único dono
@@ -125,13 +125,13 @@ Every piece of information that flows through the system has exactly one owner. 
 
 | What | Owner | Never put it in |
 |------|-------|-----------------|
-| What text to say | `ContentBlock.content` (pipeline) or LLM output | Orchestrator conditionals |
-| What caption to show after a media | `ContentBlock.caption` → `ResponsePart.caption` | Orchestrator `if (voiceEnabled)` |
+| What text to say | `AuthorizedResponsePlan`/V2 verbalization output | Ad hoc handler or delivery conditionals |
+| What caption to show after a media | V2 response part/caption produced from the authorized plan | Delivery `if (voiceEnabled)` |
 | When to show a caption | Presence of `caption` on the block — always shown if set | Channel-specific flags |
 | Delivery format (audio/text) | `clinic.voiceResponseEnabled` in `sendReply()` | Business logic elsewhere |
 | Clinic-specific behavior | `clinics` table field + code default | Hardcoded strings or prompt text |
 | Prices and commercial rules | `commercialPolicy` field in `playbook_versions` | `notes`, `differentials`, treatment descriptions |
-| Conversation flow triggers | `pipelineSteps` on `treatments` | `notes` inline triggers or Orchestrator conditionals |
+| Conversation flow triggers | `pipelineSteps` on `treatments` | `notes` inline triggers or ad hoc V2 handler conditionals |
 
 **The rule**: if you find yourself writing `if (clinic.someFlag)` inside a content-delivery loop to change *what* is sent, the content definition is in the wrong place. Move the decision to the data (pipeline, ContentBlock, entity field) — not to the delivery layer.
 
@@ -156,13 +156,13 @@ The core rule is:
 
 Do not regress the conversation-first scheduling architecture:
 
-- HTTP routes in `src/app/api/` should stay thin: parse input, resolve context, call a use case or `ConversationOrchestrator`, return HTTP.
+- HTTP routes in `src/app/api/` should stay thin: parse input, resolve context, call a use case or the V2 live composition root, return HTTP.
 - Do not infer conversation state from message text. Use `ConversationStateMachine` and `conversation_states`.
 - Do not create Google Calendar events directly outside `BookingService`.
 - Do not bypass `ClinicTimezone` with manual offsets.
 - Do not reintroduce global env fallbacks for clinic config. Z-API, Google Calendar, playbook, tone, hours, professionals, treatments, and clinic users live in the database.
 - Do not reintroduce `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `PILOT_CLINIC_ID`, global Z-API credentials, or global `GOOGLE_CALENDAR_ID`.
-- New LLM behavior belongs in `src/core/intelligence/` or an isolated infrastructure adapter, with deterministic code around decisions.
+- New conversational LLM behavior belongs in the V2 Understanding/verbalization boundary or an isolated infrastructure adapter, with capabilities and Decision keeping product choices deterministic.
 - Drizzle queries should live in repositories or explicit maintenance scripts, not scattered through UI components or arbitrary routes.
 
 ## Database And Deploy Safety

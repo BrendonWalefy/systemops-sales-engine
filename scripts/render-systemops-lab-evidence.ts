@@ -67,7 +67,6 @@ const runSchema = z.object({
 }).strict();
 
 const evidenceStages = new Set([
-  "engine.selected",
   "v2.understanding",
   "v2.decision",
   "v2.action_result",

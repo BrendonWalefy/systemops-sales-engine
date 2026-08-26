@@ -45,19 +45,12 @@ import { db } from "@/infrastructure/db/client";
 import { organizations, messages, followUps, leads, conversations } from "@/infrastructure/db/schema";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
-import {
-  consumeInternalLabDeliveryAuthorization,
-  type InternalLabDeliveryAuthorization,
-  type InternalLabDeliveryGuard,
-} from "@/application/conversation-v2/internal-lab-delivery-guard";
 import type { ChannelConfigSnapshot } from "@/application/ports/channel-config-snapshot";
 import {
-  isInternalLabSyntheticAddress,
-  isInternalLabSyntheticAddressCandidate,
-  isInternalLabSyntheticDeliveryAuthorized,
-  type InternalLabSyntheticRunAuthorization,
-} from "@/application/labs/internal-lab-synthetic-delivery";
-import { isReplayOutboundCaptureBoundary } from "@/application/replay/replay-outbound-capture";
+  getV2TerminalHandoffRequiredReason,
+  V2TerminalHandoffRequiredError,
+} from "@/application/conversation-v2/v2-terminal-failure-policy";
+import { isRegisteredReplayCaptureBoundary } from "@/application/ports/replay-capture-boundary";
 
 export type SendMessageJobDependencies = {
   outboundMessageStore: OutboundMessageStore;
@@ -73,10 +66,18 @@ export type SendMessageJobDependencies = {
     payload: OutboundPayload;
     clinicId: string;
     conversationId: string;
-    internalLabDeliveryAuthorization?: InternalLabDeliveryAuthorization;
+    senderOwnedDeliveryAuthorized?: boolean;
   }) => Promise<string | null>;
-  internalLabDeliveryGuard?: InternalLabDeliveryGuard;
-  internalLabSyntheticRunAuthorization?: InternalLabSyntheticRunAuthorization;
+  /** Injected delivery is provider-direct unless a test/pipeline declares tracked preparation. */
+  deliveryFailureBoundary?: "provider_direct" | "tracked_pipeline";
+  /** Process-local replay capability; never authorizes a real destination. */
+  replayCaptureAuthorization?: Readonly<{
+    isCandidate(address: string): boolean;
+    isAuthorized(input: Readonly<{
+      clinicId: string;
+      address: string;
+    }>): boolean;
+  }>;
 };
 
 export type OutboundDeliveryBoundary = {
@@ -101,6 +102,10 @@ const DEFAULT_OUTBOUND_BOUNDARY: OutboundDeliveryBoundary = {
   createDeliveryService: () => new OutboundDeliveryService(),
   recordSuppressedDelivery: () => {},
 };
+
+function isReservedReplayDestination(value: string): boolean {
+  return value.trimStart().toLowerCase().startsWith("systemops-lab-");
+}
 
 export const SHADOW_DELIVERY_SUPPRESSED = "__shadow_delivery_suppressed__";
 
@@ -139,20 +144,23 @@ export class SendMessageJobHandler {
   private readonly syntheticCaptureDelivery: NonNullable<
     SendMessageJobDependencies["delivery"]
   > | null;
+  private readonly deliveryFailureBoundary: "provider_direct" | "tracked_pipeline";
 
   constructor(private readonly deps: SendMessageJobDependencies) {
     const outboundBoundary = {
       ...DEFAULT_OUTBOUND_BOUNDARY,
       ...deps.outboundBoundary,
     };
-    const replayCaptureBoundary = isReplayOutboundCaptureBoundary(deps.outboundBoundary);
+    const replayCaptureBoundary = isRegisteredReplayCaptureBoundary(deps.outboundBoundary);
     const generalOutboundBoundary = replayCaptureBoundary
-      && deps.internalLabSyntheticRunAuthorization !== undefined
+      && deps.replayCaptureAuthorization !== undefined
       ? DEFAULT_OUTBOUND_BOUNDARY
       : outboundBoundary;
     this.delivery =
       deps.delivery ??
       ((input) => deliverOutboundPayload(input, generalOutboundBoundary));
+    this.deliveryFailureBoundary = deps.deliveryFailureBoundary
+      ?? (deps.delivery ? "provider_direct" : "tracked_pipeline");
     this.syntheticCaptureDelivery = replayCaptureBoundary
       ? (input) => deliverOutboundPayload(input, outboundBoundary)
       : null;
@@ -185,57 +193,37 @@ export class SendMessageJobHandler {
       log.info("job.ignored", { reason: "outbound_terminal_or_missing", durationMs: Date.now() - startedAt });
       return "ignored";
     }
-    const sendAuthorization = await this.deps.outboundMessageStore
-      .authorizeOutboundMessageForSend(outbound.id);
-    if (!sendAuthorization.authorized) {
-      await this.deps.outboundMessageStore.markOutboundCancelled(
-        outbound.id,
-        sendAuthorization.reason,
-      );
-      log.warn("job.ignored", {
-        reason: sendAuthorization.reason,
-        durationMs: Date.now() - startedAt,
-      });
-      return "ignored";
-    }
     const outboundLog = log.child({
       clinicId: outbound.clinicId,
       conversationId: outbound.conversationId,
     });
     const turnId = jobTurnId ?? getTurnId(outbound.payload);
     const outboundDestination = getOutboundDestination(outbound.payload);
-    const syntheticCandidate = outboundDestination !== null
-      && isInternalLabSyntheticAddressCandidate(outboundDestination);
-    let useSyntheticCapture = false;
-    if (syntheticCandidate) {
-      useSyntheticCapture = isInternalLabSyntheticAddress(outboundDestination)
-        && this.syntheticCaptureDelivery !== null
-        && isInternalLabSyntheticDeliveryAuthorized({
-          authorization: this.deps.internalLabSyntheticRunAuthorization,
+    const replayBoundaryInstalled = this.syntheticCaptureDelivery !== null;
+    const replayCandidate = outboundDestination !== null
+      && this.deps.replayCaptureAuthorization?.isCandidate(outboundDestination) === true;
+    const reservedReplayDestination = outboundDestination !== null
+      && isReservedReplayDestination(outboundDestination);
+    const conversationPayload = isConversationOutboundPayload(outbound.payload)
+      ? outbound.payload
+      : null;
+    let useReplayCapture = false;
+    if (replayBoundaryInstalled || reservedReplayDestination) {
+      useReplayCapture = replayCandidate
+        && this.deps.replayCaptureAuthorization !== undefined
+        && this.deps.replayCaptureAuthorization.isAuthorized({
           clinicId: outbound.clinicId,
-          address: outboundDestination,
-          now: this.now(),
+          address: outboundDestination!,
         });
-      if (
-        useSyntheticCapture
-        && isConversationOutboundPayload(outbound.payload)
-        && outbound.payload.agentMessagePersistence === "sender"
-      ) {
-        const preflightAuthorization = await this.deps.internalLabDeliveryGuard?.authorize({
-          clinicId: outbound.clinicId,
-          binding: outbound.payload.internalLabBinding,
-        }) ?? undefined;
-        useSyntheticCapture = preflightAuthorization !== undefined;
-      } else {
-        useSyntheticCapture = false;
-      }
-      if (!useSyntheticCapture) {
+      useReplayCapture = useReplayCapture
+        && conversationPayload !== null;
+      if (!useReplayCapture) {
         await this.deps.outboundMessageStore.markOutboundPending(
           outbound.id,
-          "internal_lab_capture_required",
+          "replay_capture_required",
         );
         outboundLog.warn("job.deferred", {
-          reason: "internal_lab_capture_required",
+          reason: "replay_capture_required",
           durationMs: Date.now() - startedAt,
         });
         return "deferred";
@@ -258,28 +246,7 @@ export class SendMessageJobHandler {
       clinicId: outbound.clinicId,
       payload: outbound.payload,
     };
-    let internalLabDeliveryAuthorization: InternalLabDeliveryAuthorization | undefined;
-    if (
-      isConversationOutboundPayload(outbound.payload)
-      && outbound.payload.agentMessagePersistence === "sender"
-    ) {
-      internalLabDeliveryAuthorization = await this.deps.internalLabDeliveryGuard?.authorize({
-        clinicId: outbound.clinicId,
-        binding: outbound.payload.internalLabBinding,
-      }) ?? undefined;
-      if (!internalLabDeliveryAuthorization) {
-        await this.deps.outboundMessageStore.markOutboundCancelled(
-          outbound.id,
-          "internal_lab_binding_drift",
-        );
-        outboundLog.warn("job.ignored", {
-          reason: "internal_lab_binding_drift",
-          durationMs: Date.now() - startedAt,
-        });
-        return "ignored";
-      }
-    }
-
+    let senderOwnedConversationMessage: Message | null = null;
     if (isConversationOutboundPayload(outbound.payload)) {
       const placeholder = {
         id: outbound.payload.agentMessageId,
@@ -293,14 +260,11 @@ export class SendMessageJobHandler {
         intent: outbound.payload.intent,
         deliveryFormat: null,
       } as const;
-      if (outbound.payload.agentMessagePersistence === "sender") {
-        const inserted = await this.conversationRepository.appendMessage(placeholder);
-        if (!inserted) {
-          const existing = await this.conversationRepository.findMessageById(placeholder.id);
-          if (!isExactConversationAgentMessage(existing, placeholder)) {
-            throw new Error("sender-owned agent message is missing or mismatched");
-          }
-        }
+      if (
+        outbound.authorization.kind === "live_stream_reply"
+        || outbound.payload.agentMessagePersistence === "sender"
+      ) {
+        senderOwnedConversationMessage = placeholder;
       } else {
         const existing = await this.conversationRepository.findMessageById(placeholder.id);
         const existedBeforeOutbox = existing != null &&
@@ -486,6 +450,51 @@ export class SendMessageJobHandler {
       }
     }
 
+    // This is intentionally the last database authorization read before the
+    // provider boundary. The outbound claim above serializes competing sender
+    // workers; this preflight then revalidates current tenant, claim and safety
+    // state after any queued delay.
+    const sendAuthorization = await this.deps.outboundMessageStore
+      .authorizeOutboundMessageForSend(outbound.id);
+    if (!sendAuthorization.authorized) {
+      await this.deps.outboundMessageStore.markOutboundCancelled(
+        outbound.id,
+        sendAuthorization.reason,
+      );
+      if (turnId) {
+        await recordDecisionTrace(this.deps.decisionTraceSink, {
+          turnId,
+          stage: "turn.ignored",
+          occurredAt: this.now().toISOString(),
+          clinicId: outbound.clinicId,
+          conversationId: outbound.conversationId,
+          metadata: { reason: sendAuthorization.reason },
+        });
+      }
+      outboundLog.warn("job.ignored", {
+        reason: sendAuthorization.reason,
+        durationMs: Date.now() - startedAt,
+      });
+      return "ignored";
+    }
+
+    // No canonical agent history is created until the definitive sender
+    // authorization has passed. Rejected work therefore cannot leave a reply
+    // placeholder that was never eligible for provider delivery.
+    if (senderOwnedConversationMessage) {
+      const inserted = await this.conversationRepository.appendMessage(
+        senderOwnedConversationMessage,
+      );
+      if (!inserted) {
+        const existing = await this.conversationRepository.findMessageById(
+          senderOwnedConversationMessage.id,
+        );
+        if (!isExactConversationAgentMessage(existing, senderOwnedConversationMessage)) {
+          throw new Error("sender-owned agent message is missing or mismatched");
+        }
+      }
+    }
+
     if (turnId) {
       await recordDecisionTrace(this.deps.decisionTraceSink, {
         turnId,
@@ -502,13 +511,13 @@ export class SendMessageJobHandler {
     }
     let providerMessageId: string | null;
     try {
-      providerMessageId = await (useSyntheticCapture
+      providerMessageId = await (useReplayCapture
         ? this.syntheticCaptureDelivery!
         : this.delivery)({
         payload: outbound.payload,
         clinicId: outbound.clinicId,
         conversationId: outbound.conversationId,
-        internalLabDeliveryAuthorization,
+        senderOwnedDeliveryAuthorized: useReplayCapture,
       });
     } catch (error) {
       if (turnId) {
@@ -524,7 +533,13 @@ export class SendMessageJobHandler {
           },
         });
       }
-      throw error;
+      if (
+        this.deliveryFailureBoundary === "tracked_pipeline"
+        && getV2TerminalHandoffRequiredReason(error) !== "delivery_outcome_indeterminate"
+      ) {
+        throw error;
+      }
+      throw new V2TerminalHandoffRequiredError("delivery_outcome_indeterminate");
     }
     if (providerMessageId === SHADOW_DELIVERY_SUPPRESSED) {
       await this.deps.outboundMessageStore.markOutboundCancelled(
@@ -537,41 +552,53 @@ export class SendMessageJobHandler {
       });
       return "ignored";
     }
-    if (turnId && isConversationOutboundPayload(outbound.payload)) {
-      const stateAfterDelivery =
-        await this.conversationStateReader.getCurrentState(
-          outbound.conversationId,
-        );
-      await recordDecisionTrace(this.deps.decisionTraceSink, {
-        turnId,
-        stage: "state.after_delivery",
-        occurredAt: this.now().toISOString(),
-        clinicId: outbound.clinicId,
-        conversationId: outbound.conversationId,
-        metadata: {
-          state: stateAfterDelivery?.state ?? "none",
-          pipelineAdvanceApplied:
-            outbound.payload.pipelineAdvance?.action ?? "none",
-        },
+    try {
+      await this.deps.outboundMessageStore.markOutboundDelivered({
+        id: outbound.id,
+        providerMessageId,
       });
+    } catch {
+      throw new V2TerminalHandoffRequiredError("delivery_outcome_indeterminate");
     }
-    await this.deps.outboundMessageStore.markOutboundDelivered({
-      id: outbound.id,
-      providerMessageId,
-    });
-    await this.automationDispatchLifecycle.markDelivered(outboundForLifecycle, this.now());
-    if (turnId) {
-      await recordDecisionTrace(this.deps.decisionTraceSink, {
-        turnId,
-        stage: "delivery.sent",
-        occurredAt: this.now().toISOString(),
-        clinicId: outbound.clinicId,
-        conversationId: outbound.conversationId,
-        metadata: {
-          outboundMessageId: outbound.id,
-          providerAccepted: providerMessageId !== null,
-        },
-      });
+    try {
+      if (turnId && isConversationOutboundPayload(outbound.payload)) {
+        const stateAfterDelivery =
+          await this.conversationStateReader.getCurrentState(
+            outbound.conversationId,
+          );
+        await recordDecisionTrace(this.deps.decisionTraceSink, {
+          turnId,
+          stage: "state.after_delivery",
+          occurredAt: this.now().toISOString(),
+          clinicId: outbound.clinicId,
+          conversationId: outbound.conversationId,
+          metadata: {
+            state: stateAfterDelivery?.state ?? "none",
+            pipelineAdvanceApplied:
+              outbound.payload.pipelineAdvance?.action ?? "none",
+          },
+        });
+      }
+      await this.automationDispatchLifecycle.markDelivered(outboundForLifecycle, this.now());
+      if (turnId) {
+        await recordDecisionTrace(this.deps.decisionTraceSink, {
+          turnId,
+          stage: "delivery.sent",
+          occurredAt: this.now().toISOString(),
+          clinicId: outbound.clinicId,
+          conversationId: outbound.conversationId,
+          metadata: {
+            outboundMessageId: outbound.id,
+            providerAccepted: providerMessageId !== null,
+          },
+        });
+      }
+    } catch (postDeliveryError) {
+      // The provider result and terminal outbox state are already durable.
+      // Retry may reconcile lifecycle, but the sent outbox prevents provider
+      // delivery from reopening.
+      outboundLog.error("job.post_delivery_reconciliation.failed", postDeliveryError);
+      throw postDeliveryError;
     }
     outboundLog.info("job.sent", { durationMs: Date.now() - startedAt, providerMessageId });
     return "sent";
@@ -812,38 +839,49 @@ async function deliverOutboundPayload(input: {
   payload: OutboundPayload;
   clinicId: string;
   conversationId: string;
-  internalLabDeliveryAuthorization?: InternalLabDeliveryAuthorization;
+  senderOwnedDeliveryAuthorized?: boolean;
 }, boundary: OutboundDeliveryBoundary): Promise<string | null> {
-  if (isConversationOutboundPayload(input.payload)) {
-    return deliverConversationOutbound({
-      payload: input.payload,
-      clinicId: input.clinicId,
-      conversationId: input.conversationId,
-      internalLabDeliveryAuthorization: input.internalLabDeliveryAuthorization,
-    }, boundary);
+  let providerBoundaryEntered = false;
+  const markProviderBoundaryEntered = () => {
+    providerBoundaryEntered = true;
+  };
+  try {
+    if (isConversationOutboundPayload(input.payload)) {
+      return deliverConversationOutbound({
+        payload: input.payload,
+        clinicId: input.clinicId,
+        conversationId: input.conversationId,
+        senderOwnedDeliveryAuthorized: input.senderOwnedDeliveryAuthorized,
+      }, boundary, markProviderBoundaryEntered);
+    }
+    if (isAutomationOutboundPayload(input.payload)) {
+      return deliverAutomationOutbound({
+        payload: input.payload,
+        clinicId: input.clinicId,
+        conversationId: input.conversationId,
+      }, boundary, markProviderBoundaryEntered);
+    }
+    if (isOperatorOutboundPayload(input.payload)) {
+      return deliverOperatorOutbound({
+        payload: input.payload,
+        clinicId: input.clinicId,
+        conversationId: input.conversationId,
+      }, boundary, markProviderBoundaryEntered);
+    }
+    throw new Error("Unsupported outbound payload");
+  } catch (error) {
+    if (providerBoundaryEntered) {
+      throw new V2TerminalHandoffRequiredError("delivery_outcome_indeterminate");
+    }
+    throw error;
   }
-  if (isAutomationOutboundPayload(input.payload)) {
-    return deliverAutomationOutbound({
-      payload: input.payload,
-      clinicId: input.clinicId,
-      conversationId: input.conversationId,
-    }, boundary);
-  }
-  if (isOperatorOutboundPayload(input.payload)) {
-    return deliverOperatorOutbound({
-      payload: input.payload,
-      clinicId: input.clinicId,
-      conversationId: input.conversationId,
-    }, boundary);
-  }
-  throw new Error("Unsupported outbound payload");
 }
 
 export async function deliverOperatorOutbound(input: {
   payload: OperatorOutboundPayload;
   clinicId: string;
   conversationId: string;
-}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
+}, boundary: OutboundDeliveryBoundary, onProviderBoundaryEntered?: () => void): Promise<string | null> {
   const [clinic] = await db
     .select()
     .from(organizations)
@@ -857,21 +895,27 @@ export async function deliverOperatorOutbound(input: {
   let providerMessageId: string | null;
   let deliveryFormat: "text" | "audio" = "text";
   if (input.payload.attachment) {
-    providerMessageId = await boundary.sendMediaMessage(
+    const mediaArgs = [
       input.payload.to,
       input.payload.attachment.url,
       input.payload.attachment.mediaType,
       config,
       input.payload.text || undefined,
       input.payload.attachment.fileName,
-    );
+    ] as const;
+    providerMessageId = onProviderBoundaryEntered
+      ? await boundary.sendMediaMessage(...mediaArgs, onProviderBoundaryEntered)
+      : await boundary.sendMediaMessage(...mediaArgs);
   } else {
-    const result = await boundary.sendVoiceOrText(
-      input.payload.to,
-      input.payload.text,
-      config,
-      false,
-    );
+    const voiceArgs = [input.payload.to, input.payload.text, config, false] as const;
+    const result = onProviderBoundaryEntered
+      ? await boundary.sendVoiceOrText(
+        ...voiceArgs,
+        undefined,
+        undefined,
+        onProviderBoundaryEntered,
+      )
+      : await boundary.sendVoiceOrText(...voiceArgs);
     providerMessageId = result.msgId;
     deliveryFormat = result.deliveryFormat;
   }
@@ -893,13 +937,10 @@ async function deliverConversationOutbound(input: {
   payload: ConversationOutboundPayload;
   clinicId: string;
   conversationId: string;
-  internalLabDeliveryAuthorization?: InternalLabDeliveryAuthorization;
-}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
-  const authorizedChannelConfig = input.payload.agentMessagePersistence === "sender"
-    ? consumeInternalLabDeliveryAuthorization(input.internalLabDeliveryAuthorization)
-    : null;
-  if (input.payload.agentMessagePersistence === "sender" && !authorizedChannelConfig) {
-    throw new Error("invalid or consumed Internal Lab delivery authorization");
+  senderOwnedDeliveryAuthorized?: boolean;
+}, boundary: OutboundDeliveryBoundary, onProviderBoundaryEntered?: () => void): Promise<string | null> {
+  if (input.payload.agentMessagePersistence === "sender" && !input.senderOwnedDeliveryAuthorized) {
+    throw new Error("V2 live sender preflight is not installed");
   }
   const [clinic] = await db
     .select()
@@ -914,7 +955,7 @@ async function deliverConversationOutbound(input: {
     return deliverShadowOutbound(input, boundary);
   }
 
-  const config: ChannelConfigSnapshot = authorizedChannelConfig ?? resolveChannelConfig(clinic);
+  const config: ChannelConfigSnapshot = resolveChannelConfig(clinic);
   const conversationRepository = new DrizzleConversationRepository();
   const appointmentRepository = new DrizzleAppointmentRepository();
   const followUpRepository = new DrizzleFollowUpRepository();
@@ -987,6 +1028,7 @@ async function deliverConversationOutbound(input: {
           false,
           input.payload.ttsConfig,
           input.clinicId,
+          onProviderBoundaryEntered,
         );
         return { msgId: result.msgId, deliveryFormat: result.deliveryFormat };
       },
@@ -1017,6 +1059,7 @@ async function deliverConversationOutbound(input: {
         });
       },
       onMediaSent: persistMedia,
+      onProviderBoundaryEntered,
     });
   } else {
     const result = await boundary.sendVoiceOrText(
@@ -1026,6 +1069,7 @@ async function deliverConversationOutbound(input: {
       input.payload.useVoice,
       input.payload.ttsConfig,
       input.clinicId,
+      onProviderBoundaryEntered,
     );
     firstProviderMessageId = result.msgId;
     await db
@@ -1047,6 +1091,7 @@ async function deliverConversationOutbound(input: {
       sendText: () => Promise.resolve({ msgId: null, deliveryFormat: "text" as const }),
       onTextSent: async () => {},
       onMediaSent: persistMedia,
+      onProviderBoundaryEntered,
     });
   }
 
@@ -1076,7 +1121,7 @@ async function deliverAutomationOutbound(input: {
   payload: AutomationOutboundPayload;
   clinicId: string;
   conversationId: string;
-}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
+}, boundary: OutboundDeliveryBoundary, onProviderBoundaryEntered?: () => void): Promise<string | null> {
   const [clinic] = await db
     .select()
     .from(organizations)
@@ -1112,6 +1157,7 @@ async function deliverAutomationOutbound(input: {
     input.payload.useVoice ?? false,
     input.payload.ttsConfig,
     input.clinicId,
+    onProviderBoundaryEntered,
   );
   await db
     .update(messages)
@@ -1143,6 +1189,11 @@ async function deliverAutomationOutbound(input: {
     });
     for (const part of mediaParts) {
       if (part.type !== "media") continue;
+      let mediaProviderBoundaryEntered = false;
+      const markMediaProviderBoundaryEntered = () => {
+        mediaProviderBoundaryEntered = true;
+        onProviderBoundaryEntered?.();
+      };
       try {
         const mediaMsgId = await boundary.sendMediaMessage(
           input.payload.to,
@@ -1150,6 +1201,8 @@ async function deliverAutomationOutbound(input: {
           part.mediaType,
           config,
           part.caption,
+          undefined,
+          markMediaProviderBoundaryEntered,
         );
         await conversationRepository.appendMessage({
           id: randomUUID(),
@@ -1164,6 +1217,7 @@ async function deliverAutomationOutbound(input: {
           deliveryFormat: "text",
         });
       } catch (err) {
+        if (mediaProviderBoundaryEntered) throw err;
         mediaLog.error("falha ao enviar mídia da automação — segue", err, {
           mediaId: part.mediaId,
           title: part.title,

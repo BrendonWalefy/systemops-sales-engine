@@ -399,6 +399,18 @@ function replyHandler(replies: string[]) {
   };
 }
 
+function liveAutomationPolicy() {
+  return {
+    decide: vi.fn(async (clinicId: string) => ({
+      clinicId,
+      mode: "live" as const,
+      reason: "live_v2" as const,
+      authorityVersion: 2 as const,
+      runtimeControlVersion: 1,
+    })),
+  };
+}
+
 function processHandler(
   inboundEventStore: InMemoryInboundEventStore,
   replies: string[],
@@ -406,7 +418,7 @@ function processHandler(
 ) {
   return new ProcessMessageJobHandler({
     inboundEventStore,
-    automationPolicy: { getAutomationMode: vi.fn().mockResolvedValue("live") },
+    automationPolicy: liveAutomationPolicy(),
     resolveInboundContent: vi.fn().mockImplementation(async ({ payload: input }) => ({
       messageText: input.text?.message ?? "",
       shouldReply: true,
@@ -420,6 +432,10 @@ function processHandler(
 }
 
 describe("scheduled burst debounce through the durable inbox", () => {
+  const terminalHandoffStore = {
+    markForInboundEvent: vi.fn().mockResolvedValue(true),
+  };
+
   it("does not reply to A when B arrived before A's job was drained", async () => {
     const inboundEventStore = new InMemoryInboundEventStore();
     const jobQueue = new InMemoryJobQueue();
@@ -468,7 +484,7 @@ describe("scheduled burst debounce through the durable inbox", () => {
 
     const processMessageHandler = new ProcessMessageJobHandler({
       inboundEventStore,
-      automationPolicy: { getAutomationMode: vi.fn().mockResolvedValue("live") },
+      automationPolicy: liveAutomationPolicy(),
       resolveInboundContent: vi.fn().mockImplementation(async ({ payload: input }) => ({
         messageText: input.text?.message ?? "",
         shouldReply: true,
@@ -494,6 +510,7 @@ describe("scheduled burst debounce through the durable inbox", () => {
     await drainMessageProcessQueue({
       jobQueue,
       inboundEventStore,
+      terminalHandoffStore,
       handler: processMessageHandler,
       workerId: "worker-1",
       maxJobs: 10,
@@ -527,6 +544,7 @@ describe("scheduled burst debounce through the durable inbox", () => {
     await drainMessageProcessQueue({
       jobQueue,
       inboundEventStore,
+      terminalHandoffStore,
       handler,
       workerId: "worker-1",
       maxJobs: 10,
@@ -603,6 +621,7 @@ describe("scheduled burst debounce through the durable inbox", () => {
     await drainMessageProcessQueue({
       jobQueue,
       inboundEventStore,
+      terminalHandoffStore,
       handler,
       workerId: "worker-2",
       maxJobs: 10,
@@ -746,6 +765,7 @@ describe("scheduled burst debounce through the durable inbox", () => {
     await drainMessageProcessQueue({
       jobQueue,
       inboundEventStore,
+      terminalHandoffStore,
       handler: failingHandler,
       workerId: "worker-1",
       maxJobs: 1,
@@ -761,6 +781,7 @@ describe("scheduled burst debounce through the durable inbox", () => {
     await drainMessageProcessQueue({
       jobQueue,
       inboundEventStore,
+      terminalHandoffStore,
       handler: successfulHandler,
       workerId: "worker-2",
       maxJobs: 1,
@@ -798,6 +819,7 @@ describe("scheduled burst debounce through the durable inbox", () => {
     await drainMessageProcessQueue({
       jobQueue,
       inboundEventStore,
+      terminalHandoffStore,
       handler: processHandler(inboundEventStore, replies),
       workerId: "worker-1",
       maxJobs: 10,
@@ -823,6 +845,7 @@ describe("scheduled burst debounce through the durable inbox", () => {
     await drainMessageProcessQueue({
       jobQueue,
       inboundEventStore,
+      terminalHandoffStore,
       handler: processHandler(inboundEventStore, replies),
       workerId: "worker-1",
       maxJobs: 10,

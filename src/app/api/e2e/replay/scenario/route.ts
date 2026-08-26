@@ -55,6 +55,7 @@ import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
+import { DrizzleV2ConversationHandoffStore } from "@/infrastructure/repositories/drizzle-v2-conversation-handoff-store";
 import { db } from "@/infrastructure/db/client";
 import {
   agentRecommendations,
@@ -247,7 +248,17 @@ async function runReplayScenario(
       inboundEventStore,
       // O sandbox valida o comportamento que a clínica teria quando ativada.
       // A segurança externa é garantida pelos adapters de captura abaixo.
-      automationPolicy: { getAutomationMode: async () => "live" as const },
+      automationPolicy: {
+        async decide(clinicId) {
+          return Object.freeze({
+            clinicId,
+            mode: "live" as const,
+            reason: "live_v2" as const,
+            authorityVersion: 2 as const,
+            runtimeControlVersion: 1,
+          });
+        },
+      },
       conversationHandler: new ConversationOrchestrator({
         decisionTraceSink: decisionTrace,
         calendarGatewayResolver,
@@ -322,9 +333,11 @@ async function runReplayScenario(
         ...turns.map((turn) => controlledStart + turn.offsetMs),
       );
       const { processDrain, sendDrain } = await runWithRuntimeClock(runtimeClock, async () => {
+        const terminalHandoffStore = new DrizzleV2ConversationHandoffStore();
         const processDrain = await drainMessageProcessQueue({
           jobQueue,
           inboundEventStore,
+          terminalHandoffStore,
           handler: processHandler,
           workerId: `replay-process:${input.runId}:${input.mode}:${executionRuns.length}`,
           maxJobs: injected.length,
@@ -333,6 +346,7 @@ async function runReplayScenario(
         const sendDrain = await drainMessageSendQueue({
           jobQueue,
           outboundMessageStore,
+          terminalHandoffStore,
           handler: sendHandler,
           workerId: `replay-send:${input.runId}:${input.mode}:${executionRuns.length}`,
           maxJobs: Math.max(20, injected.length * 20),

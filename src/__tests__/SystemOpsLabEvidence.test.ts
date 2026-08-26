@@ -87,18 +87,6 @@ function turnTrace(
     Object.freeze({
       schemaVersion: "decision-trace.v1" as const,
       turnId,
-      sequence: sequenceBase,
-      stage: "engine.selected" as const,
-      occurredAt: "2026-08-17T15:00:00.000Z",
-      metadata: Object.freeze({
-        route: "v2",
-        shadow: false,
-        reason: "internal_lab_authorized",
-      }),
-    }),
-    Object.freeze({
-      schemaVersion: "decision-trace.v1" as const,
-      turnId,
       sequence: sequenceBase + 1,
       stage: "v2.understanding" as const,
       occurredAt: "2026-08-17T15:00:00.010Z",
@@ -494,6 +482,16 @@ describe("SystemOps Lab evidence", () => {
     expect(transcript).toContain("CRIAR REGRESSÃO");
   });
 
+  it("treats the direct V2 trace as complete without an engine-selection event", async () => {
+    await enterWorkspace();
+
+    const evaluation = await writeFixture();
+
+    expect(trace.some(({ stage }) => stage === "engine.selected")).toBe(false);
+    expect(evaluation.checks.find(({ id }) => id === "critical_regression")?.status)
+      .toBe("pass");
+  });
+
   it("renders persisted lead-agent turns without opaque persistence identifiers", async () => {
     const workspace = await enterWorkspace();
 
@@ -715,9 +713,9 @@ describe("SystemOps Lab evidence", () => {
       }),
     });
     const fallbackTrace = Object.freeze([
-      ...firstTurn.slice(0, 6),
+      ...firstTurn.slice(0, 5),
       fallbackEvent,
-      ...firstTurn.slice(6),
+      ...firstTurn.slice(5),
       ...turnTrace("opaque-turn-2", 10, {
         request: "book-appointment",
         executeCount: 1,

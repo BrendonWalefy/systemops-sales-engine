@@ -39,11 +39,16 @@ function makeDeps() {
       recoverStaleJobs: vi.fn().mockResolvedValue(0),
       claimNextInboundWork: vi.fn().mockResolvedValueOnce(claimedWork()).mockResolvedValue(null),
       completeJob: vi.fn().mockResolvedValue(true),
+      releaseJob: vi.fn().mockResolvedValue(true),
       failJob: vi.fn(),
     },
     inboundEventStore: {
+      findInboundEvent: vi.fn().mockResolvedValue({ clinicId: "clinic-1" }),
       markInboundEventPending: vi.fn().mockResolvedValue(undefined),
       markInboundEventFailed: vi.fn().mockResolvedValue(undefined),
+    },
+    terminalHandoffStore: {
+      markForInboundEvent: vi.fn().mockResolvedValue(true),
     },
   };
 }
@@ -183,6 +188,10 @@ describe("drainMessageProcessQueue", () => {
 
   it("marca o inbound como failed quando a última tentativa morre", async () => {
     const deps = makeDeps();
+    deps.jobQueue.claimNextInboundWork.mockReset().mockResolvedValueOnce(claimedWork({
+      ...job,
+      attempts: 3,
+    })).mockResolvedValue(null);
     deps.jobQueue.failJob.mockResolvedValue("dead");
 
     const result = await drainMessageProcessQueue({
@@ -197,7 +206,72 @@ describe("drainMessageProcessQueue", () => {
     } as never);
 
     expect(result).toMatchObject({ retried: 0, dead: 1 });
+    expect(deps.terminalHandoffStore.markForInboundEvent).toHaveBeenCalledWith({
+      clinicId: "clinic-1",
+      inboundEventId: "event-1",
+      claimJobId: "job-1",
+      reason: "v2_terminal_processing_failure",
+      now: expect.any(Date),
+    });
+    expect(deps.terminalHandoffStore.markForInboundEvent.mock.invocationCallOrder[0]).toBeLessThan(
+      deps.jobQueue.failJob.mock.invocationCallOrder[0]!,
+    );
     expect(deps.inboundEventStore.markInboundEventFailed).toHaveBeenCalledWith("event-1");
+  });
+
+  it("mantém a tentativa terminal retryable quando o handoff durável falha", async () => {
+    const deps = makeDeps();
+    deps.jobQueue.claimNextInboundWork.mockReset().mockResolvedValueOnce(claimedWork({
+      ...job,
+      attempts: 3,
+    })).mockResolvedValue(null);
+    deps.terminalHandoffStore.markForInboundEvent.mockRejectedValue(new Error("handoff unavailable"));
+
+    const result = await drainMessageProcessQueue({
+      ...deps,
+      handler: {
+        processClaimedJob: vi.fn().mockRejectedValue(new Error("permanent failure")),
+        processHistoryOnlyJob: vi.fn(),
+      },
+      workerId: "worker-1",
+      maxJobs: 1,
+      now: new Date("2026-06-23T12:00:00.000Z"),
+    } as never);
+
+    expect(result).toMatchObject({ retried: 1, dead: 0 });
+    expect(deps.jobQueue.failJob).not.toHaveBeenCalled();
+    expect(deps.jobQueue.releaseJob).toHaveBeenCalledWith(
+      "job-1",
+      "worker-1",
+      new Date("2026-06-23T12:00:20.000Z"),
+      expect.any(Date),
+    );
+    expect(deps.inboundEventStore.markInboundEventFailed).not.toHaveBeenCalled();
+  });
+
+  it("não recompõe o handler quando um efeito anterior já exige handoff terminal", async () => {
+    const deps = makeDeps();
+    const markedJob = {
+      ...job,
+      attempts: 3,
+      lastError: "v2_terminal_handoff_required:effect_outbox_failed",
+    };
+    deps.jobQueue.claimNextInboundWork.mockReset()
+      .mockResolvedValueOnce(claimedWork(markedJob))
+      .mockResolvedValue(null);
+    deps.jobQueue.failJob.mockResolvedValue("dead");
+    const processClaimedJob = vi.fn();
+
+    const result = await drainMessageProcessQueue({
+      ...deps,
+      handler: { processClaimedJob, processHistoryOnlyJob: vi.fn() },
+      workerId: "worker-1",
+      maxJobs: 1,
+    } as never);
+
+    expect(result).toMatchObject({ dead: 1, retried: 0 });
+    expect(processClaimedJob).not.toHaveBeenCalled();
+    expect(deps.terminalHandoffStore.markForInboundEvent).toHaveBeenCalledOnce();
   });
 
   it("não reabre o job quando só a confirmação após processamento falha", async () => {
