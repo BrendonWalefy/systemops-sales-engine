@@ -40,14 +40,15 @@ switch fechado.
 
 ## Comandos
 
-Auditoria inicial, read-only, exigindo que o único candidato operacionalmente ativo seja o Lab.
-O conjunto é propositalmente conservador: inclui todo `operational_status=active`, mesmo quando
-authority, permissão live ou outro gate ainda bloqueia respostas:
+Auditoria inicial, read-only. No primeiro corte real o Lab ainda está em `operational_status=test`
+e pode responder somente pelo binding histórico do build anterior; portanto o conjunto de tenants
+com `operational_status=active` deve estar vazio. A auditoria ainda exige o UUID exato do Lab,
+`is_test=true`, authority 2 e todos os demais gates limpos:
 
 ```bash
 npm run v2:rollout:audit -- \
   --clinic-id 92fe7ecf-f383-4ddc-8c4e-53271af8e3a0 \
-  --expected-live-tenant 92fe7ecf-f383-4ddc-8c4e-53271af8e3a0
+  --expect-no-live-tenants
 ```
 
 Controle de status é dry-run por padrão:
@@ -57,7 +58,7 @@ npm run v2:rollout:control -- \
   --clinic-id 92fe7ecf-f383-4ddc-8c4e-53271af8e3a0 \
   --actor "Brendon Walefy" \
   --action tenant-status \
-  --expected-status active \
+  --expected-status test \
   --next-status paused
 ```
 
@@ -89,11 +90,12 @@ build limpo e medição de performance. Nenhum gate local autoriza escrita produ
 
 ### 2. Auditar e pausar somente o Lab
 
-Execute a auditoria inicial. Exija authority 2, métricas bloqueantes zero, filas/outbounds ativos
-zero e live set exatamente `[SystemOpsLab]`. Registre o digest dos outros tenants e a versão do
-controle global.
+Execute a auditoria inicial. Exija status `test`, `is_test=true`, authority 2, métricas bloqueantes
+zero, filas/outbounds ativos zero e conjunto `operational_status=active` vazio. Registre o digest
+dos outros tenants e a versão do controle global.
 
-Faça dry-run e apply de `active -> paused` com o comando acima. Antes da migration aditiva, o
+Faça dry-run e apply de `test -> paused` com o comando acima. O controle rejeita `test -> active`:
+o fence intermediário não pode ser pulado. Antes da migration aditiva, o
 comando usa compare-and-set somente do status; depois dela, status e permissão live fecham juntos.
 Repita a auditoria com:
 
