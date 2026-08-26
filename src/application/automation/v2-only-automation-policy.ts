@@ -21,6 +21,7 @@ export type V2AutomationDecision = Readonly<{
     | "shadow_observe"
     | "demo"
     | "authority_below_v2"
+    | "tenant_live_disabled"
     | "global_kill_switch";
   authorityVersion: ConversationAuthorityVersion;
   runtimeControlVersion: number;
@@ -104,6 +105,15 @@ export class V2OnlyAutomationPolicy implements V2AutomationPolicy {
         clinicId,
         "disabled",
         "authority_below_v2",
+        authorityVersion,
+        runtimeControl.version,
+      );
+    }
+    if (!facts.liveAutomationEnabled) {
+      return decision(
+        clinicId,
+        "disabled",
+        "tenant_live_disabled",
         authorityVersion,
         runtimeControl.version,
       );

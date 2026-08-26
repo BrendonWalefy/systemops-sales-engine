@@ -14,6 +14,7 @@ const eligibleFacts: ClinicAutomationFacts = Object.freeze({
   isDemo: false,
   operationalStatus: "active",
   autoReplyEnabled: true,
+  liveAutomationEnabled: true,
   shadowModeEnabled: false,
 });
 
@@ -121,6 +122,22 @@ describe("V2OnlyAutomationPolicy", () => {
 
     await expect(harness.policy.decide(CLINIC_ID)).resolves.toEqual(
       expectedDecision({ mode: "observe", reason: "shadow_observe" }),
+    );
+  });
+
+  it("keeps an active authority-v2 tenant disabled without its explicit live permit", async () => {
+    const harness = makePolicy({
+      facts: {
+        ...eligibleFacts,
+        liveAutomationEnabled: false,
+      },
+    });
+
+    await expect(harness.policy.decide(CLINIC_ID)).resolves.toEqual(
+      expectedDecision({
+        mode: "disabled",
+        reason: "tenant_live_disabled",
+      }),
     );
   });
 

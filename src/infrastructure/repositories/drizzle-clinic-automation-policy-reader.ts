@@ -16,6 +16,7 @@ implements ClinicAutomationFactsReader, InternalLabEligibilityReader {
         autoReplyEnabled: organizations.autoReplyEnabled,
         operationalStatus: organizations.operationalStatus,
         shadowModeEnabled: organizations.shadowModeEnabled,
+        liveAutomationEnabled: organizations.liveAutomationEnabled,
       })
       .from(organizations)
       .where(eq(organizations.id, clinicId))

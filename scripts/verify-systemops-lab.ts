@@ -32,6 +32,7 @@ type SystemOpsLabReadinessSnapshot = {
   isDemo: boolean;
   operationalStatus: string;
   autoReplyEnabled: boolean;
+  liveAutomationEnabled: boolean;
   shadowModeEnabled: boolean;
   channelProvider: "z_api" | "meta_cloud_api" | null;
   zapiInstanceId: string | null;
@@ -136,6 +137,7 @@ export async function runSystemOpsLabReadinessVerifier(
     isDemo: snapshot.isDemo,
     operationalStatus: snapshot.operationalStatus,
     autoReplyEnabled: snapshot.autoReplyEnabled,
+    liveAutomationEnabled: snapshot.liveAutomationEnabled,
     shadowModeEnabled: snapshot.shadowModeEnabled,
     channelProvider: channel.provider,
     zapiInstanceId: channel.zapi?.instanceId ?? snapshot.zapiInstanceId,
@@ -201,6 +203,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
             isDemo: organizations.isDemo,
             operationalStatus: organizations.operationalStatus,
             autoReplyEnabled: organizations.autoReplyEnabled,
+            liveAutomationEnabled: organizations.liveAutomationEnabled,
             shadowModeEnabled: organizations.shadowModeEnabled,
             channelProvider: organizations.channelProvider,
             zapiInstanceId: organizations.zapiInstanceId,

@@ -36,6 +36,7 @@ export class DrizzleLiveOutboundPreflight implements LiveOutboundPreflight {
           outbound.payload_turn_id,
           organization.operational_status,
           organization.auto_reply_enabled,
+          organization.live_automation_enabled,
           organization.shadow_mode_enabled,
           organization.is_demo,
           organization.channel_safety_mode,
@@ -129,6 +130,8 @@ export class DrizzleLiveOutboundPreflight implements LiveOutboundPreflight {
               then 'clinic_not_active'
             when auto_reply_enabled is distinct from true
               then 'auto_reply_disabled'
+            when live_automation_enabled is distinct from true
+              then 'tenant_live_disabled'
             when shadow_mode_enabled is distinct from false or is_demo is distinct from false
               then 'shadow_observe'
             when ai_paused is distinct from false

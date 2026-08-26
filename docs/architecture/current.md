@@ -1,6 +1,6 @@
 # Arquitetura atual
 
-Atualizado em 2026-08-17. Este documento descreve o runtime em produção; planos antigos não são fonte de verdade.
+Atualizado em 2026-08-25. Este documento descreve o runtime do release V2-only; planos antigos não são fonte de verdade.
 
 ## Resumo
 
@@ -12,9 +12,9 @@ Princípio central:
 
 > O LLM entende e verbaliza. O sistema decide.
 
-- `IntentClassifier` devolve classificação estruturada.
-- `ConversationOrchestrator` valida invariantes e executa ações reais.
-- `ResponseComposer` transforma resultados permitidos em linguagem humana.
+- o Understanding V2 devolve demanda estruturada;
+- capabilities e Decisions determinísticas executam ações reais;
+- o verbalizador V2 transforma somente resultados autorizados em linguagem humana.
 - Booking, tenant, autorização, handoff, estado, retry e safety gates são determinísticos.
 
 ## Topologia
@@ -61,12 +61,12 @@ GET /api/cron/message-worker?ack=1 (evento) ou cron de fallback
   -> claim com lease e exclusão por conversa
   -> ProcessMessageJobHandler
   -> normalização, policy e transcrição opcional
-  -> ConversationOrchestrator.handle()
-     -> mensagem + state machine + contexto
-     -> IntentClassifier
-     -> decisão determinística
+  -> V2LiveConversationHandler.handle()
+     -> lifecycle + state machine + contexto
+     -> Understanding estruturado
+     -> capabilities + decisão determinística
      -> BookingService / pipeline / handoff / repositories
-     -> ResponseComposer
+     -> AuthorizedResponsePlan + verbalizador + validator
      -> enqueueOutboundMessage()
         -> grava outbound_messages e jobs(message.send) atomicamente
         -> após commit, solicita wake one-shot do sender
@@ -100,7 +100,7 @@ Detalhes em [Replay e Decision Trace](replay-and-decision-trace.md).
 
 | Modo | Comportamento |
 | --- | --- |
-| `live` | organização ativa e auto-reply ligado; o motor pode decidir, persistir estado e enviar |
+| `live` | organização ativa, permissão tenant-scoped e auto-reply ligados; o runtime V2 pode decidir, persistir estado e enviar |
 | `observe` | registra inbound e atividade humana, mas não altera funil, agenda ou resposta da IA |
 | `disabled` | automação conversacional desligada |
 
@@ -138,13 +138,13 @@ Credenciais de canal ficam criptografadas no banco. Não existe fallback global 
 
 Pontos principais de IA:
 
-- `IntentClassifier`: intenção e entidades em JSON estruturado;
-- `ResponseComposer`: resposta baseada no resultado concreto;
+- Understanding V2: demanda e entidades em contrato estruturado;
+- verbalizador V2: linguagem baseada exclusivamente no plano autorizado;
 - `PlaybookAdvisor` e setup studies: análise editorial/operacional;
 - Whisper: transcrição;
 - gateways de TTS: síntese de voz.
 
-Classifier e composer recebem a mesma janela recente de conversa. Conteúdo específico da organização vem do playbook ativo e do catálogo; comportamento universal fica no código de inteligência.
+Understanding e verbalizador recebem o contexto V2 necessário para suas responsabilidades. Conteúdo específico da organização vem do playbook ativo e do catálogo; comportamento universal fica no código de inteligência.
 
 ### Resposta autorizada e fallback seguro
 
@@ -154,22 +154,22 @@ determinístico é a fronteira entre decisão e linguagem:
 ```text
 ActionResult
   -> AuthorizedResponsePlan
-  -> ResponseComposer
-  -> ResponseValidator
+  -> draft determinístico + verbalizador V2
+  -> validator de atos e texto
   -> resposta validada ou fallback determinístico/handoff
   -> outbound_messages + job message.send
 ```
 
 `AuthorizedResponsePlan` deriva uma allowlist das fontes já resolvidas: preços
 explícitos, labels de agenda, mídia permitida, estado esperado, limite de
-caracteres e no máximo uma pergunta. O composer apenas verbaliza o
+caracteres e no máximo uma pergunta. O verbalizador apenas verbaliza o
 `ActionResult`; ele não autoriza fatos novos. Antes de a resposta planejada
 entrar na outbox, o `ResponseValidator` bloqueia conteúdo vazio, tamanho ou
 quantidade de perguntas excedidos, mídia não autorizada, preço ou fato de
 agenda fora do plano e promessa sem suporte.
 
-Erro do composer, resposta inválida ou caso que exige avaliação seguem pelo
-`SafeResponseFallback`. Quando uma cópia determinística baseada no resultado
+Erro do verbalizador, resposta inválida ou caso que exige avaliação usam o fallback V2.
+Quando uma cópia determinística baseada no resultado
 real também passa no validator, ela é enviada; quando não passa, o sistema usa
 cópia neutra e solicita handoff com razão fixa, sem registrar texto do lead ou
 do modelo no trace. Assim, fallback é uma saída segura para uma resposta
@@ -181,47 +181,44 @@ O Decision Trace registra somente metadados permitidos dos estágios
 prompts, preços, horários, mídia e identificadores externos. Uma falha de
 observabilidade continua best-effort e não muda a decisão de negócio.
 
-Esta é a primeira seam de extração do `ConversationOrchestrator`, não a sua
-decomposição completa. A extração de montagem de resposta/mídia reduziu o
-arquivo de 9.143 para 8.271 linhas, mantendo re-exports compatíveis. As
-próximas seams, nesta ordem, são `HandoffPolicy`, `AgendaOfferService`,
-`TreatmentJourneyService` e `ReservationAndDepositService`.
+`ConversationOrchestrator`, `IntentClassifier` e `ResponseComposer` permanecem temporariamente
+como implementação histórica/testes de referência da V1. Nenhum deles é alcançável por roots
+produtivos; comportamento ainda útil deve virar capability ou serviço V2 com contrato próprio.
 
 O código e seus testes não autorizam operação externa. Validação com dados
 privados aprovados, banco de Lab e qualquer operação de cliente permanecem
 gates separados descritos em [Replay e Decision Trace](replay-and-decision-trace.md).
 
-### Conversation Intelligence V2: shadow fechado e ativação interna fail-closed
+### Conversation Intelligence V2: runtime único e fail-closed
 
-O selector tenant-scoped da V2 tem vocabulário fechado `v1 | v1_with_v2_shadow |
-v2_internal` e default `v1`, separado do legado `shadowModeEnabled`. `observe` e `disabled`
-têm precedência e não executam V2. Em produção, o único modo V2 hoje exercido é shadow
-explicitamente configurado: ele roda depois do processamento e da tentativa awaited do sender V1, usa somente
-snapshots imutáveis das leituras que a V1 realmente consumiu e transforma decisões de escrita em
-`would_have_executed`, sem chamar a capability, outbox, calendário ou canal.
+`V2LiveConversationHandler` é o único runtime conversacional produtivo. Webhooks e workers não
+consultam selector de engine, approval vinculada ao build ou configuração `conversation_engine`.
+Os valores legados continuam fisicamente no schema durante o primeiro corte, mas são ignorados
+pela composição produtiva. A V1 permanece apenas como referência histórica inalcançável e não é
+um fallback ou mecanismo de rollback.
 
-Quando uma leitura V1 não possui chave lossless no contrato V2 — atualmente a busca de
-availability — o shadow retorna `shared_read_unavailable`; não reconstrói o snapshot. Como o seam
-atual também não captura o artifact final enviado pela V1, live records marcam o braço V1
-`unavailable` e a comparação `not_measurable`, sem inferir divergência de planos intermediários.
+O Dental Pack é o dono da provenance capability → Decision → ação concreta → ActionResult →
+classe/requisitos. Uma única definição frozen sustenta tipos e validação runtime; a application
+boundary pareia Decision preparada e ActionResult antes de persistir. O `conversation-core`
+permanece genérico e sem literais dentais.
 
-No braço V2, o Dental Pack é o dono da provenance capability → Decision → action concreta →
-outcome → classe/requisitos. Uma única definição frozen sustenta tipos e validação runtime; a
-application boundary pareia Decision preparada e ActionResult antes de persistir e conserva a
-action concreta no shadow. Como o evaluator é uma porta não confiável, ActionResults são novamente
-canonicalizados pelo schema registrado antes da redução ao summary; erro local de validação não é
-contado como falha do sink e produz zero append. O `conversation-core` continua genérico e sem
-literais dentais.
+Um turno pode entrar em automação `live` somente com `conversation_authority.version >= 2`, status
+operacional ativo, `live_automation_enabled=true`, auto-reply habilitado, shadow/observe desligado e o controle global
+`conversation_runtime_control.live_outbound_enabled=true`. Linha ausente ou leitura inconclusiva
+fecha o fluxo. Takeover, consentimento/opt-out e safety gates continuam independentes e
+cumulativos.
 
-O deadline do lote é de admissão. Depois de T nenhuma operação começa; trabalho já admitido é
-drenado e eventual overrun é medido. Isso não é uma garantia de retorno estrito até T.
+A permissão `live_automation_enabled` é tenant-scoped, nasce `false`, não escolhe engine e não é
+approval por build. Ativação e pausa alteram somente o tenant exato por compare-and-set.
 
-O shell live V2 existe no código e reutiliza o lifecycle atual — dedupe, `conversation_states`,
-`BookingService`, durable outbox e sender —, mas `v2_internal` continua fail-closed em V1. Ele só
-é alcançável pelo SystemOps Lab interno, e apenas quando uma approval Ed25519 interna registrada
-vincula build, tenant, canal e configuração, com `isTest=true`, `isDemo=false` e status `test`.
-Qualquer ausência devolve o turno à V1 antes de qualquer efeito, e não existe fallback `V2 -> V1`
-dentro do mesmo turno: trocar a flag vale a partir do turno seguinte.
+A outbox `live_stream_reply` persiste stream, geração, inbound, claim job, digest do token e versão
+de authority. Antes do provider, o sender relê a authority exata, estado atual do tenant, takeover,
+consentimento, safety e kill switch. Qualquer divergência bloqueia a entrega sem chamar V1.
+
+Falhas V2 usam budgets duráveis: até três claims do mesmo `message.process` e até dez claims do
+mesmo `message.send`. Retry conserva authority, dedupe e efeitos confirmados; o término é uma única
+resposta segura autorizada, `handoff_required`, `sent`, `cancelled` ou `dead`, nunca silêncio
+indefinido, loop ou recomposição de efeito.
 
 #### Verbalização da V2
 
@@ -259,12 +256,11 @@ especialidade, tom de voz e a orientação editorial de condução, lidos dos do
 viajam como prosa de prompt — eles chegam ao lead como fato autorizado por uma capability, ou não
 chegam.
 
-Hoje nenhum tenant ou canal foi ativado, e o gate report do Cycle I continua sem assinatura, com
-zero observações V1×V2 e decisão `NO_GO`. Essa authority interna não altera esse resultado, não
-substitui os dois reviewers humanos calibrados exigidos antes do primeiro cliente externo e não
-alcança tenant externo. A evidência e os gaps estão em
-[Ciclo I — shadow e comparação](../ai-system/cycle-i-shadow-comparison.md); o procedimento de
-ativação interna está em [Runbook do SystemOps Lab](../operations/systemops-lab-runbook.md).
+Artefatos de shadow, comparação V1×V2, approval e Cycle I permanecem somente como evidência
+histórica e de qualidade; eles não autorizam atendimento. Ativação futura é tenant-scoped, exige
+validação limpa e compare-and-set monotônico da authority. Deploy não altera tenant pausado,
+desabilitado, demo, prospect ou sem authority V2. O primeiro corte e o rollback sem V1 estão no
+[Runbook do runtime V2-only](../operations/v2-only-runtime-rollout.md).
 
 ## Agenda
 

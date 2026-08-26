@@ -4,7 +4,7 @@
 
 **Goal:** Make Conversation Intelligence V2 the only executable live conversation runtime, with authority-v2 admission, a durable global kill switch, sender-time revalidation, bounded retries, and a tenant-scoped first rollout.
 
-**Architecture:** Durable ingress, stream generation, claim, outbox, and sender remain the irreversible boundaries. A new singleton runtime-control row and the existing tenant authority join the clinic policy at claim time; the same state is checked again in atomic outbox creation and immediately before provider delivery. The composition root constructs only `V2LiveConversationHandler`; V1 remains unreachable reference code and never becomes rollback.
+**Architecture:** Durable ingress, stream generation, claim, outbox, and sender remain the irreversible boundaries. A singleton global runtime-control row, a default-closed tenant live permit and the existing tenant authority join the clinic policy at claim time; the same state is checked again in atomic outbox creation and immediately before provider delivery. The composition root constructs only `V2LiveConversationHandler`; V1 remains unreachable reference code and never becomes rollback.
 
 **Tech Stack:** TypeScript 5.8, Next.js 16, Drizzle ORM, PostgreSQL/Neon HTTP, embedded PostgreSQL/node-postgres for integration tests, Vitest, ESLint, Vercel, GitHub Actions.
 
@@ -15,7 +15,8 @@
 - Every live turn requires `conversation_authority.version >= 2`; missing or unreadable authority fails closed.
 - No production path imports, constructs, or falls back to `ConversationOrchestrator`, `TenantEngineRouter`, or V1.
 - Missing, unreadable, or closed global runtime control blocks creation and delivery of `live_stream_reply`.
-- Sender revalidates exact stream/inbound/claim authority, active status, auto reply, observe/shadow, takeover, consent/opt-out, safety gates, and global control immediately before delivery.
+- Missing or false `organizations.live_automation_enabled` blocks only that tenant; it never redirects to V1 or depends on build identity.
+- Sender revalidates exact stream/inbound/claim authority, active status, tenant live permit, auto reply, observe/shadow, takeover, consent/opt-out, safety gates, and global control immediately before delivery.
 - Internal Lab approval and build binding are removed only from live runtime authorization; replay and synthetic-test authorization remain isolated.
 - `message.process` has at most 3 claims; `message.send` retains at most 10 claims and 15-minute maximum backoff.
 - One provider event creates at most one process job; one settled generation creates at most one live reply and one send job for its lifetime.
@@ -43,6 +44,7 @@
 - `src/__tests__/V2OnlyRuntimeArchitecture.test.ts`: transitive production import and no-fallback contract.
 - `src/__tests__/V2OnlyAutomationPolicy.test.ts`: reasoned policy unit contract.
 - `src/__tests__/V2OnlyRuntimeDatabase.test.ts`: singleton/CAS, outbox, sender, tenant isolation, retry terminal integration.
+- `src/__tests__/V2OnlyRolloutDatabase.test.ts`: locks transacionais, compatibilidade pré-expand e concorrência cross-tenant do rollout.
 - `src/__tests__/V2OnlyRuntimePerformance.test.ts`: metric schema and threshold contract.
 - `docs/operations/v2-only-runtime-rollout.md`: first-cut and later activation runbook.
 - `docs/architecture/v2-capability-parity.md`: behavior-by-behavior V1 reference to V2 capability/shared-service/safe-handoff classification.
@@ -50,7 +52,7 @@
 
 ### Existing units changed
 
-- `src/infrastructure/db/schema.ts` and generated `drizzle/0102_*.sql`/metadata: additive runtime-control table only.
+- `src/infrastructure/db/schema.ts` and generated `drizzle/0102_*.sql`, `drizzle/0103_*.sql`/metadata: singleton global e permissão tenant-scoped aditivos, ambos fail-closed.
 - `src/application/ports/clinic-automation-policy-reader.ts`: reasoned decision while retaining `getAutomationMode()` compatibility for non-runtime readers.
 - `src/infrastructure/repositories/drizzle-clinic-automation-policy-reader.ts`: clinic facts include demo/status/shadow.
 - `src/application/jobs/process-message-job.ts`: consumes reasoned V2-only policy; removes V1 observation/shadow dispatch.
@@ -257,7 +259,8 @@ export type V2AutomationDecision = Readonly<{
   clinicId: string;
   mode: "live" | "observe" | "disabled";
   reason: "live_v2" | "clinic_missing" | "operational_status" | "auto_reply_disabled"
-    | "shadow_observe" | "demo" | "authority_below_v2" | "global_kill_switch";
+    | "tenant_live_disabled" | "shadow_observe" | "demo" | "authority_below_v2"
+    | "global_kill_switch";
   authorityVersion: 0 | 1 | 2 | 3;
   runtimeControlVersion: number;
 }>;
@@ -363,7 +366,7 @@ git commit -m "feat(v2): make v2 the sole conversation runtime"
 export type LiveOutboundPreflightResult =
   | Readonly<{ authorized: true }>
   | Readonly<{ authorized: false; reason: "authority_below_v2" | "claim_mismatch"
-      | "clinic_not_active" | "auto_reply_disabled" | "shadow_observe"
+      | "clinic_not_active" | "auto_reply_disabled" | "tenant_live_disabled" | "shadow_observe"
       | "human_takeover" | "consent_revoked" | "opted_out" | "safety_blocked"
       | "global_kill_switch" | "outbound_not_sendable" }>;
 ```
@@ -504,16 +507,17 @@ git commit -m "refactor(v2): disconnect v1 and build approval from live runtime"
 - Create: `scripts/audit-v2-only-rollout.ts`
 - Create: `scripts/control-v2-only-rollout.ts`
 - Create: `src/__tests__/V2OnlyRolloutCommand.test.ts`
+- Create: `src/__tests__/V2OnlyRolloutDatabase.test.ts`
 - Create: `docs/operations/v2-only-runtime-rollout.md`
 - Modify: `README.md`, `docs/architecture/current.md`, `docs/architecture/sources-of-truth.md`, `docs/operations/change-control.md`, `package.json`
 
 **Interfaces:**
 - `audit-v2-only-rollout --clinic-id <uuid>` is read-only and returns sanitized counts/state.
-- `control-v2-only-rollout --clinic-id <uuid> --expected-status <status> --next-status <status> --expected-control-version <n> --actor <name> [--apply]` defaults dry-run and changes at most the exact Lab row plus the singleton control row requested by the explicit action.
+- `control-v2-only-rollout --clinic-id <uuid> --expected-status <status> --next-status <status> --expected-control-version <n> --actor <name> [--apply]` defaults dry-run. Pausa/reativação alteram somente a linha exata do Lab e sua permissão `live_automation_enabled`; o singleton global é uma ação separada.
 
 - [ ] **Step 1: Write RED command tests**
 
-Prove dry-run writes zero rows; wrong UUID/current status/control version fails; cross-tenant snapshots remain byte-equivalent; pause/reactivate each affect exactly one Lab row; switch CAS affects only singleton; output contains counts/digests but no phone/content/payload/URL/credential.
+Prove dry-run writes zero rows; wrong UUID/current status/control version fails; cross-tenant snapshots remain byte-equivalent; pause/reactivate each affect exactly one Lab row e fecham/abrem sua permissão live; switch CAS affects only singleton; output contains counts/digests but no phone/content/payload/URL/credential. Em PostgreSQL real, prove que tenant, authority, jobs e outbounds concorrentes ficam serializados depois do fence e que outro tenant nunca recebe a permissão.
 
 - [ ] **Step 2: Run RED**
 
@@ -527,10 +531,11 @@ Encode the exact first-cut order from the spec. The audit must report all live t
 
 ```bash
 npx vitest run src/__tests__/V2OnlyRolloutCommand.test.ts src/__tests__/SystemOpsLabReadiness.test.ts
+npx vitest run src/__tests__/V2OnlyRolloutDatabase.test.ts --maxWorkers=1
 npx eslint scripts/audit-v2-only-rollout.ts scripts/control-v2-only-rollout.ts src/__tests__/V2OnlyRolloutCommand.test.ts
 npm run typecheck
 git diff --check
-git add scripts/audit-v2-only-rollout.ts scripts/control-v2-only-rollout.ts src/__tests__/V2OnlyRolloutCommand.test.ts docs/operations/v2-only-runtime-rollout.md README.md docs/architecture/current.md docs/architecture/sources-of-truth.md docs/operations/change-control.md package.json
+git add scripts/audit-v2-only-rollout.ts scripts/control-v2-only-rollout.ts src/__tests__/V2OnlyRolloutCommand.test.ts src/__tests__/V2OnlyRolloutDatabase.test.ts docs/operations/v2-only-runtime-rollout.md README.md docs/architecture/current.md docs/architecture/sources-of-truth.md docs/operations/change-control.md package.json src/infrastructure/db/schema.ts drizzle/0103_even_scorpion.sql drizzle/meta/0103_snapshot.json drizzle/meta/_journal.json
 git commit -m "docs(v2): add v2-only rollout controls and runbook"
 ```
 
@@ -557,7 +562,7 @@ Expected: zero skips in the dedicated embedded authority/config/performance data
 
 - [ ] **Step 2: Verify migrations twice**
 
-Apply all migrations to an empty embedded PostgreSQL database, then apply migration 0102 to an isolated database initialized through 0101 with representative runtime-control absence and current authority/outbound rows. Verify row counts/digests unchanged outside the new singleton table. Never use `.env.local` or production/Neon production.
+Apply all migrations to an empty embedded PostgreSQL database. Separately, initialize one isolated database through 0101 and apply generated migration 0102 with representative authority/outbound rows; then initialize another through 0102 and apply generated migration 0103 with representative organizations in every operational state. Verify 0102 only adds the fail-closed singleton and 0103 only adds `live_automation_enabled NOT NULL DEFAULT false`. The normalized cross-tenant digest, organization status, authority, jobs and outbounds must remain unchanged across 0103. Never use `.env.local` or production/Neon production.
 
 - [ ] **Step 3: Run canonical gates on a clean tree**
 
@@ -601,35 +606,39 @@ Use normal push, open PR to `develop`, wait for Verify, embedded DB, Migration C
 - Expected authority: version 2.
 - Actor: `Brendon Walefy`.
 
-- [ ] **Step 1: Merge and promote normally**
+- [ ] **Step 1: Prepare the reviewed release without promoting it**
 
-Merge focused PR to `develop`, run standard `develop -> main` release PR, wait for all checks, confirm production deployment `READY`, deployed SHA exact, and generated migration applied. Never push directly to main.
+Merge the focused PR to `develop`, open the standard `develop -> main` release PR and wait for all checks. Record the exact candidate SHA and generated migrations, but do not merge the release PR or deploy yet. Never push directly to main.
 
-- [ ] **Step 2: Audit and pause only the Lab**
+- [ ] **Step 2: Audit, pause only the Lab and close any existing switch**
 
-Run read-only audit. Require the exact reviewed live-tenant set, authority 2 clean, and zero cross-tenant changes. Dry-run then apply Lab `active -> paused` with expected current state and exactly one affected row. Close global control by expected-version CAS.
+Run the read-only audit against the current production build. The reported set is deliberately conservative: every `operational_status=active` tenant is an activation candidate even when another gate currently blocks replies. Require it to equal the reviewed set, authority 2 clean and zero cross-tenant changes. Dry-run then apply Lab `active -> paused` with expected current state and exactly one affected row. If global control already exists, close it by expected-version CAS. Do not alter any other active, paused, disabled, demo, prospect or no-v2 tenant.
 
-- [ ] **Step 3: Drain and prove old runtime isolation**
+- [ ] **Step 3: Drain the old runtime**
 
-Drain process/send workers and outbounds. Require zero pending/processing/locked jobs and outbounds for Lab, no pending production jobs globally, production alias on new SHA, old invocations expired, and wake endpoints resolving to the new deployment. Keep switch closed.
+Drain process/send workers and outbounds while the Lab is paused. Require zero pending/processing/failed/locked jobs and outbounds for the Lab and no pending production jobs globally. Keep the switch closed or structurally absent.
 
-- [ ] **Step 4: Validate closed candidate**
+- [ ] **Step 4: Promote and prove old-runtime isolation**
 
-Run authority validation, runtime audit, sender preflight rejection sample, and readiness. Require V2 composition, authority 2, zero blocking metrics, no V1 reachability, no provider send, and zero other-tenant writes.
+Merge the already-green release PR, confirm production `READY`, exact candidate SHA and generated migrations applied. Keep the Lab paused and switch closed. Wait for old invocations to expire, prove wake endpoints resolve to the new deployment, and require that no previous build can retain a lease, create an outbox or process the new flow.
 
-- [ ] **Step 5: Reactivate only the Lab**
+- [ ] **Step 5: Validate the closed candidate**
 
-Dry-run and apply global control closed->open with expected version; dry-run and apply Lab `paused -> active` with exact UUID and one affected row. Re-audit all other paused/disabled/demo/prospect/no-v2 tenants and require unchanged digests.
+Run authority validation, runtime audit, sender preflight rejection sample and readiness. Require V2 composition, authority 2, zero blocking metrics, no V1 reachability, no provider send and zero other-tenant writes.
 
-- [ ] **Step 6: One real smoke and immediate observation**
+- [ ] **Step 6: Reactivate only the Lab**
+
+Dry-run and apply global control closed->open with expected version; dry-run and apply Lab `paused -> active` with its exact UUID, expected status and exactly one affected row. This second CAS also changes only the Lab's `live_automation_enabled` from false to true. Re-audit all other paused/disabled/demo/prospect/no-v2 tenants and require unchanged normalized digests.
+
+- [ ] **Step 7: One real smoke and immediate observation**
 
 Ask the owner to send one WhatsApp message. By metadata only require webhook, one event, correct stream/generation, one claim, `automationMode=live`, one `live_stream_reply`, authorized sender preflight, one `sent`, no duplicates/errors/pending jobs, authority-v2 blocking metrics zero, and latency/performance within the approved gate.
 
-- [ ] **Step 7: Apply first-release rollback if any smoke gate fails**
+- [ ] **Step 8: Apply first-release rollback if any smoke gate fails**
 
 Close global control by CAS, pause only Lab by CAS, preserve inbox/outbox, handoff, and prepare a forward correction. Do not redeploy V1. A stable V2-only redeploy becomes available only after this release has remained healthy through the observation window.
 
-- [ ] **Step 8: Close the cutover**
+- [ ] **Step 9: Close the cutover**
 
 Observe 30 minutes for queue age, duplicate sends, authorization rejection, provider errors, handoff rate, lock wait, model calls/tokens, and Neon compute-active time. Report exact SHA, control version, Lab authority/status, smoke latency, and zero other-tenant changes.
 
@@ -661,10 +670,10 @@ Observe 30 minutes for queue age, duplicate sends, authorization rejection, prov
 | paused/disabled/demo/prospect/no-v2 tenants unchanged | Tasks 3, 8 and 10 cross-tenant snapshots |
 | capability parity without copying V1 conditionals | Task 4 parity matrix and journey test |
 | traceability without sensitive content | Tasks 3 and 5 trace tests |
-| generated migration only and non-destructive first cut | Task 2 generation/inspection and Task 9 empty/current-schema migration tests |
+| generated migrations only and non-destructive first cut | Task 2 singleton generation plus Task 8 tenant-permit generation; Task 9 empty, 0101->0102 and 0102->0103 migration tests |
 | first-cut rollback is switch/handoff/forward fix | Task 10, with stable V2-only redeploy enabled only after healthy observation |
 
-Self-review result: every normative section of the specification maps to at least one RED/GREEN task and one final gate. Placeholder scan is empty. Shared type names are defined once in Tasks 1, 2, 3, 5 and 6 and consumed with the same names later. The only schema expansion is `conversation_runtime_control`; no V1 field is dropped during this cut.
+Self-review result: every normative section of the specification maps to at least one RED/GREEN task and one final gate. Placeholder scan is empty. Shared type names are defined once in Tasks 1, 2, 3, 5 and 6 and consumed with the same names later. Schema expansion is limited to the fail-closed `conversation_runtime_control` singleton and the tenant-scoped `organizations.live_automation_enabled NOT NULL DEFAULT false`; both migrations are generated and additive, and no V1 field is dropped during this cut.
 
 ## Stop boundaries
 

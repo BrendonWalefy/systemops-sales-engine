@@ -382,6 +382,12 @@ export const organizations = pgTable("organizations", {
   // Fonte de verdade da disponibilidade. Null = derivar de googleCalendarId no resolver.
   calendarMode: calendarModeEnum("calendar_mode"),
   autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(false),
+  // Tenant-scoped operational permit for live automation. This never selects
+  // an engine: permitted turns still execute V2 exclusively. Default false
+  // prevents deploys or unrelated status changes from activating a tenant.
+  liveAutomationEnabled: boolean("live_automation_enabled")
+    .notNull()
+    .default(false),
   takeoverTtlHours: integer("takeover_ttl_hours").notNull().default(4),
   postAppointmentBufferMinutes: integer("post_appointment_buffer_minutes")
     .notNull()

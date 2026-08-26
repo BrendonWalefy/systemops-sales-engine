@@ -56,6 +56,7 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
           organization.id is not null as organization_exists,
           organization.operational_status,
           organization.auto_reply_enabled,
+          organization.live_automation_enabled,
           organization.shadow_mode_enabled,
           organization.is_demo,
           coalesce(authority.version, 0)::integer as authority_version,
@@ -118,6 +119,8 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
                 then 'clinic_not_active'
               when creation_context.auto_reply_enabled is distinct from true
                 then 'auto_reply_disabled'
+              when creation_context.live_automation_enabled is distinct from true
+                then 'tenant_live_disabled'
               when creation_context.shadow_mode_enabled is distinct from false
                 or creation_context.is_demo is distinct from false
                 then 'shadow_observe'

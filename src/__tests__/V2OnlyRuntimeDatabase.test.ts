@@ -211,10 +211,10 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
     await database.execute(sql`
       insert into organizations (
         id, name, slug, specialty, operational_status, auto_reply_enabled,
-        shadow_mode_enabled, is_demo
+        live_automation_enabled, shadow_mode_enabled, is_demo
       ) values (
         ${clinicId}::uuid, 'V2 outbound tenant', ${`v2-outbound-${clinicId}`},
-        'dental', 'active', true, false, false
+        'dental', 'active', true, true, false, false
       )
     `);
     await database.execute(sql`
@@ -476,6 +476,9 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
     ["auto_reply_disabled", async (fixture: Awaited<ReturnType<typeof seedLiveOutboundAuthority>>) => {
       await database.execute(sql`update organizations set auto_reply_enabled = false where id = ${fixture.clinicId}::uuid`);
     }],
+    ["tenant_live_disabled", async (fixture: Awaited<ReturnType<typeof seedLiveOutboundAuthority>>) => {
+      await database.execute(sql`update organizations set live_automation_enabled = false where id = ${fixture.clinicId}::uuid`);
+    }],
     ["shadow_observe", async (fixture: Awaited<ReturnType<typeof seedLiveOutboundAuthority>>) => {
       await database.execute(sql`update organizations set is_demo = true where id = ${fixture.clinicId}::uuid`);
     }],
@@ -498,7 +501,11 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
     const persisted = await database.execute<{ outbounds: string; jobs: string }>(sql`
       select
         (select count(*) from outbound_messages where organization_id = ${fixture.clinicId}::uuid)::text as outbounds,
-        (select count(*) from jobs where queue = 'message.send' and payload->>'outboundMessageId' is not null)::text as jobs
+        (select count(*) from jobs send_job
+          join outbound_messages outbound
+            on outbound.id::text = send_job.payload->>'outboundMessageId'
+          where send_job.queue = 'message.send'
+            and outbound.organization_id = ${fixture.clinicId}::uuid)::text as jobs
     `);
     expect(persisted.rows).toEqual([{ outbounds: "0", jobs: "0" }]);
   });
@@ -637,6 +644,9 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
     }],
     ["auto_reply_disabled", async (fixture: Awaited<ReturnType<typeof seedLiveOutboundAuthority>>) => {
       await database.execute(sql`update organizations set auto_reply_enabled = false where id = ${fixture.clinicId}::uuid`);
+    }],
+    ["tenant_live_disabled", async (fixture: Awaited<ReturnType<typeof seedLiveOutboundAuthority>>) => {
+      await database.execute(sql`update organizations set live_automation_enabled = false where id = ${fixture.clinicId}::uuid`);
     }],
     ["shadow_observe", async (fixture: Awaited<ReturnType<typeof seedLiveOutboundAuthority>>) => {
       await database.execute(sql`update organizations set shadow_mode_enabled = true where id = ${fixture.clinicId}::uuid`);

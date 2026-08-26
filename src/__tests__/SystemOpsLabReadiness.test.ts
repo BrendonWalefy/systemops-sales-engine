@@ -23,6 +23,7 @@ function liveInput(
     isDemo: false,
     operationalStatus: "active",
     autoReplyEnabled: true,
+    liveAutomationEnabled: true,
     shadowModeEnabled: false,
     channelProvider: "z_api",
     zapiInstanceId: "instance-1",
@@ -46,6 +47,7 @@ function verifierDependencies(write: (line: string) => void) {
       isDemo: false,
       operationalStatus: "active",
       autoReplyEnabled: true,
+      liveAutomationEnabled: true,
       shadowModeEnabled: false,
       channelProvider: "z_api" as const,
       zapiInstanceId: "instance-1",
@@ -89,6 +91,16 @@ describe("SystemOps Lab V2-only readiness", () => {
     })).blockers).toContain("runtime_control_closed");
     expect(evaluateSystemOpsLabReadiness(liveInput({ runtimeControl: null })).blockers)
       .toContain("runtime_control_closed");
+  });
+
+  it("fails closed when the exact tenant live permit is disabled", () => {
+    const report = evaluateSystemOpsLabReadiness({
+      ...liveInput(),
+      liveAutomationEnabled: false,
+    });
+
+    expect(report.readyForAutomation).toBe(false);
+    expect(report.blockers).toContain("tenant_live_disabled");
   });
 
   it.each([

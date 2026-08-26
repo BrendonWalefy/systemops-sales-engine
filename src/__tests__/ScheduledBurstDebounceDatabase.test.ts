@@ -1529,6 +1529,7 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
         update organizations
         set operational_status = 'active',
             auto_reply_enabled = true,
+            live_automation_enabled = true,
             shadow_mode_enabled = false,
             is_demo = false
         where id = ${clinicId!}::uuid

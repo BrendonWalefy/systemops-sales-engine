@@ -6,6 +6,7 @@ export type ClinicAutomationFacts = Readonly<{
   isDemo: boolean;
   operationalStatus: ClinicOperationalStatus;
   autoReplyEnabled: boolean;
+  liveAutomationEnabled: boolean;
   shadowModeEnabled: boolean;
 }>;
 

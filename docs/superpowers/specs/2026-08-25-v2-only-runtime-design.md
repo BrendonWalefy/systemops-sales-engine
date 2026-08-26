@@ -30,7 +30,7 @@ O corte V2-only transforma lacunas em trabalho explícito. Uma funcionalidade ne
 2. **Nenhum fallback V1:** erro, configuração ausente ou capability não suportada termina dentro da V2.
 3. **Configuração não escolhe engine:** `organizations.conversation_engine` deixa de participar do runtime.
 4. **Approval não autoriza runtime:** approval Internal Lab, gate reports e artefatos de avaliação não controlam atendimento live.
-5. **Controles operacionais permanecem:** status operacional, `auto_reply_enabled`, shadow/observe, takeover humano, consentimento, quiet hours e safety gates continuam bloqueando efeitos quando aplicável.
+5. **Controles operacionais permanecem:** status operacional, `live_automation_enabled`, `auto_reply_enabled`, shadow/observe, takeover humano, consentimento, quiet hours e safety gates continuam bloqueando efeitos quando aplicável. `live_automation_enabled` é tenant-scoped, default false, não seleciona engine e não depende de build.
 6. **O LLM entende e verbaliza; o sistema decide:** modelos não autorizam fatos, agenda, estado, envio ou efeitos.
 7. **Evidência antes de resposta:** ActionResults e AuthorizedResponsePlan limitam o que pode ser dito.
 8. **Durabilidade preservada:** stream authority, claim, dedupe, retry, outbox e sender continuam sendo as fronteiras irreversíveis.
@@ -49,7 +49,7 @@ WhatsApp webhook
   -> claim durável e quiet-window
   -> política operacional do tenant
      -> disabled/observe/takeover: histórico e término sem engine de resposta
-     -> live + authority >= 2 + kill switch aberto: V2LiveConversationHandler
+     -> live permit + authority >= 2 + kill switch aberto: V2LiveConversationHandler
         -> LiveTurnLifecycle
         -> Understanding estruturado
         -> coordenação de capabilities
@@ -71,6 +71,7 @@ WhatsApp webhook
 V2-only não significa resposta automática incondicional. A escolha da engine desaparece, mas os controles de operação continuam determinísticos:
 
 - `auto_reply_enabled=false`: registra histórico e não executa resposta automática;
+- `live_automation_enabled=false`: mantém somente aquele tenant fail-closed;
 - status pausado ou cancelado: não executa resposta automática;
 - takeover humano ativo: preserva o inbound e não disputa com o operador;
 - shadow/observe: não produz efeitos produtivos nem outbound real;
@@ -78,7 +79,7 @@ V2-only não significa resposta automática incondicional. A escolha da engine d
 - kill switch global fechado, ausente ou ilegível: não cria nem entrega outbound live;
 - live: executa exclusivamente a V2 quando todos os gates acima permitem.
 
-O SystemOps Dental Lab permanece identificado por `is_test=true`, mas assume `operational_status=active`, `auto_reply_enabled=true` e `shadow_mode_enabled=false`. Isso usa a mesma política live de qualquer tenant, sem exceção por UUID. `is_test` continua classificando os dados e o ambiente; não seleciona engine.
+O SystemOps Dental Lab permanece identificado por `is_test=true`, mas assume `operational_status=active`, `live_automation_enabled=true`, `auto_reply_enabled=true` e `shadow_mode_enabled=false`. Isso usa a mesma política live de qualquer tenant, sem exceção por UUID. `is_test` continua classificando os dados e o ambiente; não seleciona engine.
 
 Antes do corte, uma auditoria read-only deve provar quais tenants estão em condição live e quais possuem authority V2. O deploy não pode ativar silenciosamente tenant pausado, desabilitado, cancelado, prospect, demo, sem authority V2 ou com auto-reply desligado. Esses tenants conservam exatamente seu estado operacional e não recebem escrita de ativação durante o corte.
 
@@ -164,7 +165,7 @@ Imediatamente antes de qualquer chamada ao provider, uma única boundary fail-cl
 
 - `conversation_authority.version >= 2` para o tenant exato;
 - correspondência exata de stream, geração, inbound event, claim job e digest do token persistidos no outbound;
-- `operational_status=active` e `auto_reply_enabled=true`;
+- `operational_status=active`, `live_automation_enabled=true` e `auto_reply_enabled=true`;
 - shadow/observe desativado;
 - ausência de takeover humano;
 - consentimento válido e ausência de opt-out;
@@ -177,7 +178,7 @@ Nenhum digest de approval ou commit é necessário para enviar. Remover `interna
 
 ## 10. Configuração e schema legados
 
-O primeiro corte inclui uma única expansão de segurança gerada pelo Drizzle: a tabela singleton `conversation_runtime_control`. A linha canônica usa chave estável `global`, `live_outbound_enabled boolean not null default false`, `version bigint not null`, `updated_at` e `updated_by`. Abertura e fechamento usam compare-and-set pela versão esperada; linha ausente, duplicada ou leitura falha significa switch fechado. A mesma leitura tipada é usada na criação e no sender. A migration nasce de `schema.ts` seguido de `drizzle-kit generate`; SQL gerado não é editado à mão.
+O primeiro corte inclui expansões aditivas de segurança geradas pelo Drizzle: a tabela singleton `conversation_runtime_control` e `organizations.live_automation_enabled boolean not null default false`. A linha global usa chave estável `global`, `live_outbound_enabled boolean not null default false`, `version bigint not null`, `updated_at` e `updated_by`. Abertura e fechamento usam compare-and-set pela versão esperada; linha ausente, duplicada ou leitura falha significa switch fechado. A permissão tenant-scoped também nasce fechada e é alterada junto do status somente pelo CAS do tenant exato. As migrations nascem de `schema.ts` seguido de `drizzle-kit generate`; SQL gerado não é editado à mão.
 
 O primeiro corte não precisa de migration destrutiva:
 
@@ -313,7 +314,7 @@ Jobs e outbounds têm gate estrutural absoluto: um provider event físico cria n
 7. Promover pelo fluxo `develop -> main` com CI verde e implantar o build V2-only ainda com o kill switch fechado.
 8. Provar que nenhum worker/build antigo pode receber trabalho novo: produção aponta para o novo SHA; os invocations antigos foram drenados/expiraram; nenhuma URL de wake referencia deployment antigo; filas continuam vazias; jobs novos carregam o contrato V2-only aceito pelo novo composition root.
 9. Validar runtime, sender, authority e isolamento em modo sem envio: nenhum import V1, authority 2 limpa, preflight completo, kill switch bloqueando criação e entrega, demais tenants sem mutação.
-10. Abrir `conversation_runtime_control.live_outbound_enabled` por compare-and-set da versão global esperada e reativar somente o SystemOpsLab com compare-and-set de uma linha, mantendo `is_test=true`, auto-reply ligado e shadow desligado.
+10. Abrir `conversation_runtime_control.live_outbound_enabled` por compare-and-set da versão global esperada e reativar somente o SystemOpsLab com compare-and-set de uma linha que também muda `live_automation_enabled` de false para true, mantendo `is_test=true`, auto-reply ligado e shadow desligado. O CAS usa uma transação HTTP não interativa curta e locks de escrita sobre os dados do fence; concorrência é serializada e nenhum outro tenant recebe a permissão.
 11. Solicitar ao owner um único smoke real; não gerar mensagem sintética. Confirmar uma geração, um claim, V2 live, uma outbox autorizada, um send e zero duplicatas.
 12. Remover variáveis de approval obsoletas somente após comprovar que o runtime e sender não as leem.
 

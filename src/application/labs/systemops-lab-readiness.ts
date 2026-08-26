@@ -5,6 +5,7 @@ export type SystemOpsLabReadinessBlocker =
   | "target_is_demo"
   | "status_not_active"
   | "automation_must_be_enabled"
+  | "tenant_live_disabled"
   | "shadow_must_remain_disabled"
   | "authority_below_v2"
   | "runtime_control_closed"
@@ -29,6 +30,7 @@ export type SystemOpsLabReadinessInput = Readonly<{
   isDemo: boolean;
   operationalStatus: string;
   autoReplyEnabled: boolean;
+  liveAutomationEnabled: boolean;
   shadowModeEnabled: boolean;
   channelProvider: string | null;
   zapiInstanceId: string | null;
@@ -51,6 +53,7 @@ export function evaluateSystemOpsLabReadiness(
   if (input.isDemo) blockers.push("target_is_demo");
   if (input.operationalStatus !== "active") blockers.push("status_not_active");
   if (!input.autoReplyEnabled) blockers.push("automation_must_be_enabled");
+  if (!input.liveAutomationEnabled) blockers.push("tenant_live_disabled");
   if (input.shadowModeEnabled) blockers.push("shadow_must_remain_disabled");
   if (input.authorityVersion === null || input.authorityVersion < 2) {
     blockers.push("authority_below_v2");

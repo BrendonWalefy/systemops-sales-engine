@@ -3,6 +3,7 @@ export const LIVE_OUTBOUND_PREFLIGHT_REASONS = [
   "claim_mismatch",
   "clinic_not_active",
   "auto_reply_disabled",
+  "tenant_live_disabled",
   "shadow_observe",
   "human_takeover",
   "consent_revoked",

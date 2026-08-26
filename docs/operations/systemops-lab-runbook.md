@@ -1,5 +1,9 @@
 # SystemOps Lab — canal e configuração odontológica controlados
 
+> **Histórico:** as seções de engine, approval por build e rollback para V1 foram substituídas pelo
+> [runbook V2-only](v2-only-runtime-rollout.md). Este arquivo permanece somente para consultar a
+> transferência/configuração declarativa original do Lab. Não use suas instruções de ativação V1.
+
 Este procedimento é exclusivamente para o ambiente **SystemOps Lab**. Não copie ou reutilize contatos de clientes, calendários reais, mídia ou corpos de conversa neste ambiente. A transferência é uma mudança controlada: nenhum comando `apply` é autorizado sem credencial rotacionada, aprovação da mudança e todos os gates abaixo aprovados.
 
 A configuração odontológica deste runbook é inteiramente sintética e usa somente
