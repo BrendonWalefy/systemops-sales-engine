@@ -509,13 +509,17 @@ describe("V2-only rollout control — PostgreSQL concurrency", () => {
   });
 
   it("pauses the exact tenant before the additive live-permit migration exists", async () => {
+    const otherClinicId = randomUUID();
     await database.execute(sql`
       insert into organizations (
         id, name, slug, specialty, operational_status, is_test,
         auto_reply_enabled, shadow_mode_enabled
       ) values (
         ${LAB_ID}::uuid, 'SystemOps Dental Lab', ${`pre-expand-${randomUUID()}`},
-        'dental', 'active', true, true, false
+        'dental', 'test', true, true, false
+      ), (
+        ${otherClinicId}::uuid, 'Other Tenant', ${`pre-expand-other-${randomUUID()}`},
+        'dental', 'active', false, true, false
       )
     `);
     await database.execute(sql`
@@ -525,15 +529,18 @@ describe("V2-only rollout control — PostgreSQL concurrency", () => {
       const rolloutControlModule = await import("../../scripts/control-v2-only-rollout");
       await expect(rolloutControlModule.compareAndSetTenantStatus({
         clinicId: LAB_ID,
-        expectedStatus: "active",
+        expectedStatus: "test",
         nextStatus: "paused",
         now: new Date("2026-08-26T00:00:00.000Z"),
       })).resolves.toBe(true);
-      const state = await runtime!.pool.query<{ operational_status: string }>(
-        "select operational_status from organizations where id = $1::uuid",
-        [LAB_ID],
+      const state = await runtime!.pool.query<{ id: string; operational_status: string }>(
+        "select id::text, operational_status from organizations where id = any($1::uuid[]) order by id",
+        [[LAB_ID, otherClinicId]],
       );
-      expect(state.rows).toEqual([{ operational_status: "paused" }]);
+      expect(state.rows).toEqual([
+        { id: LAB_ID, operational_status: "paused" },
+        { id: otherClinicId, operational_status: "active" },
+      ].sort((left, right) => left.id.localeCompare(right.id)));
     } finally {
       await runtime!.pool.query(
         "alter table organizations add column live_automation_enabled boolean default false not null",

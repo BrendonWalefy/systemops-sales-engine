@@ -71,9 +71,9 @@ function auditDependencies(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function controlHarness() {
-  let status: "active" | "paused" = "active";
-  let liveAutomationEnabled = true;
+function controlHarness(initialStatus: "test" | "active" | "paused" = "active") {
+  let status: "test" | "active" | "paused" = initialStatus;
+  let liveAutomationEnabled = initialStatus === "active";
   let control = { liveOutboundEnabled: true, version: 7 };
   let otherDigest = "sha256:other-tenants";
   let authorityClean = true;
@@ -103,7 +103,7 @@ function controlHarness() {
       ],
     })),
     compareAndSetTenantStatus: vi.fn(async (input: {
-      expectedStatus: "active" | "paused";
+      expectedStatus: "test" | "active" | "paused";
       nextStatus: "active" | "paused";
     }) => {
       if (status !== input.expectedStatus) return false;
@@ -268,6 +268,49 @@ describe("V2-only rollout audit", () => {
 });
 
 describe("V2-only rollout control", () => {
+  it("fences the actual pre-cut Lab state through test -> paused only", async () => {
+    const harness = controlHarness("test");
+    const paused = await controlV2OnlyRollout({
+      clinicId: LAB_ID,
+      actor: "Brendon Walefy",
+      apply: true,
+      action: {
+        kind: "tenant_status",
+        expectedStatus: "test",
+        nextStatus: "paused",
+      },
+    }, harness.dependencies);
+
+    expect(paused).toMatchObject({
+      applied: true,
+      affectedRows: 1,
+      target: { operationalStatus: "paused", liveAutomationEnabled: false },
+      otherTenantChanges: 0,
+    });
+    expect(harness.dependencies.compareAndSetTenantStatus).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clinicId: LAB_ID,
+        expectedStatus: "test",
+        nextStatus: "paused",
+      }),
+    );
+  });
+
+  it("rejects bypassing the reviewed pause with a direct test -> active transition", async () => {
+    const harness = controlHarness("test");
+
+    await expect(controlV2OnlyRollout({
+      clinicId: LAB_ID,
+      actor: "Brendon Walefy",
+      action: {
+        kind: "tenant_status",
+        expectedStatus: "test",
+        nextStatus: "active",
+      },
+    }, harness.dependencies)).rejects.toThrow(/transition/i);
+    expect(harness.dependencies.compareAndSetTenantStatus).not.toHaveBeenCalled();
+  });
+
   it("is dry-run by default and writes neither tenant nor global control", async () => {
     const harness = controlHarness();
     const result = await controlV2OnlyRollout({

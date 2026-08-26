@@ -44,7 +44,7 @@ export const SYSTEMOPS_LAB_V2_ROLLOUT_CLINIC_ID =
 
 type TenantStatusAction = Readonly<{
   kind: "tenant_status";
-  expectedStatus: "active" | "paused";
+  expectedStatus: "test" | "active" | "paused";
   nextStatus: "active" | "paused";
 }>;
 
@@ -73,7 +73,7 @@ export type V2OnlyRolloutControlDependencies = Readonly<{
   }>>;
   compareAndSetTenantStatus(input: Readonly<{
     clinicId: string;
-    expectedStatus: "active" | "paused";
+    expectedStatus: "test" | "active" | "paused";
     nextStatus: "active" | "paused";
     actor: string;
     now: Date;
@@ -111,6 +111,14 @@ export async function controlV2OnlyRollout(
     input.action.kind === "tenant_status"
     && input.action.expectedStatus === input.action.nextStatus
   ) throw new Error("tenant status transition must change status");
+  if (
+    input.action.kind === "tenant_status"
+    && !(
+      input.action.nextStatus === "paused"
+        ? input.action.expectedStatus === "test" || input.action.expectedStatus === "active"
+        : input.action.expectedStatus === "paused"
+    )
+  ) throw new Error("tenant status transition is not part of the reviewed rollout");
   if (
     input.action.kind === "global_control"
     && (!Number.isSafeInteger(input.action.expectedVersion) || input.action.expectedVersion < 0)
@@ -330,7 +338,7 @@ async function readActivationGate(clinicId: string): Promise<Readonly<{
 
 export async function compareAndSetTenantStatus(input: Readonly<{
   clinicId: string;
-  expectedStatus: "active" | "paused";
+  expectedStatus: "test" | "active" | "paused";
   nextStatus: "active" | "paused";
   now: Date;
 }>, batch: AtomicDatabaseBatch = neonHttpAtomicDatabaseBatch): Promise<boolean> {
@@ -531,9 +539,16 @@ function requiredValue(flag: string, argv: readonly string[]): string {
   return value;
 }
 
-function parseStatus(value: string): "active" | "paused" {
+function parseExpectedStatus(value: string): "test" | "active" | "paused" {
+  if (value !== "test" && value !== "active" && value !== "paused") {
+    throw new Error("expected rollout status must be test, active or paused");
+  }
+  return value;
+}
+
+function parseNextStatus(value: string): "active" | "paused" {
   if (value !== "active" && value !== "paused") {
-    throw new Error("rollout status must be active or paused");
+    throw new Error("next rollout status must be active or paused");
   }
   return value;
 }
@@ -552,8 +567,8 @@ async function main(): Promise<void> {
   const action: TenantStatusAction | GlobalControlAction = actionName === "tenant-status"
     ? {
         kind: "tenant_status",
-        expectedStatus: parseStatus(requiredValue("--expected-status", argv)),
-        nextStatus: parseStatus(requiredValue("--next-status", argv)),
+        expectedStatus: parseExpectedStatus(requiredValue("--expected-status", argv)),
+        nextStatus: parseNextStatus(requiredValue("--next-status", argv)),
       }
     : actionName === "global-control"
       ? {
