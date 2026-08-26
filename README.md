@@ -17,7 +17,7 @@ WhatsApp
   -> webhook autenticado e resolução do tenant
   -> inbox durável + job de processamento
   -> wake one-shot após commit, com cron de fallback
-  -> orquestrador + regras determinísticas + LLMs
+  -> runtime conversacional V2 + regras determinísticas + LLMs
   -> agenda, pipeline, handoff ou campanha
   -> outbox durável + job de envio
   -> wake one-shot após commit, com cron de fallback
@@ -87,21 +87,13 @@ A análise de maturidade, os gatilhos de migração e os custos estimados estão
 | Observabilidade | Sentry, métricas operacionais e Decision Trace sanitizado |
 | Testes | Vitest, CI e replay E2E isolado |
 
-### Seleção de engine de conversa
+### Runtime conversacional V2-only
 
-Cada organização tem uma engine conversacional persistida, com vocabulário fechado e default `v1`:
+A V2 é o único runtime conversacional produtivo. Configuração de engine, approval por build e fallback para V1 não participam de webhook, worker, composição ou sender. O código V1 permanece temporariamente apenas como referência histórica inalcançável até sua remoção física.
 
-| Valor | Comportamento |
-| --- | --- |
-| `v1` | orquestrador atual decide e responde |
-| `v1_with_v2_shadow` | V1 responde; a V2 roda em shadow, sem escrita, canal ou agenda |
-| `v2_internal` | runtime V2 conduz o turno; alcançável somente no SystemOps Lab interno |
+Automação live continua fail-closed e exige cumulativamente status ativo, permissão tenant-scoped `live_automation_enabled`, auto-reply habilitado, shadow/observe desligado, ausência de takeover/opt-out, safety gates, `conversation_authority.version >= 2` e o kill switch global aberto. Essa permissão não escolhe engine e não depende de build: ela apenas impede ativação acidental de outro tenant. A criação da outbox e o sender revalidam a authority durável; o sender repete a leitura imediatamente antes do provider. Tenant pausado, desabilitado, demo, prospect ou sem authority V2 não é ativado por deploy.
 
-`src/application/conversation-v2/tenant-engine-router.ts` é o único componente que escolhe a engine, uma vez por turno, depois do modo de automação. Nenhuma rota, worker, sender ou adapter ramifica por engine. Não existe fallback `V2 -> V1` dentro do mesmo turno: uma troca de engine só vale a partir do turno seguinte, e a V1 permanece como rollback.
-
-`v2_internal` é fail-closed. Ele exige, simultaneamente, aprovação interna Ed25519 registrada e vinculada ao build implantado, tenant e canal com digests exatos, `isTest=true`, `isDemo=false` e status operacional `test`. Qualquer ausência devolve o turno à V1 antes de qualquer efeito. Essa autorização interna cobre apenas dogfooding no SystemOps Lab: ela não altera o resultado do Cycle I, não substitui os dois reviewers humanos calibrados exigidos antes do primeiro cliente externo e não alcança tenant externo.
-
-O procedimento operacional completo — preconditions, comandos, saídas esperadas, stop conditions e rollback — está em [Runbook do SystemOps Lab](docs/operations/systemops-lab-runbook.md).
+O corte operacional e o rollback sem V1 estão no [Runbook do runtime V2-only](docs/operations/v2-only-runtime-rollout.md).
 
 ## Execução local
 
@@ -158,7 +150,7 @@ O passo a passo completo, com troubleshooting, está em [DEVELOPER.md](DEVELOPER
 - [Fontes de verdade](docs/architecture/sources-of-truth.md)
 - [Replay e Decision Trace](docs/architecture/replay-and-decision-trace.md)
 - [Change control e deploy](docs/operations/change-control.md)
-- [Runbook do SystemOps Lab](docs/operations/systemops-lab-runbook.md)
+- [Runbook do runtime V2-only](docs/operations/v2-only-runtime-rollout.md)
 - [Onboarding de organização](docs/operations/onboarding-clinica.md)
 - [Migrations](docs/operations/migrations-baseline.md)
 - [LGPD e dados de saúde](docs/compliance/lgpd-healthcare.md)

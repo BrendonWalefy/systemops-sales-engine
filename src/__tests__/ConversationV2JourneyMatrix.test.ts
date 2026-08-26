@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { parseCapturedV2TurnReads } from "@/application/conversation-v2/captured-turn-reads";
 import {
@@ -462,5 +463,53 @@ describe("Cycle I deferred journey boundary", () => {
     expect(deferredJourneyTaxonomy.map(({ journey }) => journey)).toEqual([
       "media", "objection", "discount", "follow_up",
     ]);
+  });
+});
+
+describe("V2-only capability parity contract", () => {
+  const requiredBehaviors = [
+    "opening_reception",
+    "catalog",
+    "authorized_price",
+    "objections",
+    "multi_turn_pipeline",
+    "media",
+    "qualification",
+    "scheduling_revalidation",
+    "reservation",
+    "deposit",
+    "cancel_reschedule",
+    "opt_out",
+    "handoff",
+    "takeover",
+    "turn_follow_up",
+    "voice",
+  ] as const;
+  const allowedResolutions = new Set([
+    "v2_capability",
+    "shared_service",
+    "obsolete",
+    "safe_handoff",
+  ]);
+
+  it("classifies every required live behavior without a V1 resolution", () => {
+    const document = readFileSync("docs/architecture/v2-capability-parity.md", "utf8");
+    const rows = document.split("\n")
+      .map((line) => /^\|\s*`([^`]+)`\s*\|\s*`([^`]+)`\s*\|/.exec(line))
+      .filter((match): match is RegExpExecArray => match !== null)
+      .map((match) => ({ behavior: match[1]!, resolution: match[2]! }));
+
+    expect(rows.map(({ behavior }) => behavior)).toEqual(requiredBehaviors);
+    expect(rows.every(({ resolution }) => allowedResolutions.has(resolution))).toBe(true);
+    expect(document).not.toMatch(/\|\s*`[^`]+`\s*\|\s*`?v1(?:\b|_)/i);
+  });
+
+  it("uses safe_handoff only for behaviors with an executable durable V2 transition", () => {
+    const document = readFileSync("docs/architecture/v2-capability-parity.md", "utf8");
+    const safeHandoffs = document.split("\n")
+      .map((line) => /^\|\s*`([^`]+)`\s*\|\s*`safe_handoff`\s*\|/.exec(line)?.[1] ?? null)
+      .filter((behavior): behavior is string => behavior !== null);
+
+    expect(safeHandoffs).toEqual(["objections", "cancel_reschedule"]);
   });
 });

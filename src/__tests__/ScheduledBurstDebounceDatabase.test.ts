@@ -780,6 +780,7 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
         streamGeneration: 1,
         claimToken: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
       });
+      expect(claimed?.job.maxAttempts).toBe(3);
       expect(JSON.stringify(claimed!.job.payload)).not.toContain("claimToken");
       expect(JSON.stringify(claimed!.job.payload)).not.toContain("claim_token");
       expect.soft(firstRow.raw.stream_id).toEqual(expect.any(String));
@@ -889,6 +890,51 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
       const persisted = await readInboundRow(recorded.inboundEventId);
       expect(persisted.raw.claim_token).toBe(first!.claimToken);
       expect(persisted.raw.claim_job_id).toBe(first!.job.id);
+    });
+
+    it("recovers a stale process lease without resetting its budget or claim token", async () => {
+      const store = new DrizzleInboundEventStore(
+        createEmbeddedAtomicDatabaseBatch(runtime!.pool),
+      );
+      const queue = new DrizzleJobQueue();
+      const receivedAt = new Date("2026-08-24T18:45:00.000Z");
+      const recorded = await store.recordInboundEventAndEnqueue(eventInput(
+        clinicId!,
+        "stale-budget-recovery",
+        receivedAt,
+        { phone: "5511888800031", providerThreadId: "stale-budget-recovery" },
+      ));
+      const dedupeKey = `inbound-event:${recorded.inboundEventId}`;
+      const first = await queue.claimNextInboundWork({
+        workerId: "stale-budget-first",
+        dedupeKey,
+        now: new Date(receivedAt.getTime() + 15_000),
+      });
+      expect(first).toMatchObject({
+        outcome: "claimed",
+        job: { attempts: 1, maxAttempts: 3 },
+        claimToken: expect.any(String),
+      });
+      await testDb().execute(sql`
+        update jobs
+        set locked_at = ${receivedAt}
+        where id = ${first!.job.id}::uuid
+      `);
+
+      const recovered = await queue.recoverStaleJobs({
+        olderThan: new Date(receivedAt.getTime() + 1_000),
+      });
+      expect(recovered).toBeGreaterThanOrEqual(1);
+      const retried = await queue.claimNextInboundWork({
+        workerId: "stale-budget-retry",
+        dedupeKey,
+        now: new Date(receivedAt.getTime() + 20_000),
+      });
+      expect(retried).toMatchObject({
+        outcome: "claimed",
+        job: { attempts: 2, maxAttempts: 3 },
+        claimToken: first!.claimToken,
+      });
     });
 
     it("keeps the latest generation pending until its durable quiet boundary", async () => {
@@ -1471,6 +1517,29 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
       const [conversation] = await testDb().insert(conversations).values({
         clinicId: clinicId!, leadId: lead.id, channel: "whatsapp",
       }).returning();
+      await testDb().execute(sql`
+        update whatsapp_streams
+        set conversation_id = ${conversation.id}::uuid,
+            conversation_stream_order = 1,
+            bound_at = '2026-08-24T22:00:15.000Z'::timestamptz
+        where id = ${claim.streamId}::uuid
+          and organization_id = ${clinicId!}::uuid
+      `);
+      await testDb().execute(sql`
+        update organizations
+        set operational_status = 'active',
+            auto_reply_enabled = true,
+            live_automation_enabled = true,
+            shadow_mode_enabled = false,
+            is_demo = false
+        where id = ${clinicId!}::uuid
+      `);
+      await testDb().execute(sql`
+        insert into conversation_runtime_control (
+          key, live_outbound_enabled, version, updated_by
+        ) values ('global', true, 1, 'scheduled-burst-authority-test')
+        on conflict (key) do update set live_outbound_enabled = true
+      `);
       await testDb().insert(conversationAuthority).values({
         clinicId: clinicId!, version: 2,
       }).onConflictDoUpdate({
@@ -1482,7 +1551,7 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
         clinicId: clinicId!,
         conversationId: conversation.id,
         channel: "whatsapp" as const,
-        payload: { turnId: "outbound-authority-a" },
+        payload: { turnId: claim.inboundEventId, leadId: lead.id },
         deliveryKind: "text" as const,
         category: "reply" as const,
         dedupeKey: "outbound-authority-a",
@@ -1503,7 +1572,10 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
         ...input,
         dedupeKey: "invalid-token-must-not-reuse-live-authority",
         authorization: { ...input.authorization, claimToken: "z".repeat(43) },
-      })).rejects.toThrow("Outbound authorization rejected");
+      })).rejects.toMatchObject({
+        name: "LiveOutboundCreationRejectedError",
+        reason: "claim_mismatch",
+      });
       await testDb().execute(sql`
         update outbound_messages set status = 'dead'
         where id = ${firstOutbox.outboundMessageId}::uuid
@@ -1584,7 +1656,7 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
           and authorization_kind = 'legacy'
       `);
       await expect(store.authorizeOutboundMessageForSend(legacy.rows[0]!.id))
-        .resolves.toEqual({ authorized: false, reason: "authority_version_activated" });
+        .resolves.toEqual({ authorized: false, reason: "outbound_not_sendable" });
 
       const missingId = randomUUID();
       await testDb().insert(outboundMessages).values({
@@ -1598,7 +1670,7 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
         sequence: 100,
       });
       await expect(store.authorizeOutboundMessageForSend(missingId))
-        .resolves.toEqual({ authorized: false, reason: "authority_version_activated" });
+        .resolves.toEqual({ authorized: false, reason: "outbound_not_sendable" });
     });
 
     it("advances organization authority by durable monotonic compare-and-set", async () => {

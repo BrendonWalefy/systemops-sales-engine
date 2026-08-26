@@ -171,7 +171,7 @@ describe("V2 shadow runner", () => {
     const execute = vi.fn();
     const capability: Capability<DentalRequest, DentalPolicy, DentalClaimPayload, typeof dentalPackModule.DENTAL_OUTCOME_SCHEMA> = {
       id: "test-capability",
-      claim: () => ({ capabilityId: "test-capability", confidence: 1, reason: "test", payload: { kind: "escalation", emergency: false, requestsHuman: false } }),
+      claim: () => ({ capabilityId: "test-capability", confidence: 1, reason: "test", payload: { kind: "escalation", emergency: false, requestsHuman: false, reason: "structured_safety_signal" } }),
       decide: async () => ({ kind: "execute", action: { type: "foreign", parameters: {} }, nextBestStep: null }),
       execute,
     };

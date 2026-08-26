@@ -105,7 +105,6 @@ describe("SystemOps Lab scope", () => {
       "scripts/run-systemops-lab-personas.ts",
       "scripts/transfer-systemops-lab-channel.ts",
       "scripts/verify-systemops-lab.ts",
-      "src/application/jobs/send-message-job.ts",
       "src/infrastructure/repositories/drizzle-systemops-lab-channel-transfer-repository.ts",
     ]);
   });
@@ -183,11 +182,6 @@ const environmentNames = new Set<string>([
     }),
 ]);
 
-const approvalVocabulary = new Set(
-  [...read("src/application/conversation-v2/internal-lab-approval.ts")
-    .matchAll(/"([A-Z][A-Z0-9_]+)"/g)].map((match) => match[1]!),
-);
-
 describe("SystemOps Lab runbook", () => {
   it("documents every Lab entrypoint that exists in package.json", () => {
     const labScripts = Object.keys(packageScripts)
@@ -228,13 +222,10 @@ describe("SystemOps Lab runbook", () => {
     const referenced = [
       ...[...runbook.matchAll(/\$(?:\{)?([A-Z][A-Z0-9_]+)/g)].map((match) => match[1]!),
       ...[...runbook.matchAll(/(?:^|\s)([A-Z][A-Z0-9_]+)=/gm)].map((match) => match[1]!),
-      // Prose names an env var in backticks. Closed approval vocabulary shares the shape
-      // (INTERNAL_LAB_READY, NO_GO), so it is excluded by identity rather than by prefix.
       ...[...runbook.matchAll(/`([A-Z][A-Z0-9]*_[A-Z0-9_]+)`/g)]
-        .map((match) => match[1]!)
-        .filter((name) => !approvalVocabulary.has(name)),
+        .map((match) => match[1]!),
     ];
-    expect(new Set(referenced).size).toBeGreaterThan(10);
+    expect(new Set(referenced).size).toBeGreaterThan(0);
 
     const unknown = [...new Set(referenced)]
       .filter((name) => !environmentNames.has(name))
@@ -243,62 +234,23 @@ describe("SystemOps Lab runbook", () => {
     expect(unknown).toEqual([]);
   });
 
-  it("documents the closed readiness phases exactly as the verifier accepts them", () => {
-    const phases = [...(/export type SystemOpsLabReadinessPhase =([^;]+);/
-      .exec(read("src/application/labs/systemops-lab-readiness.ts"))?.[1] ?? "")
-      .matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
-    expect(phases.length).toBeGreaterThan(0);
-    const commands = runbookCommands();
-    const undocumented = [...new Set(phases)]
-      .filter((phase) => !commands.some((command) =>
-        command.line.includes(`SYSTEMOPS_LAB_READINESS_PHASE=${phase}`)
-        && command.script === "lab:verify"))
-      .sort();
-
-    expect(undocumented).toEqual([]);
+  it("keeps readiness V2-only and free of phase or approval selectors", () => {
+    expect(read("src/application/labs/systemops-lab-readiness.ts"))
+      .not.toContain("SystemOpsLabReadinessPhase");
+    expect(runbook).not.toContain("SYSTEMOPS_LAB_READINESS_PHASE");
+    expect(runbook).toContain("O verificador não aceita selector de fase ou approval");
   });
 
-  it("documents both approval decisions, every criterion and every evidence kind", () => {
-    const approvalSource = read("src/application/conversation-v2/internal-lab-approval.ts");
-    const closedList = (name: string): readonly string[] => [
-      ...(new RegExp(`const ${name} = Object.freeze\\(\\[([\\s\\S]*?)\\]`).exec(approvalSource)?.[1] ?? "")
-        .matchAll(/"([^"]+)"/g),
-    ].map((match) => match[1]!);
-
-    const decisions = [...(/decision: z\.enum\(\[([^\]]*)\]/.exec(approvalSource)?.[1] ?? "")
-      .matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
-    const criteria = [...closedList("smokeCriteria"), ...closedList("readyCriteria")];
-    const evidenceKinds = [
-      ...closedList("smokeEvidenceKinds"),
-      ...closedList("readyEvidenceKinds"),
-    ];
-
-    expect(decisions).toHaveLength(2);
-    expect(criteria.length).toBeGreaterThan(10);
-    expect(evidenceKinds.length).toBeGreaterThan(2);
-
-    // Backticked match: `inbox` must be its own token, not a slice of inbox_persistence_green.
-    const undocumented = [...new Set([...decisions, ...criteria, ...evidenceKinds])]
-      .filter((token) => !runbook.includes(`\`${token}\``))
-      .sort();
-
-    expect(undocumented).toEqual([]);
+  it("keeps historical approval tooling outside the live sender", () => {
+    expect(runbook).toContain("não participa do runtime V2-only");
+    expect(read("src/application/jobs/send-message-job.ts"))
+      .not.toMatch(/application\/labs\/|internal-lab-authorization|internal-lab-delivery-guard/);
   });
 
-  it("gives every activation step an expected decision and a return-to-V1 condition", () => {
-    // Section 13 is the index of the sequence; every step after it is a gate.
-    const activationSections = runbook.split(/^## /m).slice(1)
-      .filter((section) => Number.parseInt(section, 10) >= 14);
-    expect(activationSections.length).toBeGreaterThan(10);
-
-    const incomplete = activationSections
-      .filter((section) => !section.includes("**Precondition:**")
-        || !section.includes("**Expected:**")
-        || !section.includes("**Retorna a V1 se:**"))
-      .map((section) => section.split("\n")[0]!)
-      .sort();
-
-    expect(incomplete).toEqual([]);
+  it("delegates activation to the V2-only runbook without a V1 fallback", () => {
+    expect(runbook).toContain("[runbook V2-only](v2-only-runtime-rollout.md)");
+    expect(runbook).not.toMatch(/Retorna a V1 se:|V2 -> V1 -> V2|conversationEngine=v1/);
+    expect(runbook).toContain("nunca redirecionar para V1");
   });
 
   it("pairs every mutating command with its documented rollback path", () => {
@@ -310,8 +262,7 @@ describe("SystemOps Lab runbook", () => {
     const rollbackDocumented = commands.some((command) =>
       command.flags.includes("--rollback-snapshot"));
     expect(rollbackDocumented).toBe(true);
-    expect(runbook).toContain("V2 -> V1 -> V2");
-    expect(runbook).toContain("OWNER REVIEW: PENDING");
+    expect(runbook).toContain("Rollback de configuração não muda engine");
     expect(runbook).toContain("npm run verify");
   });
 
@@ -328,12 +279,13 @@ describe("SystemOps Lab runbook", () => {
   });
 
   it("keeps README aligned with the closed engine vocabulary and the runbook", () => {
-    expect(readme).toContain(runbookPath);
+    expect(readme).toContain("docs/operations/v2-only-runtime-rollout.md");
 
     const declared = [...(/pgEnum\("conversation_engine",\s*\[([^\]]*)\]/
       .exec(read("src/infrastructure/db/schema.ts"))?.[1] ?? "")
       .matchAll(/"([^"]+)"/g)].map((match) => match[1]!);
-    expect(declared.filter((engine) => !readme.includes(`\`${engine}\``))).toEqual([]);
+    expect(declared).toEqual(["v1", "v1_with_v2_shadow", "v2_internal"]);
+    expect(readme).toContain("Configuração de engine, approval por build e fallback para V1 não participam");
 
     const referencedModules = [...readme.matchAll(/\bsrc\/[\w./-]+\.ts\b/g)]
       .map((match) => match[0])

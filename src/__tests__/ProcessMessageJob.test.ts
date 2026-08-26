@@ -4,6 +4,9 @@ import type { InboundEvent } from "@/application/ports/inbound-event-store";
 import type { JobRecord } from "@/application/ports/job-queue";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 import type { V1TurnObservationEvent } from "@/core/observability/V1TurnObservation";
+import type { V2AutomationDecision } from "@/application/automation/v2-only-automation-policy";
+import { BufferedDatabaseDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
+import type { AppendDecisionTraceBatchInput } from "@/infrastructure/repositories/drizzle-decision-trace-store";
 
 const event: InboundEvent = {
   id: "event-1",
@@ -55,6 +58,19 @@ const job: JobRecord = {
   updatedAt: new Date("2026-06-23T12:00:00.000Z"),
 };
 
+function automationDecision(
+  patch: Partial<V2AutomationDecision> = {},
+): V2AutomationDecision {
+  return {
+    clinicId: "clinic-1",
+    mode: "live",
+    reason: "live_v2",
+    authorityVersion: 2,
+    runtimeControlVersion: 7,
+    ...patch,
+  };
+}
+
 function makeHandler(overrides: Partial<ConstructorParameters<typeof ProcessMessageJobHandler>[0]> = {}) {
   const inboundEventStore = {
     findInboundEvent: vi.fn().mockResolvedValue(event),
@@ -62,7 +78,9 @@ function makeHandler(overrides: Partial<ConstructorParameters<typeof ProcessMess
     markInboundEventProcessed: vi.fn().mockResolvedValue(undefined),
     markInboundEventIgnored: vi.fn().mockResolvedValue(undefined),
   };
-  const automationPolicy = { getAutomationMode: vi.fn().mockResolvedValue("live") };
+  const automationPolicy = {
+    decide: vi.fn().mockResolvedValue(automationDecision()),
+  };
   const conversationHandler = { handle: vi.fn().mockResolvedValue({ replied: true }) };
   const resolveInboundContent = vi.fn().mockResolvedValue({ messageText: "Olá", shouldReply: true });
   const decisionTraceSink = new InMemoryDecisionTraceSink();
@@ -170,9 +188,18 @@ describe("ProcessMessageJobHandler", () => {
     expect(inboundEventStore.markInboundEventProcessed).toHaveBeenCalledWith("event-1");
     expect(decisionTraceSink.getEvents("event-1").map((entry) => entry.stage)).toEqual([
       "ingress.received",
+      "tenant.config_loaded",
       "ingress.content_resolved",
       "orchestrator.completed",
     ]);
+    expect(decisionTraceSink.getEvents("event-1")[1]?.metadata).toEqual(
+      expect.objectContaining({
+        automationMode: "live",
+        reason: "live_v2",
+        authorityVersion: 2,
+        runtimeControlVersion: 7,
+      }),
+    );
   });
 
   it.each([
@@ -309,6 +336,51 @@ describe("ProcessMessageJobHandler", () => {
     expect(conversationHandler.handle).not.toHaveBeenCalled();
   });
 
+  it("persiste a decisão da política e o terminal ao ignorar conteúdo não suportado", async () => {
+    const persistedTraceRows = new Map<string, AppendDecisionTraceBatchInput>();
+    const decisionTraceSink = new BufferedDatabaseDecisionTraceSink({
+      async append(input) {
+        persistedTraceRows.set(input.turnId, input);
+      },
+    });
+    const createTurnObservationSink = vi.fn();
+    const { handler, inboundEventStore, conversationHandler } = makeHandler({
+      resolveInboundContent: vi.fn().mockResolvedValue(null),
+      decisionTraceSink,
+      createTurnObservationSink,
+    });
+
+    await expect(handler.processJob(job)).resolves.toEqual({
+      outcome: "ignored",
+      inboundEventId: "event-1",
+    });
+
+    expect(persistedTraceRows.get("event-1")).toEqual(expect.objectContaining({
+      turnId: "event-1",
+      clinicId: "clinic-1",
+      events: [
+        expect.objectContaining({ stage: "ingress.received" }),
+        expect.objectContaining({
+          stage: "tenant.config_loaded",
+          metadata: {
+            automationMode: "live",
+            reason: "live_v2",
+            authorityVersion: 2,
+            runtimeControlVersion: 7,
+          },
+        }),
+        expect.objectContaining({
+          stage: "turn.ignored",
+          metadata: { reason: "unsupported_content" },
+        }),
+      ],
+    }));
+    expect(inboundEventStore.markInboundEventIgnored).toHaveBeenCalledWith("event-1");
+    expect(inboundEventStore.markInboundEventProcessed).not.toHaveBeenCalled();
+    expect(conversationHandler.handle).not.toHaveBeenCalled();
+    expect(createTurnObservationSink).not.toHaveBeenCalled();
+  });
+
   it("não reprocessa um evento que já foi concluído", async () => {
     const { handler, inboundEventStore, conversationHandler } = makeHandler({
       inboundEventStore: {
@@ -403,40 +475,43 @@ describe("ProcessMessageJobHandler", () => {
     expect(observations.some((event) => event.kind === "turn_terminal")).toBe(false);
   });
 
-  it("shadow registra a mensagem em modo observação sem autorizar efeitos da IA", async () => {
-    const automationPolicy = { getAutomationMode: vi.fn().mockResolvedValue("observe") };
-    const { handler, conversationHandler, resolveInboundContent } = makeHandler({
+  it("shadow registra observação sem despachar o handler completo", async () => {
+    const automationPolicy = {
+      decide: vi.fn().mockResolvedValue(automationDecision({
+        mode: "observe",
+        reason: "shadow_observe",
+      })),
+    };
+    const { handler, inboundEventStore, conversationHandler, resolveInboundContent, decisionTraceSink } = makeHandler({
       automationPolicy,
     });
 
-    await handler.processJob(job);
+    await expect(handler.processJob(job)).resolves.toEqual({
+      outcome: "processed",
+      inboundEventId: "event-1",
+    });
 
     expect(resolveInboundContent).toHaveBeenCalledWith(expect.objectContaining({
       replyEnabled: false,
       transcriptionEnabled: true,
     }));
-    expect(conversationHandler.handle).toHaveBeenCalledWith(expect.objectContaining({
-      replyEnabled: false,
-      observationOnly: true,
-    }));
+    expect(conversationHandler.handle).not.toHaveBeenCalled();
+    expect(inboundEventStore.markInboundEventProcessed).toHaveBeenCalledWith("event-1");
+    expect(decisionTraceSink.getEvents("event-1").at(-1)).toEqual(
+      expect.objectContaining({
+        stage: "turn.ignored",
+        metadata: { reason: "shadow_observe" },
+      }),
+    );
   });
 
-  it("cria uma seam por turn live e só emite terminal depois do handle e acknowledgement", async () => {
+  it("does not create or pass a V1 observation seam on a live V2 turn", async () => {
     const order: string[] = [];
-    const events: V1TurnObservationEvent[] = [];
-    const createTurnObservationSink = vi.fn((input: { turnId: string; clinicId: string; automationMode: "live" }) => {
-      expect(input).toEqual({ turnId: "event-1", clinicId: "clinic-1", automationMode: "live" });
-      return {
-        record(observation: V1TurnObservationEvent) {
-          events.push(observation);
-          order.push(observation.kind);
-        },
-      };
-    });
+    const createTurnObservationSink = vi.fn();
     const conversationHandler = {
       handle: vi.fn(async (input: Record<string, unknown>) => {
         expect(input.turnId).toBe("event-1");
-        expect(input.turnObservationSink).toBeDefined();
+        expect(input).not.toHaveProperty("turnObservationSink");
         order.push("handle");
         return { replied: false, reason: "intentional_silence" };
       }),
@@ -455,22 +530,8 @@ describe("ProcessMessageJobHandler", () => {
 
     await handler.processJob(job);
 
-    expect(createTurnObservationSink).toHaveBeenCalledTimes(1);
-    expect(events[0]).toEqual({
-      kind: "turn_gate_fact",
-      turnId: "event-1",
-      field: "automationEnabled",
-      value: true,
-      source: "job_automation",
-    });
-    expect(events.at(-1)).toEqual({
-      kind: "turn_terminal",
-      turnId: "event-1",
-      replied: false,
-      reason: "intentional_silence",
-    });
-    expect(order.indexOf("turn_terminal")).toBeGreaterThan(order.indexOf("handle"));
-    expect(order.indexOf("turn_terminal")).toBeGreaterThan(order.indexOf("acknowledgement"));
+    expect(createTurnObservationSink).not.toHaveBeenCalled();
+    expect(order).toEqual(["handle", "acknowledgement"]);
   });
 
   it("não emite terminal quando V1 ou acknowledgement falha", async () => {
@@ -500,21 +561,36 @@ describe("ProcessMessageJobHandler", () => {
     }
   });
 
-  it.each(["observe", "disabled"] as const)(
-    "não cria nem finaliza seam em automation %s",
-    async (automationMode) => {
+  it.each([
+    ["observe", "shadow_observe", true],
+    ["disabled", "global_kill_switch", false],
+  ] as const)(
+    "não despacha handler nem cria seam em automation %s",
+    async (automationMode, reason, transcriptionEnabled) => {
       const createTurnObservationSink = vi.fn();
-      const automationPolicy = { getAutomationMode: vi.fn().mockResolvedValue(automationMode) };
-      const { handler, conversationHandler } = makeHandler({
+      const automationPolicy = {
+        decide: vi.fn().mockResolvedValue(automationDecision({
+          mode: automationMode,
+          reason,
+        })),
+      };
+      const { handler, conversationHandler, resolveInboundContent, inboundEventStore } = makeHandler({
         automationPolicy,
         createTurnObservationSink,
       });
 
-      await handler.processJob(job);
+      await expect(handler.processJob(job)).resolves.toEqual({
+        outcome: "processed",
+        inboundEventId: "event-1",
+      });
 
-      expect(conversationHandler.handle).toHaveBeenCalled();
+      expect(conversationHandler.handle).not.toHaveBeenCalled();
       expect(createTurnObservationSink).not.toHaveBeenCalled();
-      expect(conversationHandler.handle.mock.calls[0]![0]).not.toHaveProperty("turnObservationSink");
+      expect(resolveInboundContent).toHaveBeenCalledWith(expect.objectContaining({
+        replyEnabled: false,
+        transcriptionEnabled,
+      }));
+      expect(inboundEventStore.markInboundEventProcessed).toHaveBeenCalledWith("event-1");
     },
   );
 

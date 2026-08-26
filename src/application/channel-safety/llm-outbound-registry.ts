@@ -64,18 +64,6 @@ export const LLM_OUTBOUND_REGISTRY: Record<string, LlmOutboundDeclaration> = {
     reason: "Retomada de conversa sem resposta, cron 2x/dia.",
     boundary: "planner",
   },
-  "app/api/conversations/[conversationId]/pipeline-actions/route": {
-    classification: "autonomous_external",
-    reason:
-      "Retomar a IA numa conversa dispara `orchestrator.handle`, cuja resposta vai ao lead.",
-    boundary: "orchestrator",
-  },
-  "app/api/whatsapp/zapi/route": {
-    classification: "autonomous_external",
-    reason:
-      "`resumeAfterHumanReviewDecision` continua o turno pelo orquestrador; o resto do arquivo envia texto determinístico de operação.",
-    boundary: "orchestrator",
-  },
   "application/conversation-v2/v2-live-conversation-handler": {
     classification: "autonomous_external",
     reason:
@@ -108,6 +96,11 @@ export const LLM_OUTBOUND_REGISTRY: Record<string, LlmOutboundDeclaration> = {
     classification: "no_llm_text",
     reason:
       "`renderPostAppointmentMessage` interpola uma regra cadastrada pela clínica; nenhuma chamada de modelo no caminho.",
+  },
+  "app/api/conversations/[conversationId]/pipeline-actions/route": {
+    classification: "no_llm_text",
+    reason:
+      "A ação humana entrega somente conteúdo determinístico já configurado; continuidade interpretativa vira handoff V2 e nunca replay LLM.",
   },
 };
 

@@ -1,4 +1,4 @@
-import type { ClinicAutomationPolicyReader } from "@/application/ports/clinic-automation-policy-reader";
+import type { V2AutomationPolicy } from "@/application/automation/v2-only-automation-policy";
 import type { ConversationHandler } from "@/application/ports/conversation-handler";
 import type { InboundEventStore } from "@/application/ports/inbound-event-store";
 import type {
@@ -17,7 +17,7 @@ import {
   recordDecisionTrace,
   type DecisionTraceSink,
 } from "@/core/observability/DecisionTrace";
-import { recordV1TurnObservation, type V1TurnObservationSink } from "@/core/observability/V1TurnObservation";
+import type { V1TurnObservationSink } from "@/core/observability/V1TurnObservation";
 
 export type JobResult = {
   outcome: "processed" | "ignored";
@@ -26,7 +26,7 @@ export type JobResult = {
 
 export type ProcessMessageJobDependencies = {
   inboundEventStore: InboundEventStore;
-  automationPolicy: ClinicAutomationPolicyReader;
+  automationPolicy: V2AutomationPolicy;
   conversationHandler: ConversationHandler;
   inboundHistoryRegistrar?: InboundHistoryRegistrar;
   resolveInboundContent?: (params: {
@@ -37,6 +37,7 @@ export type ProcessMessageJobDependencies = {
   }) => Promise<ResolvedLeadInboundContent>;
   transcribeAudio: (audioUrl: string, mimeType: string) => Promise<string>;
   decisionTraceSink?: DecisionTraceSink;
+  /** @deprecated ignored; retained only until disconnected evaluation callers migrate. */
   createTurnObservationSink?: (input: {
     turnId: string;
     clinicId: string;
@@ -176,7 +177,20 @@ export class ProcessMessageJobHandler {
     }
 
     await this.deps.inboundEventStore.markInboundEventProcessing(event.id);
-    const automationMode = await this.deps.automationPolicy.getAutomationMode(event.clinicId);
+    const automationDecision = await this.deps.automationPolicy.decide(event.clinicId);
+    const automationMode = automationDecision.mode;
+    await recordDecisionTrace(this.deps.decisionTraceSink, {
+      turnId: inboundEventId,
+      stage: "tenant.config_loaded",
+      occurredAt: new Date().toISOString(),
+      clinicId: event.clinicId,
+      metadata: {
+        automationMode,
+        reason: automationDecision.reason,
+        authorityVersion: automationDecision.authorityVersion,
+        runtimeControlVersion: automationDecision.runtimeControlVersion,
+      },
+    });
     const replyEnabled = automationMode === "live";
     const content = zapiPayload
       ? await this.resolveInboundContent({
@@ -192,6 +206,13 @@ export class ProcessMessageJobHandler {
 
     if (!content) {
       await this.deps.inboundEventStore.markInboundEventIgnored(event.id);
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId: inboundEventId,
+        stage: "turn.ignored",
+        occurredAt: new Date().toISOString(),
+        clinicId: event.clinicId,
+        metadata: { reason: "unsupported_content" },
+      });
       eventLog.info("job.ignored", { reason: "unsupported_content", durationMs: Date.now() - startedAt });
       return { outcome: "ignored", inboundEventId: event.id };
     }
@@ -209,25 +230,22 @@ export class ProcessMessageJobHandler {
       },
     });
 
-    let turnObservationSink: V1TurnObservationSink | undefined;
-    if (automationMode === "live" && this.deps.createTurnObservationSink) {
-      try {
-        turnObservationSink = this.deps.createTurnObservationSink({
-          turnId: inboundEventId,
-          clinicId: event.clinicId,
-          automationMode,
-        });
-      } catch {
-        turnObservationSink = undefined;
-      }
+    if (automationMode !== "live") {
+      await this.deps.inboundEventStore.markInboundEventProcessed(event.id);
+      await recordDecisionTrace(this.deps.decisionTraceSink, {
+        turnId: inboundEventId,
+        stage: "turn.ignored",
+        occurredAt: new Date().toISOString(),
+        clinicId: event.clinicId,
+        metadata: { reason: automationDecision.reason },
+      });
+      eventLog.info("job.processed", {
+        automationMode,
+        reason: automationDecision.reason,
+        durationMs: Date.now() - startedAt,
+      });
+      return { outcome: "processed", inboundEventId: event.id };
     }
-    recordV1TurnObservation(turnObservationSink, {
-      kind: "turn_gate_fact",
-      turnId: inboundEventId,
-      field: "automationEnabled",
-      value: automationMode === "live" && content.shouldReply,
-      source: "job_automation",
-    });
 
     let handleResult: { replied: boolean; reason?: string };
     try {
@@ -241,8 +259,8 @@ export class ProcessMessageJobHandler {
         senderName: zapiPayload?.senderName || metaPayload?.senderName || undefined,
         senderPhoto: zapiPayload?.senderPhoto ?? null,
         timestamp: event.receivedAt,
-        replyEnabled: automationMode === "live" && content.shouldReply,
-        observationOnly: automationMode === "observe",
+        replyEnabled: content.shouldReply,
+        observationOnly: false,
         mediaUrl: content.mediaUrl,
         mediaType: content.mediaType,
         automationMode,
@@ -261,7 +279,6 @@ export class ProcessMessageJobHandler {
               },
             }
           : {}),
-        ...(turnObservationSink ? { turnObservationSink } : {}),
       });
       await this.deps.inboundEventStore.markInboundEventProcessed(event.id);
     } catch (error) {
@@ -294,13 +311,6 @@ export class ProcessMessageJobHandler {
       });
       return { outcome: "processed", inboundEventId: event.id };
     }
-
-    recordV1TurnObservation(turnObservationSink, {
-      kind: "turn_terminal",
-      turnId: inboundEventId,
-      replied: handleResult.replied,
-      reason: handleResult.reason ?? null,
-    });
 
     await recordDecisionTrace(this.deps.decisionTraceSink, {
       turnId: inboundEventId,

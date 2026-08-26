@@ -213,6 +213,17 @@ async function flushMicrotasksUntil(
   throw new Error(failureMessage);
 }
 
+async function waitForMacrotaskCondition(
+  predicate: () => boolean,
+  failureMessage: string,
+): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error(failureMessage);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+}
+
 describe("Cycle I post-sender shadow batch", () => {
   it.each(["completed", "failed_handled"] as const)(
     "creates a registered %s barrier only after the awaited sender attempt settles",
@@ -1221,7 +1232,10 @@ describe("Cycle I post-sender shadow batch", () => {
     };
     const input = deps({ deadlineMs: 5, now: () => current, sink });
     const running = runRegisteredBatch({ turns: [turn], ...input });
-    while (!release) await Promise.resolve();
+    await waitForMacrotaskCondition(
+      () => typeof release === "function",
+      "sink dependency was not admitted before the bounded wait",
+    );
 
     current = 12;
     let returned = false;

@@ -14,6 +14,7 @@ function candidate(overrides: Partial<DeadLetterCandidate> = {}): DeadLetterCand
     createdAt: new Date("2026-07-27T14:55:00.000Z"),
     resolved: false,
     outboundStatus: "dead",
+    lastError: null,
     ...overrides,
   };
 }
@@ -61,5 +62,28 @@ describe("dead letter management", () => {
       action: "reprocess",
       reason: "Falha analisada e encerrada",
     })).toThrow("mensagem de saída não está morta");
+  });
+
+  it("never reprocesses a closed indeterminate delivery marker", () => {
+    expect(() => validateDeadLetterResolution(candidate({
+      lastError: "v2_terminal_handoff_required:delivery_outcome_indeterminate",
+    }), {
+      action: "reprocess",
+      reason: "Revisão operacional concluída",
+      allowLateDelivery: true,
+      now,
+    })).toThrow("reprocessamento terminal bloqueado");
+  });
+
+  it("never reprocesses a closed post-effect process marker", () => {
+    expect(() => validateDeadLetterResolution(candidate({
+      queue: "message.process",
+      outboundStatus: null,
+      lastError: "v2_terminal_handoff_required:effect_outbox_failed",
+    }), {
+      action: "reprocess",
+      reason: "Revisão operacional concluída",
+      now,
+    })).toThrow("reprocessamento terminal bloqueado");
   });
 });

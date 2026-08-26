@@ -195,6 +195,7 @@ describe("enqueueOutboundMessage", () => {
       queue: "message.send",
       payload: { outboundMessageId: "outbound-1" },
       dedupeKey: "outbound-message:outbound-1",
+      maxAttempts: 10,
     });
     expect(result).toEqual({ outboundMessageId: "outbound-1", messageWasNew: false, jobWasNew: true });
   });
@@ -224,6 +225,7 @@ describe("enqueueOutboundMessage", () => {
       queue: "message.send",
       payload: { outboundMessageId: "outbound-1", turnId: "turn-1" },
       dedupeKey: "outbound-message:outbound-1",
+      maxAttempts: 10,
     });
   });
 });

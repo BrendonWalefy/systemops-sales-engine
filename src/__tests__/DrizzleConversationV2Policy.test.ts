@@ -116,7 +116,7 @@ describe("Cycle I Drizzle engine policy and sanitized comparison persistence", (
     }]));
     const reader = new DrizzleClinicAutomationPolicyReader();
 
-    await expect(reader.getInternalLabEligibilityFacts("systemops-lab")).resolves.toEqual({
+    await expect(reader.getAutomationFacts("systemops-lab")).resolves.toEqual({
       clinicId: "systemops-lab",
       isTest: true,
       isDemo: false,

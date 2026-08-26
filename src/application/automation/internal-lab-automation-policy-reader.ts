@@ -1,5 +1,4 @@
 import type { ClinicAutomationMode } from "@/application/automation/clinic-automation-policy";
-import type { ClinicAutomationPolicyReader } from "@/application/ports/clinic-automation-policy-reader";
 import type { InternalLabEligibilityReader } from "@/application/ports/internal-lab-eligibility-reader";
 import type { InternalLabRuntimeBindingsReader } from "@/application/conversation-v2/internal-lab-runtime-bindings";
 import {
@@ -8,12 +7,14 @@ import {
 } from "@/application/conversation-v2/internal-lab-authorization";
 
 type Dependencies = Readonly<{
-  basePolicyReader: ClinicAutomationPolicyReader;
+  basePolicyReader: Readonly<{
+    getAutomationMode(clinicId: string): Promise<ClinicAutomationMode>;
+  }>;
   eligibilityReader: InternalLabEligibilityReader;
   runtimeBindingsReader: InternalLabRuntimeBindingsReader;
 }> & InternalLabAuthorizationBindings;
 
-export class InternalLabAutomationPolicyReader implements ClinicAutomationPolicyReader {
+export class InternalLabAutomationPolicyReader {
   constructor(private readonly deps: Dependencies) {
     if (typeof deps.expectedClinicId !== "string" || deps.expectedClinicId.length === 0) {
       throw new Error("Internal Lab expected clinic id is required");

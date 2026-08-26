@@ -19,17 +19,14 @@ export type SystemOpsLabPersonaCommand = Readonly<{
   runId: string;
   clinicId: string;
   personaPath: string;
-  approvalFile: string;
   resultFile: string | null;
 }>;
 
 type SystemOpsLabPersonaCommandDependencies = Readonly<{
   loadPersona(path: string): Promise<SystemOpsLabPersona>;
-  readApproval(path: string): Promise<string>;
   execute(input: Readonly<{
     command: SystemOpsLabPersonaCommand;
     persona: SystemOpsLabPersona;
-    serializedApproval: string;
   }>): Promise<SystemOpsLabRunResult>;
   reserveResultFile(path: string): Promise<SystemOpsLabRunResultReservation>;
   write(line: string): void;
@@ -60,7 +57,6 @@ export function parseSystemOpsLabPersonaCommandArgs(
   const runId = flagValue(argv, "--run-id");
   const clinicId = flagValue(argv, "--clinic-id");
   const personaPath = flagValue(argv, "--persona");
-  const approvalFile = flagValue(argv, "--approval-file");
   const resultFile = flagValue(argv, "--result-file");
   if (!runId) throw new Error("--run-id is required");
   assertSystemOpsLabRunId(runId);
@@ -70,7 +66,6 @@ export function parseSystemOpsLabPersonaCommandArgs(
   if (!personaPath || path.extname(personaPath).toLowerCase() !== ".json") {
     throw new Error("--persona must point to a JSON file");
   }
-  if (!approvalFile) throw new Error("--approval-file is required");
   const mode = modes[0] === "--dry-run" ? "dry-run" : "execute";
   if (mode === "execute" && !resultFile) {
     throw new Error("--result-file is required in execute mode");
@@ -89,7 +84,6 @@ export function parseSystemOpsLabPersonaCommandArgs(
     "--run-id",
     "--clinic-id",
     "--persona",
-    "--approval-file",
     "--result-file",
   ]);
   const booleanFlags = new Set(["--dry-run", "--execute"]);
@@ -104,7 +98,6 @@ export function parseSystemOpsLabPersonaCommandArgs(
     runId,
     clinicId,
     personaPath,
-    approvalFile,
     resultFile,
   });
 }
@@ -336,11 +329,9 @@ export async function runSystemOpsLabPersonaCommand(
     dependencies.write(sanitizedCommandSummary(command, persona));
     return null;
   }
-  const serializedApproval = await dependencies.readApproval(command.approvalFile);
-  if (!serializedApproval.trim()) throw new Error("Internal Lab approval file is empty");
   const reservation = await dependencies.reserveResultFile(command.resultFile!);
   try {
-    const result = await dependencies.execute({ command, persona, serializedApproval });
+    const result = await dependencies.execute({ command, persona });
     const canonicalResult = canonicalizeRunResult(result);
     if (
       canonicalResult.runId !== command.runId
@@ -372,25 +363,12 @@ function requiredEnvironment(name: string): string {
 async function executeDurablePersona(input: Readonly<{
   command: SystemOpsLabPersonaCommand;
   persona: SystemOpsLabPersona;
-  serializedApproval: string;
 }>): Promise<SystemOpsLabRunResult> {
   if (requiredEnvironment("SYSTEMOPS_LAB_CLINIC_ID") !== input.command.clinicId) {
     throw new Error("SystemOps Lab persona tenant does not match the configured target");
   }
   requiredEnvironment("OPENAI_API_KEY");
-  const configuredApproval = process.env.CONVERSATION_V2_INTERNAL_LAB_APPROVAL_JSON;
-  if (configuredApproval?.trim() && configuredApproval !== input.serializedApproval) {
-    throw new Error("SystemOps Lab persona approval file does not match the deployed configuration");
-  }
-  process.env.CONVERSATION_V2_INTERNAL_LAB_APPROVAL_JSON = input.serializedApproval;
-
   const [
-    { parseAndRegisterDeployedInternalLabApproval },
-    { createConfiguredCycleIRuntimeBuildIdentity },
-    {
-      loadConfiguredInternalLabAuthority,
-      loadConfiguredInternalLabDeploymentIdentity,
-    },
     { createConversationV2Runtime },
     { DrizzleInternalLabRuntimeBindingsReader },
     { DrizzleInboundEventStore },
@@ -403,14 +381,13 @@ async function executeDurablePersona(input: Readonly<{
     { ReplayOutboundCapture },
     {
       createInternalLabSyntheticAddress,
+      isInternalLabSyntheticAddressCandidate,
+      isInternalLabSyntheticDeliveryAuthorized,
       registerInternalLabSyntheticRun,
     },
     { listConversationMessages },
     { listClinicConversations },
   ] = await Promise.all([
-    import("@/application/conversation-v2/internal-lab-approval"),
-    import("@/application/conversation-v2/configured-cycle-i-authority"),
-    import("@/infrastructure/conversation-v2/configured-internal-lab-authority"),
     import("@/infrastructure/conversation-v2/create-conversation-v2-runtime"),
     import("@/infrastructure/conversation-v2/drizzle-internal-lab-runtime-bindings-reader"),
     import("@/infrastructure/repositories/drizzle-inbound-event-store"),
@@ -427,53 +404,25 @@ async function executeDurablePersona(input: Readonly<{
   ]);
 
   const runtimeBindingsReader = new DrizzleInternalLabRuntimeBindingsReader();
-  const currentBindings = await runtimeBindingsReader.resolve(input.command.clinicId);
-  const expectedBindings = {
-    tenantDigest: requiredEnvironment("CONVERSATION_V2_INTERNAL_LAB_TENANT_DIGEST"),
-    channelDigest: requiredEnvironment("CONVERSATION_V2_INTERNAL_LAB_CHANNEL_DIGEST"),
-    configDigest: requiredEnvironment("CONVERSATION_V2_INTERNAL_LAB_CONFIG_DIGEST"),
-  } as const;
-  for (const field of ["tenantDigest", "channelDigest", "configDigest"] as const) {
-    if (currentBindings[field] !== expectedBindings[field]) {
-      throw new Error(`SystemOps Lab persona current ${field} does not match configuration`);
-    }
+  const currentSnapshot = await runtimeBindingsReader.resolveDeliverySnapshot(input.command.clinicId);
+  if (!currentSnapshot.bindings.configDigest) {
+    throw new Error("SystemOps Lab persona current configuration digest is unavailable");
   }
-  const runtimeIdentity = createConfiguredCycleIRuntimeBuildIdentity();
-  const approval = parseAndRegisterDeployedInternalLabApproval({
-    serializedApproval: input.serializedApproval,
-    authority: loadConfiguredInternalLabAuthority(),
-    runtimeIdentity,
-    deploymentIdentity: loadConfiguredInternalLabDeploymentIdentity(),
-    expectedTenantDigest: currentBindings.tenantDigest,
-    expectedChannelDigest: currentBindings.channelDigest,
-    expectedConfigDigest: currentBindings.configDigest,
-    expectedClinicId: input.command.clinicId,
-    now: new Date(),
-  });
-  const authorizationBindings = Object.freeze({
-    approval,
-    runtimeIdentity,
-    expectedClinicId: input.command.clinicId,
-    expectedTenantDigest: currentBindings.tenantDigest,
-    expectedChannelDigest: currentBindings.channelDigest,
-    expectedConfigDigest: currentBindings.configDigest,
-    now: () => new Date(),
-  });
+  if (currentSnapshot.channelConfig.provider !== "z_api") {
+    throw new Error("SystemOps Lab persona channel is not ready");
+  }
   const jobQueue = new DrizzleJobQueue();
   const inboundEventStore = new DrizzleInboundEventStore();
   const outboundMessageStore = new DrizzleOutboundMessageStore();
   const runtime = createConversationV2Runtime({
     jobQueue,
     outboundMessageStore,
-    runtimeBindingsReader,
-    authorizationBindings,
   });
   const syntheticAddress = createInternalLabSyntheticAddress({
     runId: input.command.runId,
     personaId: input.persona.personaId,
   });
   const syntheticAuthorization = registerInternalLabSyntheticRun({
-    approval,
     clinicId: input.command.clinicId,
     runId: input.command.runId,
     addresses: [syntheticAddress],
@@ -487,15 +436,21 @@ async function executeDurablePersona(input: Readonly<{
       throw new Error("SystemOps Lab persona runner accepts text turns only");
     },
     decisionTraceSink: runtime.decisionTraceSink,
-    createTurnObservationSink: runtime.createTurnObservationSink,
   });
   const sendMessageHandler = new SendMessageJobHandler({
     outboundMessageStore,
     safetyContextReader: new DrizzleOutboundSafetyContextReader(),
     conversationRepository: new DrizzleConversationRepository(),
     decisionTraceSink: runtime.decisionTraceSink,
-    internalLabDeliveryGuard: runtime.internalLabDeliveryGuard,
-    internalLabSyntheticRunAuthorization: syntheticAuthorization,
+    replayCaptureAuthorization: {
+      isCandidate: isInternalLabSyntheticAddressCandidate,
+      isAuthorized: ({ clinicId, address }) =>
+        isInternalLabSyntheticDeliveryAuthorized({
+          authorization: syntheticAuthorization,
+          clinicId,
+          address,
+        }),
+    },
     outboundBoundary: capture.createBoundary(),
   });
   const isolationClinicId = input.command.clinicId === "00000000-0000-4000-8000-000000000000"
@@ -536,7 +491,6 @@ async function executeDurablePersona(input: Readonly<{
 
 const defaultDependencies: SystemOpsLabPersonaCommandDependencies = {
   loadPersona: loadPersonaFile,
-  readApproval: (approvalPath) => readFile(approvalPath, "utf8"),
   execute: executeDurablePersona,
   reserveResultFile: reserveSystemOpsLabRunResultFile,
   write: (line) => process.stdout.write(`${line}\n`),

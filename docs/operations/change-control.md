@@ -107,15 +107,15 @@ WhatsApp webhooks:
 For regressions observed in real WhatsApp conversations, use only a sanitized,
 human-reviewed and signed dataset against an isolated replay database. The
 scenario must enter through the real webhook and traverse the durable queues,
-orchestrator, state machine and sender capture described in
+V2 live handler, deterministic capability/Decision boundaries and sender capture described in
 [`replay-fidelity-contract.md`](../architecture/replay-fidelity-contract.md).
-Partial classifier/composer harnesses do not satisfy this gate.
+Partial Understanding/verbalizer harnesses do not satisfy this gate.
 
 Conversation and AI:
 
-- intent/action routing when deterministic
+- Understanding/capability/Decision routing when deterministic
 - conversation state transitions
-- response composer action-result handling
+- AuthorizedResponsePlan and ActionResult handling
 
 Database:
 
@@ -155,3 +155,20 @@ If production breaks after a deploy:
 5. Only then investigate a forward fix.
 
 Do not stack unrelated fixes on top of an unstable deploy.
+
+## V2-Only Conversation Runtime
+
+V1 is historical reference, not a deploy target or rollback. Every live conversation requires
+authority version 2, the exact tenant `live_automation_enabled` permit and the global live-outbound control explicitly open. Missing state is closed.
+The sender revalidates the exact claim authority and current tenant/safety state at delivery.
+
+For the first V2-only release, follow
+[`v2-only-runtime-rollout.md`](v2-only-runtime-rollout.md): audit the live set, pause only
+SystemOpsLab by compare-and-set, close the global switch, drain jobs/outbounds, deploy, prove old
+workers cannot process the new flow, validate while closed, open the switch and atomically reactivate
+only the Lab plus its tenant-scoped permit, then perform one real smoke. If a gate fails, close the switch, pause the Lab, preserve durable
+work and correct forward. There is no V1 redeploy.
+
+Future tenant activations are independently reviewed, tenant-scoped operations. They require clean
+authority validation and monotonic compare-and-set. A deployment never changes or activates a
+paused, disabled, demo, prospect or non-V2 tenant.

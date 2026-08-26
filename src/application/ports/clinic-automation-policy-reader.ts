@@ -1,5 +1,15 @@
-import type { ClinicAutomationMode } from "@/application/automation/clinic-automation-policy";
+import type { ClinicOperationalStatus } from "@/application/clinics/clinic-operational-status";
 
-export type ClinicAutomationPolicyReader = {
-  getAutomationMode(clinicId: string): Promise<ClinicAutomationMode>;
+export type ClinicAutomationFacts = Readonly<{
+  clinicId: string;
+  isTest: boolean;
+  isDemo: boolean;
+  operationalStatus: ClinicOperationalStatus;
+  autoReplyEnabled: boolean;
+  liveAutomationEnabled: boolean;
+  shadowModeEnabled: boolean;
+}>;
+
+export type ClinicAutomationFactsReader = {
+  getAutomationFacts(clinicId: string): Promise<ClinicAutomationFacts | null>;
 };

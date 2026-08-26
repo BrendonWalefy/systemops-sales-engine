@@ -19,7 +19,7 @@ const MAX_EVENTS_PER_TURN = 40;
 
 const PERSISTED_METADATA_KEYS = new Set([
   "action", "activeModuleCount", "agentMessageId", "applied",
-  "attempt", "automationMode", "canonicalTreatmentId",
+  "attempt", "authorityVersion", "automationMode", "canonicalTreatmentId",
   "canonicalTreatmentName", "category", "classifiedIntent",
   "classifierOverridden", "clinicConfigUpdatedAt", "coercedIntent", "commercialPauseDetected",
   "confidence", "configFieldCount", "configFingerprint", "configFingerprintSchema",
@@ -33,7 +33,7 @@ const PERSISTED_METADATA_KEYS = new Set([
   "pendingPipelineAdvance", "phase", "pipelineActive", "pipelineAdvanceApplied",
   "pipelineStepIndex", "pipelineTreatmentId", "playbookVersionId", "procedureCount", "provider",
   "providerAccepted", "queue", "reason", "replay", "replied", "replyEnabled",
-  "responsePlanVersion",
+  "responsePlanVersion", "runtimeControlVersion",
   "status", "durationMs", "modelId", "request", "decisionCount",
   "executeCount", "resultCount", "completedEffectCount", "failedEffectCount",
   "effectAttempted", "effectCompleted",

@@ -20,7 +20,6 @@ import { DeterministicResponseComposer } from "@/conversation-core/composer/dete
 import type { SpeakerProfile, VerbalizationOutcome } from "@/conversation-core/composer/verbalization";
 import type { ActionResult } from "@/conversation-core/decision";
 import type { TurnGateInput } from "@/conversation-core/gate";
-import type { InternalLabDeliveryBinding } from "@/application/conversation-v2/internal-lab-delivery-guard";
 import { completeTurnPipeline, prepareTurnPipeline } from "@/conversation-core/turn-pipeline";
 import { resolveStopContactDecision, type StopContactDecision } from "@/application/channel-safety/stop-contact-policy";
 import { takeRecentConversationHistory } from "@/core/intelligence/ConversationHistoryWindow";
@@ -30,6 +29,8 @@ import {
 } from "@/core/observability/DecisionTrace";
 import type { TtsConfig } from "@/domain/entities/tts-config";
 import type { Treatment } from "@/domain/entities/treatment";
+import type { V2ConversationHandoffReason } from "@/application/conversation-v2/v2-conversation-handoff";
+import { V2TerminalHandoffRequiredError } from "@/application/conversation-v2/v2-terminal-failure-policy";
 import {
   createDentalPack,
   DENTAL_OUTCOME_SCHEMA,
@@ -66,7 +67,6 @@ export type V2LiveTurnConfiguration = Readonly<{
   speaker: SpeakerProfile;
   useVoice: boolean;
   ttsConfig: TtsConfig;
-  deliveryBinding: InternalLabDeliveryBinding;
 }>;
 
 type DynamicDentalDependencies =
@@ -79,6 +79,16 @@ type DynamicDentalDependencies =
   | "now"
   | "effectLifecycle";
 
+type StaticDentalDependencies = Omit<
+  DentalLiveAdapterDependencies,
+  DynamicDentalDependencies | "calendar" | "booking"
+> & Readonly<{
+  resolveTenantScheduling(claimedClinicId: string): Pick<
+    DentalLiveAdapterDependencies,
+    "calendar" | "booking"
+  >;
+}>;
+
 export type V2LiveConversationHandlerDependencies = Readonly<{
   lifecycle: Pick<LiveTurnLifecycle, "begin" | "loadSnapshot" | "complete" | "fail">;
   understanding: LiveDentalUnderstanding;
@@ -87,7 +97,7 @@ export type V2LiveConversationHandlerDependencies = Readonly<{
    * modelo reescreve essa mesma frase e o validador decide se ela pode sair.
    */
   verbalizer?: LiveResponseVerbalizer;
-  dental: Omit<DentalLiveAdapterDependencies, DynamicDentalDependencies>;
+  dental: StaticDentalDependencies;
   resolveTurnConfiguration(input: Readonly<{
     context: LiveTurnContext;
     snapshot: LiveTurnSnapshot;
@@ -103,7 +113,14 @@ export type V2LiveConversationHandlerDependencies = Readonly<{
     leadId: string;
     conversationId: string;
     clinicId: string;
+    sourceInboundEventId: string;
     decision: StopContactDecision;
+  }>): Promise<void>;
+  persistHandoff(input: Readonly<{
+    clinicId: string;
+    conversationId: string;
+    reason: V2ConversationHandoffReason;
+    now: Date;
   }>): Promise<void>;
   now?: () => Date;
 }>;
@@ -129,11 +146,23 @@ function coreState(snapshot: LiveTurnSnapshot): ConversationState {
   });
 }
 
+export class V2TreatmentTenantScopeError extends Error {
+  readonly code = "v2_treatment_tenant_scope_mismatch";
+
+  constructor() {
+    super("V2 treatment tenant scope mismatch");
+    this.name = "V2TreatmentTenantScopeError";
+  }
+}
+
 function scopedTreatments(
   treatments: readonly Treatment[],
   clinicId: string,
 ): readonly Treatment[] {
-  return Object.freeze(treatments.filter((treatment) => treatment.clinicId === clinicId));
+  if (treatments.some((treatment) => treatment.clinicId !== clinicId)) {
+    throw new V2TreatmentTenantScopeError();
+  }
+  return Object.freeze([...treatments]);
 }
 
 function historyForUnderstanding(
@@ -198,6 +227,8 @@ export class V2LiveConversationHandler implements ConversationHandler {
     let deliveryConfiguration: Awaited<
       ReturnType<V2LiveConversationHandlerDependencies["resolveTurnConfiguration"]>
     > | null = null;
+    let handoffReason: V2ConversationHandoffReason | null = null;
+    let handoffPersisted = false;
 
     const trace = async (
       stage: "v2.understanding" | "v2.decision" | "v2.action_result"
@@ -236,8 +267,10 @@ export class V2LiveConversationHandler implements ConversationHandler {
         await this.deps.dental.treatments.listByClinic(context.clinicId),
         context.clinicId,
       );
+      const scheduling = this.deps.dental.resolveTenantScheduling(context.clinicId);
       const adapters = createDentalLiveAdapters({
         ...this.deps.dental,
+        ...scheduling,
         clinic: context.clinic,
         lead: context.lead,
         leadId: context.leadId,
@@ -273,6 +306,13 @@ export class V2LiveConversationHandler implements ConversationHandler {
               })),
             });
             understandingResolved = true;
+            if (result.request === "cancel-appointment" || result.request === "reschedule-appointment") {
+              handoffReason = "v2_cancel_reschedule_requires_human";
+            } else if (typeof result.signals.objection === "string" && result.signals.objection.trim()) {
+              handoffReason = "v2_objection_requires_human";
+            } else if (result.safety.emergency === true || result.safety.requestsHuman === true) {
+              handoffReason = "v2_explicit_human_request";
+            }
             if (result.safety.optOut === true) {
               const decision = resolveStopContactDecision({
                 classifiedIntent: "stop_contact",
@@ -280,12 +320,17 @@ export class V2LiveConversationHandler implements ConversationHandler {
                 now: new Date(turnNow!.getTime()),
               });
               if (decision) {
+                const sourceInboundEventId = context.inboundAuthority?.inboundEventId;
+                if (!sourceInboundEventId) {
+                  throw new Error("V2 stop-contact requires exact inbound authority");
+                }
                 effectAttempted = true;
                 phase = "action";
                 await this.deps.persistStopContact({
                   leadId: context.leadId,
                   conversationId: context.conversationId,
                   clinicId: context.clinicId,
+                  sourceInboundEventId,
                   decision,
                 });
                 effectCompleted = true;
@@ -304,7 +349,6 @@ export class V2LiveConversationHandler implements ConversationHandler {
                     turnId: context.turnId,
                     to: context.outboundAddress,
                     agentMessageId: deterministicUuid(`conversation-v2-agent:${context.turnId}`),
-                    agentMessagePersistence: "sender",
                     replyText: decision.confirmationText,
                     intent: "stop_contact",
                     useVoice: false,
@@ -313,7 +357,6 @@ export class V2LiveConversationHandler implements ConversationHandler {
                     mediaParts: [],
                     leadId: context.leadId,
                     pipelineAdvance: null,
-                    internalLabBinding: configuration.deliveryBinding,
                   },
                 }, this.deps.outbound);
                 stopContactConfirmationEnqueued = true;
@@ -453,6 +496,17 @@ export class V2LiveConversationHandler implements ConversationHandler {
               requiresHandoff: validation.requiresHandoff,
             });
           }
+          if (validation.requiresHandoff && !handoffPersisted) {
+            effectAttempted = true;
+            await this.deps.persistHandoff({
+              clinicId: context.clinicId,
+              conversationId: context.conversationId,
+              reason: handoffReason ?? "v2_explicit_human_request",
+              now: new Date(turnNow!.getTime()),
+            });
+            handoffPersisted = true;
+            effectCompleted = true;
+          }
         },
         response: {
           style: configuration.style,
@@ -489,7 +543,6 @@ export class V2LiveConversationHandler implements ConversationHandler {
           turnId: context.turnId,
           to: context.outboundAddress,
           agentMessageId: deterministicUuid(`conversation-v2-agent:${context.turnId}`),
-          agentMessagePersistence: "sender",
           replyText: completed.response.text,
           intent: null,
           useVoice: configuration.useVoice,
@@ -498,7 +551,6 @@ export class V2LiveConversationHandler implements ConversationHandler {
           mediaParts: [],
           leadId: context.leadId,
           pipelineAdvance: null,
-          internalLabBinding: configuration.deliveryBinding,
         },
       }, this.deps.outbound);
       await trace("v2.outbox", {
@@ -526,11 +578,33 @@ export class V2LiveConversationHandler implements ConversationHandler {
         effectCompleted,
         safeReplyEnqueued,
       });
+      if (reason === "outbox_failed" && effectAttempted && !handoffPersisted) {
+        try {
+          await this.deps.persistHandoff({
+            clinicId: context.clinicId,
+            conversationId: context.conversationId,
+            reason: "v2_effect_outbox_failure_requires_human",
+            now: new Date((turnNow ?? this.deps.now?.() ?? new Date()).getTime()),
+          });
+          handoffPersisted = true;
+        } catch {
+          if (!terminalHandled) {
+            terminalHandled = true;
+            try {
+              await this.deps.lifecycle.fail({ context, error });
+            } catch {
+              // The closed job marker remains the retry authority. A secondary
+              // lifecycle failure must not reopen model/effect execution.
+            }
+          }
+          throw new V2TerminalHandoffRequiredError("effect_outbox_failed");
+        }
+      }
       if (!terminalHandled) {
         terminalHandled = true;
         await this.deps.lifecycle.fail({ context, error });
       }
-      if (reason === "outbox_failed") throw error;
+      if (reason === "outbox_failed" && !handoffPersisted) throw error;
       return { replied: false, reason };
     } finally {
       await context.releaseLease();
@@ -575,7 +649,6 @@ export class V2LiveConversationHandler implements ConversationHandler {
           turnId: context.turnId,
           to: context.outboundAddress,
           agentMessageId: deterministicUuid(`conversation-v2-agent:${context.turnId}`),
-          agentMessagePersistence: "sender",
           replyText: V2_SAFE_FAILURE_REPLY_TEXT,
           intent: "safe_failure",
           useVoice: false,
@@ -584,7 +657,6 @@ export class V2LiveConversationHandler implements ConversationHandler {
           mediaParts: [],
           leadId: context.leadId,
           pipelineAdvance: null,
-          internalLabBinding: configuration.deliveryBinding,
         },
       }, this.deps.outbound);
       return true;

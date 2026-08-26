@@ -45,12 +45,12 @@ export type AuthorityValidationProjection = Readonly<{
   activatedAt: Date;
 }>;
 
-export async function validateWhatsAppStreamAuthority(
+export function buildWhatsAppStreamAuthorityValidationStatement(
   clinicId: string,
   projection?: AuthorityValidationProjection,
-): Promise<AuthorityValidationReport> {
+){
   assertUuid(clinicId, "clinic id");
-  const result = await db.execute<MetricRow>(sql`
+  return sql`
     with effective_authority as materialized (
       select
         coalesce(${projection?.version ?? null}::integer, authority.version, 0)::integer as version,
@@ -240,7 +240,16 @@ export async function validateWhatsAppStreamAuthority(
     union all
     select 'terminal_legacy_outbounds', count(*)::bigint
     from terminal_legacy_outbound
-  `);
+  `;
+}
+
+export async function validateWhatsAppStreamAuthority(
+  clinicId: string,
+  projection?: AuthorityValidationProjection,
+): Promise<AuthorityValidationReport> {
+  const result = await db.execute<MetricRow>(
+    buildWhatsAppStreamAuthorityValidationStatement(clinicId, projection),
+  );
   const metrics = result.rows.map((row) => ({ metric: row.metric, count: Number(row.count) }));
   const issues = metrics.filter(({ metric, count }) => (
     count > 0 && AUTHORITY_BLOCKING_VALIDATION_METRICS.includes(

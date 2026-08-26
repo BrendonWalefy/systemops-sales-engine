@@ -14,6 +14,7 @@ import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
+import { DrizzleV2ConversationHandoffStore } from "@/infrastructure/repositories/drizzle-v2-conversation-handoff-store";
 import { createLogger } from "@/infrastructure/logging/logger";
 import { reconcileMessageJobOrphans } from "@/application/jobs/reconcile-message-job-orphans";
 import { DrizzleMessageJobOrphanReader } from "@/infrastructure/repositories/drizzle-message-job-orphan-reader";
@@ -26,18 +27,14 @@ import {
   MAX_MESSAGE_PROCESS_BATCH_SIZE,
   resolveWorkerBatchSize,
 } from "@/application/jobs/worker-capacity";
-import {
-  runAfterSenderDrainAttempt,
-  type ShadowBatchSummary,
-} from "@/application/conversation-v2/run-shadow-batch";
 import { createConversationV2Runtime } from "@/infrastructure/conversation-v2/create-conversation-v2-runtime";
 import { scheduleAcceptedWorkerRun } from "@/application/jobs/worker-wake";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-// Sequential by design: ConversationOrchestrator still owns per-conversation
-// ordering and can call external providers. The next invocation claims more work.
+// Sequential by design: the V2 lifecycle owns per-conversation ordering and can
+// call external providers. The next invocation claims more work.
 const MAX_JOBS_PER_RUN = resolveWorkerBatchSize(
   process.env.MESSAGE_PROCESS_BATCH_SIZE,
   DEFAULT_MESSAGE_PROCESS_BATCH_SIZE,
@@ -84,6 +81,7 @@ async function runMessageWorker(): Promise<MessageWorkerRunOutcome> {
   const inboundEventStore = new DrizzleInboundEventStore();
   const jobQueue = new DrizzleJobQueue();
   const outboundMessageStore = new DrizzleOutboundMessageStore();
+  const terminalHandoffStore = new DrizzleV2ConversationHandoffStore();
   const audioTranscriber = new ZApiAudioTranscriber(new WhisperGateway());
   const conversationV2Runtime = createConversationV2Runtime({
     jobQueue,
@@ -112,7 +110,6 @@ async function runMessageWorker(): Promise<MessageWorkerRunOutcome> {
     }),
     transcribeAudio: audioTranscriber.transcribe.bind(audioTranscriber),
     decisionTraceSink: conversationV2Runtime.decisionTraceSink,
-    createTurnObservationSink: conversationV2Runtime.createTurnObservationSink,
   });
 
   try {
@@ -125,6 +122,7 @@ async function runMessageWorker(): Promise<MessageWorkerRunOutcome> {
     const result = await drainMessageProcessQueue({
       jobQueue,
       inboundEventStore,
+      terminalHandoffStore,
       handler,
       workerId,
       maxJobs: MAX_JOBS_PER_RUN,
@@ -142,56 +140,33 @@ async function runMessageWorker(): Promise<MessageWorkerRunOutcome> {
     // risco de rajada nem de pilha de funções longas. Falha aqui não derruba o
     // worker: as mensagens já foram processadas, e o cron do sender reprocessa.
     let sendDrain: Awaited<ReturnType<typeof drainMessageSendQueue>> | null = null;
-    let conversationV2Shadow: ShadowBatchSummary | null = null;
-    const capturedV2Turns = conversationV2Runtime.drainCapturedTurns();
     if (result.processed > 0) {
-      const postSender = await runAfterSenderDrainAttempt({
-        turns: capturedV2Turns,
-        drainSender: async () => {
-          return drainMessageSendQueue({
-            jobQueue,
+      try {
+        sendDrain = await drainMessageSendQueue({
+          jobQueue,
+          outboundMessageStore,
+          terminalHandoffStore,
+          handler: new SendMessageJobHandler({
             outboundMessageStore,
-            handler: new SendMessageJobHandler({
-              outboundMessageStore,
-              safetyContextReader: new DrizzleOutboundSafetyContextReader(),
-              decisionTraceSink: conversationV2Runtime.decisionTraceSink,
-              internalLabDeliveryGuard: conversationV2Runtime.internalLabDeliveryGuard,
-            }),
-            workerId: `${workerId}:send`,
-            maxJobs: MAX_JOBS_PER_RUN,
-          });
-        },
-        onSenderFailure: (error) => { log.error("inline_send.failed", error); },
-        occurredAt: () => new Date().toISOString(),
-        afterAttempt: async (senderBarrier, turns) => {
-          try {
-            const summary = await conversationV2Runtime.runSelectedShadowTurns({
-              senderBarrier,
-              turns,
-            });
-            for (const selection of summary.selections) {
-              log.info("conversation_v2.engine_selected", selection);
-            }
-            return summary;
-          } catch (error) {
-            log.error("conversation_v2.shadow.failed", error);
-            return null;
-          }
-        },
-      });
-      sendDrain = postSender.senderResult;
-      conversationV2Shadow = postSender.shadowResult;
+            safetyContextReader: new DrizzleOutboundSafetyContextReader(),
+            decisionTraceSink: conversationV2Runtime.decisionTraceSink,
+          }),
+          workerId: `${workerId}:send`,
+          maxJobs: MAX_JOBS_PER_RUN,
+        });
+      } catch (error) {
+        log.error("inline_send.failed", error);
+      }
     }
 
     log.info("worker.run.completed", {
       ...result,
       orphanReconciliation,
       sendDrain,
-      conversationV2Shadow,
       durationMs: Date.now() - startedAt,
     });
     return {
-      body: { ...result, orphanReconciliation, sendDrain, conversationV2Shadow },
+      body: { ...result, orphanReconciliation, sendDrain },
       status: 200,
     };
   } catch (error) {

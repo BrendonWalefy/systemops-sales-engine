@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { isConversationOutboundPayload } from "@/application/jobs/conversation-outbound-payload";
+import { digestInboundClaimToken } from "@/application/jobs/inbound-claim-token";
 import type { ProcessMessageJobHandler } from "@/application/jobs/process-message-job";
 import type { SendMessageJobHandler } from "@/application/jobs/send-message-job";
 import {
@@ -8,7 +9,12 @@ import {
   isInternalLabSyntheticAddress,
 } from "@/application/labs/internal-lab-synthetic-delivery";
 import type { InboundEventStore } from "@/application/ports/inbound-event-store";
-import type { JobQueue, JobQueueName, JobRecord } from "@/application/ports/job-queue";
+import type {
+  ClaimInboundWorkResult,
+  JobQueue,
+  JobQueueName,
+  JobRecord,
+} from "@/application/ports/job-queue";
 import type { OutboundMessageStore } from "@/application/ports/outbound-message-store";
 import { getJobRetryAt } from "@/application/services/job-retry-policy";
 import { persistInboundEventAndEnqueue } from "@/application/whatsapp/persist-inbound-event";
@@ -76,7 +82,7 @@ type InboxPersonaConversation = Readonly<{
 export type SystemOpsLabPersonaRunnerDependencies = {
   inboundEventStore: InboundEventStore;
   jobQueue: JobQueue;
-  processMessageHandler: Pick<ProcessMessageJobHandler, "processJob">;
+  processMessageHandler: Pick<ProcessMessageJobHandler, "processClaimedJob">;
   outboundMessageStore: Pick<
     OutboundMessageStore,
     "findConversationReplyByTurnId" | "markOutboundPending" | "markOutboundDead"
@@ -204,6 +210,43 @@ async function claimExactJob(input: Readonly<{
     throw new Error(`SystemOps Lab runner could not claim the exact ${input.queue} job`);
   }
   return job;
+}
+
+async function claimExactInboundWork(input: Readonly<{
+  persisted: Readonly<{
+    inboundEventId: string;
+    streamId: string;
+    streamGeneration: number;
+    jobId: string;
+  }>;
+  dedupeKey: string;
+  workerId: string;
+  now: Date;
+  jobQueue: JobQueue;
+}>): Promise<ClaimInboundWorkResult & Readonly<{ outcome: "claimed"; claimToken: string }>> {
+  const work = await input.jobQueue.claimNextInboundWork({
+    workerId: input.workerId,
+    now: input.now,
+    dedupeKey: input.dedupeKey,
+  });
+  if (
+    !work
+    || work.outcome !== "claimed"
+    || !work.claimToken
+    || work.job.queue !== "message.process"
+    || work.job.dedupeKey !== input.dedupeKey
+    || work.job.id !== input.persisted.jobId
+    || work.inboundEventId !== input.persisted.inboundEventId
+    || work.streamId !== input.persisted.streamId
+    || work.streamGeneration !== input.persisted.streamGeneration
+    || messageProcessPayload(work.job) !== input.persisted.inboundEventId
+  ) {
+    throw new Error("SystemOps Lab runner could not claim the exact message.process job authority");
+  }
+  return work as ClaimInboundWorkResult & Readonly<{
+    outcome: "claimed";
+    claimToken: string;
+  }>;
 }
 
 async function completeExactJob(input: Readonly<{
@@ -353,30 +396,29 @@ export async function runSystemOpsLabPersona(input: Readonly<{
       throw new Error("SystemOps Lab persona run reuses an existing inbound turn");
     }
     const turnId = persisted.inboundEventId;
-    const processJob = await claimExactJob({
-      queue: "message.process",
+    const processWork = await claimExactInboundWork({
+      persisted,
       dedupeKey: `inbound-event:${turnId}`,
       workerId: processWorkerId,
       now: input.dependencies.now(),
       jobQueue: input.dependencies.jobQueue,
     });
     try {
-      if (messageProcessPayload(processJob) !== turnId) {
-        throw new Error("message.process payload mismatch");
-      }
-      const processResult = await input.dependencies.processMessageHandler.processJob(processJob);
+      const processResult = await input.dependencies.processMessageHandler.processClaimedJob(
+        processWork,
+      );
       if (processResult.outcome !== "processed" || processResult.inboundEventId !== turnId) {
         throw new Error("message.process outcome mismatch");
       }
       await completeExactJob({
-        job: processJob,
+        job: processWork.job,
         workerId: processWorkerId,
         jobQueue: input.dependencies.jobQueue,
         now: input.dependencies.now(),
       });
     } catch {
       await failProcessClaim({
-        job: processJob,
+        job: processWork.job,
         turnId,
         workerId: processWorkerId,
         dependencies: input.dependencies,
@@ -395,7 +437,13 @@ export async function runSystemOpsLabPersona(input: Readonly<{
       || !isConversationOutboundPayload(outbound.payload)
       || outbound.payload.turnId !== turnId
       || outbound.payload.to !== syntheticAddress
-      || outbound.payload.agentMessagePersistence !== "sender"
+      || outbound.authorization.kind !== "live_stream_reply"
+      || outbound.authorization.streamId !== processWork.streamId
+      || outbound.authorization.streamGeneration !== processWork.streamGeneration
+      || outbound.authorization.sourceInboundEventId !== processWork.inboundEventId
+      || outbound.authorization.claimJobId !== processWork.job.id
+      || outbound.authorization.claimTokenDigest !== digestInboundClaimToken(processWork.claimToken)
+      || (outbound.authorization.authorityVersion ?? 0) < 2
     ) throw new Error("SystemOps Lab exact V2 outbound reply is missing or belongs to another turn");
     const outboundPayload = outbound.payload;
     if (conversationId !== null && outbound.conversationId !== conversationId) {

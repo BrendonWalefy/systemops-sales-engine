@@ -123,7 +123,7 @@ describe("fronteira LLM → canal externo", () => {
         (declaration) => declaration.classification === classification,
       ).length;
 
-    expect(byClass("autonomous_external")).toBe(7);
+    expect(byClass("autonomous_external")).toBe(5);
     expect(byClass("human_approved_external")).toBe(2);
     expect(unprotectedAutonomousPaths(paths)).toHaveLength(0);
   });

@@ -715,6 +715,20 @@
       "when": 1787596101078,
       "tag": "0101_odd_apocalypse",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1787688169869,
+      "tag": "0102_stiff_havok",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1787710923193,
+      "tag": "0103_even_scorpion",
+      "breakpoints": true
     }
   ]
 }

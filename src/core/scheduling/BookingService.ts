@@ -49,6 +49,11 @@ export type BookingReservationService = {
   findById?(reservationId: string): Promise<SlotReservation | null>;
 };
 
+function isCalendarTenantScopeError(error: unknown): boolean {
+  return typeof error === "object" && error !== null &&
+    "code" in error && error.code === "v2_calendar_tenant_scope_mismatch";
+}
+
 export class BookingService {
   constructor(
     private readonly calendarGateway: CalendarGateway,
@@ -127,6 +132,7 @@ export class BookingService {
         endsAt,
       });
     } catch (err) {
+      if (isCalendarTenantScopeError(err)) throw err;
       // Gateway indisponível — fail-open consciente: assume slot livre e prossegue.
       // A reserva no DB (Passo 1, com exclusion constraint de overlap) e o check
       // de appointments (Passo 1.5) protegem contra double-booking interno; o que
@@ -165,6 +171,7 @@ export class BookingService {
       // que veio no input deste serviço.
       appointment = { ...created, treatmentId, valueCents, origin };
     } catch (err) {
+      if (isCalendarTenantScopeError(err)) throw err;
       console.error("[BookingService] CalendarGateway createAppointment failed:", err);
       appointment = {
         id: crypto.randomUUID(),

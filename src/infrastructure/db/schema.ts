@@ -382,6 +382,12 @@ export const organizations = pgTable("organizations", {
   // Fonte de verdade da disponibilidade. Null = derivar de googleCalendarId no resolver.
   calendarMode: calendarModeEnum("calendar_mode"),
   autoReplyEnabled: boolean("auto_reply_enabled").notNull().default(false),
+  // Tenant-scoped operational permit for live automation. This never selects
+  // an engine: permitted turns still execute V2 exclusively. Default false
+  // prevents deploys or unrelated status changes from activating a tenant.
+  liveAutomationEnabled: boolean("live_automation_enabled")
+    .notNull()
+    .default(false),
   takeoverTtlHours: integer("takeover_ttl_hours").notNull().default(4),
   postAppointmentBufferMinutes: integer("post_appointment_buffer_minutes")
     .notNull()
@@ -939,6 +945,31 @@ export const conversationAuthority = pgTable(
     versionCheck: check(
       "conversation_authority_version_check",
       sql`${table.version} in (0, 1, 2, 3)`,
+    ),
+  }),
+);
+
+export const conversationRuntimeControl = pgTable(
+  "conversation_runtime_control",
+  {
+    key: text("key").primaryKey(),
+    liveOutboundEnabled: boolean("live_outbound_enabled")
+      .notNull()
+      .default(false),
+    version: bigint("version", { mode: "number" }).notNull().default(1),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedBy: text("updated_by").notNull(),
+  },
+  (table) => ({
+    globalKeyCheck: check(
+      "conversation_runtime_control_global_key_check",
+      sql`${table.key} = 'global'`,
+    ),
+    versionCheck: check(
+      "conversation_runtime_control_version_check",
+      sql`${table.version} >= 1`,
     ),
   }),
 );

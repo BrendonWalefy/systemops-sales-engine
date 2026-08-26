@@ -467,7 +467,7 @@ describe("terminal legacy WhatsApp history settlement", () => {
     }).returning({ id: outboundMessages.id });
     await expect(store.authorizeOutboundMessageForSend(persisted.id)).resolves.toEqual({
       authorized: false,
-      reason: "terminal_legacy_history",
+      reason: "outbound_not_sendable",
     });
     const created = await testDb().select({ id: outboundMessages.id }).from(outboundMessages)
       .where(eq(outboundMessages.clinicId, clinicId));
