@@ -1,16 +1,7 @@
 import { createHash } from "node:crypto";
 import type { OutboundDeliveryBoundary } from "@/application/jobs/send-message-job";
+import { registerReplayCaptureBoundary } from "@/application/ports/replay-capture-boundary";
 import { OutboundDeliveryService } from "@/infrastructure/adapters/channels/whatsapp/outbound-delivery-service";
-
-const internalLabCaptureBoundaries = new WeakSet<object>();
-
-export function isReplayOutboundCaptureBoundary(
-  boundary: unknown,
-): boundary is Partial<OutboundDeliveryBoundary> {
-  return typeof boundary === "object"
-    && boundary !== null
-    && internalLabCaptureBoundaries.has(boundary);
-}
 
 export type ReplayOutboundEffect =
   | {
@@ -118,8 +109,7 @@ export class ReplayOutboundCapture {
         });
       },
     } satisfies Partial<OutboundDeliveryBoundary>);
-    internalLabCaptureBoundaries.add(boundary);
-    return boundary;
+    return registerReplayCaptureBoundary(boundary);
   }
 
   private append(

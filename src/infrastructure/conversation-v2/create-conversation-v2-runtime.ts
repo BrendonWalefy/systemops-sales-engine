@@ -235,16 +235,6 @@ export function createConversationV2Runtime(input: {
   conversationRuntimeControlStore?: Pick<ConversationRuntimeControlStore, "getGlobal">;
   jobQueue?: JobQueue;
   outboundMessageStore?: OutboundMessageStore;
-  /** @deprecated ignored by the V2-only composition root. */
-  v1Handler?: unknown;
-  /** @deprecated ignored by the V2-only composition root. */
-  policyReader?: unknown;
-  /** @deprecated ignored by the V2-only composition root. */
-  eligibilityReader?: unknown;
-  /** @deprecated ignored by the V2-only composition root. */
-  runtimeBindingsReader?: unknown;
-  /** @deprecated ignored by the V2-only composition root. */
-  authorizationBindings?: unknown;
 } = {}): ConversationV2Runtime {
   const env = input.env ?? process.env;
   const decisionTraceSink = input.decisionTraceSink ?? createRuntimeDecisionTraceSink();

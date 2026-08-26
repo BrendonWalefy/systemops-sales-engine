@@ -144,7 +144,12 @@ import {
   type RuntimeFixtureInputs,
 } from "@/__tests__/helpers/runtime-performance-population";
 import * as schema from "@/infrastructure/db/schema";
-import { organizations, treatments } from "@/infrastructure/db/schema";
+import {
+  conversationAuthority,
+  conversationRuntimeControl,
+  organizations,
+  treatments,
+} from "@/infrastructure/db/schema";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { DrizzleConversationTurnLeaseStore } from "@/infrastructure/repositories/drizzle-conversation-turn-lease-store";
@@ -498,6 +503,13 @@ describe("V2-only runtime performance measurement worker", () => {
         ...fixtureInput.organization,
       }).returning({ id: organizations.id });
       clinicIdsByCase.set(fixture.caseId, organization!.id);
+      await database.insert(conversationAuthority).values({
+        clinicId: organization!.id,
+        version: 2,
+        activatedAt: FIXED_NOW,
+        activatedBy: "v2-performance-measurement",
+        updatedAt: FIXED_NOW,
+      });
       expect(fixtureInput.catalog.length, `${fixture.caseId} full catalog size`).toBeGreaterThan(0);
       for (const service of fixtureInput.catalog) {
         await database.insert(treatments).values({
@@ -512,6 +524,13 @@ describe("V2-only runtime performance measurement worker", () => {
         `${fixture.caseId} persisted full committed catalog`,
       ).toEqual(fixtureInput.catalog.map((service) => service.name).sort());
     }
+    await database.insert(conversationRuntimeControl).values({
+      key: "global",
+      liveOutboundEnabled: true,
+      version: 1,
+      updatedAt: FIXED_NOW,
+      updatedBy: "v2-performance-measurement",
+    });
     const version = await runtime.pool.query<{ server_version: string }>("show server_version");
     databaseServerVersion = version.rows[0]?.server_version ?? "unknown";
 
@@ -703,13 +722,6 @@ describe("V2-only runtime performance measurement worker", () => {
     sender = new SendMessageJobHandler({
       outboundMessageStore,
       now: fixedDate,
-      internalLabDeliveryGuard: {
-        authorize: async () => ({
-          schemaVersion: "conversation-v2.internal-lab-delivery-authorization.v1",
-          authorizationId: randomUUID(),
-          expiresAt: new Date("2026-08-26T13:00:00.000Z"),
-        }),
-      } as never,
       delivery: async ({ payload }) => {
         providerDeliveries += 1;
         const candidate = payload as { turnId?: unknown; agentMessageId?: unknown };

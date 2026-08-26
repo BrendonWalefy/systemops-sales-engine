@@ -19,6 +19,7 @@ import {
 import type { InboundEvent, InboundEventStore } from "@/application/ports/inbound-event-store";
 import type { JobQueue, JobRecord } from "@/application/ports/job-queue";
 import type { OutboundMessage } from "@/application/ports/outbound-message-store";
+import { digestInboundClaimToken } from "@/application/jobs/inbound-claim-token";
 
 const labId = "11111111-1111-4111-8111-111111111111";
 const otherTenantId = "22222222-2222-4222-8222-222222222222";
@@ -196,6 +197,12 @@ function makeHarness(options: HarnessOptions = {}) {
       job.status = "processing";
       job.lockedBy = input.workerId;
       job.attempts += 1;
+      const claimToken = event.claimToken ?? "a".repeat(43);
+      event.processingStatus = "processing";
+      event.claimToken = claimToken;
+      event.claimTokenDigest = digestInboundClaimToken(claimToken);
+      event.claimJobId = job.id;
+      event.claimedAt ??= input.now ?? new Date("2026-08-17T15:00:00.000Z");
       calls.push(`claim-process:${Number(inboundEventId.split("-").at(-1))}`);
       return {
         outcome: "claimed",
@@ -203,7 +210,7 @@ function makeHarness(options: HarnessOptions = {}) {
         streamId: event.streamId,
         streamGeneration: event.streamGeneration,
         inboundEventId,
-        claimToken: "a".repeat(43),
+        claimToken,
       };
     },
     async completeJob(jobId, workerId) {
@@ -234,8 +241,8 @@ function makeHarness(options: HarnessOptions = {}) {
     inboundEventStore,
     jobQueue,
     processMessageHandler: {
-      async processJob(job) {
-        const turnId = (job.payload as { inboundEventId: string }).inboundEventId;
+      async processClaimedJob(work) {
+        const turnId = work.inboundEventId;
         const index = Number(turnId.split("-").at(-1));
         calls.push(`process:${index}`);
         if (options.processThrows) throw new Error("model payload must not be persisted");
@@ -263,13 +270,6 @@ function makeHarness(options: HarnessOptions = {}) {
             turnId: effectiveTurn,
             to: address,
             agentMessageId: `agent-message-${index}`,
-            agentMessagePersistence: "sender",
-            internalLabBinding: {
-              schemaVersion: "conversation-v2.internal-lab-delivery-binding.v1",
-              tenantDigest: `sha256:${"1".repeat(64)}`,
-              channelDigest: `sha256:${"2".repeat(64)}`,
-              configDigest: `sha256:${"3".repeat(64)}`,
-            },
             replyText: `Resposta ${index}`,
             intent: null,
             useVoice: false,
@@ -288,9 +288,13 @@ function makeHarness(options: HarnessOptions = {}) {
           attempts: 0,
           lastError: null,
           authorization: {
-            kind: "legacy", streamId: null, streamGeneration: null,
-            sourceInboundEventId: null, claimJobId: null, claimTokenDigest: null,
-            authorityVersion: 0,
+            kind: "live_stream_reply",
+            streamId: work.streamId,
+            streamGeneration: work.streamGeneration,
+            sourceInboundEventId: work.inboundEventId,
+            claimJobId: work.job.id,
+            claimTokenDigest: digestInboundClaimToken(work.claimToken!),
+            authorityVersion: 2,
           },
           createdAt: new Date(`2026-08-17T15:0${index}:01.000Z`),
           sentAt: null,
@@ -393,7 +397,6 @@ describe("SystemOps Lab persona parser", () => {
       "--run-id", runId,
       "--clinic-id", labId,
       "--persona", "evals/systemops-lab/personas/price-scheduling.json",
-      "--approval-file", "/dev/null",
     ])).toMatchObject({ mode: "dry-run", runId, clinicId: labId });
 
     expect(parseSystemOpsLabPersonaCommandArgs([
@@ -401,7 +404,6 @@ describe("SystemOps Lab persona parser", () => {
       "--run-id", runId,
       "--clinic-id", labId,
       "--persona", "evals/systemops-lab/personas/price-scheduling.json",
-      "--approval-file", "/approval.json",
       "--result-file", "/tmp/systemops-lab-run-result.json",
     ])).toMatchObject({
       mode: "execute",
@@ -413,28 +415,24 @@ describe("SystemOps Lab persona parser", () => {
       "--run-id", runId,
       "--clinic-id", labId,
       "--persona", "persona.json",
-      "--approval-file", "/approval.json",
     ])).toThrow(/exactly one mode/i);
     expect(() => parseSystemOpsLabPersonaCommandArgs([
       "--execute",
       "--run-id", "5511999999999",
       "--clinic-id", labId,
       "--persona", "persona.json",
-      "--approval-file", "/approval.json",
     ])).toThrow(/numeric|E\.164/i);
     expect(() => parseSystemOpsLabPersonaCommandArgs([
       "--execute",
       "--run-id", runId,
       "--clinic-id", labId,
       "--persona", "persona.json",
-      "--approval-file", "/approval.json",
     ])).toThrow(/result-file/i);
     expect(() => parseSystemOpsLabPersonaCommandArgs([
       "--execute",
       "--run-id", runId,
       "--clinic-id", labId,
       "--persona", "persona.json",
-      "--approval-file", "/approval.json",
       "--result-file", "relative-result.json",
     ])).toThrow(/absolute/i);
     expect(() => parseSystemOpsLabPersonaCommandArgs([
@@ -442,7 +440,6 @@ describe("SystemOps Lab persona parser", () => {
       "--run-id", runId,
       "--clinic-id", labId,
       "--persona", "persona.json",
-      "--approval-file", "/approval.json",
       "--result-file", path.resolve("evals/systemops-lab/intermediate.json"),
     ])).toThrow(/outside|repository|evidence/i);
     expect(() => parseSystemOpsLabPersonaCommandArgs([
@@ -450,9 +447,16 @@ describe("SystemOps Lab persona parser", () => {
       "--run-id", runId,
       "--clinic-id", labId,
       "--persona", "persona.json",
-      "--approval-file", "/approval.json",
       "--result-file", path.resolve("..outside/run.json"),
     ])).toThrow(/outside|repository/i);
+    expect(() => parseSystemOpsLabPersonaCommandArgs([
+      "--execute",
+      "--run-id", runId,
+      "--clinic-id", labId,
+      "--persona", "persona.json",
+      "--approval-file", "/approval.json",
+      "--result-file", "/tmp/systemops-lab-run-result.json",
+    ])).toThrow(/unknown argument/i);
   });
 
   it("atomically writes one protected full run envelope and refuses overwrite aliases", async () => {
@@ -498,6 +502,8 @@ describe("SystemOps Lab persona parser", () => {
 describe("SystemOps Lab durable persona runner", () => {
   it("feeds turn N+1 only after the persisted agent reply from turn N exists", async () => {
     const harness = makeHarness();
+    const durableClaim = vi.spyOn(harness.dependencies.jobQueue, "claimNextInboundWork");
+    const genericClaim = vi.spyOn(harness.dependencies.jobQueue, "claimNextJob");
     const result = await runSystemOpsLabPersona({
       runId,
       clinicId: labId,
@@ -514,6 +520,25 @@ describe("SystemOps Lab durable persona runner", () => {
     expect(harness.messages.map((message) => message.author)).toEqual(["lead", "agent", "lead", "agent"]);
     expect(result.turns.map((turn) => turn.leadMessageId)).toEqual(["lead-message-1", "lead-message-2"]);
     expect(result.turns.map((turn) => turn.persistedAgentMessageId)).toEqual(["agent-message-1", "agent-message-2"]);
+    expect(durableClaim).toHaveBeenCalledTimes(2);
+    expect(genericClaim.mock.calls.every(([claim]) =>
+      claim.queues.length === 1 && claim.queues[0] === "message.send")).toBe(true);
+    for (const outbound of harness.outbounds.values()) {
+      const authorization = outbound.authorization;
+      const event = harness.events.get(authorization.sourceInboundEventId!);
+      const processJob = harness.jobs.find((job) =>
+        job.queue === "message.process"
+        && (job.payload as { inboundEventId?: string }).inboundEventId === event?.id);
+      expect(authorization).toEqual({
+        kind: "live_stream_reply",
+        streamId: event?.streamId,
+        streamGeneration: event?.streamGeneration,
+        sourceInboundEventId: event?.id,
+        claimJobId: processJob?.id,
+        claimTokenDigest: digestInboundClaimToken("a".repeat(43)),
+        authorityVersion: 2,
+      });
+    }
   });
 
   it.each([
@@ -534,7 +559,7 @@ describe("SystemOps Lab durable persona runner", () => {
 
   it("fails closed when the exact process or send job cannot be claimed", async () => {
     const harness = makeHarness();
-    harness.dependencies.jobQueue.claimNextJob = vi.fn().mockResolvedValue(null);
+    harness.dependencies.jobQueue.claimNextInboundWork = vi.fn().mockResolvedValue(null);
     await expect(runSystemOpsLabPersona({
       runId,
       clinicId: labId,
@@ -608,29 +633,25 @@ describe("SystemOps Lab durable persona runner", () => {
     })).rejects.toThrow(/exact message\.send job/i);
   });
 
-  it("keeps dry-run free of database, model, channel, and approval reads", async () => {
+  it("keeps dry-run free of database, model, and channel reads", async () => {
     const loadPersona = vi.fn().mockResolvedValue(twoTurnPersona);
     const execute = vi.fn();
-    const readApproval = vi.fn();
     const write = vi.fn();
     await runSystemOpsLabPersonaCommand({
       mode: "dry-run",
       runId,
       clinicId: labId,
       personaPath: "evals/systemops-lab/personas/price-scheduling.json",
-      approvalFile: "/dev/null",
       resultFile: null,
     }, {
       loadPersona,
       execute,
-      readApproval,
       reserveResultFile: vi.fn(),
       write,
     });
 
     expect(loadPersona).toHaveBeenCalledOnce();
     expect(execute).not.toHaveBeenCalled();
-    expect(readApproval).not.toHaveBeenCalled();
     expect(write).toHaveBeenCalledWith(expect.stringMatching(/"turnCount":2/));
     expect(write.mock.calls.flat().join("\n")).not.toMatch(/Quanto|5511|@lid|approval/i);
   });
@@ -645,11 +666,9 @@ describe("SystemOps Lab durable persona runner", () => {
       runId,
       clinicId: labId,
       personaPath: "evals/systemops-lab/personas/price-scheduling.json",
-      approvalFile: "/approval.json",
       resultFile: "/tmp/systemops-lab-run-result.json",
     }, {
       loadPersona: vi.fn().mockResolvedValue(twoTurnPersona),
-      readApproval: vi.fn().mockResolvedValue("signed-approval"),
       execute: vi.fn().mockResolvedValue(completedRunResult),
       reserveResultFile,
       write,
@@ -671,11 +690,9 @@ describe("SystemOps Lab durable persona runner", () => {
       runId,
       clinicId: labId,
       personaPath: "evals/systemops-lab/personas/price-scheduling.json",
-      approvalFile: "/approval.json",
       resultFile: "/tmp/systemops-lab-run-result.json",
     }, {
       loadPersona: vi.fn().mockResolvedValue(twoTurnPersona),
-      readApproval: vi.fn().mockResolvedValue("signed-approval"),
       execute,
       reserveResultFile: vi.fn().mockRejectedValue(new Error("run result destination reserved")),
       write: vi.fn(),

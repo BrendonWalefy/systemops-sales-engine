@@ -50,13 +50,7 @@ import {
   getV2TerminalHandoffRequiredReason,
   V2TerminalHandoffRequiredError,
 } from "@/application/conversation-v2/v2-terminal-failure-policy";
-import {
-  isInternalLabSyntheticAddress,
-  isInternalLabSyntheticAddressCandidate,
-  isInternalLabSyntheticDeliveryAuthorized,
-  type InternalLabSyntheticRunAuthorization,
-} from "@/application/labs/internal-lab-synthetic-delivery";
-import { isReplayOutboundCaptureBoundary } from "@/application/replay/replay-outbound-capture";
+import { isRegisteredReplayCaptureBoundary } from "@/application/ports/replay-capture-boundary";
 
 export type SendMessageJobDependencies = {
   outboundMessageStore: OutboundMessageStore;
@@ -73,19 +67,17 @@ export type SendMessageJobDependencies = {
     clinicId: string;
     conversationId: string;
     senderOwnedDeliveryAuthorized?: boolean;
-    /** @deprecated ignored by the V2-only sender boundary */
-    internalLabDeliveryAuthorization?: unknown;
   }) => Promise<string | null>;
   /** Injected delivery is provider-direct unless a test/pipeline declares tracked preparation. */
   deliveryFailureBoundary?: "provider_direct" | "tracked_pipeline";
-  /** Replay-only compatibility; never authorizes a real destination. */
-  internalLabDeliveryGuard?: Readonly<{
-    authorize(input: Readonly<{
+  /** Process-local replay capability; never authorizes a real destination. */
+  replayCaptureAuthorization?: Readonly<{
+    isCandidate(address: string): boolean;
+    isAuthorized(input: Readonly<{
       clinicId: string;
-      binding: unknown;
-    }>): Promise<unknown>;
+      address: string;
+    }>): boolean;
   }>;
-  internalLabSyntheticRunAuthorization?: InternalLabSyntheticRunAuthorization;
 };
 
 export type OutboundDeliveryBoundary = {
@@ -110,6 +102,10 @@ const DEFAULT_OUTBOUND_BOUNDARY: OutboundDeliveryBoundary = {
   createDeliveryService: () => new OutboundDeliveryService(),
   recordSuppressedDelivery: () => {},
 };
+
+function isReservedReplayDestination(value: string): boolean {
+  return value.trimStart().toLowerCase().startsWith("systemops-lab-");
+}
 
 export const SHADOW_DELIVERY_SUPPRESSED = "__shadow_delivery_suppressed__";
 
@@ -155,9 +151,9 @@ export class SendMessageJobHandler {
       ...DEFAULT_OUTBOUND_BOUNDARY,
       ...deps.outboundBoundary,
     };
-    const replayCaptureBoundary = isReplayOutboundCaptureBoundary(deps.outboundBoundary);
+    const replayCaptureBoundary = isRegisteredReplayCaptureBoundary(deps.outboundBoundary);
     const generalOutboundBoundary = replayCaptureBoundary
-      && deps.internalLabSyntheticRunAuthorization !== undefined
+      && deps.replayCaptureAuthorization !== undefined
       ? DEFAULT_OUTBOUND_BOUNDARY
       : outboundBoundary;
     this.delivery =
@@ -203,39 +199,31 @@ export class SendMessageJobHandler {
     });
     const turnId = jobTurnId ?? getTurnId(outbound.payload);
     const outboundDestination = getOutboundDestination(outbound.payload);
-    const syntheticCandidate = outboundDestination !== null
-      && isInternalLabSyntheticAddressCandidate(outboundDestination);
+    const replayBoundaryInstalled = this.syntheticCaptureDelivery !== null;
+    const replayCandidate = outboundDestination !== null
+      && this.deps.replayCaptureAuthorization?.isCandidate(outboundDestination) === true;
+    const reservedReplayDestination = outboundDestination !== null
+      && isReservedReplayDestination(outboundDestination);
     const conversationPayload = isConversationOutboundPayload(outbound.payload)
       ? outbound.payload
       : null;
-    let useSyntheticCapture = false;
-    if (syntheticCandidate) {
-      useSyntheticCapture = isInternalLabSyntheticAddress(outboundDestination)
-        && this.syntheticCaptureDelivery !== null
-        && isInternalLabSyntheticDeliveryAuthorized({
-          authorization: this.deps.internalLabSyntheticRunAuthorization,
+    let useReplayCapture = false;
+    if (replayBoundaryInstalled || reservedReplayDestination) {
+      useReplayCapture = replayCandidate
+        && this.deps.replayCaptureAuthorization !== undefined
+        && this.deps.replayCaptureAuthorization.isAuthorized({
           clinicId: outbound.clinicId,
-          address: outboundDestination,
-          now: this.now(),
+          address: outboundDestination!,
         });
-      useSyntheticCapture = useSyntheticCapture
+      useReplayCapture = useReplayCapture
         && conversationPayload !== null;
-      if (
-        useSyntheticCapture
-        && conversationPayload?.agentMessagePersistence === "sender"
-      ) {
-        useSyntheticCapture = Boolean(await this.deps.internalLabDeliveryGuard?.authorize({
-          clinicId: outbound.clinicId,
-          binding: conversationPayload.internalLabBinding,
-        }));
-      }
-      if (!useSyntheticCapture) {
+      if (!useReplayCapture) {
         await this.deps.outboundMessageStore.markOutboundPending(
           outbound.id,
-          "internal_lab_capture_required",
+          "replay_capture_required",
         );
         outboundLog.warn("job.deferred", {
-          reason: "internal_lab_capture_required",
+          reason: "replay_capture_required",
           durationMs: Date.now() - startedAt,
         });
         return "deferred";
@@ -523,13 +511,13 @@ export class SendMessageJobHandler {
     }
     let providerMessageId: string | null;
     try {
-      providerMessageId = await (useSyntheticCapture
+      providerMessageId = await (useReplayCapture
         ? this.syntheticCaptureDelivery!
         : this.delivery)({
         payload: outbound.payload,
         clinicId: outbound.clinicId,
         conversationId: outbound.conversationId,
-        senderOwnedDeliveryAuthorized: useSyntheticCapture,
+        senderOwnedDeliveryAuthorized: useReplayCapture,
       });
     } catch (error) {
       if (turnId) {

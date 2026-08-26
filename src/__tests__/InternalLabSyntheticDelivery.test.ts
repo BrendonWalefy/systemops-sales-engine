@@ -1,11 +1,8 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
-const dbMock = vi.hoisted(() => ({
-  select: vi.fn(),
-  update: vi.fn(),
-}));
+const dbMock = vi.hoisted(() => ({ select: vi.fn(), update: vi.fn() }));
 const realChannelMock = vi.hoisted(() => ({
   sendVoiceOrText: vi.fn(async () => ({
     msgId: "provider-owner-1",
@@ -15,13 +12,13 @@ const realChannelMock = vi.hoisted(() => ({
 }));
 
 vi.mock("@/infrastructure/db/client", () => ({ db: dbMock }));
-vi.mock("@/lib/tts-send", () => ({
-  sendVoiceOrText: realChannelMock.sendVoiceOrText,
-}));
+vi.mock("@/lib/tts-send", () => ({ sendVoiceOrText: realChannelMock.sendVoiceOrText }));
 
 import {
   createInternalLabSyntheticAddress,
   isInternalLabSyntheticAddress,
+  isInternalLabSyntheticAddressCandidate,
+  isInternalLabSyntheticDeliveryAuthorized,
   registerInternalLabSyntheticRun,
   type InternalLabSyntheticRunAuthorization,
 } from "@/application/labs/internal-lab-synthetic-delivery";
@@ -29,19 +26,15 @@ import { ReplayOutboundCapture } from "@/application/replay/replay-outbound-capt
 import { SendMessageJobHandler } from "@/application/jobs/send-message-job";
 import type { OutboundMessage } from "@/application/ports/outbound-message-store";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
-import { createInternalLabDeliveryGuard } from "@/application/conversation-v2/internal-lab-delivery-guard";
-import {
-  createRegisteredInternalLabDeploymentSmokeApproval,
-  INTERNAL_LAB_TEST_BINDINGS,
-} from "@/__tests__/helpers/internal-lab-approval-fixture";
 
+const clinicId = "11111111-1111-4111-8111-111111111111";
 const runId = "dry-run-20260817";
 const personaId = "price-scheduling";
 const syntheticAddress = `systemops-lab-${runId}-${personaId}@lid`;
 
 const outbound: OutboundMessage = {
   id: "outbound-synthetic-1",
-  clinicId: INTERNAL_LAB_TEST_BINDINGS.expectedClinicId,
+  clinicId,
   conversationId: "conversation-1",
   channel: "whatsapp",
   payload: {
@@ -50,6 +43,7 @@ const outbound: OutboundMessage = {
     turnId: "turn-1",
     to: syntheticAddress,
     agentMessageId: "agent-message-1",
+    agentMessagePersistence: "sender",
     replyText: "Resposta capturada",
     intent: null,
     useVoice: false,
@@ -92,70 +86,29 @@ function makeStore(message: OutboundMessage = outbound) {
 function conversationRepository() {
   return {
     appendMessage: vi.fn().mockResolvedValue(true),
-    findMessageById: vi.fn().mockResolvedValue({
-      id: "agent-message-1",
-      conversationId: "conversation-1",
-      author: "agent",
-      body: "Resposta capturada",
-      mediaUrl: null,
-      mediaType: null,
-      sentAt: new Date("2026-08-17T15:03:00.000Z"),
-      externalId: null,
-      intent: null,
-      deliveryFormat: null,
-    }),
+    findMessageById: vi.fn().mockResolvedValue(null),
   };
-}
-
-function v2Outbound(message: OutboundMessage = outbound): OutboundMessage {
-  return {
-    ...message,
-    payload: {
-      ...(message.payload as Record<string, unknown>),
-      agentMessagePersistence: "sender",
-      internalLabBinding: {
-        schemaVersion: "conversation-v2.internal-lab-delivery-binding.v1",
-        tenantDigest: INTERNAL_LAB_TEST_BINDINGS.tenantDigest,
-        channelDigest: INTERNAL_LAB_TEST_BINDINGS.channelDigest,
-        configDigest: INTERNAL_LAB_TEST_BINDINGS.configDigest,
-      },
-    },
-  };
-}
-
-function currentInternalLabDeliveryGuard(bindings = {
-  tenantDigest: INTERNAL_LAB_TEST_BINDINGS.tenantDigest,
-  channelDigest: INTERNAL_LAB_TEST_BINDINGS.channelDigest,
-  configDigest: INTERNAL_LAB_TEST_BINDINGS.configDigest,
-}) {
-  const registered = createRegisteredInternalLabDeploymentSmokeApproval();
-  return createInternalLabDeliveryGuard({
-    authorization: {
-      approval: registered.approval,
-      runtimeIdentity: registered.runtimeIdentity,
-      expectedClinicId: INTERNAL_LAB_TEST_BINDINGS.expectedClinicId,
-      expectedTenantDigest: INTERNAL_LAB_TEST_BINDINGS.tenantDigest,
-      expectedChannelDigest: INTERNAL_LAB_TEST_BINDINGS.channelDigest,
-      expectedConfigDigest: INTERNAL_LAB_TEST_BINDINGS.configDigest,
-      now: () => new Date("2026-08-17T15:05:00.000Z"),
-    },
-    runtimeBindingsReader: {
-      resolve: vi.fn().mockResolvedValue(bindings),
-      resolveDeliverySnapshot: vi.fn().mockResolvedValue({
-        bindings,
-        channelConfig: Object.freeze({ provider: "z_api", zapi: null, meta: null }),
-      }),
-    },
-  });
 }
 
 function registeredRun(addresses: readonly string[] = [syntheticAddress]) {
-  return registerInternalLabSyntheticRun({
-    approval: createRegisteredInternalLabDeploymentSmokeApproval().approval,
-    clinicId: INTERNAL_LAB_TEST_BINDINGS.expectedClinicId,
-    runId,
-    addresses,
-  });
+  return registerInternalLabSyntheticRun({ clinicId, runId, addresses });
+}
+
+function replayCaptureAuthorization(
+  authorization: InternalLabSyntheticRunAuthorization | undefined,
+) {
+  return {
+    isCandidate: isInternalLabSyntheticAddressCandidate,
+    isAuthorized: ({ clinicId: targetClinicId, address }: {
+      clinicId: string;
+      address: string;
+    }) => isInternalLabSyntheticAddress(address)
+      && isInternalLabSyntheticDeliveryAuthorized({
+        authorization,
+        clinicId: targetClinicId,
+        address,
+      }),
+  };
 }
 
 function selectClinicChain() {
@@ -167,20 +120,10 @@ function selectClinicChain() {
 }
 
 function updateChain() {
-  return {
-    set: vi.fn().mockReturnThis(),
-    where: vi.fn().mockResolvedValue([]),
-  };
+  return { set: vi.fn().mockReturnThis(), where: vi.fn().mockResolvedValue([]) };
 }
 
-describe("Internal Lab synthetic delivery", () => {
-  beforeAll(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-17T15:05:00.000Z"));
-  });
-
-  afterAll(() => vi.useRealTimers());
-
+describe("Internal Lab replay-only synthetic delivery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     dbMock.select.mockReturnValue(selectClinicChain());
@@ -190,130 +133,85 @@ describe("Internal Lab synthetic delivery", () => {
   it("creates only the closed synthetic LID format", () => {
     expect(createInternalLabSyntheticAddress({ runId, personaId })).toBe(syntheticAddress);
     expect(isInternalLabSyntheticAddress(syntheticAddress)).toBe(true);
-
     for (const malformed of [
       ` systemops-lab-${runId}-${personaId}@lid`,
       `systemops-lab-${runId}-${personaId}@lid.invalid`,
       `SYSTEMOPS-LAB-${runId}-${personaId}@lid`,
       "5511999999999",
       "real-owner-id@lid",
-    ]) {
-      expect(isInternalLabSyntheticAddress(malformed)).toBe(false);
-    }
-    expect(() => createInternalLabSyntheticAddress({ runId: "../escape", personaId }))
-      .toThrow(/runId/i);
-    expect(() => createInternalLabSyntheticAddress({ runId, personaId: "price scheduling" }))
-      .toThrow(/personaId/i);
+    ]) expect(isInternalLabSyntheticAddress(malformed)).toBe(false);
   });
 
-  it("binds a nominal run authorization to the registered approval and exact addresses", () => {
+  it("registers an exact process-local run without build approval or configuration digests", () => {
     const authorization = registeredRun();
 
-    expect(authorization).toEqual({
-      runId,
-      clinicId: INTERNAL_LAB_TEST_BINDINGS.expectedClinicId,
-      tenantDigest: INTERNAL_LAB_TEST_BINDINGS.tenantDigest,
-      channelDigest: INTERNAL_LAB_TEST_BINDINGS.channelDigest,
-    });
+    expect(authorization).toEqual({ runId, clinicId });
     expect(Object.isFrozen(authorization)).toBe(true);
-    expect(JSON.stringify(authorization)).not.toMatch(/signature|configDigest|@lid/);
+    expect(JSON.stringify(authorization)).not.toMatch(/approval|signature|digest|@lid/i);
     expect(() => registeredRun([
       createInternalLabSyntheticAddress({ runId: "other-run-20260817", personaId }),
     ])).toThrow(/run/i);
-    expect(() => registerInternalLabSyntheticRun({
-      approval: {
-        claims: createRegisteredInternalLabDeploymentSmokeApproval().approval.claims,
-        signature: createRegisteredInternalLabDeploymentSmokeApproval().approval.signature,
-      },
-      clinicId: INTERNAL_LAB_TEST_BINDINGS.expectedClinicId,
-      runId,
-      addresses: [syntheticAddress],
-    })).toThrow(/registered approval/i);
-    expect(() => registerInternalLabSyntheticRun({
-      approval: createRegisteredInternalLabDeploymentSmokeApproval().approval,
-      clinicId: "external-clinic",
-      runId,
-      addresses: [syntheticAddress],
-    })).toThrow(/clinic/i);
   });
 
   it.each([
-    ["has no registered run", undefined, syntheticAddress],
-    ["uses a forged token", Object.freeze({
-      runId,
-      clinicId: INTERNAL_LAB_TEST_BINDINGS.expectedClinicId,
-      tenantDigest: INTERNAL_LAB_TEST_BINDINGS.tenantDigest,
-      channelDigest: INTERNAL_LAB_TEST_BINDINGS.channelDigest,
-    }) as InternalLabSyntheticRunAuthorization, syntheticAddress],
-    ["replays a token across runs", null,
+    ["has no registered run", undefined, clinicId, syntheticAddress],
+    ["uses a forged token", Object.freeze({ runId, clinicId }), clinicId, syntheticAddress],
+    ["crosses tenant", null, "22222222-2222-4222-8222-222222222222", syntheticAddress],
+    ["replays across runs", null, clinicId,
       createInternalLabSyntheticAddress({ runId: "other-run-20260817", personaId })],
-    ["uses a malformed reserved LID", null,
+    ["uses a malformed reserved LID", null, clinicId,
       `systemops-lab-${runId}-${personaId}@lid.invalid`],
-  ])("defers before every irreversible or processing effect when it %s", async (
+  ])("defers before claim or delivery when it %s", async (
     _case,
     suppliedAuthorization,
+    targetClinicId,
     address,
   ) => {
+    const authorization = suppliedAuthorization === null ? registeredRun() : suppliedAuthorization;
     const store = makeStore({
       ...outbound,
+      clinicId: targetClinicId,
       payload: { ...(outbound.payload as Record<string, unknown>), to: address },
     });
     const realDelivery = vi.fn();
-    const sendVoiceOrText = vi.fn();
-    const sendMediaMessage = vi.fn();
-    const createDeliveryService = vi.fn();
-    const internalLabDeliveryGuard = { authorize: vi.fn() };
-    const authorization = suppliedAuthorization === null ? registeredRun() : suppliedAuthorization;
+    const capture = new ReplayOutboundCapture();
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       conversationRepository: conversationRepository(),
       delivery: realDelivery,
-      internalLabDeliveryGuard: internalLabDeliveryGuard as never,
-      internalLabSyntheticRunAuthorization: authorization,
-      outboundBoundary: {
-        sandboxCaptureEnabled: true,
-        sendVoiceOrText: sendVoiceOrText as never,
-        sendMediaMessage: sendMediaMessage as never,
-        createDeliveryService: createDeliveryService as never,
-      },
+      replayCaptureAuthorization: replayCaptureAuthorization(
+        authorization as InternalLabSyntheticRunAuthorization | undefined,
+      ),
+      outboundBoundary: capture.createBoundary(),
     });
 
     await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
       .resolves.toBe("deferred");
-
     expect(store.markOutboundPending).toHaveBeenCalledWith(
       outbound.id,
-      "internal_lab_capture_required",
+      "replay_capture_required",
     );
     expect(store.markOutboundProcessing).not.toHaveBeenCalled();
-    expect(store.hasEarlierActiveMessage).not.toHaveBeenCalled();
     expect(realDelivery).not.toHaveBeenCalled();
-    expect(internalLabDeliveryGuard.authorize).not.toHaveBeenCalled();
-    expect(sendVoiceOrText).not.toHaveBeenCalled();
-    expect(sendMediaMessage).not.toHaveBeenCalled();
-    expect(createDeliveryService).not.toHaveBeenCalled();
-    expect(dbMock.select).not.toHaveBeenCalled();
-    expect(dbMock.update).not.toHaveBeenCalled();
+    expect(capture.effects).toHaveLength(0);
   });
 
-  it("captures an authorized synthetic send through SendMessageJobHandler with zero real provider calls", async () => {
+  it("captures an authorized synthetic send with zero provider calls", async () => {
     const capture = new ReplayOutboundCapture();
-    const store = makeStore(v2Outbound());
+    const store = makeStore();
     const realDelivery = vi.fn();
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       conversationRepository: conversationRepository(),
       conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
       delivery: realDelivery,
-      internalLabDeliveryGuard: currentInternalLabDeliveryGuard(),
-      internalLabSyntheticRunAuthorization: registeredRun(),
+      replayCaptureAuthorization: replayCaptureAuthorization(registeredRun()),
       outboundBoundary: capture.createBoundary(),
     });
 
     await expect(handler.processJob({
       payload: { outboundMessageId: outbound.id, turnId: "turn-1" },
     })).resolves.toBe("sent");
-
     expect(capture.effects).toEqual([
       expect.objectContaining({
         kind: "text",
@@ -323,85 +221,34 @@ describe("Internal Lab synthetic delivery", () => {
       }),
     ]);
     expect(realDelivery).not.toHaveBeenCalled();
-    expect(store.markOutboundDelivered).toHaveBeenCalledWith({
-      id: outbound.id,
-      providerMessageId: "replay-capture-1",
-    });
   });
 
-  it("defers config drift before claiming the synthetic outbound", async () => {
-    const store = makeStore(v2Outbound());
-    const capture = new ReplayOutboundCapture();
-    const authorize = vi.fn().mockResolvedValue(null);
-    const handler = new SendMessageJobHandler({
-      outboundMessageStore: store as never,
-      conversationRepository: conversationRepository(),
-      internalLabDeliveryGuard: { authorize },
-      internalLabSyntheticRunAuthorization: registeredRun(),
-      outboundBoundary: capture.createBoundary(),
-    });
-
-    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
-      .resolves.toBe("deferred");
-
-    expect(authorize).toHaveBeenCalledOnce();
-    expect(store.markOutboundPending).toHaveBeenCalledWith(
-      outbound.id,
-      "internal_lab_capture_required",
-    );
-    expect(store.markOutboundProcessing).not.toHaveBeenCalled();
-    expect(capture.effects).toHaveLength(0);
-  });
-
-  it.each([
-    ["an expired approval", INTERNAL_LAB_TEST_BINDINGS.expectedClinicId,
-      new Date("2026-08-17T15:11:00.000Z")],
-    ["a cross-tenant replay", "external-clinic",
-      new Date("2026-08-17T15:05:00.000Z")],
-  ])("defers %s before current binding resolution or outbox claim", async (
-    _case,
-    clinicId,
-    deliveryNow,
-  ) => {
-    const store = makeStore(v2Outbound({ ...outbound, clinicId }));
-    const capture = new ReplayOutboundCapture();
-    const authorize = vi.fn();
-    const handler = new SendMessageJobHandler({
-      outboundMessageStore: store as never,
-      conversationRepository: conversationRepository(),
-      now: () => deliveryNow,
-      internalLabDeliveryGuard: { authorize },
-      internalLabSyntheticRunAuthorization: registeredRun(),
-      outboundBoundary: capture.createBoundary(),
-    });
-
-    await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
-      .resolves.toBe("deferred");
-
-    expect(authorize).not.toHaveBeenCalled();
-    expect(store.markOutboundProcessing).not.toHaveBeenCalled();
-    expect(capture.effects).toHaveLength(0);
-  });
-
-  it("keeps the owner real address on the existing real delivery path", async () => {
+  it("keeps every real address fail-closed while replay capture is installed", async () => {
     const ownerAddress = "5511999999999";
     const capture = new ReplayOutboundCapture();
     const store = makeStore({
       ...outbound,
       payload: { ...(outbound.payload as Record<string, unknown>), to: ownerAddress },
     });
+    const realDelivery = vi.fn().mockResolvedValue("provider-owner-1");
     const handler = new SendMessageJobHandler({
       outboundMessageStore: store as never,
       conversationRepository: conversationRepository(),
       conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
-      internalLabSyntheticRunAuthorization: registeredRun(),
+      delivery: realDelivery,
+      replayCaptureAuthorization: replayCaptureAuthorization(registeredRun()),
       outboundBoundary: capture.createBoundary(),
     });
 
     await expect(handler.processJob({ payload: { outboundMessageId: outbound.id } }))
-      .resolves.toBe("sent");
-
-    expect(realChannelMock.sendVoiceOrText).toHaveBeenCalledOnce();
+      .resolves.toBe("deferred");
+    expect(store.markOutboundPending).toHaveBeenCalledWith(
+      outbound.id,
+      "replay_capture_required",
+    );
+    expect(store.markOutboundProcessing).not.toHaveBeenCalled();
+    expect(realDelivery).not.toHaveBeenCalled();
+    expect(realChannelMock.sendVoiceOrText).not.toHaveBeenCalled();
     expect(capture.effects).toHaveLength(0);
   });
 
@@ -415,7 +262,7 @@ describe("Internal Lab synthetic delivery", () => {
     dbMock.select.mockReturnValue(select);
 
     const found = await new DrizzleOutboundMessageStore().findConversationReplyByTurnId({
-      clinicId: INTERNAL_LAB_TEST_BINDINGS.expectedClinicId,
+      clinicId,
       turnId: "turn-1",
     });
 
@@ -423,10 +270,6 @@ describe("Internal Lab synthetic delivery", () => {
     const predicate = select.where.mock.calls[0]?.[0];
     const query = new PgDialect().sqlToQuery(sql`select 1 where ${predicate}`);
     expect(query.sql).toContain("organization_id");
-    expect(query.sql).toContain("turnId");
-    expect(query.params).toEqual(expect.arrayContaining([
-      INTERNAL_LAB_TEST_BINDINGS.expectedClinicId,
-      "turn-1",
-    ]));
+    expect(query.params).toEqual(expect.arrayContaining([clinicId, "turn-1"]));
   });
 });

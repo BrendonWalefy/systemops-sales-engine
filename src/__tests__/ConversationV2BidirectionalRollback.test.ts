@@ -21,16 +21,11 @@ function runtimeWith(handler: { handle: ReturnType<typeof vi.fn> }) {
     conversationRuntimeControlStore: {
       getGlobal: async () => ({ liveOutboundEnabled: false, version: 0 }),
     },
-    // Stale callers may still pass these during the staged refactor. They are
-    // intentionally ignored and cannot restore V1 reachability.
-    v1Handler: { handle: vi.fn() },
-    policyReader: { getConversationEnginePolicy: vi.fn() },
-    authorizationBindings: { approval: "obsolete" },
   });
 }
 
 describe("Conversation V2 has no bidirectional runtime rollback", () => {
-  it("ignores legacy engine and approval inputs and executes only V2", async () => {
+  it("executes only the directly composed V2 handler", async () => {
     const handle = vi.fn().mockResolvedValue({ replied: true, reason: "v2" });
     const runtime = runtimeWith({ handle });
 

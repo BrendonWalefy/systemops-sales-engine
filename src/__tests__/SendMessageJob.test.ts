@@ -43,13 +43,6 @@ const outbound: OutboundMessage = {
   sentAt: null,
 };
 
-const internalLabBinding = {
-  schemaVersion: "conversation-v2.internal-lab-delivery-binding.v1" as const,
-  tenantDigest: `sha256:${"1".repeat(64)}`,
-  channelDigest: `sha256:${"2".repeat(64)}`,
-  configDigest: `sha256:${"3".repeat(64)}`,
-};
-
 function makeStore() {
   return {
     findOutboundMessage: vi.fn().mockResolvedValue(outbound),
@@ -143,16 +136,17 @@ function makeAutomationDispatchLifecycle() {
 }
 
 describe("SendMessageJobHandler", () => {
-  it.each([
-    { ...(outbound.payload as Record<string, unknown>), agentMessagePersistence: "sender" },
-    { ...(outbound.payload as Record<string, unknown>), internalLabBinding },
-    { ...(outbound.payload as Record<string, unknown>), unexpected: true },
-    {
+  it("accepts sender-owned persistence without a build approval binding", () => {
+    expect(isConversationOutboundPayload({
       ...(outbound.payload as Record<string, unknown>),
       agentMessagePersistence: "sender",
-      internalLabBinding: { ...internalLabBinding, unexpected: true },
-    },
-  ])("rejects half-paired or unknown conversation payload fields", (payload) => {
+    })).toBe(true);
+  });
+
+  it.each([
+    { ...(outbound.payload as Record<string, unknown>), internalLabBinding: {} },
+    { ...(outbound.payload as Record<string, unknown>), unexpected: true },
+  ])("rejects obsolete or unknown conversation payload fields", (payload) => {
     expect(isConversationOutboundPayload(payload)).toBe(false);
   });
 

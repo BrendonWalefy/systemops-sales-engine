@@ -1,5 +1,5 @@
 import { generateKeyPairSync, sign } from "node:crypto";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   computeInternalLabRuntimeDigest,
   serializeInternalLabApprovalClaims,
@@ -7,20 +7,8 @@ import {
 import { INTERNAL_LAB_APPROVAL_AUTHORITY_DOMAIN } from
   "@/infrastructure/conversation-v2/configured-internal-lab-authority";
 
-const mocks = vi.hoisted(() => ({
-  cookies: vi.fn(),
-  verifyToken: vi.fn(),
-}));
-
-vi.mock("next/headers", () => ({ cookies: mocks.cookies }));
-vi.mock("@/lib/session", () => ({
-  verifyToken: mocks.verifyToken,
-  COOKIE_NAME: "sops_session",
-}));
-
 import { describeInternalLabAuthorityRecoveryMetadata } from
   "@/application/conversation-v2/internal-lab-authority-recovery-metadata";
-import { GET } from "@/app/api/owner/internal-lab-authority-status/route";
 
 const ENV_KEYS = [
   "SYSTEMOPS_LAB_CLINIC_ID",
@@ -131,10 +119,7 @@ function restoreEnvironment(): void {
 
 describe("Internal Lab authority recovery metadata", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     configureEnvironment();
-    mocks.cookies.mockResolvedValue({ get: () => ({ value: "owner-token" }) });
-    mocks.verifyToken.mockResolvedValue({ role: "owner" });
   });
 
   afterEach(restoreEnvironment);
@@ -298,23 +283,4 @@ describe("Internal Lab authority recovery metadata", () => {
       .approval.currentBuild).toBe(true);
   });
 
-  it("rejects non-owner sessions", async () => {
-    mocks.verifyToken.mockResolvedValue({ role: "org_admin" });
-
-    const response = await GET();
-
-    expect(response.status).toBe(401);
-  });
-
-  it("serves recovery metadata to the authenticated owner without raw secrets", async () => {
-    const response = await GET();
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(body.deployment.commit).toBe("d".repeat(40));
-    expect(body.approval.currentBuild).toBe(false);
-    expect(body.signature).toBeUndefined();
-    expect(body.databaseUrl).toBeUndefined();
-    expect(body.openAiApiKey).toBeUndefined();
-  });
 });

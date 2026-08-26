@@ -19,15 +19,11 @@ function sourceFiles(directory: string): string[] {
 }
 
 const LIVE_APP_ROOTS = sourceFiles(resolve(PROJECT_ROOT, "src/app"))
-  .filter((file) =>
-    !file.includes("/api/e2e/replay/") &&
-    // Read-only legacy build-identity inspection is not imported by webhook,
-    // worker, sender, or any productive conversation route. Task 7 deletes it.
-    !file.includes("/api/owner/runtime-identity/") &&
-    !file.includes("/api/owner/internal-lab-authority-status/"));
+  .filter((file) => !file.includes("/api/e2e/replay/"));
 const PRODUCTION_ROOTS = [
   ...LIVE_APP_ROOTS,
   resolve(PROJECT_ROOT, "src/infrastructure/conversation-v2/create-conversation-v2-runtime.ts"),
+  resolve(PROJECT_ROOT, "src/application/jobs/send-message-job.ts"),
 ] as const;
 
 const FORBIDDEN_RUNTIME_MODULES = [
@@ -44,14 +40,8 @@ const FORBIDDEN_RUNTIME_MODULES = [
   "/conversation-v2/v1-observation-collector",
   "/conversation-v2/v2-shadow-runner",
   "/conversation-v2/run-shadow-batch",
+  "/application/replay/replay-outbound-capture",
 ] as const;
-
-// Explicitly authorized replay-only adapter. Its signed synthetic run is not a
-// live runtime authorization source and cannot select or deliver to a real
-// destination; Task 7 keeps this quality harness disconnected from live roots.
-const NON_LIVE_BOUNDARIES = new Set([
-  "@/application/labs/internal-lab-synthetic-delivery",
-]);
 
 function localImportSpecifiers(source: string): readonly string[] {
   const imports = new Set<string>();
@@ -91,7 +81,6 @@ function reachableProductionFiles(): readonly string[] {
     visited.add(file);
     const source = readFileSync(file, "utf8");
     for (const specifier of localImportSpecifiers(source)) {
-      if (NON_LIVE_BOUNDARIES.has(specifier)) continue;
       const imported = resolveLocalImport(file, specifier);
       if (imported && !visited.has(imported)) pending.push(imported);
     }
@@ -107,6 +96,27 @@ describe("V2-only production runtime architecture", () => {
       return FORBIDDEN_RUNTIME_MODULES
         .filter((forbidden) => relative.includes(forbidden))
         .map((forbidden) => `${forbidden} via ${relative}`);
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps live roots free from obsolete engine and build-approval symbols", () => {
+    const forbiddenSymbols = [
+      "internalLabBinding",
+      "internalLabDeliveryGuard",
+      "internalLabSyntheticRunAuthorization",
+      "engineActivationProof",
+      "approvalRegistered",
+      "approvalDecision",
+      "CONVERSATION_V2_INTERNAL_LAB_APPROVAL_JSON",
+    ] as const;
+    const violations = reachableProductionFiles().flatMap((file) => {
+      const source = readFileSync(file, "utf8");
+      const relative = file.slice(PROJECT_ROOT.length).replaceAll("\\", "/");
+      return forbiddenSymbols
+        .filter((symbol) => source.includes(symbol))
+        .map((symbol) => `${symbol} via ${relative}`);
     });
 
     expect(violations).toEqual([]);

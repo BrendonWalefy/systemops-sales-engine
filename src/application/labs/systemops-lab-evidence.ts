@@ -1021,7 +1021,6 @@ function evaluate(input: ReturnType<typeof canonicalizeInput>): SystemOpsLabEval
     : check("journey_advancement", "not_measurable", []);
 
   const requiredStages = [
-    "engine.selected",
     "v2.understanding",
     "v2.decision",
     "v2.action_result",
@@ -1049,7 +1048,6 @@ function evaluate(input: ReturnType<typeof canonicalizeInput>): SystemOpsLabEval
       if (!value) criticalComplete = false;
       else criticalEvidence.push(eventRef(value));
     }
-    const engine = event(turn.turnId, "engine.selected");
     const outbox = event(turn.turnId, "v2.outbox");
     const delivery = event(turn.turnId, "delivery.sent");
     const validator = event(turn.turnId, "response.validated");
@@ -1057,8 +1055,7 @@ function evaluate(input: ReturnType<typeof canonicalizeInput>): SystemOpsLabEval
     const decision = event(turn.turnId, "v2.decision");
     const action = event(turn.turnId, "v2.action_result");
     if (
-      engine && engine.metadata.reason !== "internal_lab_authorized"
-      || understanding && understanding.metadata.status !== "completed"
+      understanding && understanding.metadata.status !== "completed"
       || decision && decision.metadata.status !== "prepared"
       || action && action.metadata.status !== "completed"
       || outbox && outbox.metadata.status !== "enqueued"
