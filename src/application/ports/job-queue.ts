@@ -58,6 +58,7 @@ export type FailJobInput = {
   workerId: string;
   error: string;
   retryAt: Date;
+  forceDead?: boolean;
   now?: Date;
 };
 

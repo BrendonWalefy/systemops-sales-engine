@@ -30,6 +30,7 @@ import {
 import type { TtsConfig } from "@/domain/entities/tts-config";
 import type { Treatment } from "@/domain/entities/treatment";
 import type { V2ConversationHandoffReason } from "@/application/conversation-v2/v2-conversation-handoff";
+import { V2TerminalHandoffRequiredError } from "@/application/conversation-v2/v2-terminal-failure-policy";
 import {
   createDentalPack,
   DENTAL_OUTCOME_SCHEMA,
@@ -577,11 +578,33 @@ export class V2LiveConversationHandler implements ConversationHandler {
         effectCompleted,
         safeReplyEnqueued,
       });
+      if (reason === "outbox_failed" && effectAttempted && !handoffPersisted) {
+        try {
+          await this.deps.persistHandoff({
+            clinicId: context.clinicId,
+            conversationId: context.conversationId,
+            reason: "v2_effect_outbox_failure_requires_human",
+            now: new Date((turnNow ?? this.deps.now?.() ?? new Date()).getTime()),
+          });
+          handoffPersisted = true;
+        } catch {
+          if (!terminalHandled) {
+            terminalHandled = true;
+            try {
+              await this.deps.lifecycle.fail({ context, error });
+            } catch {
+              // The closed job marker remains the retry authority. A secondary
+              // lifecycle failure must not reopen model/effect execution.
+            }
+          }
+          throw new V2TerminalHandoffRequiredError("effect_outbox_failed");
+        }
+      }
       if (!terminalHandled) {
         terminalHandled = true;
         await this.deps.lifecycle.fail({ context, error });
       }
-      if (reason === "outbox_failed") throw error;
+      if (reason === "outbox_failed" && !handoffPersisted) throw error;
       return { replied: false, reason };
     } finally {
       await context.releaseLease();

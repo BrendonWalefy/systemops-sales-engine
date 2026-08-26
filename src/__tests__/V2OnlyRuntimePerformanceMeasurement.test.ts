@@ -100,6 +100,7 @@ import type { CorpusCase } from "@/application/corpus/corpus-case";
 import { loadCorpus } from "@/application/corpus/corpus-index";
 import { drainMessageProcessQueue } from "@/application/jobs/drain-message-process-queue";
 import { drainMessageSendQueue } from "@/application/jobs/drain-message-send-queue";
+import { DrizzleV2ConversationHandoffStore } from "@/infrastructure/repositories/drizzle-v2-conversation-handoff-store";
 import { ProcessMessageJobHandler } from "@/application/jobs/process-message-job";
 import { SendMessageJobHandler } from "@/application/jobs/send-message-job";
 import type {
@@ -1101,6 +1102,7 @@ describe("V2-only runtime performance measurement worker", () => {
         drainMessageProcessQueue({
           jobQueue,
           inboundEventStore,
+          terminalHandoffStore: new DrizzleV2ConversationHandoffStore(),
           handler: processHandlers[arm],
           workerId: `runtime-process-${arm}-${turnIndex}`,
           maxJobs: 1,
@@ -1142,6 +1144,7 @@ describe("V2-only runtime performance measurement worker", () => {
         drainMessageSendQueue({
           jobQueue,
           outboundMessageStore,
+          terminalHandoffStore: new DrizzleV2ConversationHandoffStore(),
           handler: sender,
           workerId: `runtime-send-${arm}-${turnIndex}`,
           maxJobs: 1,

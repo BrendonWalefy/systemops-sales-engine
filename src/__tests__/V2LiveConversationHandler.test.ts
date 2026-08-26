@@ -96,6 +96,8 @@ function makeHarness(options: {
   cleanupFailure?: boolean;
   invalidBookingBinding?: boolean;
   outboxFailure?: boolean;
+  handoffFailure?: boolean;
+  lifecycleFailure?: boolean;
   clockFailure?: boolean;
   modelId?: "gpt-4o-mini";
   canonicalProviderSpoof?: boolean;
@@ -165,7 +167,9 @@ function makeHarness(options: {
     begin,
     loadSnapshot: vi.fn().mockResolvedValue(snapshot),
     complete: vi.fn().mockResolvedValue(undefined),
-    fail: vi.fn().mockResolvedValue(undefined),
+    fail: options.lifecycleFailure
+      ? vi.fn().mockRejectedValue(new Error("lifecycle unavailable"))
+      : vi.fn().mockResolvedValue(undefined),
   };
   const understand = vi.fn().mockImplementation(async () => {
     if (options.understandingFailure) throw new Error("model payload with private text");
@@ -248,7 +252,9 @@ function makeHarness(options: {
       });
   const trace = new InMemoryDecisionTraceSink();
   const persistStopContact = vi.fn().mockResolvedValue(undefined);
-  const persistHandoff = vi.fn().mockResolvedValue(undefined);
+  const persistHandoff = options.handoffFailure
+    ? vi.fn().mockRejectedValue(new Error("handoff unavailable"))
+    : vi.fn().mockResolvedValue(undefined);
   const registeredUnderstanding = createLiveDentalUnderstanding({
     chat: {
       completions: {
@@ -432,8 +438,14 @@ describe("V2LiveConversationHandler", () => {
     const harness = makeHarness({ safetyOptOut: true, outboxFailure: true });
 
     await expect(harness.handler.handle(handleInput("Pare de me enviar mensagens")))
-      .rejects.toThrow("outbox unavailable");
+      .resolves.toEqual({ replied: false, reason: "outbox_failed" });
     expect(harness.persistStopContact).toHaveBeenCalledOnce();
+    expect(harness.persistHandoff).toHaveBeenCalledWith({
+      clinicId: clinic.id,
+      conversationId: conversation.id,
+      reason: "v2_effect_outbox_failure_requires_human",
+      now,
+    });
     expect(harness.lifecycle.fail).toHaveBeenCalledOnce();
     expect(harness.trace.getEvents(turnId).at(-1)).toMatchObject({
       stage: "turn.failed",
@@ -621,12 +633,13 @@ describe("V2LiveConversationHandler", () => {
     const harness = makeHarness({ bookingTurn: true, outboxFailure: true });
 
     await expect(harness.handler.handle(handleInput("Pode marcar a primeira opção?")))
-      .rejects.toThrow("outbox unavailable");
+      .resolves.toEqual({ replied: false, reason: "outbox_failed" });
 
     expect(harness.booking.book).toHaveBeenCalledTimes(1);
     expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledTimes(1);
     expect(harness.lifecycle.complete).not.toHaveBeenCalled();
     expect(harness.lifecycle.fail).toHaveBeenCalledTimes(1);
+    expect(harness.persistHandoff).toHaveBeenCalledOnce();
     expect(harness.releaseLease).toHaveBeenCalledTimes(1);
     expect(harness.trace.getEvents(turnId).at(-1)).toMatchObject({
       stage: "turn.failed",
@@ -663,7 +676,7 @@ describe("V2LiveConversationHandler", () => {
     });
 
     await expect(harness.handler.handle(handleInput("Pode marcar a primeira opção?")))
-      .rejects.toThrow("outbox unavailable");
+      .resolves.toEqual({ replied: false, reason: "outbox_failed" });
 
     expect(harness.booking.book).toHaveBeenCalledOnce();
     expect(harness.trace.getEvents(turnId).at(-1)).toMatchObject({
@@ -680,7 +693,7 @@ describe("V2LiveConversationHandler", () => {
     const harness = makeHarness({ schedulingOfferTurn: true, outboxFailure: true });
 
     await expect(harness.handler.handle(handleInput("Tem horário amanhã?")))
-      .rejects.toThrow("outbox unavailable");
+      .resolves.toEqual({ replied: false, reason: "outbox_failed" });
 
     expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledTimes(1);
     expect(harness.trace.getEvents(turnId).at(-1)).toMatchObject({
@@ -692,6 +705,46 @@ describe("V2LiveConversationHandler", () => {
         effectCompleted: true,
       },
     });
+  });
+
+  it("retries the same turn when outbox fails before any effect", async () => {
+    const harness = makeHarness({ outboxFailure: true });
+
+    await expect(harness.handler.handle(handleInput()))
+      .rejects.toThrow("outbox unavailable");
+    expect(harness.persistHandoff).not.toHaveBeenCalled();
+    expect(harness.booking.book).not.toHaveBeenCalled();
+  });
+
+  it("emits a closed terminal marker when effect handoff persistence is unavailable", async () => {
+    const harness = makeHarness({
+      bookingTurn: true,
+      outboxFailure: true,
+      handoffFailure: true,
+    });
+
+    await expect(harness.handler.handle(handleInput("Pode marcar a primeira opção?")))
+      .rejects.toMatchObject({
+        name: "V2TerminalHandoffRequiredError",
+        message: "v2_terminal_handoff_required:effect_outbox_failed",
+      });
+    expect(harness.booking.book).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the closed marker when lifecycle failure follows unavailable handoff", async () => {
+    const harness = makeHarness({
+      bookingTurn: true,
+      outboxFailure: true,
+      handoffFailure: true,
+      lifecycleFailure: true,
+    });
+
+    await expect(harness.handler.handle(handleInput("Pode marcar a primeira opção?")))
+      .rejects.toMatchObject({
+        name: "V2TerminalHandoffRequiredError",
+        message: "v2_terminal_handoff_required:effect_outbox_failed",
+      });
+    expect(harness.booking.book).toHaveBeenCalledOnce();
   });
 
   it("rejects an unknown understanding model before provider use and never traces its value", async () => {

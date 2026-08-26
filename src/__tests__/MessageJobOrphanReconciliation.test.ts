@@ -63,6 +63,7 @@ describe("reconcileMessageJobOrphans", () => {
       queue: "message.send",
       payload: { outboundMessageId: "outbound-1", turnId: "turn-1" },
       dedupeKey: "outbound-message:outbound-1",
+      maxAttempts: 10,
     });
     expect(result).toEqual({
       inboundFound: 1,

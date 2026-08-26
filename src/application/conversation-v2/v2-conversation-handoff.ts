@@ -4,7 +4,8 @@ export type V2ConversationHandoffReason =
   | "v2_explicit_human_request"
   | "v2_human_review_continuation_requires_human"
   | "v2_manual_recovery_requires_human"
-  | "v2_guided_pipeline_requires_human";
+  | "v2_guided_pipeline_requires_human"
+  | "v2_effect_outbox_failure_requires_human";
 
 export type V2ConversationHandoffStore = Readonly<{
   markRequired(input: Readonly<{

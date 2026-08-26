@@ -298,7 +298,7 @@ export class DrizzleInboundEventStore implements InboundEventStore {
         name: "persist_processing_job",
         statement: sql`
           insert into jobs (
-            id, queue, payload, dedupe_key, run_at, inbound_event_id
+            id, queue, payload, dedupe_key, run_at, inbound_event_id, max_attempts
           )
           select
             ${jobId}::uuid,
@@ -310,7 +310,8 @@ export class DrizzleInboundEventStore implements InboundEventStore {
             ),
             'inbound-event:' || event.id::text,
             stream.quiet_until,
-            event.id
+            event.id,
+            3
           from inbound_events event
           join whatsapp_streams stream
             on stream.id = event.stream_id
@@ -319,7 +320,8 @@ export class DrizzleInboundEventStore implements InboundEventStore {
             and event.stream_id is not null
             and event.stream_generation is not null
           on conflict (queue, dedupe_key) do update
-            set dedupe_key = excluded.dedupe_key
+            set dedupe_key = excluded.dedupe_key,
+                max_attempts = 3
           returning id
         `,
       },

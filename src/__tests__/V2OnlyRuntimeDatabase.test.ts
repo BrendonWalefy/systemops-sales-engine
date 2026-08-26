@@ -5,6 +5,7 @@ import { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { digestInboundClaimToken } from "@/application/jobs/inbound-claim-token";
+import { drainMessageProcessQueue } from "@/application/jobs/drain-message-process-queue";
 import type {
   CreateOutboundMessageInput,
   CreateOutboundMessageAndEnqueueResult,
@@ -61,6 +62,20 @@ type V2ConversationHandoffStore = Readonly<{
     reason: string;
     now: Date;
   }>): Promise<boolean>;
+  markForInboundEvent(input: Readonly<{
+    clinicId: string;
+    inboundEventId: string;
+    claimJobId: string;
+    reason: "v2_terminal_processing_failure";
+    now: Date;
+  }>): Promise<boolean>;
+  markForOutboundMessage(input: Readonly<{
+    outboundMessageId: string;
+    sendJobId: string;
+    workerId: string;
+    reason: "v2_terminal_delivery_failure";
+    now: Date;
+  }>): Promise<boolean>;
 }>;
 
 type V2ConversationHandoffStoreModule = Readonly<{
@@ -73,6 +88,12 @@ type OutboundMessageStore = Readonly<{
     options?: { turnId?: string | null },
   ): Promise<CreateOutboundMessageAndEnqueueResult>;
   authorizeOutboundMessageForSend(id: string): Promise<OutboundSendAuthorizationResult>;
+  markOutboundDelivered(input: Readonly<{
+    id: string;
+    providerMessageId: string | null;
+    sentAt?: Date;
+  }>): Promise<void>;
+  markOutboundDead(id: string, error: string): Promise<void>;
 }>;
 
 type OutboundMessageStoreModule = Readonly<{
@@ -80,6 +101,9 @@ type OutboundMessageStoreModule = Readonly<{
 }>;
 
 type TestDatabase = ReturnType<typeof drizzleNodePostgres>;
+
+type JobQueueModule = typeof import("@/infrastructure/repositories/drizzle-job-queue");
+type InboundEventStoreModule = typeof import("@/infrastructure/repositories/drizzle-inbound-event-store");
 
 async function loadRuntimeControlStore(): Promise<RuntimeControlStore> {
   const modulePath = "@/infrastructure/repositories/drizzle-conversation-runtime-control-store";
@@ -97,6 +121,20 @@ async function loadOutboundMessageStore(): Promise<OutboundMessageStore> {
   const modulePath = "@/infrastructure/repositories/drizzle-outbound-message-store";
   const importedStore = await vi.importActual<OutboundMessageStoreModule>(modulePath);
   return new importedStore.DrizzleOutboundMessageStore();
+}
+
+async function loadJobQueue() {
+  const imported = await vi.importActual<JobQueueModule>(
+    "@/infrastructure/repositories/drizzle-job-queue",
+  );
+  return new imported.DrizzleJobQueue();
+}
+
+async function loadInboundEventStore() {
+  const imported = await vi.importActual<InboundEventStoreModule>(
+    "@/infrastructure/repositories/drizzle-inbound-event-store",
+  );
+  return new imported.DrizzleInboundEventStore();
 }
 
 function databaseError(error: unknown): Readonly<{
@@ -413,7 +451,11 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
       client.release();
     }
 
-    const persisted = await database.execute<{ outbounds: string; jobs: string }>(sql`
+    const persisted = await database.execute<{
+      outbounds: string;
+      jobs: string;
+      send_max_attempts: number | null;
+    }>(sql`
       select
         (select count(*) from outbound_messages where organization_id = ${fixture.clinicId}::uuid)::text as outbounds,
         (select count(*) from jobs where queue = 'message.send' and payload->>'outboundMessageId' is not null)::text as jobs
@@ -489,9 +531,17 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
             and authorization_kind = 'live_stream_reply')::text as outbounds,
         (select count(*) from jobs
           where queue = 'message.send'
-            and payload->>'outboundMessageId' = ${created.outboundMessageId})::text as jobs
+            and payload->>'outboundMessageId' = ${created.outboundMessageId})::text as jobs,
+        (select max_attempts from jobs
+          where queue = 'message.send'
+            and payload->>'outboundMessageId' = ${created.outboundMessageId}
+          limit 1) as send_max_attempts
     `);
-    expect(persisted.rows).toEqual([{ outbounds: "1", jobs: "1" }]);
+    expect(persisted.rows).toEqual([{
+      outbounds: "1",
+      jobs: "1",
+      send_max_attempts: 10,
+    }]);
   });
 
   it("keeps an existing live reply sender-authorized after settled stream retirement", async () => {
@@ -1041,5 +1091,207 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
       needs_attention: false,
       attention_reason: null,
     });
+  });
+
+  it("resolves terminal process and delivery handoff through exact durable tenant bindings", async () => {
+    const fixture = await seedLiveOutboundAuthority({ liveOutboundEnabled: true });
+    const other = await seedLiveOutboundAuthority({ liveOutboundEnabled: true });
+    const outboundStore = await loadOutboundMessageStore();
+    const outbound = await outboundStore.createOutboundMessageAndEnqueue(
+      liveOutboundInput(fixture),
+      { turnId: fixture.inboundEventId },
+    );
+    const now = new Date("2026-08-26T20:30:00.000Z");
+    const sendWorkerId = "terminal-send-worker";
+    const jobQueue = await loadJobQueue();
+    const sendJob = await jobQueue.claimNextJob({
+      queues: ["message.send"],
+      workerId: sendWorkerId,
+      dedupeKey: `outbound-message:${outbound.outboundMessageId}`,
+      now,
+    });
+    expect(sendJob).not.toBeNull();
+    const store = await loadV2ConversationHandoffStore();
+
+    await expect(store.markForInboundEvent({
+      clinicId: other.clinicId,
+      inboundEventId: fixture.inboundEventId,
+      claimJobId: fixture.claimJobId,
+      reason: "v2_terminal_processing_failure",
+      now,
+    })).resolves.toBe(false);
+    await expect(store.markForInboundEvent({
+      clinicId: fixture.clinicId,
+      inboundEventId: fixture.inboundEventId,
+      claimJobId: fixture.claimJobId,
+      reason: "v2_terminal_processing_failure",
+      now,
+    })).resolves.toBe(true);
+    await expect(store.markForOutboundMessage({
+      outboundMessageId: outbound.outboundMessageId,
+      sendJobId: randomUUID(),
+      workerId: sendWorkerId,
+      reason: "v2_terminal_delivery_failure",
+      now,
+    })).resolves.toBe(false);
+    await expect(store.markForOutboundMessage({
+      outboundMessageId: outbound.outboundMessageId,
+      sendJobId: sendJob!.id,
+      workerId: "wrong-worker",
+      reason: "v2_terminal_delivery_failure",
+      now,
+    })).resolves.toBe(false);
+    await expect(store.markForOutboundMessage({
+      outboundMessageId: outbound.outboundMessageId,
+      sendJobId: sendJob!.id,
+      workerId: sendWorkerId,
+      reason: "v2_terminal_delivery_failure",
+      now,
+    })).resolves.toBe(true);
+
+    const result = await database.execute<{
+      id: string;
+      ai_paused: boolean;
+      needs_attention: boolean;
+      attention_reason: string | null;
+    }>(sql`
+      select id, ai_paused, needs_attention, attention_reason
+      from conversations
+      where id in (${fixture.conversationId}::uuid, ${other.conversationId}::uuid)
+      order by id
+    `);
+    const byId = new Map(result.rows.map((row) => [row.id, row]));
+    expect(byId.get(fixture.conversationId)).toMatchObject({
+      ai_paused: true,
+      needs_attention: true,
+      attention_reason: "v2_terminal_delivery_failure",
+    });
+    expect(byId.get(other.conversationId)).toMatchObject({
+      ai_paused: false,
+      needs_attention: false,
+      attention_reason: null,
+    });
+  });
+
+  it("never downgrades a sent outbound to dead during indeterminate-delivery cleanup", async () => {
+    const fixture = await seedLiveOutboundAuthority({ liveOutboundEnabled: true });
+    const outboundStore = await loadOutboundMessageStore();
+    const outbound = await outboundStore.createOutboundMessageAndEnqueue(
+      liveOutboundInput(fixture),
+      { turnId: fixture.inboundEventId },
+    );
+    const sentAt = new Date("2026-08-26T20:40:00.000Z");
+    await outboundStore.markOutboundDelivered({
+      id: outbound.outboundMessageId,
+      providerMessageId: "provider-accepted",
+      sentAt,
+    });
+
+    await outboundStore.markOutboundDead(
+      outbound.outboundMessageId,
+      "v2_terminal_handoff_required:delivery_outcome_indeterminate",
+    );
+
+    const persisted = await database.execute<{
+      status: string;
+      provider_message_id: string | null;
+      sent_at: Date | null;
+    }>(sql`
+      select status, provider_message_id, sent_at
+      from outbound_messages
+      where id = ${outbound.outboundMessageId}::uuid
+    `);
+    expect(persisted.rows[0]).toMatchObject({
+      status: "sent",
+      provider_message_id: "provider-accepted",
+    });
+    expect(new Date(String(persisted.rows[0]!.sent_at)).getTime()).toBe(sentAt.getTime());
+  });
+
+  it("exhausts one three-claim process job into one durable handoff without changing its token", async () => {
+    const fixture = await seedLiveOutboundAuthority({ liveOutboundEnabled: true });
+    const now = new Date("2026-08-25T21:30:00.000Z");
+    await database.execute(sql`
+      update whatsapp_streams
+      set latest_inbound_event_id = ${fixture.inboundEventId}::uuid,
+          quiet_until = ${now}
+      where id = ${fixture.streamId}::uuid
+    `);
+    await database.execute(sql`
+      update jobs
+      set status = 'pending', attempts = 0, max_attempts = 3,
+          run_at = ${now}, locked_at = null, locked_by = null,
+          dedupe_key = ${`inbound-event:${fixture.inboundEventId}`},
+          payload = jsonb_build_object(
+            'inboundEventId', ${fixture.inboundEventId}::text,
+            'streamId', ${fixture.streamId}::text,
+            'streamGeneration', 1
+          )
+      where id = ${fixture.claimJobId}::uuid
+    `);
+    await database.execute(sql`
+      update inbound_events set processing_status = 'pending'
+      where id = ${fixture.inboundEventId}::uuid
+    `);
+
+    const jobQueue = await loadJobQueue();
+    const inboundEventStore = await loadInboundEventStore();
+    const terminalHandoffStore = await loadV2ConversationHandoffStore();
+    const processClaimedJob = vi.fn().mockRejectedValue(new Error("terminal V2 failure"));
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const result = await drainMessageProcessQueue({
+        jobQueue,
+        inboundEventStore,
+        terminalHandoffStore,
+        handler: { processClaimedJob, processHistoryOnlyJob: vi.fn() },
+        workerId: `terminal-process-${attempt}`,
+        maxJobs: 1,
+        now: new Date(now.getTime() + attempt * 60_000),
+      });
+      expect(result).toMatchObject(attempt < 3
+        ? { claimed: 1, retried: 1, dead: 0 }
+        : { claimed: 1, retried: 0, dead: 1 });
+    }
+
+    const persisted = await database.execute<{
+      status: string;
+      attempts: number;
+      max_attempts: number;
+      claim_token: string | null;
+      processing_status: string;
+      ai_paused: boolean;
+      needs_attention: boolean;
+      attention_reason: string | null;
+      outbounds: string;
+    }>(sql`
+      select
+        job.status,
+        job.attempts,
+        job.max_attempts,
+        event.claim_token,
+        event.processing_status,
+        conversation.ai_paused,
+        conversation.needs_attention,
+        conversation.attention_reason,
+        (select count(*) from outbound_messages
+          where authorization_inbound_event_id = event.id)::text as outbounds
+      from jobs job
+      join inbound_events event on event.claim_job_id = job.id
+      join whatsapp_streams stream on stream.id = event.stream_id
+      join conversations conversation on conversation.id = stream.conversation_id
+      where job.id = ${fixture.claimJobId}::uuid
+    `);
+    expect(persisted.rows).toEqual([{
+      status: "dead",
+      attempts: 3,
+      max_attempts: 3,
+      claim_token: fixture.claimToken,
+      processing_status: "failed",
+      ai_paused: true,
+      needs_attention: true,
+      attention_reason: "v2_terminal_processing_failure",
+      outbounds: "0",
+    }]);
+    expect(processClaimedJob).toHaveBeenCalledTimes(3);
   });
 });

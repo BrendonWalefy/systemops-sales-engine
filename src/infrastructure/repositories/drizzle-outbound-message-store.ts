@@ -209,16 +209,18 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
         order by id
         limit 1
       ), persisted_job as (
-        insert into jobs (id, queue, payload, dedupe_key)
+        insert into jobs (id, queue, payload, dedupe_key, max_attempts)
         select
           ${jobId}::uuid,
           'message.send',
           ${JSON.stringify(jobPayload)}::jsonb ||
             jsonb_build_object('outboundMessageId', persisted_message.id::text),
-          'outbound-message:' || persisted_message.id::text
+          'outbound-message:' || persisted_message.id::text,
+          10
         from persisted_message
         on conflict (queue, dedupe_key) do update
-          set dedupe_key = excluded.dedupe_key
+          set dedupe_key = excluded.dedupe_key,
+              max_attempts = 10
         returning id
       )
       select
@@ -373,7 +375,10 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
     await db
       .update(outboundMessages)
       .set({ status: "dead", lastError: error })
-      .where(eq(outboundMessages.id, id));
+      .where(and(
+        eq(outboundMessages.id, id),
+        inArray(outboundMessages.status, ["pending", "processing", "failed"]),
+      ));
   }
 
   async markOutboundCancelled(id: string, error: string): Promise<void> {

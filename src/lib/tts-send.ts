@@ -96,7 +96,13 @@ export async function sendVoiceOrText(
   voiceEnabled: boolean,
   ttsConfig: TtsConfig = DEFAULT_TTS_CONFIG,
   clinicId?: string,
+  onProviderBoundaryEntered?: () => void,
 ): Promise<SendVoiceResult> {
+  let whatsappProviderEntered = false;
+  const markProviderBoundaryEntered = () => {
+    whatsappProviderEntered = true;
+    onProviderBoundaryEntered?.();
+  };
   if (voiceEnabled) {
     try {
       const { gateway, format, contentType, speed } = createTtsProvider(ttsConfig);
@@ -107,15 +113,24 @@ export async function sendVoiceOrText(
         audioBuffer,
         { contentType },
       );
-      const msgId = await sendMediaMessage(to, blobUrl, "audio", config);
+      const msgId = await sendMediaMessage(
+        to,
+        blobUrl,
+        "audio",
+        config,
+        undefined,
+        undefined,
+        markProviderBoundaryEntered,
+      );
       if (clinicId) trackTtsCostAsync(clinicId, text, ttsConfig);
       return { msgId, deliveryFormat: "audio", blobUrl };
     } catch (err) {
+      if (whatsappProviderEntered) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[TTS] Falhou (provider=${ttsConfig.provider}): ${msg} — enviando texto`);
     }
   }
 
-  const msgId = await sendTextMessage(to, text, config);
+  const msgId = await sendTextMessage(to, text, config, markProviderBoundaryEntered);
   return { msgId, deliveryFormat: "text", blobUrl: null };
 }

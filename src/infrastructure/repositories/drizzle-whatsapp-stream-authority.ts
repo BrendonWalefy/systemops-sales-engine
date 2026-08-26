@@ -254,6 +254,7 @@ export class DrizzleWhatsAppStreamAuthority implements WhatsAppStreamAuthority {
           dedupe_key,
           run_at,
           inbound_event_id,
+          max_attempts,
           created_at,
           updated_at
         )
@@ -268,6 +269,7 @@ export class DrizzleWhatsAppStreamAuthority implements WhatsAppStreamAuthority {
           'inbound-event:' || decision.inbound_event_id::text,
           decision.repaired_run_at,
           decision.inbound_event_id,
+          3,
           ${input.now},
           ${input.now}
         from decision
@@ -283,6 +285,7 @@ export class DrizzleWhatsAppStreamAuthority implements WhatsAppStreamAuthority {
           locked_at = null,
           locked_by = null,
           last_error = null,
+          max_attempts = 3,
           dead_letter_disposition = null,
           dead_letter_resolved_at = null,
           dead_letter_resolved_by = null,

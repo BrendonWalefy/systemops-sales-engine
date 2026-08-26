@@ -35,6 +35,7 @@ export async function enqueueOutboundMessage(
       ...(turnId ? { turnId } : {}),
     },
     dedupeKey: `outbound-message:${created.message.id}`,
+    maxAttempts: 10,
   });
 
   const result = {

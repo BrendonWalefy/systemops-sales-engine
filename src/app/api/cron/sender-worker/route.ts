@@ -6,6 +6,7 @@ import { SendMessageJobHandler } from "@/application/jobs/send-message-job";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
+import { DrizzleV2ConversationHandoffStore } from "@/infrastructure/repositories/drizzle-v2-conversation-handoff-store";
 import { createLogger } from "@/infrastructure/logging/logger";
 import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 import { reconcileMessageJobOrphans } from "@/application/jobs/reconcile-message-job-orphans";
@@ -98,6 +99,7 @@ async function runSenderWorker(): Promise<SenderWorkerRunOutcome> {
     const result = await drainMessageSendQueue({
       jobQueue,
       outboundMessageStore,
+      terminalHandoffStore: new DrizzleV2ConversationHandoffStore(),
       handler: new SendMessageJobHandler({
         outboundMessageStore,
         safetyContextReader,

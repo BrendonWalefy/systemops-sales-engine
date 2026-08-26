@@ -5,6 +5,7 @@ import type { OutboundMessage } from "@/application/ports/outbound-message-store
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 import { isConversationOutboundPayload } from "@/application/jobs/conversation-outbound-payload";
 import { buildInitialAgentMessage } from "@/core/pipeline/outbound-message-persistence";
+import { V2TerminalHandoffRequiredError } from "@/application/conversation-v2/v2-terminal-failure-policy";
 
 const outbound: OutboundMessage = {
   id: "outbound-1",
@@ -461,13 +462,76 @@ describe("SendMessageJobHandler", () => {
 
     await expect(handler.processJob({
       payload: { outboundMessageId: "outbound-1", turnId: "turn-1" },
-    })).rejects.toThrow("provider unavailable");
+    })).rejects.toMatchObject({
+      name: "V2TerminalHandoffRequiredError",
+      message: "v2_terminal_handoff_required:delivery_outcome_indeterminate",
+    });
     expect(decisionTraceSink.getEvents("turn-1").map((entry) => entry.stage))
       .toEqual(["delivery.started", "turn.failed"]);
     expect(decisionTraceSink.getEvents("turn-1").at(-1)?.metadata).toEqual({
       phase: "delivery",
       errorName: "Error",
     });
+  });
+
+  it("keeps a proven pre-provider pipeline failure retryable", async () => {
+    const store = makeStore();
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      delivery: vi.fn().mockRejectedValue(new Error("configuration unavailable")),
+      deliveryFailureBoundary: "tracked_pipeline",
+      conversationRepository: legacyConversationRepository(),
+    });
+
+    await expect(handler.processJob({
+      payload: { outboundMessageId: "outbound-1" },
+    })).rejects.toThrow("configuration unavailable");
+  });
+
+  it("closes delivery when the provider accepts but sent persistence fails", async () => {
+    const store = makeStore();
+    store.markOutboundDelivered.mockRejectedValue(new Error("database unavailable"));
+    const delivery = vi.fn().mockResolvedValue("provider-accepted-1");
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      delivery,
+      conversationRepository: legacyConversationRepository(),
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+    });
+
+    await expect(handler.processJob({
+      id: "send-job-1",
+      payload: { outboundMessageId: "outbound-1" },
+    })).rejects.toEqual(new V2TerminalHandoffRequiredError("delivery_outcome_indeterminate"));
+    expect(delivery).toHaveBeenCalledOnce();
+    expect(store.markOutboundDelivered).toHaveBeenCalledOnce();
+  });
+
+  it("never resends after sent persistence succeeds and lifecycle reconciliation fails", async () => {
+    const store = makeStore();
+    const delivery = vi.fn().mockResolvedValue("provider-accepted-1");
+    const automationDispatchLifecycle = makeAutomationDispatchLifecycle();
+    automationDispatchLifecycle.markDelivered.mockRejectedValue(
+      new Error("lifecycle unavailable"),
+    );
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      delivery,
+      conversationRepository: legacyConversationRepository(),
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+      automationDispatchLifecycle,
+    });
+
+    await expect(handler.processJob({
+      id: "send-job-1",
+      payload: { outboundMessageId: "outbound-1" },
+    })).rejects.toThrow("lifecycle unavailable");
+    store.findOutboundMessage.mockResolvedValue({ ...outbound, status: "sent" });
+    await expect(handler.processJob({
+      id: "send-job-1",
+      payload: { outboundMessageId: "outbound-1" },
+    })).rejects.toThrow("lifecycle unavailable");
+    expect(delivery).toHaveBeenCalledOnce();
   });
 
   it("não reenfileira uma saída já entregue", async () => {
@@ -802,6 +866,7 @@ describe("SendMessageJobHandler", () => {
     const result = await drainMessageSendQueue({
       jobQueue: jobQueue as never,
       outboundMessageStore: store as never,
+      terminalHandoffStore: { markForOutboundMessage: vi.fn().mockResolvedValue(true) },
       handler,
       workerId: "worker-1",
       maxJobs: 2,

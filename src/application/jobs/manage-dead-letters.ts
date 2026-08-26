@@ -1,3 +1,5 @@
+import { isV2TerminalHandoffRequiredError } from "@/application/conversation-v2/v2-terminal-failure-policy";
+
 export const LATE_DELIVERY_PROTECTION_MS = 15 * 60_000;
 
 export type DeadLetterAction = "acknowledge" | "discard" | "reprocess";
@@ -9,6 +11,7 @@ export type DeadLetterCandidate = {
   createdAt: Date;
   resolved: boolean;
   outboundStatus?: string | null;
+  lastError?: string | null;
 };
 
 export type DeadLetterResolutionInput = {
@@ -30,6 +33,14 @@ export function validateDeadLetterResolution(
   }
   if (input.reason.trim().length < 8) {
     throw new Error("Informe um motivo de auditoria com pelo menos 8 caracteres.");
+  }
+  if (
+    input.action === "reprocess"
+    && isV2TerminalHandoffRequiredError(candidate.lastError)
+  ) {
+    throw new Error(
+      "Este dead letter possui autoridade terminal; reprocessamento terminal bloqueado.",
+    );
   }
   if (input.action !== "reprocess" || candidate.queue !== "message.send") return;
 

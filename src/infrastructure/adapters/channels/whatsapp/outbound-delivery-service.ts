@@ -88,8 +88,18 @@ export class OutboundDeliveryService {
       msgId: string | null;
       isFirst: boolean;
     }) => Promise<void>;
+    onProviderBoundaryEntered?: () => void;
   }): Promise<void> {
-    const { to, parts, config, log, sendText, onTextSent, onMediaSent } = params;
+    const {
+      to,
+      parts,
+      config,
+      log,
+      sendText,
+      onTextSent,
+      onMediaSent,
+      onProviderBoundaryEntered,
+    } = params;
     let lastSentAt = 0;
     let firstTextSent = false;
     let firstPartSent = false;
@@ -112,14 +122,28 @@ export class OutboundDeliveryService {
         continue;
       }
 
+      let mediaProviderBoundaryEntered = false;
+      const markMediaProviderBoundaryEntered = () => {
+        mediaProviderBoundaryEntered = true;
+        onProviderBoundaryEntered?.();
+      };
       try {
-        const msgId = await this.deps.sendMedia(to, part.url, part.mediaType, config, part.caption);
+        const msgId = await this.deps.sendMedia(
+          to,
+          part.url,
+          part.mediaType,
+          config,
+          part.caption,
+          undefined,
+          markMediaProviderBoundaryEntered,
+        );
         lastSentAt = this.deps.now();
         log.info("mídia enviada", { mediaId: part.mediaId, title: part.title, msgId });
         await onMediaSent({ part, msgId, isFirst: !firstPartSent });
         firstPartSent = true;
         await this.waitForDelivery(msgId, config, log, part.mediaId);
       } catch (err) {
+        if (mediaProviderBoundaryEntered) throw err;
         log.error("falha ao enviar mídia — entrega continua", err, {
           mediaId: part.mediaId,
           title: part.title,

@@ -14,6 +14,7 @@ import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
+import { DrizzleV2ConversationHandoffStore } from "@/infrastructure/repositories/drizzle-v2-conversation-handoff-store";
 import { createLogger } from "@/infrastructure/logging/logger";
 import { reconcileMessageJobOrphans } from "@/application/jobs/reconcile-message-job-orphans";
 import { DrizzleMessageJobOrphanReader } from "@/infrastructure/repositories/drizzle-message-job-orphan-reader";
@@ -80,6 +81,7 @@ async function runMessageWorker(): Promise<MessageWorkerRunOutcome> {
   const inboundEventStore = new DrizzleInboundEventStore();
   const jobQueue = new DrizzleJobQueue();
   const outboundMessageStore = new DrizzleOutboundMessageStore();
+  const terminalHandoffStore = new DrizzleV2ConversationHandoffStore();
   const audioTranscriber = new ZApiAudioTranscriber(new WhisperGateway());
   const conversationV2Runtime = createConversationV2Runtime({
     jobQueue,
@@ -120,6 +122,7 @@ async function runMessageWorker(): Promise<MessageWorkerRunOutcome> {
     const result = await drainMessageProcessQueue({
       jobQueue,
       inboundEventStore,
+      terminalHandoffStore,
       handler,
       workerId,
       maxJobs: MAX_JOBS_PER_RUN,
@@ -142,6 +145,7 @@ async function runMessageWorker(): Promise<MessageWorkerRunOutcome> {
         sendDrain = await drainMessageSendQueue({
           jobQueue,
           outboundMessageStore,
+          terminalHandoffStore,
           handler: new SendMessageJobHandler({
             outboundMessageStore,
             safetyContextReader: new DrizzleOutboundSafetyContextReader(),

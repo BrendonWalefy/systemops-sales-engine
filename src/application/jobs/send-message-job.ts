@@ -47,6 +47,10 @@ import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositorie
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 import type { ChannelConfigSnapshot } from "@/application/ports/channel-config-snapshot";
 import {
+  getV2TerminalHandoffRequiredReason,
+  V2TerminalHandoffRequiredError,
+} from "@/application/conversation-v2/v2-terminal-failure-policy";
+import {
   isInternalLabSyntheticAddress,
   isInternalLabSyntheticAddressCandidate,
   isInternalLabSyntheticDeliveryAuthorized,
@@ -72,6 +76,8 @@ export type SendMessageJobDependencies = {
     /** @deprecated ignored by the V2-only sender boundary */
     internalLabDeliveryAuthorization?: unknown;
   }) => Promise<string | null>;
+  /** Injected delivery is provider-direct unless a test/pipeline declares tracked preparation. */
+  deliveryFailureBoundary?: "provider_direct" | "tracked_pipeline";
   /** Replay-only compatibility; never authorizes a real destination. */
   internalLabDeliveryGuard?: Readonly<{
     authorize(input: Readonly<{
@@ -142,6 +148,7 @@ export class SendMessageJobHandler {
   private readonly syntheticCaptureDelivery: NonNullable<
     SendMessageJobDependencies["delivery"]
   > | null;
+  private readonly deliveryFailureBoundary: "provider_direct" | "tracked_pipeline";
 
   constructor(private readonly deps: SendMessageJobDependencies) {
     const outboundBoundary = {
@@ -156,6 +163,8 @@ export class SendMessageJobHandler {
     this.delivery =
       deps.delivery ??
       ((input) => deliverOutboundPayload(input, generalOutboundBoundary));
+    this.deliveryFailureBoundary = deps.deliveryFailureBoundary
+      ?? (deps.delivery ? "provider_direct" : "tracked_pipeline");
     this.syntheticCaptureDelivery = replayCaptureBoundary
       ? (input) => deliverOutboundPayload(input, outboundBoundary)
       : null;
@@ -536,7 +545,13 @@ export class SendMessageJobHandler {
           },
         });
       }
-      throw error;
+      if (
+        this.deliveryFailureBoundary === "tracked_pipeline"
+        && getV2TerminalHandoffRequiredReason(error) !== "delivery_outcome_indeterminate"
+      ) {
+        throw error;
+      }
+      throw new V2TerminalHandoffRequiredError("delivery_outcome_indeterminate");
     }
     if (providerMessageId === SHADOW_DELIVERY_SUPPRESSED) {
       await this.deps.outboundMessageStore.markOutboundCancelled(
@@ -549,41 +564,53 @@ export class SendMessageJobHandler {
       });
       return "ignored";
     }
-    if (turnId && isConversationOutboundPayload(outbound.payload)) {
-      const stateAfterDelivery =
-        await this.conversationStateReader.getCurrentState(
-          outbound.conversationId,
-        );
-      await recordDecisionTrace(this.deps.decisionTraceSink, {
-        turnId,
-        stage: "state.after_delivery",
-        occurredAt: this.now().toISOString(),
-        clinicId: outbound.clinicId,
-        conversationId: outbound.conversationId,
-        metadata: {
-          state: stateAfterDelivery?.state ?? "none",
-          pipelineAdvanceApplied:
-            outbound.payload.pipelineAdvance?.action ?? "none",
-        },
+    try {
+      await this.deps.outboundMessageStore.markOutboundDelivered({
+        id: outbound.id,
+        providerMessageId,
       });
+    } catch {
+      throw new V2TerminalHandoffRequiredError("delivery_outcome_indeterminate");
     }
-    await this.deps.outboundMessageStore.markOutboundDelivered({
-      id: outbound.id,
-      providerMessageId,
-    });
-    await this.automationDispatchLifecycle.markDelivered(outboundForLifecycle, this.now());
-    if (turnId) {
-      await recordDecisionTrace(this.deps.decisionTraceSink, {
-        turnId,
-        stage: "delivery.sent",
-        occurredAt: this.now().toISOString(),
-        clinicId: outbound.clinicId,
-        conversationId: outbound.conversationId,
-        metadata: {
-          outboundMessageId: outbound.id,
-          providerAccepted: providerMessageId !== null,
-        },
-      });
+    try {
+      if (turnId && isConversationOutboundPayload(outbound.payload)) {
+        const stateAfterDelivery =
+          await this.conversationStateReader.getCurrentState(
+            outbound.conversationId,
+          );
+        await recordDecisionTrace(this.deps.decisionTraceSink, {
+          turnId,
+          stage: "state.after_delivery",
+          occurredAt: this.now().toISOString(),
+          clinicId: outbound.clinicId,
+          conversationId: outbound.conversationId,
+          metadata: {
+            state: stateAfterDelivery?.state ?? "none",
+            pipelineAdvanceApplied:
+              outbound.payload.pipelineAdvance?.action ?? "none",
+          },
+        });
+      }
+      await this.automationDispatchLifecycle.markDelivered(outboundForLifecycle, this.now());
+      if (turnId) {
+        await recordDecisionTrace(this.deps.decisionTraceSink, {
+          turnId,
+          stage: "delivery.sent",
+          occurredAt: this.now().toISOString(),
+          clinicId: outbound.clinicId,
+          conversationId: outbound.conversationId,
+          metadata: {
+            outboundMessageId: outbound.id,
+            providerAccepted: providerMessageId !== null,
+          },
+        });
+      }
+    } catch (postDeliveryError) {
+      // The provider result and terminal outbox state are already durable.
+      // Retry may reconcile lifecycle, but the sent outbox prevents provider
+      // delivery from reopening.
+      outboundLog.error("job.post_delivery_reconciliation.failed", postDeliveryError);
+      throw postDeliveryError;
     }
     outboundLog.info("job.sent", { durationMs: Date.now() - startedAt, providerMessageId });
     return "sent";
@@ -826,36 +853,47 @@ async function deliverOutboundPayload(input: {
   conversationId: string;
   senderOwnedDeliveryAuthorized?: boolean;
 }, boundary: OutboundDeliveryBoundary): Promise<string | null> {
-  if (isConversationOutboundPayload(input.payload)) {
-    return deliverConversationOutbound({
-      payload: input.payload,
-      clinicId: input.clinicId,
-      conversationId: input.conversationId,
-      senderOwnedDeliveryAuthorized: input.senderOwnedDeliveryAuthorized,
-    }, boundary);
+  let providerBoundaryEntered = false;
+  const markProviderBoundaryEntered = () => {
+    providerBoundaryEntered = true;
+  };
+  try {
+    if (isConversationOutboundPayload(input.payload)) {
+      return deliverConversationOutbound({
+        payload: input.payload,
+        clinicId: input.clinicId,
+        conversationId: input.conversationId,
+        senderOwnedDeliveryAuthorized: input.senderOwnedDeliveryAuthorized,
+      }, boundary, markProviderBoundaryEntered);
+    }
+    if (isAutomationOutboundPayload(input.payload)) {
+      return deliverAutomationOutbound({
+        payload: input.payload,
+        clinicId: input.clinicId,
+        conversationId: input.conversationId,
+      }, boundary, markProviderBoundaryEntered);
+    }
+    if (isOperatorOutboundPayload(input.payload)) {
+      return deliverOperatorOutbound({
+        payload: input.payload,
+        clinicId: input.clinicId,
+        conversationId: input.conversationId,
+      }, boundary, markProviderBoundaryEntered);
+    }
+    throw new Error("Unsupported outbound payload");
+  } catch (error) {
+    if (providerBoundaryEntered) {
+      throw new V2TerminalHandoffRequiredError("delivery_outcome_indeterminate");
+    }
+    throw error;
   }
-  if (isAutomationOutboundPayload(input.payload)) {
-    return deliverAutomationOutbound({
-      payload: input.payload,
-      clinicId: input.clinicId,
-      conversationId: input.conversationId,
-    }, boundary);
-  }
-  if (isOperatorOutboundPayload(input.payload)) {
-    return deliverOperatorOutbound({
-      payload: input.payload,
-      clinicId: input.clinicId,
-      conversationId: input.conversationId,
-    }, boundary);
-  }
-  throw new Error("Unsupported outbound payload");
 }
 
 export async function deliverOperatorOutbound(input: {
   payload: OperatorOutboundPayload;
   clinicId: string;
   conversationId: string;
-}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
+}, boundary: OutboundDeliveryBoundary, onProviderBoundaryEntered?: () => void): Promise<string | null> {
   const [clinic] = await db
     .select()
     .from(organizations)
@@ -869,21 +907,27 @@ export async function deliverOperatorOutbound(input: {
   let providerMessageId: string | null;
   let deliveryFormat: "text" | "audio" = "text";
   if (input.payload.attachment) {
-    providerMessageId = await boundary.sendMediaMessage(
+    const mediaArgs = [
       input.payload.to,
       input.payload.attachment.url,
       input.payload.attachment.mediaType,
       config,
       input.payload.text || undefined,
       input.payload.attachment.fileName,
-    );
+    ] as const;
+    providerMessageId = onProviderBoundaryEntered
+      ? await boundary.sendMediaMessage(...mediaArgs, onProviderBoundaryEntered)
+      : await boundary.sendMediaMessage(...mediaArgs);
   } else {
-    const result = await boundary.sendVoiceOrText(
-      input.payload.to,
-      input.payload.text,
-      config,
-      false,
-    );
+    const voiceArgs = [input.payload.to, input.payload.text, config, false] as const;
+    const result = onProviderBoundaryEntered
+      ? await boundary.sendVoiceOrText(
+        ...voiceArgs,
+        undefined,
+        undefined,
+        onProviderBoundaryEntered,
+      )
+      : await boundary.sendVoiceOrText(...voiceArgs);
     providerMessageId = result.msgId;
     deliveryFormat = result.deliveryFormat;
   }
@@ -906,7 +950,7 @@ async function deliverConversationOutbound(input: {
   clinicId: string;
   conversationId: string;
   senderOwnedDeliveryAuthorized?: boolean;
-}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
+}, boundary: OutboundDeliveryBoundary, onProviderBoundaryEntered?: () => void): Promise<string | null> {
   if (input.payload.agentMessagePersistence === "sender" && !input.senderOwnedDeliveryAuthorized) {
     throw new Error("V2 live sender preflight is not installed");
   }
@@ -996,6 +1040,7 @@ async function deliverConversationOutbound(input: {
           false,
           input.payload.ttsConfig,
           input.clinicId,
+          onProviderBoundaryEntered,
         );
         return { msgId: result.msgId, deliveryFormat: result.deliveryFormat };
       },
@@ -1026,6 +1071,7 @@ async function deliverConversationOutbound(input: {
         });
       },
       onMediaSent: persistMedia,
+      onProviderBoundaryEntered,
     });
   } else {
     const result = await boundary.sendVoiceOrText(
@@ -1035,6 +1081,7 @@ async function deliverConversationOutbound(input: {
       input.payload.useVoice,
       input.payload.ttsConfig,
       input.clinicId,
+      onProviderBoundaryEntered,
     );
     firstProviderMessageId = result.msgId;
     await db
@@ -1056,6 +1103,7 @@ async function deliverConversationOutbound(input: {
       sendText: () => Promise.resolve({ msgId: null, deliveryFormat: "text" as const }),
       onTextSent: async () => {},
       onMediaSent: persistMedia,
+      onProviderBoundaryEntered,
     });
   }
 
@@ -1085,7 +1133,7 @@ async function deliverAutomationOutbound(input: {
   payload: AutomationOutboundPayload;
   clinicId: string;
   conversationId: string;
-}, boundary: OutboundDeliveryBoundary): Promise<string | null> {
+}, boundary: OutboundDeliveryBoundary, onProviderBoundaryEntered?: () => void): Promise<string | null> {
   const [clinic] = await db
     .select()
     .from(organizations)
@@ -1121,6 +1169,7 @@ async function deliverAutomationOutbound(input: {
     input.payload.useVoice ?? false,
     input.payload.ttsConfig,
     input.clinicId,
+    onProviderBoundaryEntered,
   );
   await db
     .update(messages)
@@ -1152,6 +1201,11 @@ async function deliverAutomationOutbound(input: {
     });
     for (const part of mediaParts) {
       if (part.type !== "media") continue;
+      let mediaProviderBoundaryEntered = false;
+      const markMediaProviderBoundaryEntered = () => {
+        mediaProviderBoundaryEntered = true;
+        onProviderBoundaryEntered?.();
+      };
       try {
         const mediaMsgId = await boundary.sendMediaMessage(
           input.payload.to,
@@ -1159,6 +1213,8 @@ async function deliverAutomationOutbound(input: {
           part.mediaType,
           config,
           part.caption,
+          undefined,
+          markMediaProviderBoundaryEntered,
         );
         await conversationRepository.appendMessage({
           id: randomUUID(),
@@ -1173,6 +1229,7 @@ async function deliverAutomationOutbound(input: {
           deliveryFormat: "text",
         });
       } catch (err) {
+        if (mediaProviderBoundaryEntered) throw err;
         mediaLog.error("falha ao enviar mídia da automação — segue", err, {
           mediaId: part.mediaId,
           title: part.title,

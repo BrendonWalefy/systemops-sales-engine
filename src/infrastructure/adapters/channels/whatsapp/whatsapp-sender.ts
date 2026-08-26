@@ -16,8 +16,14 @@ export async function sendTextMessage(
   to: string,
   text: string,
   config: ClinicChannelConfig,
+  onProviderBoundaryEntered?: () => void,
 ): Promise<string | null> {
   if (process.env.DISABLE_REAL_WHATSAPP_SEND === "true") return null;
+  let providerBoundaryEntered = false;
+  const markProviderBoundaryEntered = () => {
+    providerBoundaryEntered = true;
+    onProviderBoundaryEntered?.();
+  };
 
   const formatted = toWhatsAppFormatting(text);
   if (config.provider === "z_api") {
@@ -47,6 +53,7 @@ export async function sendTextMessage(
             ? formatted.replace(trailingUrl, shortUrl)
             : formatted;
 
+          markProviderBoundaryEntered();
           return await sendZApiLinkMessage(
             to,
             messageText,
@@ -60,13 +67,16 @@ export async function sendTextMessage(
           );
         }
       } catch (error) {
+        if (providerBoundaryEntered) throw error;
         console.warn("[LinkPreview] falhou; enviando como texto puro", error);
       }
     }
 
+    markProviderBoundaryEntered();
     return sendZApiTextMessage(to, formatted, config.zapi);
   }
   if (!config.meta) throw new Error("Meta WhatsApp credentials are not configured for this clinic");
+  markProviderBoundaryEntered();
   return sendWhatsAppTextMessage(to, formatted, config.meta);
 }
 
@@ -77,17 +87,20 @@ export async function sendMediaMessage(
   config: ClinicChannelConfig,
   caption?: string,
   fileName?: string,
+  onProviderBoundaryEntered?: () => void,
 ): Promise<string | null> {
   if (process.env.DISABLE_REAL_WHATSAPP_SEND === "true") return null;
 
   const formattedCaption = caption ? toWhatsAppFormatting(caption) : caption;
   if (config.provider === "z_api") {
     if (!config.zapi) throw new Error("Z-API credentials are not configured for this clinic");
+    onProviderBoundaryEntered?.();
     return sendZApiMediaMessage(to, mediaUrl, mediaType, config.zapi, formattedCaption, fileName);
   }
   // Meta Cloud API — upload via media_id not yet implemented; fall back to caption link
   if (!config.meta) throw new Error("Meta WhatsApp credentials are not configured for this clinic");
   const text = formattedCaption ? `${formattedCaption}\n${mediaUrl}` : mediaUrl;
+  onProviderBoundaryEntered?.();
   return sendWhatsAppTextMessage(to, text, config.meta);
 }
 

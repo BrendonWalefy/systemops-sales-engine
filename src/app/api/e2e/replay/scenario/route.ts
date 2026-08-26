@@ -55,6 +55,7 @@ import { DrizzleInboundEventStore } from "@/infrastructure/repositories/drizzle-
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleOutboundSafetyContextReader } from "@/infrastructure/repositories/drizzle-outbound-safety-context-reader";
+import { DrizzleV2ConversationHandoffStore } from "@/infrastructure/repositories/drizzle-v2-conversation-handoff-store";
 import { db } from "@/infrastructure/db/client";
 import {
   agentRecommendations,
@@ -332,9 +333,11 @@ async function runReplayScenario(
         ...turns.map((turn) => controlledStart + turn.offsetMs),
       );
       const { processDrain, sendDrain } = await runWithRuntimeClock(runtimeClock, async () => {
+        const terminalHandoffStore = new DrizzleV2ConversationHandoffStore();
         const processDrain = await drainMessageProcessQueue({
           jobQueue,
           inboundEventStore,
+          terminalHandoffStore,
           handler: processHandler,
           workerId: `replay-process:${input.runId}:${input.mode}:${executionRuns.length}`,
           maxJobs: injected.length,
@@ -343,6 +346,7 @@ async function runReplayScenario(
         const sendDrain = await drainMessageSendQueue({
           jobQueue,
           outboundMessageStore,
+          terminalHandoffStore,
           handler: sendHandler,
           workerId: `replay-send:${input.runId}:${input.mode}:${executionRuns.length}`,
           maxJobs: Math.max(20, injected.length * 20),
