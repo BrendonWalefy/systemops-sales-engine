@@ -4,10 +4,10 @@ import {
   type CaptureAiContractRejectionInput,
 } from "@/application/ports/ai-contract-rejection-recorder";
 import {
-  RuntimeAiContractRejectionRecorder,
   type AiContractRejectionPersistenceInput,
-  type AiContractRejectionStore,
-} from "@/infrastructure/observability/runtime-ai-contract-rejection-recorder";
+  type AiContractRejectionWriter,
+} from "@/application/ports/ai-contract-rejection-store";
+import { RuntimeAiContractRejectionRecorder } from "@/infrastructure/observability/runtime-ai-contract-rejection-recorder";
 import { openAiEvidence, sealAiEvidence } from "@/infrastructure/crypto/ai-evidence-vault";
 
 const KEY = "6b".repeat(32);
@@ -32,7 +32,7 @@ const baseInput = (rawOutput: string | null): CaptureAiContractRejectionInput =>
   occurredAt,
 });
 
-class RecordingStore implements AiContractRejectionStore {
+class RecordingStore implements AiContractRejectionWriter {
   readonly inputs: AiContractRejectionPersistenceInput[] = [];
   created = true;
 

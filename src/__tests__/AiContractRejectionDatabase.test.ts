@@ -257,6 +257,7 @@ describe("AI contract rejection durable evidence", () => {
     expect(summaries[0]).toMatchObject({
       stage: "understanding_semantic",
       captureStatus: "stored",
+      rawAvailable: true,
       outputBytes: 23,
     });
     expect(JSON.stringify(summaries)).not.toContain("private rejected output");

@@ -3,18 +3,12 @@ import {
   createDecipheriv,
   randomBytes,
 } from "node:crypto";
-import type { AiContractRejectionStage } from "@/application/ports/ai-contract-rejection-recorder";
+import type { AiEvidenceAad } from "@/application/ports/ai-contract-rejection-store";
 
 const ALGORITHM = "aes-256-gcm";
 const ENVELOPE_PREFIX = "aiev:v1:";
 
-export type AiEvidenceAad = Readonly<{
-  version: "ai-evidence-aad.v1";
-  organizationId: string;
-  rejectionId: string;
-  turnId: string;
-  stage: AiContractRejectionStage;
-}>;
+export type { AiEvidenceAad } from "@/application/ports/ai-contract-rejection-store";
 
 function keyFromHex(explicitKey?: string): Buffer {
   const keyHex = explicitKey ?? process.env.AI_EVIDENCE_ENCRYPTION_KEY;

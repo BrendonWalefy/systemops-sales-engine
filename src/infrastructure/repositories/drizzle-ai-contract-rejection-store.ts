@@ -1,15 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type {
-  AiContractRejectionIssue,
   AiContractRejectionStage,
 } from "@/application/ports/ai-contract-rejection-recorder";
-import { db } from "@/infrastructure/db/client";
+import type {
+  AiContractRejectionIssue,
+} from "@/application/ports/ai-contract-rejection-recorder";
 import type {
   AiContractRejectionPersistenceInput,
+  AiContractRejectionSummary,
   AiContractRejectionStore,
   PersistedAiContractRejectionCaptureStatus,
-} from "@/infrastructure/observability/runtime-ai-contract-rejection-recorder";
+  RecordAiContractRejectionRevealAuditInput,
+  RevealableAiContractRejection,
+} from "@/application/ports/ai-contract-rejection-store";
+import { db } from "@/infrastructure/db/client";
 
 type QueryResultLike = Readonly<{ rows?: readonly Record<string, unknown>[] }>;
 
@@ -30,35 +35,6 @@ function boundedLimit(value: number | undefined, fallback: number): number {
   return Math.max(1, Math.min(Math.floor(value), fallback));
 }
 
-export type AiContractRejectionSummary = Readonly<{
-  evidenceRef: string;
-  turnId: string;
-  stage: AiContractRejectionStage;
-  modelId: string;
-  promptVersion: string;
-  contractVersion: string;
-  attempt: number;
-  issues: readonly AiContractRejectionIssue[];
-  outputBytes: number;
-  captureStatus: PersistedAiContractRejectionCaptureStatus | "expired";
-  rawExpiresAt: Date;
-  metadataExpiresAt: Date;
-  createdAt: Date;
-}>;
-
-export type RevealableAiContractRejection = AiContractRejectionSummary & Readonly<{
-  organizationId: string;
-  inboundEventId: string;
-  encryptedOutput: string | null;
-}>;
-
-export type RecordAiContractRejectionRevealAuditInput = Readonly<{
-  organizationId: string;
-  rejectionId: string;
-  ownerSubject: string;
-  accessedAt: Date;
-}>;
-
 type InsertRow = Readonly<{ id: string }>;
 type SummaryRow = Readonly<{
   evidence_ref: string;
@@ -73,6 +49,7 @@ type SummaryRow = Readonly<{
   issues: readonly AiContractRejectionIssue[];
   output_bytes: number;
   capture_status: PersistedAiContractRejectionCaptureStatus | "expired";
+  raw_available: boolean;
   encrypted_output?: string | null;
   raw_expires_at: Date;
   metadata_expires_at: Date;
@@ -94,6 +71,7 @@ function summaryFrom(row: SummaryRow): AiContractRejectionSummary {
     }))),
     outputBytes: row.output_bytes,
     captureStatus: row.capture_status,
+    rawAvailable: row.raw_available,
     rawExpiresAt: new Date(row.raw_expires_at),
     metadataExpiresAt: new Date(row.metadata_expires_at),
     createdAt: new Date(row.created_at),
@@ -197,6 +175,7 @@ implements AiContractRejectionStore {
         issues,
         output_bytes,
         capture_status,
+        encrypted_output is not null and raw_expires_at > now() as raw_available,
         raw_expires_at,
         metadata_expires_at,
         created_at
@@ -227,6 +206,7 @@ implements AiContractRejectionStore {
         issues,
         output_bytes,
         capture_status,
+        encrypted_output is not null and raw_expires_at > now() as raw_available,
         encrypted_output,
         raw_expires_at,
         metadata_expires_at,

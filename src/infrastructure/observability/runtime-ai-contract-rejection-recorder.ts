@@ -1,57 +1,24 @@
 import { createHash, randomUUID } from "node:crypto";
 import type {
   AiContractRejectionCaptureResult,
-  AiContractRejectionIssue,
   AiContractRejectionRecorder,
-  AiContractRejectionStage,
   CaptureAiContractRejectionInput,
 } from "@/application/ports/ai-contract-rejection-recorder";
+import type {
+  AiContractRejectionWriter,
+  AiEvidenceAad,
+  PersistedAiContractRejectionCaptureStatus,
+} from "@/application/ports/ai-contract-rejection-store";
 import {
   sealAiEvidence,
-  type AiEvidenceAad,
 } from "@/infrastructure/crypto/ai-evidence-vault";
 
 export const AI_EVIDENCE_MAX_RAW_BYTES = 65_536;
 export const AI_EVIDENCE_RAW_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
 export const AI_EVIDENCE_METADATA_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 
-export type PersistedAiContractRejectionCaptureStatus =
-  | "stored"
-  | "oversized"
-  | "no_raw_output"
-  | "encryption_unavailable";
-
-export type AiContractRejectionPersistenceInput = Readonly<{
-  rejectionId: string;
-  organizationId: string;
-  conversationId: string;
-  inboundEventId: string;
-  turnId: string;
-  stage: AiContractRejectionStage;
-  modelId: string;
-  promptVersion: string;
-  contractVersion: string;
-  attempt: number;
-  issues: readonly AiContractRejectionIssue[];
-  outputSha256: string;
-  outputBytes: number;
-  captureStatus: PersistedAiContractRejectionCaptureStatus;
-  encryptedOutput: string | null;
-  rawExpiresAt: Date;
-  metadataExpiresAt: Date;
-  occurredAt: Date;
-  aad: AiEvidenceAad;
-}>;
-
-export interface AiContractRejectionStore {
-  insert(input: AiContractRejectionPersistenceInput): Promise<Readonly<{
-    created: boolean;
-    evidenceRef: string;
-  }>>;
-}
-
 type RuntimeAiContractRejectionRecorderDependencies = Readonly<{
-  store: AiContractRejectionStore;
+  store: AiContractRejectionWriter;
   generateId?: () => string;
   seal?: (rawOutput: string, aad: AiEvidenceAad) => string;
 }>;
