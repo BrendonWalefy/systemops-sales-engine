@@ -4,8 +4,18 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { LIVE_COMPARISON_VERSION } from "@/application/conversation-v2/comparison-record";
 
 const dbMock = vi.hoisted(() => ({ select: vi.fn(), insert: vi.fn(), delete: vi.fn() }));
+const rejectionCleanupMock = vi.hoisted(() => ({
+  expireRaw: vi.fn(),
+  deleteExpiredMetadata: vi.fn(),
+}));
 vi.mock("@/infrastructure/db/client", () => ({ db: dbMock }));
 vi.mock("@/app/api/cron/_auth", () => ({ requireCronAuthorization: () => null }));
+vi.mock("@/infrastructure/repositories/drizzle-ai-contract-rejection-store", () => ({
+  DrizzleAiContractRejectionStore: class {
+    expireRaw = rejectionCleanupMock.expireRaw;
+    deleteExpiredMetadata = rejectionCleanupMock.deleteExpiredMetadata;
+  },
+}));
 
 import { DrizzleConversationEnginePolicyReader } from "@/infrastructure/repositories/drizzle-conversation-engine-policy-reader";
 import { DrizzleClinicAutomationPolicyReader } from "@/infrastructure/repositories/drizzle-clinic-automation-policy-reader";
@@ -65,6 +75,8 @@ describe("Cycle I Drizzle engine policy and sanitized comparison persistence", (
     dbMock.select.mockReset();
     dbMock.insert.mockReset();
     dbMock.delete.mockReset();
+    rejectionCleanupMock.expireRaw.mockReset().mockResolvedValue(2);
+    rejectionCleanupMock.deleteExpiredMetadata.mockReset().mockResolvedValue(3);
   });
 
   it("declares the closed DB enum, v1 organization default, retention table and indexes", () => {
@@ -280,8 +292,15 @@ describe("Cycle I Drizzle engine policy and sanitized comparison persistence", (
 
     const response = await cleanupExpiredTraces(new NextRequest("https://example.test/api/cron/decision-trace-cleanup"));
     await expect(response.json()).resolves.toEqual({
-      deleted: { decisionTraces: 1, conversationV2Comparisons: 1 },
+      deleted: {
+        decisionTraces: 1,
+        conversationV2Comparisons: 1,
+        aiContractRejectionRawExpired: 2,
+        aiContractRejectionMetadataDeleted: 3,
+      },
     });
+    expect(rejectionCleanupMock.expireRaw).toHaveBeenCalledOnce();
+    expect(rejectionCleanupMock.deleteExpiredMetadata).toHaveBeenCalledOnce();
   });
 
   it("still attempts comparison cleanup when decision-trace cleanup fails", async () => {

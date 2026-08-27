@@ -304,6 +304,8 @@ describe("WhatsApp authority activation fence", () => {
     );
     const ordered = [
       "db.delete(outboundMessages)",
+      "db.delete(aiContractRejectionAccessAudits)",
+      "db.delete(aiContractRejections)",
       "db.delete(messages)",
       "db.delete(jobs)",
       "db.delete(inboundEvents)",

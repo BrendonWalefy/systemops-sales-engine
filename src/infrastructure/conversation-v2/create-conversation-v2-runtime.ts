@@ -49,6 +49,12 @@ import { resolveClinicVoiceConfig } from "@/lib/tts-send";
 
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
+export function isAiEvidenceCaptureEnabled(env: RuntimeEnvironment): boolean {
+  const configured = env.AI_EVIDENCE_CAPTURE_ENABLED?.trim().toLowerCase();
+  if (configured === undefined) return true;
+  return configured === "true";
+}
+
 export class V2LiveProviderConfigurationError extends Error {
   readonly code = "v2_understanding_provider_unavailable";
 
@@ -132,6 +138,7 @@ export function createTenantScopedCalendarGateway(
 function createLiveHandler(input: {
   apiKey: string;
   aiEvidenceEncryptionKey?: string;
+  aiEvidenceCaptureEnabled: boolean;
   decisionTraceSink: DecisionTraceSink;
   jobQueue: JobQueue;
   outboundMessageStore: OutboundMessageStore;
@@ -193,15 +200,17 @@ function createLiveHandler(input: {
     };
   };
   const client = new OpenAI({ apiKey: input.apiKey });
-  const aiContractRejectionRecorder = new RuntimeAiContractRejectionRecorder({
-    store: new DrizzleAiContractRejectionStore(),
-    seal(rawOutput, aad) {
-      if (!input.aiEvidenceEncryptionKey) {
-        throw new Error("AI evidence encryption key unavailable");
-      }
-      return sealAiEvidence(rawOutput, aad, input.aiEvidenceEncryptionKey);
-    },
-  });
+  const aiContractRejectionRecorder = input.aiEvidenceCaptureEnabled
+    ? new RuntimeAiContractRejectionRecorder({
+        store: new DrizzleAiContractRejectionStore(),
+        seal(rawOutput, aad) {
+          if (!input.aiEvidenceEncryptionKey) {
+            throw new Error("AI evidence encryption key unavailable");
+          }
+          return sealAiEvidence(rawOutput, aad, input.aiEvidenceEncryptionKey);
+        },
+      })
+    : undefined;
 
   return new V2LiveConversationHandler({
     lifecycle,
@@ -266,6 +275,7 @@ export function createConversationV2Runtime(input: {
       ? createLiveHandler({
           apiKey,
           aiEvidenceEncryptionKey: env.AI_EVIDENCE_ENCRYPTION_KEY?.trim() || undefined,
+          aiEvidenceCaptureEnabled: isAiEvidenceCaptureEnabled(env),
           decisionTraceSink,
           jobQueue: input.jobQueue ?? new DrizzleJobQueue(),
           outboundMessageStore: input.outboundMessageStore

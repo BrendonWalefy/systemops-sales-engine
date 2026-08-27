@@ -293,4 +293,65 @@ describe("AI contract rejection durable evidence", () => {
       action: "raw_output_revealed",
     });
   });
+
+  it("expires ciphertext in bounded batches while preserving metadata and audit", async () => {
+    await testDb().delete(aiContractRejections);
+    const fixture = await createAuthorityFixture("Evidence raw retention");
+    const store = new DrizzleAiContractRejectionStore();
+    const first = await recorder(store).capture(input(fixture, "retention first"));
+    await recorder(store).capture(input(fixture, "retention second"));
+    await store.recordRevealAudit({
+      organizationId: fixture.organizationId,
+      rejectionId: first.evidenceRef!,
+      ownerSubject: "owner@example.test",
+      accessedAt: NOW,
+    });
+    const afterRawExpiry = new Date("2026-09-04T03:00:00.000Z");
+
+    await expect(store.expireRaw(afterRawExpiry, 1)).resolves.toBe(1);
+    const afterFirstBatch = await testDb().select().from(aiContractRejections)
+      .where(eq(aiContractRejections.organizationId, fixture.organizationId));
+    expect(afterFirstBatch.filter((item) => item.captureStatus === "expired")).toHaveLength(1);
+    expect(afterFirstBatch.filter((item) => item.encryptedOutput !== null)).toHaveLength(1);
+    await expect(store.expireRaw(afterRawExpiry, 1)).resolves.toBe(1);
+    await expect(store.expireRaw(afterRawExpiry, 1)).resolves.toBe(0);
+
+    const summaries = await store.listByConversation(
+      fixture.organizationId,
+      fixture.conversationId,
+    );
+    expect(summaries).toHaveLength(2);
+    expect(summaries.every((summary) => (
+      summary.captureStatus === "expired" && summary.rawAvailable === false
+    ))).toBe(true);
+    const audits = await testDb().select().from(aiContractRejectionAccessAudits)
+      .where(eq(aiContractRejectionAccessAudits.organizationId, fixture.organizationId));
+    expect(audits).toHaveLength(1);
+  });
+
+  it("deletes expired metadata and its audit in bounded batches", async () => {
+    await testDb().delete(aiContractRejections);
+    const fixture = await createAuthorityFixture("Evidence metadata retention");
+    const store = new DrizzleAiContractRejectionStore();
+    const captured = await recorder(store).capture(input(fixture, "metadata expiry"));
+    await store.recordRevealAudit({
+      organizationId: fixture.organizationId,
+      rejectionId: captured.evidenceRef!,
+      ownerSubject: "owner@example.test",
+      accessedAt: NOW,
+    });
+
+    await expect(store.deleteExpiredMetadata(
+      new Date("2026-09-27T03:00:00.000Z"),
+      1,
+    )).resolves.toBe(1);
+    await expect(store.deleteExpiredMetadata(
+      new Date("2026-09-27T03:00:00.000Z"),
+      1,
+    )).resolves.toBe(0);
+    expect(await testDb().select().from(aiContractRejections)
+      .where(eq(aiContractRejections.organizationId, fixture.organizationId))).toEqual([]);
+    expect(await testDb().select().from(aiContractRejectionAccessAudits)
+      .where(eq(aiContractRejectionAccessAudits.organizationId, fixture.organizationId))).toEqual([]);
+  });
 });
