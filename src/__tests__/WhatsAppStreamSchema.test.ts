@@ -583,3 +583,102 @@ describe("WhatsApp authority migration over current-schema data", () => {
     ]);
   });
 });
+
+describe("AI rejection evidence migration over migration 0103 data", () => {
+  it("preserves tenant, conversation and inbound rows through 0104 and 0105", async () => {
+    const runtime = await startEmbeddedAuthorityDatabase();
+    const baselineMigrations = await createMigrationPrefix(103);
+    try {
+      const db = drizzleNodePostgres(runtime.pool);
+      await migrate(db, { migrationsFolder: baselineMigrations });
+      const organization = await db.execute<{ id: string }>(sql`
+        insert into organizations (
+          name, slug, specialty, city, auto_reply_enabled, operational_status, is_test
+        ) values (
+          'Evidence Migration Fixture',
+          'evidence-migration-fixture',
+          'dental',
+          'São Paulo',
+          false,
+          'test',
+          true
+        )
+        returning id::text
+      `);
+      const organizationId = organization.rows[0]!.id;
+      const lead = await db.execute<{ id: string }>(sql`
+        insert into leads (organization_id, channel, phone)
+        values (${organizationId}::uuid, 'whatsapp', 'migration-fixture')
+        returning id::text
+      `);
+      const conversation = await db.execute<{ id: string }>(sql`
+        insert into conversations (organization_id, lead_id, channel)
+        values (${organizationId}::uuid, ${lead.rows[0]!.id}::uuid, 'whatsapp')
+        returning id::text
+      `);
+      const inbound = await db.execute<{ id: string }>(sql`
+        insert into inbound_events (
+          organization_id, provider, provider_message_id, conversation_key,
+          payload, dedupe_key, processing_status, received_at
+        ) values (
+          ${organizationId}::uuid,
+          'z_api',
+          'evidence-migration-provider-message',
+          'evidence-migration-conversation',
+          '{}'::jsonb,
+          'evidence-migration-dedupe',
+          'processed',
+          '2026-08-26T12:00:00.000Z'::timestamptz
+        )
+        returning id::text
+      `);
+
+      await migrate(db, { migrationsFolder: join(process.cwd(), "drizzle") });
+
+      const retained = await db.execute<{
+        organization_id: string;
+        conversation_id: string;
+        inbound_event_id: string;
+      }>(sql`
+        select organization.id::text as organization_id,
+               conversation.id::text as conversation_id,
+               event.id::text as inbound_event_id
+        from organizations organization
+        join conversations conversation
+          on conversation.organization_id = organization.id
+        join inbound_events event
+          on event.organization_id = organization.id
+        where organization.id = ${organizationId}::uuid
+      `);
+      expect(retained.rows).toEqual([{
+        organization_id: organizationId,
+        conversation_id: conversation.rows[0]!.id,
+        inbound_event_id: inbound.rows[0]!.id,
+      }]);
+
+      const evidenceTables = await db.execute<{ name: string | null }>(sql`
+        select to_regclass(name)::text as name
+        from unnest(array[
+          'public.ai_contract_rejections',
+          'public.ai_contract_rejection_access_audits'
+        ]) as requested(name)
+        order by name
+      `);
+      expect(evidenceTables.rows.map((row) => row.name)).toEqual([
+        "ai_contract_rejection_access_audits",
+        "ai_contract_rejections",
+      ]);
+      const inboundCompositeKey = await db.execute<{ exists: boolean }>(sql`
+        select exists (
+          select 1
+          from pg_constraint
+          where conname = 'inbound_events_id_org_unique'
+        ) as exists
+      `);
+      expect(inboundCompositeKey.rows[0]?.exists).toBe(true);
+    } finally {
+      await cleanupEmbeddedAuthorityDatabase(runtime);
+      await rm(baselineMigrations, { recursive: true, force: true });
+    }
+  });
+});
