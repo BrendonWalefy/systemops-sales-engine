@@ -9,8 +9,11 @@ import {
   aiContractRejections,
   conversations,
   inboundEvents,
+  jobs,
   leads,
+  messages,
   organizations,
+  outboundMessages,
   whatsappStreams,
 } from "@/infrastructure/db/schema";
 import { RuntimeAiContractRejectionRecorder } from "@/infrastructure/observability/runtime-ai-contract-rejection-recorder";
@@ -297,24 +300,57 @@ describe("AI contract rejection durable evidence", () => {
   it("expires ciphertext in bounded batches while preserving metadata and audit", async () => {
     await testDb().delete(aiContractRejections);
     const fixture = await createAuthorityFixture("Evidence raw retention");
+    const unaffected = await createAuthorityFixture("Evidence unaffected tenant");
     const store = new DrizzleAiContractRejectionStore();
     const first = await recorder(store).capture(input(fixture, "retention first"));
     await recorder(store).capture(input(fixture, "retention second"));
+    const unaffectedEvidence = await recorder(store).capture({
+      ...input(unaffected, "unexpired other tenant"),
+      occurredAt: new Date("2026-09-01T03:00:00.000Z"),
+    });
     await store.recordRevealAudit({
       organizationId: fixture.organizationId,
       rejectionId: first.evidenceRef!,
       ownerSubject: "owner@example.test",
       accessedAt: NOW,
     });
-    const afterRawExpiry = new Date("2026-09-04T03:00:00.000Z");
+    const [message] = await testDb().insert(messages).values({
+      conversationId: fixture.conversationId,
+      author: "lead",
+      body: "retention fixture",
+      sentAt: NOW,
+    }).returning({ id: messages.id });
+    const [job] = await testDb().insert(jobs).values({
+      queue: "message.process",
+      status: "done",
+      payload: { fixture: true },
+      dedupeKey: `retention-job-${randomUUID()}`,
+    }).returning({ id: jobs.id });
+    const [outbound] = await testDb().insert(outboundMessages).values({
+      clinicId: fixture.organizationId,
+      conversationId: fixture.conversationId,
+      channel: "whatsapp",
+      payload: { fixture: true },
+      deliveryKind: "text",
+      category: "operational",
+      sequence: 1,
+      status: "sent",
+      authorizationKind: "system",
+      authorizationVersion: 0,
+      sentAt: NOW,
+    }).returning({ id: outboundMessages.id });
 
-    await expect(store.expireRaw(afterRawExpiry, 1)).resolves.toBe(1);
+    const beforeRawExpiry = new Date("2026-09-03T02:59:59.999Z");
+    const atRawExpiry = new Date("2026-09-03T03:00:00.000Z");
+
+    await expect(store.expireRaw(beforeRawExpiry, 1)).resolves.toBe(0);
+    await expect(store.expireRaw(atRawExpiry, 1)).resolves.toBe(1);
     const afterFirstBatch = await testDb().select().from(aiContractRejections)
       .where(eq(aiContractRejections.organizationId, fixture.organizationId));
     expect(afterFirstBatch.filter((item) => item.captureStatus === "expired")).toHaveLength(1);
     expect(afterFirstBatch.filter((item) => item.encryptedOutput !== null)).toHaveLength(1);
-    await expect(store.expireRaw(afterRawExpiry, 1)).resolves.toBe(1);
-    await expect(store.expireRaw(afterRawExpiry, 1)).resolves.toBe(0);
+    await expect(store.expireRaw(atRawExpiry, 1)).resolves.toBe(1);
+    await expect(store.expireRaw(atRawExpiry, 1)).resolves.toBe(0);
 
     const summaries = await store.listByConversation(
       fixture.organizationId,
@@ -327,13 +363,37 @@ describe("AI contract rejection durable evidence", () => {
     const audits = await testDb().select().from(aiContractRejectionAccessAudits)
       .where(eq(aiContractRejectionAccessAudits.organizationId, fixture.organizationId));
     expect(audits).toHaveLength(1);
+    expect(await testDb().select({ id: inboundEvents.id }).from(inboundEvents)
+      .where(eq(inboundEvents.id, fixture.inboundEventId))).toEqual([
+        { id: fixture.inboundEventId },
+      ]);
+    expect(await testDb().select({ id: messages.id }).from(messages)
+      .where(eq(messages.id, message.id))).toEqual([{ id: message.id }]);
+    expect(await testDb().select({ id: jobs.id }).from(jobs)
+      .where(eq(jobs.id, job.id))).toEqual([{ id: job.id }]);
+    expect(await testDb().select({ id: outboundMessages.id }).from(outboundMessages)
+      .where(eq(outboundMessages.id, outbound.id))).toEqual([{ id: outbound.id }]);
+    expect(await testDb().select({
+      id: aiContractRejections.id,
+      captureStatus: aiContractRejections.captureStatus,
+    }).from(aiContractRejections).where(
+      eq(aiContractRejections.id, unaffectedEvidence.evidenceRef!),
+    )).toEqual([{
+      id: unaffectedEvidence.evidenceRef,
+      captureStatus: "stored",
+    }]);
   });
 
   it("deletes expired metadata and its audit in bounded batches", async () => {
     await testDb().delete(aiContractRejections);
     const fixture = await createAuthorityFixture("Evidence metadata retention");
+    const unaffected = await createAuthorityFixture("Evidence metadata unaffected tenant");
     const store = new DrizzleAiContractRejectionStore();
     const captured = await recorder(store).capture(input(fixture, "metadata expiry"));
+    const unaffectedEvidence = await recorder(store).capture({
+      ...input(unaffected, "unexpired metadata other tenant"),
+      occurredAt: new Date("2026-09-01T03:00:00.000Z"),
+    });
     await store.recordRevealAudit({
       organizationId: fixture.organizationId,
       rejectionId: captured.evidenceRef!,
@@ -342,16 +402,24 @@ describe("AI contract rejection durable evidence", () => {
     });
 
     await expect(store.deleteExpiredMetadata(
-      new Date("2026-09-27T03:00:00.000Z"),
+      new Date("2026-09-26T02:59:59.999Z"),
+      1,
+    )).resolves.toBe(0);
+    await expect(store.deleteExpiredMetadata(
+      new Date("2026-09-26T03:00:00.000Z"),
       1,
     )).resolves.toBe(1);
     await expect(store.deleteExpiredMetadata(
-      new Date("2026-09-27T03:00:00.000Z"),
+      new Date("2026-09-26T03:00:00.000Z"),
       1,
     )).resolves.toBe(0);
     expect(await testDb().select().from(aiContractRejections)
       .where(eq(aiContractRejections.organizationId, fixture.organizationId))).toEqual([]);
     expect(await testDb().select().from(aiContractRejectionAccessAudits)
       .where(eq(aiContractRejectionAccessAudits.organizationId, fixture.organizationId))).toEqual([]);
+    expect(await testDb().select({ id: aiContractRejections.id }).from(aiContractRejections)
+      .where(eq(aiContractRejections.id, unaffectedEvidence.evidenceRef!))).toEqual([
+        { id: unaffectedEvidence.evidenceRef },
+      ]);
   });
 });
