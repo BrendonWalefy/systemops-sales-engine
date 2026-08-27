@@ -25,7 +25,14 @@ import { createLiveDentalUnderstanding } from "@/infrastructure/adapters/ai/live
 import { createLiveResponseVerbalizer } from "@/infrastructure/adapters/ai/live-response-verbalizer";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
+import { RuntimeAiContractRejectionRecorder } from "@/infrastructure/observability/runtime-ai-contract-rejection-recorder";
+import { sealAiEvidence } from "@/infrastructure/crypto/ai-evidence-vault";
+import {
+  isAiEvidenceCaptureEnabled,
+  type AiEvidenceRuntimeEnvironment,
+} from "@/infrastructure/crypto/ai-evidence-readiness";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
+import { DrizzleAiContractRejectionStore } from "@/infrastructure/repositories/drizzle-ai-contract-rejection-store";
 import { DrizzleClinicAutomationPolicyReader } from "@/infrastructure/repositories/drizzle-clinic-automation-policy-reader";
 import { DrizzleConversationAuthorityStore } from "@/infrastructure/repositories/drizzle-conversation-authority-store";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
@@ -44,7 +51,9 @@ import { DrizzleV2ConversationHandoffStore } from "@/infrastructure/repositories
 import { requireV2ConversationHandoff } from "@/application/conversation-v2/v2-conversation-handoff";
 import { resolveClinicVoiceConfig } from "@/lib/tts-send";
 
-type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
+type RuntimeEnvironment = AiEvidenceRuntimeEnvironment;
+
+export { isAiEvidenceCaptureEnabled };
 
 export class V2LiveProviderConfigurationError extends Error {
   readonly code = "v2_understanding_provider_unavailable";
@@ -128,6 +137,8 @@ export function createTenantScopedCalendarGateway(
 
 function createLiveHandler(input: {
   apiKey: string;
+  aiEvidenceEncryptionKey?: string;
+  aiEvidenceCaptureEnabled: boolean;
   decisionTraceSink: DecisionTraceSink;
   jobQueue: JobQueue;
   outboundMessageStore: OutboundMessageStore;
@@ -189,6 +200,17 @@ function createLiveHandler(input: {
     };
   };
   const client = new OpenAI({ apiKey: input.apiKey });
+  const aiContractRejectionRecorder = input.aiEvidenceCaptureEnabled
+    ? new RuntimeAiContractRejectionRecorder({
+        store: new DrizzleAiContractRejectionStore(),
+        seal(rawOutput, aad) {
+          if (!input.aiEvidenceEncryptionKey) {
+            throw new Error("AI evidence encryption key unavailable");
+          }
+          return sealAiEvidence(rawOutput, aad, input.aiEvidenceEncryptionKey);
+        },
+      })
+    : undefined;
 
   return new V2LiveConversationHandler({
     lifecycle,
@@ -217,6 +239,7 @@ function createLiveHandler(input: {
       handoff,
     ),
     decisionTraceSink: input.decisionTraceSink,
+    aiContractRejectionRecorder,
   });
 }
 
@@ -251,6 +274,8 @@ export function createConversationV2Runtime(input: {
     ?? (apiKey
       ? createLiveHandler({
           apiKey,
+          aiEvidenceEncryptionKey: env.AI_EVIDENCE_ENCRYPTION_KEY?.trim() || undefined,
+          aiEvidenceCaptureEnabled: isAiEvidenceCaptureEnabled(env),
           decisionTraceSink,
           jobQueue: input.jobQueue ?? new DrizzleJobQueue(),
           outboundMessageStore: input.outboundMessageStore

@@ -3,6 +3,7 @@ import type { Understanding } from "@/conversation-core/understanding/schema";
 import type { DentalCatalogEntry, DentalRequest } from "@/domain-packs/dental/vocabulary";
 import {
   DentalUnderstandingProvider,
+  type DentalUnderstandingOptions,
   type LiveDentalUnderstandingModelId,
 } from "@/infrastructure/adapters/ai/DentalUnderstandingProvider";
 import {
@@ -36,8 +37,8 @@ export class LiveDentalUnderstanding {
     history: readonly { author: "lead" | "agent"; body: string }[];
     state: ConversationState | null;
     catalog: readonly DentalCatalogEntry[];
-  }): Promise<Understanding<DentalRequest>> {
-    return this.provider.understand(input);
+  }, options?: DentalUnderstandingOptions): Promise<Understanding<DentalRequest>> {
+    return this.provider.understand(input, options);
   }
 }
 

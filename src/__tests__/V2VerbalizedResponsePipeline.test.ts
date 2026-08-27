@@ -51,11 +51,17 @@ describe("verbalização com modelo dentro do pipeline V2", () => {
   });
 
   it("recusa a prosa que inventa preço e entrega o texto determinístico", async () => {
+    const onRejection = vi.fn().mockResolvedValue(undefined);
+    const rejectedText = "Sai por R$ 2.000,00 hoje.";
     const result = await runV2ResponsePipeline({
       plan: responsePlanFixture,
       style,
       composer,
-      verbalization: { verbalizer: verbalizer("Sai por R$ 2.000,00 hoje."), speaker },
+      verbalization: {
+        verbalizer: verbalizer(rejectedText),
+        speaker,
+        onRejection,
+      },
     });
 
     expect(result).toMatchObject({
@@ -68,6 +74,138 @@ describe("verbalização com modelo dentro do pipeline V2", () => {
         violations: ["missing_authorized_value", "unauthorized_number", "unauthorized_currency"],
       },
     });
+    expect(onRejection).toHaveBeenCalledOnce();
+    expect(onRejection).toHaveBeenCalledWith({
+      rawOutput: rejectedText,
+      modelId: "model-x",
+      latencyMs: expect.any(Number),
+      violations: [
+        "missing_authorized_value",
+        "unauthorized_number",
+        "unauthorized_currency",
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain(rejectedText);
+  });
+
+  it.each([
+    ["empty", "", "empty_text"],
+    ["too long", `1200 ${"a".repeat(1_000)}`, "too_long"],
+    ["too many questions", "1200. Uma? Duas?", "too_many_questions"],
+    ["missing value", "Posso ajudar.", "missing_authorized_value"],
+    ["number", "1200 e 999", "unauthorized_number"],
+    ["currency", "1200 reais", "unauthorized_currency"],
+    ["link", "1200 em https://private.example", "unauthorized_link"],
+    ["commitment", "1200, te aviso depois", "unauthorized_commitment"],
+  ] as const)("observes rejected %s text at the validator boundary", async (
+    _label,
+    rawOutput,
+    expectedViolation,
+  ) => {
+    const onRejection = vi.fn().mockResolvedValue(undefined);
+
+    const result = await runV2ResponsePipeline({
+      plan: responsePlanFixture,
+      style,
+      composer,
+      verbalization: {
+        verbalizer: verbalizer(rawOutput),
+        speaker,
+        onRejection,
+      },
+    });
+
+    expect(onRejection).toHaveBeenCalledOnce();
+    expect(onRejection).toHaveBeenCalledWith(expect.objectContaining({
+      rawOutput,
+      modelId: "model-x",
+      latencyMs: expect.any(Number),
+      violations: expect.arrayContaining([expectedViolation]),
+    }));
+    expect(result).toMatchObject({
+      status: "rendered",
+      response: { text: "Informação: 1200." },
+      verbalization: { status: "rejected" },
+    });
+  });
+
+  it("keeps deterministic fallback when the rejection observer fails", async () => {
+    const rejectedText = "1200 e 999 private";
+    const result = await runV2ResponsePipeline({
+      plan: responsePlanFixture,
+      style,
+      composer,
+      verbalization: {
+        verbalizer: verbalizer(rejectedText),
+        speaker,
+        onRejection: vi.fn().mockRejectedValue(new Error("evidence unavailable")),
+      },
+    });
+
+    expect(result).toMatchObject({
+      status: "rendered",
+      response: { text: "Informação: 1200." },
+      verbalization: { status: "rejected", violations: ["unauthorized_number"] },
+    });
+    expect(JSON.stringify(result)).not.toContain(rejectedText);
+  });
+
+  it("does not observe accepted, provider-failed, timed-out or non-string output", async () => {
+    const acceptedObserver = vi.fn();
+    await runV2ResponsePipeline({
+      plan: responsePlanFixture,
+      style,
+      composer,
+      verbalization: {
+        verbalizer: verbalizer("Fica em 1200, e podemos combinar assim."),
+        speaker,
+        onRejection: acceptedObserver,
+      },
+    });
+    expect(acceptedObserver).not.toHaveBeenCalled();
+
+    const failedObserver = vi.fn();
+    await runV2ResponsePipeline({
+      plan: responsePlanFixture,
+      style,
+      composer,
+      verbalization: {
+        verbalizer: {
+          modelId: "model-x",
+          verbalize: vi.fn().mockRejectedValue(new Error("provider failed")),
+        },
+        speaker,
+        onRejection: failedObserver,
+      },
+    });
+    expect(failedObserver).not.toHaveBeenCalled();
+
+    const timeoutObserver = vi.fn();
+    await runV2ResponsePipeline({
+      plan: responsePlanFixture,
+      style,
+      composer,
+      verbalization: {
+        verbalizer: { modelId: "model-x", verbalize: () => new Promise(() => {}) },
+        speaker,
+        timeoutMs: 5,
+        onRejection: timeoutObserver,
+      },
+    });
+    expect(timeoutObserver).not.toHaveBeenCalled();
+
+    const nonStringObserver = vi.fn();
+    await runV2ResponsePipeline({
+      plan: responsePlanFixture,
+      style,
+      composer,
+      verbalization: {
+        verbalizer: verbalizer({ text: "not the boundary contract" }),
+        speaker,
+        onRejection: nonStringObserver,
+      },
+    });
+    expect(nonStringObserver).not.toHaveBeenCalled();
   });
 
   it("recusa a prosa que inventa horário", async () => {

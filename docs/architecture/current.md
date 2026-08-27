@@ -94,7 +94,15 @@ GET /api/cron/sender-worker?ack=1 (evento) ou cron de fallback
 
 Um `turnId` derivado do `inboundEventId` acompanha processamento, outbox e entrega. O Decision Trace persiste apenas metadados permitidos por 30 dias: não guarda corpo, prompt, resposta, telefone, nome ou URL.
 
+Quando o contrato determinístico rejeita uma saída do modelo, a saída bruta pode ser guardada
+separadamente como evidência criptografada, vinculada ao tenant, conversa, turno e estágio. A
+listagem expõe somente metadados; revelar uma evidência individual exige sessão owner, escopo
+exato do tenant, validade criptográfica e auditoria durável. O conteúdo bruto expira em 7 dias e
+os metadados e acessos auditados expiram em 30 dias. Essa observabilidade não participa da
+decisão, do fallback, da authority V2, da outbox ou da entrega.
+
 Detalhes em [Replay e Decision Trace](replay-and-decision-trace.md).
+Operação em [evidência de rejeição de contratos de IA](../operations/ai-contract-rejection-evidence.md).
 
 ## Modos de automação
 
