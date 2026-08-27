@@ -3,6 +3,7 @@ import type {
   VerbalizationViolationCode,
 } from "@/conversation-core/composer/verbalization-validator";
 import type { ComposerStyle } from "@/conversation-core/composer/contract";
+import type { ResponseConversationBrief } from "@/conversation-core/composer/response-conversation-brief";
 
 /**
  * Quem fala, em nome de quem, com que voz e sob quais orientacoes editoriais.
@@ -44,6 +45,7 @@ export type VerbalizationRequest = Readonly<{
   surface: AuthorizedSurface;
   style: ComposerStyle;
   speaker: SpeakerProfile;
+  conversationBrief: ResponseConversationBrief;
 }>;
 
 export interface ResponseVerbalizerPort {

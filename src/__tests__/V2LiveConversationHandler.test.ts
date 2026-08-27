@@ -280,19 +280,18 @@ function makeHarness(options: {
   const persistHandoff = options.handoffFailure
     ? vi.fn().mockRejectedValue(new Error("handoff unavailable"))
     : vi.fn().mockResolvedValue(undefined);
+  const understandingCreate = vi.fn(async () => ({
+    choices: [{
+      message: {
+        content: Object.hasOwn(options, "understandingRawOutput")
+          ? options.understandingRawOutput ?? null
+          : JSON.stringify(await understand()),
+      },
+    }],
+  }));
   const registeredUnderstanding = createLiveDentalUnderstanding({
     chat: {
-      completions: {
-        create: vi.fn(async () => ({
-          choices: [{
-            message: {
-              content: Object.hasOwn(options, "understandingRawOutput")
-                ? options.understandingRawOutput ?? null
-                : JSON.stringify(await understand()),
-            },
-          }],
-        })),
-      },
+      completions: { create: understandingCreate },
     },
   });
   const understandingBoundary = options.canonicalProviderSpoof || options.modelId
@@ -305,15 +304,15 @@ function makeHarness(options: {
     if (options.verbalizerFailure) throw new Error("provider down");
     return options.verbalizedText;
   });
+  const verbalizerCreate = vi.fn(async (input: unknown) => {
+    void input;
+    return {
+      choices: [{ message: { content: JSON.stringify({ text: await verbalize() }) } }],
+    };
+  });
   const verbalizer = options.verbalizedText !== undefined || options.verbalizerFailure
     ? createLiveResponseVerbalizer({
-        chat: {
-          completions: {
-            create: vi.fn(async () => ({
-              choices: [{ message: { content: JSON.stringify({ text: await verbalize() }) } }],
-            })),
-          },
-        },
+        chat: { completions: { create: verbalizerCreate } },
       })
     : undefined;
   const rejectionCapture = vi.fn().mockResolvedValue(
@@ -427,13 +426,18 @@ function makeHarness(options: {
     persistHandoff,
     trace,
     verbalize,
+    understandingCreate,
+    verbalizerCreate,
     rejectionCapture,
   };
 }
 
 describe("V2LiveConversationHandler", () => {
   it("suppresses a reaction/sticker turn from the real reply gate before provider and outbox", async () => {
-    const harness = makeHarness({ deriveReplyGate: true });
+    const harness = makeHarness({
+      deriveReplyGate: true,
+      verbalizedText: "Esta resposta nunca pode ser produzida.",
+    });
 
     await expect(harness.handler.handle({
       ...handleInput("👍"),
@@ -441,6 +445,7 @@ describe("V2LiveConversationHandler", () => {
     })).resolves.toEqual({ replied: false, reason: "disabled" });
 
     expect(harness.understand).not.toHaveBeenCalled();
+    expect(harness.verbalizerCreate).not.toHaveBeenCalled();
     expect(harness.booking.book).not.toHaveBeenCalled();
     expect(harness.createOutboundMessageAndEnqueue).not.toHaveBeenCalled();
   });
@@ -966,6 +971,25 @@ describe("V2LiveConversationHandler", () => {
 
     await harness.handler.handle(handleInput());
 
+    expect(harness.understandingCreate).toHaveBeenCalledOnce();
+    expect(harness.verbalizerCreate).toHaveBeenCalledOnce();
+    const verbalizerCall = harness.verbalizerCreate.mock.calls[0]?.[0] as
+      | { messages: readonly { content: string }[] }
+      | undefined;
+    if (!verbalizerCall?.messages[1]) throw new Error("missing verbalizer request");
+    const verbalizerPayload = JSON.parse(verbalizerCall.messages[1].content) as Record<string, unknown>;
+    expect(verbalizerPayload).toMatchObject({
+      conversationBrief: {
+        request: "price-of-service",
+        dialogueMove: "new_topic",
+        sentiment: null,
+        purchaseIntent: null,
+        priceSensitivity: null,
+        hasObjection: false,
+        ambiguityKind: null,
+      },
+    });
+
     expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
       expect.objectContaining({
         payload: expect.objectContaining({
@@ -981,6 +1005,9 @@ describe("V2LiveConversationHandler", () => {
           valid: true,
           model: "gpt-4o-mini",
           verbalizationViolations: "",
+          responseStrategy: "hybrid_contextual_v1",
+          understandingCalls: 1,
+          verbalizationCalls: 1,
         }),
       }),
     ]));
@@ -1025,7 +1052,7 @@ describe("V2LiveConversationHandler", () => {
       turnId: inboundEventId,
       stage: "response_verbalization",
       modelId: "gpt-4o-mini",
-      promptVersion: "response-verbalization.v7",
+      promptVersion: "response-verbalization.v8",
       contractVersion: "response-verbalization.v1",
       attempt: 1,
       rawOutput: rejectedText,

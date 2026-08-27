@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DraftResponse, ResponseComposerPort } from "@/conversation-core/composer/contract";
+import type { ResponseConversationBrief } from "@/conversation-core/composer/response-conversation-brief";
 import { runV2ResponsePipeline } from "@/conversation-core/composer/response-pipeline";
 import type {
   ResponseVerbalizerPort,
@@ -15,6 +16,15 @@ import {
 type FixtureOutcomeType = OutcomeTypeOf<typeof RESPONSE_PLAN_FIXTURE_SCHEMA>;
 
 const style = { tone: "warm", verbosity: "concise", greeting: "omit", emoji: "none" } as const;
+const conversationBrief: ResponseConversationBrief = Object.freeze({
+  request: "price-of-service",
+  dialogueMove: "repeats",
+  sentiment: "negative",
+  purchaseIntent: "high",
+  priceSensitivity: "high",
+  hasObjection: true,
+  ambiguityKind: "service",
+});
 const speaker: SpeakerProfile = Object.freeze({
   agentName: "Marina",
   organizationName: "Casa Exemplo",
@@ -286,7 +296,10 @@ describe("verbalização com modelo dentro do pipeline V2", () => {
     const spy = verbalizer("Fica em 1200, e podemos combinar assim.");
 
     await runV2ResponsePipeline({
-      plan: responsePlanFixture, style, composer, verbalization: { verbalizer: spy, speaker },
+      plan: responsePlanFixture,
+      style,
+      composer,
+      verbalization: { verbalizer: spy, speaker, conversationBrief },
     });
 
     expect(spy.verbalize).toHaveBeenCalledWith(
@@ -295,6 +308,7 @@ describe("verbalização com modelo dentro do pipeline V2", () => {
         surface: expect.objectContaining({ values: ["1200"], currencyAllowed: false }),
         style,
         speaker,
+        conversationBrief,
       }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );

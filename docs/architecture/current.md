@@ -240,15 +240,20 @@ ActionResult
   -> AuthorizedResponsePlan
   -> draft determinístico de atos + validador de atos
   -> superfície autorizada (valores, dinheiro, dígitos do assunto, perguntas, tamanho)
-  -> verbalização por modelo, sob prazo do turno
+  -> briefing conversacional sanitizado do Understanding aceito
+  -> verbalização contextual por modelo, sob prazo do turno
   -> validador do texto
   -> texto do modelo ou texto determinístico do mesmo plano
   -> enqueueOutboundMessage
 ```
 
-O verbalizador recebe apenas o que pode ser dito: as intenções autorizadas, os valores exatos de
-cada uma, o estilo e o perfil de quem fala. Ele não recebe o plano completo, que carrega fato
-interno e referência de evidência. A unidade de validação do texto é o valor inteiro, e não o
+O verbalizador recebe o que pode ser dito — intenções autorizadas e valores exatos — e um briefing
+fechado que descreve somente request, movimento do diálogo, sentimento, níveis de intenção,
+presença de objeção e tipo de ambiguidade. O briefing nasce do Understanding já validado e não
+carrega mensagem, histórico, entidade, candidatos ou texto livre da objeção. Ele serve para a
+resposta continuar a conversa com naturalidade; nunca autoriza conteúdo. O verbalizador também
+recebe estilo e perfil de quem fala, mas não o plano completo, que carrega fato interno e
+referência de evidência. A unidade de validação do texto é o valor inteiro, e não o
 dígito: cada valor autorizado precisa aparecer completo e todo dígito fora desses trechos é
 recusado, o que impede recombinar dois horários oferecidos em um terceiro que não existe. Também
 são recusados dinheiro sem valor autorizado — inclusive por extenso —, link, promessa e pergunta
@@ -256,7 +261,9 @@ que nenhum ato pediu.
 
 Uma recusa nunca é silêncio: sai o texto determinístico do mesmo plano. Falha ou demora do
 provedor têm o mesmo destino, e o Decision Trace registra em `response.validated` qual identidade
-escolheu as palavras entregues e, quando houve recusa, os códigos fechados que a motivaram.
+escolheu as palavras entregues, a estratégia `hybrid_contextual_v1`, uma chamada de Understanding,
+zero ou uma chamada de verbalização e, quando houve recusa, os códigos fechados que a motivaram.
+Não existe loop, judge ou repair por modelo: cada estágio chama o modelo no máximo uma vez.
 
 O perfil de quem fala carrega maneira, não conteúdo: nome de apresentação, organização,
 especialidade, tom de voz e a orientação editorial de condução, lidos dos donos declarados em
