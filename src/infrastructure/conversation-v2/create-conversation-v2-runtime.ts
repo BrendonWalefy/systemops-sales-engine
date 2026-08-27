@@ -25,7 +25,10 @@ import { createLiveDentalUnderstanding } from "@/infrastructure/adapters/ai/live
 import { createLiveResponseVerbalizer } from "@/infrastructure/adapters/ai/live-response-verbalizer";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
 import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
+import { RuntimeAiContractRejectionRecorder } from "@/infrastructure/observability/runtime-ai-contract-rejection-recorder";
+import { sealAiEvidence } from "@/infrastructure/crypto/ai-evidence-vault";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
+import { DrizzleAiContractRejectionStore } from "@/infrastructure/repositories/drizzle-ai-contract-rejection-store";
 import { DrizzleClinicAutomationPolicyReader } from "@/infrastructure/repositories/drizzle-clinic-automation-policy-reader";
 import { DrizzleConversationAuthorityStore } from "@/infrastructure/repositories/drizzle-conversation-authority-store";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
@@ -128,6 +131,7 @@ export function createTenantScopedCalendarGateway(
 
 function createLiveHandler(input: {
   apiKey: string;
+  aiEvidenceEncryptionKey?: string;
   decisionTraceSink: DecisionTraceSink;
   jobQueue: JobQueue;
   outboundMessageStore: OutboundMessageStore;
@@ -189,6 +193,15 @@ function createLiveHandler(input: {
     };
   };
   const client = new OpenAI({ apiKey: input.apiKey });
+  const aiContractRejectionRecorder = new RuntimeAiContractRejectionRecorder({
+    store: new DrizzleAiContractRejectionStore(),
+    seal(rawOutput, aad) {
+      if (!input.aiEvidenceEncryptionKey) {
+        throw new Error("AI evidence encryption key unavailable");
+      }
+      return sealAiEvidence(rawOutput, aad, input.aiEvidenceEncryptionKey);
+    },
+  });
 
   return new V2LiveConversationHandler({
     lifecycle,
@@ -217,6 +230,7 @@ function createLiveHandler(input: {
       handoff,
     ),
     decisionTraceSink: input.decisionTraceSink,
+    aiContractRejectionRecorder,
   });
 }
 
@@ -251,6 +265,7 @@ export function createConversationV2Runtime(input: {
     ?? (apiKey
       ? createLiveHandler({
           apiKey,
+          aiEvidenceEncryptionKey: env.AI_EVIDENCE_ENCRYPTION_KEY?.trim() || undefined,
           decisionTraceSink,
           jobQueue: input.jobQueue ?? new DrizzleJobQueue(),
           outboundMessageStore: input.outboundMessageStore

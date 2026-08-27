@@ -3,6 +3,49 @@ import { APIUserAbortError } from "openai";
 import { DentalUnderstandingProvider } from "@/infrastructure/adapters/ai/DentalUnderstandingProvider";
 import { OpenAIDentalUnderstandingModel } from "@/infrastructure/adapters/ai/OpenAIDentalUnderstandingModel";
 
+function validUnderstanding(overrides: Record<string, unknown> = {}) {
+  return {
+    version: "understanding.v1",
+    request: "price-of-service",
+    dialogueMove: "new_topic",
+    entities: {
+      service: "clareamento",
+      date: null,
+      period: null,
+      time: null,
+      serviceCandidates: null,
+      quantity: null,
+      ordinal: null,
+    },
+    signals: {
+      purchaseIntent: null,
+      priceSensitivity: null,
+      sentiment: null,
+      objection: null,
+    },
+    safety: { optOut: false, requestsHuman: false, emergency: false },
+    confidence: 0.8,
+    ambiguity: null,
+    ...overrides,
+  };
+}
+
+const understandingInput = {
+  leadMessage: "qual o valor do clareamento?",
+  history: [],
+  state: null,
+  catalog: [{ id: "svc-1", displayName: "Clareamento", aliases: [] }],
+};
+
+async function captureThrown(run: () => Promise<unknown>): Promise<unknown> {
+  try {
+    await run();
+  } catch (error) {
+    return error;
+  }
+  throw new Error("expected understanding to reject");
+}
+
 describe("provider dental de Understanding", () => {
   it("mantém linguagem no adapter e valida a saída estruturada", async () => {
     const generate = vi.fn().mockResolvedValue(JSON.stringify({
@@ -103,5 +146,146 @@ describe("provider dental de Understanding", () => {
     }, { signal: controller.signal });
 
     await expect(run).rejects.toBe(reason);
+  });
+
+  it("observes missing output before throwing a metadata-only typed rejection", async () => {
+    const onContractRejection = vi.fn().mockResolvedValue(undefined);
+    const provider = new DentalUnderstandingProvider({
+      modelId: "fake-dental-model",
+      generate: vi.fn().mockResolvedValue(null),
+    });
+
+    const error = await captureThrown(() => provider.understand(
+      understandingInput,
+      { onContractRejection } as never,
+    ));
+
+    expect(onContractRejection).toHaveBeenCalledWith({
+      stage: "understanding_structural",
+      modelId: "fake-dental-model",
+      promptVersion: "dental-understanding.v1",
+      contractVersion: "understanding.v1",
+      rawOutput: null,
+      issues: [{ path: [], code: "missing_output" }],
+    });
+    expect(error).toMatchObject({
+      name: "DentalUnderstandingContractRejectionError",
+      stage: "understanding_structural",
+      issues: [{ path: [], code: "missing_output" }],
+    });
+    expect(JSON.stringify(error)).not.toContain("qual o valor");
+  });
+
+  it("captures invalid JSON only through the rejection observer", async () => {
+    const rawOutput = "{private rejected model output";
+    const onContractRejection = vi.fn().mockResolvedValue(undefined);
+    const provider = new DentalUnderstandingProvider({
+      modelId: "fake-dental-model",
+      generate: vi.fn().mockResolvedValue(rawOutput),
+    });
+
+    const error = await captureThrown(() => provider.understand(
+      understandingInput,
+      { onContractRejection } as never,
+    ));
+
+    expect(onContractRejection).toHaveBeenCalledWith(expect.objectContaining({
+      stage: "understanding_structural",
+      rawOutput,
+      issues: [{ path: [], code: "invalid_json" }],
+    }));
+    expect(JSON.stringify(error)).not.toContain(rawOutput);
+  });
+
+  it.each([
+    ["required", { entities: undefined }, "schema_required"],
+    ["type", { confidence: "high" }, "schema_type_mismatch"],
+    ["unknown key", { unexpectedPrivateKey: "private" }, "schema_unknown_key"],
+    ["enum", { request: "invented-request" }, "schema_enum"],
+    ["range", { confidence: 9 }, "schema_range"],
+  ] as const)("maps a structural %s issue to the closed rejection vocabulary", async (
+    _label,
+    overrides,
+    expectedCode,
+  ) => {
+    const rawOutput = JSON.stringify(validUnderstanding(overrides));
+    const onContractRejection = vi.fn().mockResolvedValue(undefined);
+    const provider = new DentalUnderstandingProvider({
+      modelId: "fake-dental-model",
+      generate: vi.fn().mockResolvedValue(rawOutput),
+    });
+
+    const error = await captureThrown(() => provider.understand(
+      understandingInput,
+      { onContractRejection } as never,
+    ));
+
+    expect(onContractRejection).toHaveBeenCalledWith(expect.objectContaining({
+      stage: "understanding_structural",
+      rawOutput,
+      issues: expect.arrayContaining([expect.objectContaining({ code: expectedCode })]),
+    }));
+    expect(error).toMatchObject({
+      name: "DentalUnderstandingContractRejectionError",
+      stage: "understanding_structural",
+    });
+    expect(JSON.stringify(error)).not.toContain(rawOutput);
+  });
+
+  it("captures a semantic rejection separately from structural parsing", async () => {
+    const rawOutput = JSON.stringify(validUnderstanding({
+      entities: { ...validUnderstanding().entities, service: null },
+    }));
+    const onContractRejection = vi.fn().mockResolvedValue(undefined);
+    const provider = new DentalUnderstandingProvider({
+      modelId: "fake-dental-model",
+      generate: vi.fn().mockResolvedValue(rawOutput),
+    });
+
+    const error = await captureThrown(() => provider.understand(
+      understandingInput,
+      { onContractRejection } as never,
+    ));
+
+    expect(onContractRejection).toHaveBeenCalledWith(expect.objectContaining({
+      stage: "understanding_semantic",
+      rawOutput,
+      issues: [{
+        path: ["entities", "service"],
+        code: "service_required_for_request",
+      }],
+    }));
+    expect(error).toMatchObject({
+      name: "DentalUnderstandingContractRejectionError",
+      stage: "understanding_semantic",
+    });
+    expect(JSON.stringify(error)).not.toContain(rawOutput);
+  });
+
+  it("does not observe provider failures and keeps rejection recording best-effort", async () => {
+    const providerFailure = Object.assign(new Error("provider unavailable"), { status: 503 });
+    const onProviderFailure = vi.fn();
+    const failedProvider = new DentalUnderstandingProvider({
+      modelId: "fake-dental-model",
+      generate: vi.fn().mockRejectedValue(providerFailure),
+    });
+
+    await expect(failedProvider.understand(
+      understandingInput,
+      { onContractRejection: onProviderFailure } as never,
+    )).rejects.toBe(providerFailure);
+    expect(onProviderFailure).not.toHaveBeenCalled();
+
+    const rejectedProvider = new DentalUnderstandingProvider({
+      modelId: "fake-dental-model",
+      generate: vi.fn().mockResolvedValue("not-json"),
+    });
+    await expect(rejectedProvider.understand(
+      understandingInput,
+      { onContractRejection: vi.fn().mockRejectedValue(new Error("recorder down")) } as never,
+    )).rejects.toMatchObject({
+      name: "DentalUnderstandingContractRejectionError",
+      stage: "understanding_structural",
+    });
   });
 });

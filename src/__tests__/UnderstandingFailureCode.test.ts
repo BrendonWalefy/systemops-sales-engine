@@ -26,6 +26,24 @@ describe("understanding failure code", () => {
       .toBe("output_invalid");
   });
 
+  it("classifies typed structural and semantic contract rejections without parsing messages", () => {
+    expect(classifyUnderstandingFailure({
+      name: "DentalUnderstandingContractRejectionError",
+      stage: "understanding_structural",
+      issues: [{ path: [], code: "missing_output" }],
+    })).toBe("output_missing");
+    expect(classifyUnderstandingFailure({
+      name: "DentalUnderstandingContractRejectionError",
+      stage: "understanding_structural",
+      issues: [{ path: ["confidence"], code: "schema_range" }],
+    })).toBe("output_invalid");
+    expect(classifyUnderstandingFailure({
+      name: "DentalUnderstandingContractRejectionError",
+      stage: "understanding_semantic",
+      issues: [{ path: ["entities", "service"], code: "service_required_for_request" }],
+    })).toBe("output_invalid");
+  });
+
   it("marks an aborted turn so a deadline is never read as a provider fault", () => {
     const aborted = Object.assign(new Error("aborted"), { name: "AbortError" });
     expect(classifyUnderstandingFailure(aborted)).toBe("aborted");

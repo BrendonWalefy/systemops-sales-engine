@@ -45,10 +45,27 @@ function providerCodeOf(error: unknown): string | null {
   return typeof code === "string" ? code : null;
 }
 
+function contractIssueCodesOf(error: unknown): readonly string[] {
+  if (typeof error !== "object" || error === null) return [];
+  const issues = (error as { issues?: unknown }).issues;
+  if (!Array.isArray(issues)) return [];
+  return issues.flatMap((issue) => {
+    if (typeof issue !== "object" || issue === null) return [];
+    const code = (issue as { code?: unknown }).code;
+    return typeof code === "string" ? [code] : [];
+  });
+}
+
 export function classifyUnderstandingFailure(error: unknown): UnderstandingFailureCode {
   if (typeof error === "object" && error !== null) {
     const name = (error as { name?: unknown }).name;
     if (name === "AbortError" || name === "TimeoutError") return "aborted";
+  }
+
+  if (nameOf(error) === "DentalUnderstandingContractRejectionError") {
+    return contractIssueCodesOf(error).includes("missing_output")
+      ? "output_missing"
+      : "output_invalid";
   }
 
   if (providerCodeOf(error) === "insufficient_quota") return "provider_quota_exhausted";

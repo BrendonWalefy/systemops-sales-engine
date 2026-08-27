@@ -108,6 +108,8 @@ function makeHarness(options: {
   verbalizerFailure?: boolean;
   crossTenantTreatment?: boolean;
   safeHandoffBehavior?: "objections" | "cancel_reschedule";
+  understandingRawOutput?: string | null;
+  evidenceCaptureStatus?: "stored" | "persistence_failed";
 } = {}) {
   const entities = (overrides: Record<string, unknown> = {}) => ({
     service: null,
@@ -282,7 +284,13 @@ function makeHarness(options: {
     chat: {
       completions: {
         create: vi.fn(async () => ({
-          choices: [{ message: { content: JSON.stringify(await understand()) } }],
+          choices: [{
+            message: {
+              content: Object.hasOwn(options, "understandingRawOutput")
+                ? options.understandingRawOutput ?? null
+                : JSON.stringify(await understand()),
+            },
+          }],
         })),
       },
     },
@@ -308,6 +316,11 @@ function makeHarness(options: {
         },
       })
     : undefined;
+  const rejectionCapture = vi.fn().mockResolvedValue(
+    options.evidenceCaptureStatus === "persistence_failed"
+      ? { status: "persistence_failed" as const }
+      : { status: "stored" as const, evidenceRef: "opaque-evidence-ref" },
+  );
   const handler = new V2LiveConversationHandler({
     lifecycle,
     understanding: understandingBoundary,
@@ -396,6 +409,7 @@ function makeHarness(options: {
       jobQueue: { enqueueJob: vi.fn() } as never,
     },
     decisionTraceSink: trace,
+    aiContractRejectionRecorder: { capture: rejectionCapture },
     persistStopContact,
     persistHandoff,
     now: options.clockFailure
@@ -413,6 +427,7 @@ function makeHarness(options: {
     persistHandoff,
     trace,
     verbalize,
+    rejectionCapture,
   };
 }
 
@@ -566,6 +581,80 @@ describe("V2LiveConversationHandler", () => {
       },
     });
     expect(JSON.stringify(harness.trace.getEvents(turnId))).not.toContain("private text");
+  });
+
+  it("captures rejected understanding output with exact durable tenant context", async () => {
+    const privateOutput = "{rejected private model output";
+    const harness = makeHarness({ understandingRawOutput: privateOutput });
+
+    await expect(harness.handler.handle(handleInput())).resolves.toEqual({
+      replied: false,
+      reason: "understanding_failed",
+    });
+
+    expect(harness.rejectionCapture).toHaveBeenCalledOnce();
+    expect(harness.rejectionCapture).toHaveBeenCalledWith({
+      organizationId: clinic.id,
+      conversationId: conversation.id,
+      inboundEventId,
+      turnId: inboundEventId,
+      stage: "understanding_structural",
+      modelId: "gpt-4o-mini",
+      promptVersion: "dental-understanding.v1",
+      contractVersion: "understanding.v1",
+      attempt: 1,
+      rawOutput: privateOutput,
+      issues: [{ path: [], code: "invalid_json" }],
+      occurredAt: now,
+    });
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "v2.understanding",
+        metadata: expect.objectContaining({
+          errorCode: "output_invalid",
+          rejectionStage: "understanding_structural",
+          rejectionCodes: "invalid_json",
+          evidenceCaptureStatus: "stored",
+          evidenceRef: "opaque-evidence-ref",
+        }),
+      }),
+    ]));
+    expect(JSON.stringify(harness.trace.getEvents(turnId))).not.toContain(privateOutput);
+  });
+
+  it("does not capture accepted understanding or provider transport failure", async () => {
+    const accepted = makeHarness();
+    await accepted.handler.handle(handleInput());
+    expect(accepted.rejectionCapture).not.toHaveBeenCalled();
+
+    const providerFailure = makeHarness({ understandingFailure: true });
+    await providerFailure.handler.handle(handleInput());
+    expect(providerFailure.rejectionCapture).not.toHaveBeenCalled();
+  });
+
+  it("keeps the same safe fallback when rejection persistence fails", async () => {
+    const harness = makeHarness({
+      understandingRawOutput: "not-json-private-output",
+      evidenceCaptureStatus: "persistence_failed",
+    });
+
+    await expect(harness.handler.handle(handleInput())).resolves.toEqual({
+      replied: false,
+      reason: "understanding_failed",
+    });
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue.mock.calls[0]?.[0]).toMatchObject({
+      payload: expect.objectContaining({ replyText: V2_SAFE_FAILURE_REPLY_TEXT }),
+    });
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "v2.understanding",
+        metadata: expect.objectContaining({
+          evidenceCaptureStatus: "persistence_failed",
+        }),
+      }),
+    ]));
   });
 
   it("classifies tenant reads before understanding as decision failure", async () => {

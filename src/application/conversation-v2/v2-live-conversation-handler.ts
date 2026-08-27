@@ -9,6 +9,12 @@ import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-mess
 import { authorizationForConversationReply } from "@/application/jobs/outbound-authorization";
 import type { JobQueue } from "@/application/ports/job-queue";
 import type { OutboundMessageStore } from "@/application/ports/outbound-message-store";
+import {
+  captureAiContractRejectionBestEffort,
+  type AiContractRejectionCaptureResult,
+  type AiContractRejectionRecorder,
+  type AiContractRejectionStage,
+} from "@/application/ports/ai-contract-rejection-recorder";
 import type {
   ConversationHandler,
   ConversationHandleInput,
@@ -109,6 +115,7 @@ export type V2LiveConversationHandlerDependencies = Readonly<{
     jobQueue: JobQueue;
   }>;
   decisionTraceSink?: DecisionTraceSink;
+  aiContractRejectionRecorder?: AiContractRejectionRecorder;
   persistStopContact(input: Readonly<{
     leadId: string;
     conversationId: string;
@@ -229,6 +236,11 @@ export class V2LiveConversationHandler implements ConversationHandler {
     > | null = null;
     let handoffReason: V2ConversationHandoffReason | null = null;
     let handoffPersisted = false;
+    let understandingRejection: Readonly<{
+      stage: AiContractRejectionStage;
+      codes: string;
+      capture: AiContractRejectionCaptureResult;
+    }> | null = null;
 
     const trace = async (
       stage: "v2.understanding" | "v2.decision" | "v2.action_result"
@@ -304,6 +316,36 @@ export class V2LiveConversationHandler implements ConversationHandler {
                 displayName: treatment.name,
                 aliases: Object.freeze([...treatment.aliases]),
               })),
+            }, {
+              onContractRejection: async (rejection) => {
+                const authoritativeTurnId = context.inboundAuthority?.inboundEventId;
+                const capture = authoritativeTurnId
+                  ? await captureAiContractRejectionBestEffort(
+                      this.deps.aiContractRejectionRecorder,
+                      {
+                        organizationId: context.clinicId,
+                        conversationId: context.conversationId,
+                        inboundEventId: authoritativeTurnId,
+                        turnId: authoritativeTurnId,
+                        stage: rejection.stage,
+                        modelId: rejection.modelId,
+                        promptVersion: rejection.promptVersion,
+                        contractVersion: rejection.contractVersion,
+                        attempt: 1,
+                        rawOutput: rejection.rawOutput,
+                        issues: rejection.issues,
+                        occurredAt: new Date(turnNow!.getTime()),
+                      },
+                    )
+                  : { status: "persistence_failed" as const };
+                understandingRejection = Object.freeze({
+                  stage: rejection.stage,
+                  codes: [...new Set(rejection.issues.map((issue) => issue.code))]
+                    .sort()
+                    .join(","),
+                  capture,
+                });
+              },
             });
             understandingResolved = true;
             if (result.request === "cancel-appointment" || result.request === "reschedule-appointment") {
@@ -378,6 +420,16 @@ export class V2LiveConversationHandler implements ConversationHandler {
                 modelId,
                 request: null,
                 errorCode: classifyUnderstandingFailure(error),
+                ...(understandingRejection
+                  ? {
+                      rejectionStage: understandingRejection.stage,
+                      rejectionCodes: understandingRejection.codes,
+                      evidenceCaptureStatus: understandingRejection.capture.status,
+                      ...(understandingRejection.capture.evidenceRef
+                        ? { evidenceRef: understandingRejection.capture.evidenceRef }
+                        : {}),
+                    }
+                  : {}),
               });
             }
             throw error;
