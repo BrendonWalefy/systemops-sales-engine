@@ -109,6 +109,29 @@ function makeHarness(options: {
   crossTenantTreatment?: boolean;
   safeHandoffBehavior?: "objections" | "cancel_reschedule";
 } = {}) {
+  const entities = (overrides: Record<string, unknown> = {}) => ({
+    service: null,
+    date: null,
+    period: null,
+    time: null,
+    serviceCandidates: null,
+    quantity: null,
+    ordinal: null,
+    ...overrides,
+  });
+  const signals = (overrides: Record<string, unknown> = {}) => ({
+    purchaseIntent: null,
+    priceSensitivity: null,
+    sentiment: null,
+    objection: null,
+    ...overrides,
+  });
+  const safety = (overrides: Record<string, boolean> = {}) => ({
+    optOut: false,
+    requestsHuman: false,
+    emergency: false,
+    ...overrides,
+  });
   const releaseLease = vi.fn().mockResolvedValue(undefined);
   const context: LiveTurnContext = Object.freeze({
     turnId,
@@ -178,22 +201,22 @@ function makeHarness(options: {
         version: UNDERSTANDING_VERSION,
         request: "price-of-service" as const,
         dialogueMove: "new_topic" as const,
-        entities: {},
-        signals: {}, safety: {}, confidence: 1, ambiguity: null,
+        entities: entities(),
+        signals: signals(), safety: safety(), confidence: 1, ambiguity: null,
       } as never;
     }
-    const safety = options.safetyOptOut
-      ? { optOut: true }
+    const turnSafety = options.safetyOptOut
+      ? safety({ optOut: true })
       : options.nonPreparedStatus === "escalated"
-      ? { requestsHuman: true }
-      : {};
+      ? safety({ requestsHuman: true })
+      : safety();
     if (options.schedulingOfferTurn) {
       return {
         version: UNDERSTANDING_VERSION,
         request: "book-appointment" as const,
         dialogueMove: "new_topic" as const,
-        entities: { service: "clareamento", date: "amanhã", period: "afternoon" },
-        signals: {}, safety, confidence: 1, ambiguity: null,
+        entities: entities({ service: "clareamento", date: "amanhã", period: "afternoon" }),
+        signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
       };
     }
     if (options.safeHandoffBehavior === "objections") {
@@ -201,8 +224,8 @@ function makeHarness(options: {
         version: UNDERSTANDING_VERSION,
         request: "other" as const,
         dialogueMove: "new_topic" as const,
-        entities: {},
-        signals: { objection: "price" }, safety, confidence: 1, ambiguity: null,
+        entities: entities(),
+        signals: signals({ objection: "price" }), safety: turnSafety, confidence: 1, ambiguity: null,
       };
     }
     if (options.safeHandoffBehavior === "cancel_reschedule") {
@@ -210,8 +233,8 @@ function makeHarness(options: {
         version: UNDERSTANDING_VERSION,
         request: "cancel-appointment" as const,
         dialogueMove: "new_topic" as const,
-        entities: {},
-        signals: {}, safety, confidence: 1, ambiguity: null,
+        entities: entities(),
+        signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
       };
     }
     return options.bookingTurn
@@ -219,15 +242,15 @@ function makeHarness(options: {
           version: UNDERSTANDING_VERSION,
           request: "confirm-slot" as const,
           dialogueMove: "answers_pending" as const,
-          entities: { ordinal: 1 },
-          signals: {}, safety, confidence: 1, ambiguity: null,
+          entities: entities({ ordinal: 1 }),
+          signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
         }
       : {
           version: UNDERSTANDING_VERSION,
           request: "price-of-service" as const,
           dialogueMove: "new_topic" as const,
-          entities: { service: "clareamento" },
-          signals: {}, safety, confidence: 1, ambiguity: null,
+          entities: entities({ service: "clareamento" }),
+          signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
         };
   });
   const appointment = {

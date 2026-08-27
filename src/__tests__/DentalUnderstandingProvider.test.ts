@@ -5,13 +5,16 @@ import { OpenAIDentalUnderstandingModel } from "@/infrastructure/adapters/ai/Ope
 
 describe("provider dental de Understanding", () => {
   it("mantém linguagem no adapter e valida a saída estruturada", async () => {
-    const generate = vi.fn().mockResolvedValue({
+    const generate = vi.fn().mockResolvedValue(JSON.stringify({
       version: "understanding.v1",
       request: "price-of-service",
       dialogueMove: "new_topic",
-      entities: { service: "clareamento" },
-      signals: {}, safety: {}, confidence: 0.8, ambiguity: null,
-    });
+      entities: { service: "clareamento", date: null, period: null, time: null, serviceCandidates: null, quantity: null, ordinal: null },
+      signals: { purchaseIntent: null, priceSensitivity: null, sentiment: null, objection: null },
+      safety: { optOut: false, requestsHuman: false, emergency: false },
+      confidence: 0.8,
+      ambiguity: null,
+    }));
     const provider = new DentalUnderstandingProvider({
       modelId: "fake-dental-model",
       generate,
@@ -33,10 +36,13 @@ describe("provider dental de Understanding", () => {
   });
 
   it("envia json_schema estrito no boundary específico do provider", async () => {
-    const create = vi.fn().mockResolvedValue({ choices: [{ message: { content: JSON.stringify({
+    const rawOutput = JSON.stringify({
       version: "understanding.v1", request: "book-appointment", dialogueMove: "new_topic",
-      entities: {}, signals: {}, safety: {}, confidence: 0.8, ambiguity: null,
-    }) } }] });
+      entities: { service: null, date: null, period: null, time: null, serviceCandidates: null, quantity: null, ordinal: null },
+      signals: { purchaseIntent: null, priceSensitivity: null, sentiment: null, objection: null },
+      safety: { optOut: false, requestsHuman: false, emergency: false }, confidence: 0.8, ambiguity: null,
+    });
+    const create = vi.fn().mockResolvedValue({ choices: [{ message: { content: rawOutput } }] });
     const model = new OpenAIDentalUnderstandingModel({ chat: { completions: { create } } }, "gpt-test");
     const result = await model.generate({
       modelId: "gpt-test", promptVersion: "dental-understanding.v1",
@@ -44,7 +50,7 @@ describe("provider dental de Understanding", () => {
       history: [], state: null, catalog: [],
     });
 
-    expect(result).toEqual(expect.objectContaining({ request: "book-appointment" }));
+    expect(result).toBe(rawOutput);
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
       model: "gpt-test",
       response_format: expect.objectContaining({ type: "json_schema", json_schema: expect.objectContaining({ strict: true }) }),
@@ -58,7 +64,9 @@ describe("provider dental de Understanding", () => {
   it("encaminha o AbortSignal ao client OpenAI", async () => {
     const create = vi.fn().mockResolvedValue({ choices: [{ message: { content: JSON.stringify({
       version: "understanding.v1", request: "book-appointment", dialogueMove: "new_topic",
-      entities: {}, signals: {}, safety: {}, confidence: 0.8, ambiguity: null,
+      entities: { service: null, date: null, period: null, time: null, serviceCandidates: null, quantity: null, ordinal: null },
+      signals: { purchaseIntent: null, priceSensitivity: null, sentiment: null, objection: null },
+      safety: { optOut: false, requestsHuman: false, emergency: false }, confidence: 0.8, ambiguity: null,
     }) } }] });
     const controller = new AbortController();
     const model = new OpenAIDentalUnderstandingModel(

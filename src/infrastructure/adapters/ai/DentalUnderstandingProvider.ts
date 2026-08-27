@@ -37,7 +37,10 @@ export type DentalUnderstandingModelRequest = {
 
 export type DentalUnderstandingModel = {
   modelId: string;
-  generate(input: DentalUnderstandingModelRequest, options?: Readonly<{ signal?: AbortSignal }>): Promise<unknown>;
+  generate(
+    input: DentalUnderstandingModelRequest,
+    options?: Readonly<{ signal?: AbortSignal }>,
+  ): Promise<string | null>;
 };
 
 export class DentalUnderstandingProvider {
@@ -54,9 +57,12 @@ export class DentalUnderstandingProvider {
       schemaVersion: UNDERSTANDING_VERSION,
       systemPrompt: DENTAL_UNDERSTANDING_PROMPT,
     };
-    const raw = await (options
+    const rawOutput = await (options
       ? this.model.generate(request, options)
       : this.model.generate(request));
-    return parseDentalUnderstanding(raw);
+    if (rawOutput === null) {
+      throw new Error("OpenAI returned no dental understanding output");
+    }
+    return parseDentalUnderstanding(JSON.parse(rawOutput) as unknown);
   }
 }

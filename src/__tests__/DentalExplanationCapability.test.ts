@@ -118,14 +118,27 @@ describe("capability de explicação dental", () => {
       version: UNDERSTANDING_VERSION,
       request: "explain-service",
       dialogueMove: "new_topic",
-      signals: {},
-      safety: {},
+      signals: {
+        purchaseIntent: null,
+        priceSensitivity: null,
+        sentiment: null,
+        objection: null,
+      },
+      safety: { optOut: false, requestsHuman: false, emergency: false },
       confidence: 1,
       ambiguity: null,
     };
+    const entities = {
+      date: null,
+      period: null,
+      time: null,
+      serviceCandidates: null,
+      quantity: null,
+      ordinal: null,
+    };
 
-    expect(parseDentalUnderstanding({ ...base, entities: { service: "lente" } }).request)
+    expect(parseDentalUnderstanding({ ...base, entities: { ...entities, service: "lente" } }).request)
       .toBe("explain-service");
-    expect(() => parseDentalUnderstanding({ ...base, entities: { service: null } })).toThrow();
+    expect(() => parseDentalUnderstanding({ ...base, entities: { ...entities, service: null } })).toThrow();
   });
 });

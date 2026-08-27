@@ -1,28 +1,116 @@
 import { z } from "zod";
-import { DENTAL_REQUESTS, type DentalRequest } from "@/domain-packs/dental/vocabulary";
-import { UNDERSTANDING_VERSION, type Understanding } from "@/conversation-core/understanding/schema";
+import {
+  UNDERSTANDING_VERSION,
+  type Understanding,
+} from "@/conversation-core/understanding/schema";
+import {
+  DENTAL_REQUESTS,
+  type DentalRequest,
+} from "@/domain-packs/dental/vocabulary";
 
-const CORE_DIALOGUE_MOVES = ["new_topic", "answers_pending", "acknowledges", "repeats", "closes"] as const;
+const CORE_DIALOGUE_MOVES = [
+  "new_topic",
+  "answers_pending",
+  "acknowledges",
+  "repeats",
+  "closes",
+] as const;
 
-const scalar = z.union([z.string(), z.number(), z.array(z.string()), z.null()]);
-const schema = z.object({
+export const dentalUnderstandingStructureSchema = z.object({
   version: z.literal(UNDERSTANDING_VERSION),
   request: z.enum(DENTAL_REQUESTS),
   dialogueMove: z.enum(CORE_DIALOGUE_MOVES),
-  entities: z.record(scalar),
-  signals: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])),
-  safety: z.record(z.boolean()),
+  entities: z.object({
+    service: z.string().nullable(),
+    date: z.string().nullable(),
+    period: z.string().nullable(),
+    time: z.string().nullable(),
+    serviceCandidates: z.array(z.string()).nullable(),
+    quantity: z.number().nullable(),
+    ordinal: z.number().nullable(),
+  }).strict(),
+  signals: z.object({
+    purchaseIntent: z.enum(["low", "medium", "high"]).nullable(),
+    priceSensitivity: z.enum(["low", "medium", "high"]).nullable(),
+    sentiment: z.enum(["negative", "neutral", "positive"]).nullable(),
+    objection: z.string().nullable(),
+  }).strict(),
+  safety: z.object({
+    optOut: z.boolean(),
+    requestsHuman: z.boolean(),
+    emergency: z.boolean(),
+  }).strict(),
   confidence: z.number().min(0).max(1),
-  ambiguity: z.object({ kind: z.string().min(1), candidates: z.array(z.string()).min(2) }).strict().nullable(),
-}).strict().superRefine((value, context) => {
-  if ((value.request === "price-of-service"
-    || value.request === "service-availability"
-    || value.request === "explain-service")
-    && typeof value.entities.service !== "string") {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["entities", "service"], message: "service is required for this request" });
-  }
-});
+  ambiguity: z.object({
+    kind: z.string().min(1),
+    candidates: z.array(z.string()).min(2),
+  }).strict().nullable(),
+}).strict();
 
-export function parseDentalUnderstanding(value: unknown): Understanding<DentalRequest> {
-  return schema.parse(value) as Understanding<DentalRequest>;
+export type DentalUnderstandingStructure = z.infer<
+  typeof dentalUnderstandingStructureSchema
+>;
+
+export type DentalUnderstandingSemanticIssue = Readonly<{
+  path: readonly string[];
+  code: "service_required_for_request";
+}>;
+
+export type DentalUnderstandingSemanticValidation =
+  | Readonly<{ valid: true }>
+  | Readonly<{
+      valid: false;
+      issues: readonly DentalUnderstandingSemanticIssue[];
+    }>;
+
+const SERVICE_REQUIRED_REQUESTS = new Set<DentalRequest>([
+  "price-of-service",
+  "service-availability",
+  "explain-service",
+]);
+
+export class DentalUnderstandingSemanticError extends Error {
+  readonly issues: readonly DentalUnderstandingSemanticIssue[];
+
+  constructor(issues: readonly DentalUnderstandingSemanticIssue[]) {
+    super("dental understanding semantic validation failed");
+    this.name = "DentalUnderstandingSemanticError";
+    this.issues = Object.freeze([...issues]);
+  }
+}
+
+export function parseDentalUnderstandingStructure(
+  value: unknown,
+): Understanding<DentalRequest> {
+  return dentalUnderstandingStructureSchema.parse(
+    value,
+  ) as Understanding<DentalRequest>;
+}
+
+export function validateDentalUnderstandingSemantics(
+  value: Understanding<DentalRequest>,
+): DentalUnderstandingSemanticValidation {
+  if (
+    value.request !== null
+    && SERVICE_REQUIRED_REQUESTS.has(value.request)
+    && typeof value.entities.service !== "string"
+  ) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "service"]),
+        code: "service_required_for_request" as const,
+      }]),
+    };
+  }
+  return { valid: true };
+}
+
+export function parseDentalUnderstanding(
+  value: unknown,
+): Understanding<DentalRequest> {
+  const parsed = parseDentalUnderstandingStructure(value);
+  const semantic = validateDentalUnderstandingSemantics(parsed);
+  if (!semantic.valid) throw new DentalUnderstandingSemanticError(semantic.issues);
+  return parsed;
 }

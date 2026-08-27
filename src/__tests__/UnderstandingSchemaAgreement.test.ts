@@ -1,6 +1,9 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { parseDentalUnderstanding } from "@/domain-packs/dental/understanding";
+import {
+  dentalUnderstandingStructureSchema,
+  parseDentalUnderstanding,
+  validateDentalUnderstandingSemantics,
+} from "@/domain-packs/dental/understanding";
 import { DENTAL_REQUESTS } from "@/domain-packs/dental/vocabulary";
 
 /**
@@ -9,11 +12,6 @@ import { DENTAL_REQUESTS } from "@/domain-packs/dental/vocabulary";
  * recusa — e o turno morre sem que nada no CI acuse. Foi assim que a exigência
  * condicional de `entities.service` derrubou toda saudação em produção.
  */
-const adapterSource = readFileSync(
-  "src/infrastructure/adapters/ai/OpenAIDentalUnderstandingModel.ts",
-  "utf8",
-);
-
 function accepts(request: string, service: string | null): boolean {
   try {
     parseDentalUnderstanding({
@@ -38,10 +36,9 @@ describe("understanding schema agreement", () => {
     expect(satisfiable.length).toBeGreaterThan(0);
   });
 
-  it("lets the model reach every request the Zod schema accepts", () => {
-    // O enum do JSON schema é derivado de DENTAL_REQUESTS; se alguém o fixar à
-    // mão, um valor aceito pelo Zod deixa de ser produzível pelo modelo.
-    expect(adapterSource).toContain("enum: DENTAL_REQUESTS");
+  it("keeps every request in the canonical structure", () => {
+    const requestSchema = dentalUnderstandingStructureSchema.shape.request;
+    expect(DENTAL_REQUESTS.every((request) => requestSchema.safeParse(request).success)).toBe(true);
   });
 
   it("never leaves a request that the model can emit and the parser always rejects", () => {
@@ -50,8 +47,22 @@ describe("understanding schema agreement", () => {
     expect(alwaysRejected).toEqual([]);
   });
 
-  it("keeps the strict json_schema contract that makes the enum binding real", () => {
-    expect(adapterSource).toContain('type: "json_schema"');
-    expect(adapterSource).toContain("strict: true");
+  it("represents service requirements only in semantic validation", () => {
+    const value = {
+      version: "understanding.v1",
+      request: "explain-service",
+      dialogueMove: "new_topic",
+      entities: { service: null, date: null, period: null, time: null, serviceCandidates: null, quantity: null, ordinal: null },
+      signals: { purchaseIntent: null, priceSensitivity: null, sentiment: null, objection: null },
+      safety: { optOut: false, requestsHuman: false, emergency: false },
+      confidence: 0.9,
+      ambiguity: null,
+    } as const;
+
+    expect(dentalUnderstandingStructureSchema.safeParse(value).success).toBe(true);
+    expect(validateDentalUnderstandingSemantics(value)).toEqual({
+      valid: false,
+      issues: [{ path: ["entities", "service"], code: "service_required_for_request" }],
+    });
   });
 });
