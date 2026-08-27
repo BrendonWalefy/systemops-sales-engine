@@ -1,4 +1,7 @@
-import type { AuthorizedSurface } from "@/conversation-core/composer/verbalization-validator";
+import type {
+  AuthorizedSurface,
+  VerbalizationViolationCode,
+} from "@/conversation-core/composer/verbalization-validator";
 import type { ComposerStyle } from "@/conversation-core/composer/contract";
 
 /**
@@ -50,6 +53,17 @@ export interface ResponseVerbalizerPort {
     options?: Readonly<{ signal?: AbortSignal }>,
   ): Promise<unknown>;
 }
+
+export type VerbalizationRejection = Readonly<{
+  rawOutput: string;
+  modelId: string;
+  latencyMs: number;
+  violations: readonly VerbalizationViolationCode[];
+}>;
+
+export type VerbalizationRejectionObserver = (
+  rejection: VerbalizationRejection,
+) => void | Promise<void>;
 
 export type VerbalizationOutcome =
   | { status: "absent" }

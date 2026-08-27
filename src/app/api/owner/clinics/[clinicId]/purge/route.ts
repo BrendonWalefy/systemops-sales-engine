@@ -35,6 +35,8 @@ import {
   whatsappStreams,
   leadOutcomes,
   reactivationCampaigns,
+  aiContractRejections,
+  aiContractRejectionAccessAudits,
 } from "@/infrastructure/db/schema";
 import { createLogger } from "@/infrastructure/logging/logger";
 
@@ -112,6 +114,12 @@ export async function POST(
   // Authority audit references use RESTRICT. Preserve this exact child-first
   // order when the durable stream schema grows.
   await db.delete(outboundMessages).where(eq(outboundMessages.clinicId, clinicId));
+  await db.delete(aiContractRejectionAccessAudits).where(
+    eq(aiContractRejectionAccessAudits.organizationId, clinicId),
+  );
+  await db.delete(aiContractRejections).where(
+    eq(aiContractRejections.organizationId, clinicId),
+  );
 
   if (conversationIds.length > 0) {
     await db.delete(messages).where(inArray(messages.conversationId, conversationIds));

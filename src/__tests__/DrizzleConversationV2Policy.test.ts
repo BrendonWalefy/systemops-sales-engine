@@ -4,8 +4,18 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { LIVE_COMPARISON_VERSION } from "@/application/conversation-v2/comparison-record";
 
 const dbMock = vi.hoisted(() => ({ select: vi.fn(), insert: vi.fn(), delete: vi.fn() }));
+const rejectionCleanupMock = vi.hoisted(() => ({
+  expireRaw: vi.fn(),
+  deleteExpiredMetadata: vi.fn(),
+}));
 vi.mock("@/infrastructure/db/client", () => ({ db: dbMock }));
 vi.mock("@/app/api/cron/_auth", () => ({ requireCronAuthorization: () => null }));
+vi.mock("@/infrastructure/repositories/drizzle-ai-contract-rejection-store", () => ({
+  DrizzleAiContractRejectionStore: class {
+    expireRaw = rejectionCleanupMock.expireRaw;
+    deleteExpiredMetadata = rejectionCleanupMock.deleteExpiredMetadata;
+  },
+}));
 
 import { DrizzleConversationEnginePolicyReader } from "@/infrastructure/repositories/drizzle-conversation-engine-policy-reader";
 import { DrizzleClinicAutomationPolicyReader } from "@/infrastructure/repositories/drizzle-clinic-automation-policy-reader";
@@ -65,6 +75,8 @@ describe("Cycle I Drizzle engine policy and sanitized comparison persistence", (
     dbMock.select.mockReset();
     dbMock.insert.mockReset();
     dbMock.delete.mockReset();
+    rejectionCleanupMock.expireRaw.mockReset().mockResolvedValue(2);
+    rejectionCleanupMock.deleteExpiredMetadata.mockReset().mockResolvedValue(3);
   });
 
   it("declares the closed DB enum, v1 organization default, retention table and indexes", () => {
@@ -280,7 +292,35 @@ describe("Cycle I Drizzle engine policy and sanitized comparison persistence", (
 
     const response = await cleanupExpiredTraces(new NextRequest("https://example.test/api/cron/decision-trace-cleanup"));
     await expect(response.json()).resolves.toEqual({
-      deleted: { decisionTraces: 1, conversationV2Comparisons: 1 },
+      deleted: {
+        decisionTraces: 1,
+        conversationV2Comparisons: 1,
+        aiContractRejectionRawExpired: 2,
+        aiContractRejectionMetadataDeleted: 3,
+        aiContractRejectionRawBacklogPossible: false,
+        aiContractRejectionMetadataBacklogPossible: false,
+      },
+    });
+    expect(rejectionCleanupMock.expireRaw).toHaveBeenCalledOnce();
+    expect(rejectionCleanupMock.deleteExpiredMetadata).toHaveBeenCalledOnce();
+  });
+
+  it("reports a possible bounded evidence cleanup backlog", async () => {
+    dbMock.select
+      .mockReturnValueOnce(selectRows([]))
+      .mockReturnValueOnce(selectRows([]));
+    rejectionCleanupMock.expireRaw.mockResolvedValueOnce(500);
+    rejectionCleanupMock.deleteExpiredMetadata.mockResolvedValueOnce(500);
+
+    const response = await cleanupExpiredTraces(
+      new NextRequest("https://example.test/api/cron/decision-trace-cleanup"),
+    );
+
+    await expect(response.json()).resolves.toMatchObject({
+      deleted: {
+        aiContractRejectionRawBacklogPossible: true,
+        aiContractRejectionMetadataBacklogPossible: true,
+      },
     });
   });
 
@@ -293,6 +333,22 @@ describe("Cycle I Drizzle engine policy and sanitized comparison persistence", (
       new NextRequest("https://example.test/api/cron/decision-trace-cleanup"),
     )).rejects.toThrow(/decision trace cleanup unavailable/i);
     expect(dbMock.select).toHaveBeenCalledTimes(2);
+    expect(rejectionCleanupMock.expireRaw).toHaveBeenCalledOnce();
+    expect(rejectionCleanupMock.deleteExpiredMetadata).toHaveBeenCalledOnce();
+  });
+
+  it("attempts metadata cleanup even when raw evidence expiry fails", async () => {
+    dbMock.select
+      .mockReturnValueOnce(selectRows([]))
+      .mockReturnValueOnce(selectRows([]));
+    rejectionCleanupMock.expireRaw.mockRejectedValueOnce(
+      new Error("raw evidence cleanup unavailable"),
+    );
+
+    await expect(cleanupExpiredTraces(
+      new NextRequest("https://example.test/api/cron/decision-trace-cleanup"),
+    )).rejects.toThrow(/raw evidence cleanup unavailable/i);
+    expect(rejectionCleanupMock.deleteExpiredMetadata).toHaveBeenCalledOnce();
   });
 
   it("deletes comparison rows in clinic reset and reports the count", async () => {

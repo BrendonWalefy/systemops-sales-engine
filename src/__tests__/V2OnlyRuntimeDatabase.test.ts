@@ -1111,7 +1111,7 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
       liveOutboundInput(fixture),
       { turnId: fixture.inboundEventId },
     );
-    const now = new Date("2026-08-26T20:30:00.000Z");
+    const now = new Date();
     const sendWorkerId = "terminal-send-worker";
     const jobQueue = await loadJobQueue();
     const sendJob = await jobQueue.claimNextJob({

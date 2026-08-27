@@ -729,6 +729,20 @@
       "when": 1787710923193,
       "tag": "0103_even_scorpion",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1787801213666,
+      "tag": "0104_green_tyrannus",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1787801260906,
+      "tag": "0105_bored_vance_astro",
+      "breakpoints": true
     }
   ]
 }

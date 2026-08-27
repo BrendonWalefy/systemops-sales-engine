@@ -97,6 +97,10 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     // resposta saiu determinística e nunca por qual regra — e a operação não
     // sabe se o gate está protegendo ou apenas atrapalhando.
     "verbalizationViolations",
+    "rejectionStage",
+    "rejectionCodes",
+    "evidenceCaptureStatus",
+    "evidenceRef",
   ],
   "response.fallback_applied": [
     "action",
@@ -112,6 +116,13 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     // erro: sem ele a operação não distingue chave inválida de cota ou de saída
     // inutilizável, que exigem ações diferentes.
     "errorCode",
+    // Correlação opaca e códigos fechados para localizar a evidência
+    // criptografada. Conteúdo bruto, valores de issues e mensagens de erro não
+    // pertencem ao Decision Trace.
+    "rejectionStage",
+    "rejectionCodes",
+    "evidenceCaptureStatus",
+    "evidenceRef",
   ],
   "v2.decision": [
     "status",

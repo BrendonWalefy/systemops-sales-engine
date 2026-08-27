@@ -108,7 +108,32 @@ function makeHarness(options: {
   verbalizerFailure?: boolean;
   crossTenantTreatment?: boolean;
   safeHandoffBehavior?: "objections" | "cancel_reschedule";
+  understandingRawOutput?: string | null;
+  evidenceCaptureStatus?: "stored" | "persistence_failed";
 } = {}) {
+  const entities = (overrides: Record<string, unknown> = {}) => ({
+    service: null,
+    date: null,
+    period: null,
+    time: null,
+    serviceCandidates: null,
+    quantity: null,
+    ordinal: null,
+    ...overrides,
+  });
+  const signals = (overrides: Record<string, unknown> = {}) => ({
+    purchaseIntent: null,
+    priceSensitivity: null,
+    sentiment: null,
+    objection: null,
+    ...overrides,
+  });
+  const safety = (overrides: Record<string, boolean> = {}) => ({
+    optOut: false,
+    requestsHuman: false,
+    emergency: false,
+    ...overrides,
+  });
   const releaseLease = vi.fn().mockResolvedValue(undefined);
   const context: LiveTurnContext = Object.freeze({
     turnId,
@@ -178,22 +203,22 @@ function makeHarness(options: {
         version: UNDERSTANDING_VERSION,
         request: "price-of-service" as const,
         dialogueMove: "new_topic" as const,
-        entities: {},
-        signals: {}, safety: {}, confidence: 1, ambiguity: null,
+        entities: entities(),
+        signals: signals(), safety: safety(), confidence: 1, ambiguity: null,
       } as never;
     }
-    const safety = options.safetyOptOut
-      ? { optOut: true }
+    const turnSafety = options.safetyOptOut
+      ? safety({ optOut: true })
       : options.nonPreparedStatus === "escalated"
-      ? { requestsHuman: true }
-      : {};
+      ? safety({ requestsHuman: true })
+      : safety();
     if (options.schedulingOfferTurn) {
       return {
         version: UNDERSTANDING_VERSION,
         request: "book-appointment" as const,
         dialogueMove: "new_topic" as const,
-        entities: { service: "clareamento", date: "amanhã", period: "afternoon" },
-        signals: {}, safety, confidence: 1, ambiguity: null,
+        entities: entities({ service: "clareamento", date: "amanhã", period: "afternoon" }),
+        signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
       };
     }
     if (options.safeHandoffBehavior === "objections") {
@@ -201,8 +226,8 @@ function makeHarness(options: {
         version: UNDERSTANDING_VERSION,
         request: "other" as const,
         dialogueMove: "new_topic" as const,
-        entities: {},
-        signals: { objection: "price" }, safety, confidence: 1, ambiguity: null,
+        entities: entities(),
+        signals: signals({ objection: "price" }), safety: turnSafety, confidence: 1, ambiguity: null,
       };
     }
     if (options.safeHandoffBehavior === "cancel_reschedule") {
@@ -210,8 +235,8 @@ function makeHarness(options: {
         version: UNDERSTANDING_VERSION,
         request: "cancel-appointment" as const,
         dialogueMove: "new_topic" as const,
-        entities: {},
-        signals: {}, safety, confidence: 1, ambiguity: null,
+        entities: entities(),
+        signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
       };
     }
     return options.bookingTurn
@@ -219,15 +244,15 @@ function makeHarness(options: {
           version: UNDERSTANDING_VERSION,
           request: "confirm-slot" as const,
           dialogueMove: "answers_pending" as const,
-          entities: { ordinal: 1 },
-          signals: {}, safety, confidence: 1, ambiguity: null,
+          entities: entities({ ordinal: 1 }),
+          signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
         }
       : {
           version: UNDERSTANDING_VERSION,
           request: "price-of-service" as const,
           dialogueMove: "new_topic" as const,
-          entities: { service: "clareamento" },
-          signals: {}, safety, confidence: 1, ambiguity: null,
+          entities: entities({ service: "clareamento" }),
+          signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
         };
   });
   const appointment = {
@@ -259,7 +284,13 @@ function makeHarness(options: {
     chat: {
       completions: {
         create: vi.fn(async () => ({
-          choices: [{ message: { content: JSON.stringify(await understand()) } }],
+          choices: [{
+            message: {
+              content: Object.hasOwn(options, "understandingRawOutput")
+                ? options.understandingRawOutput ?? null
+                : JSON.stringify(await understand()),
+            },
+          }],
         })),
       },
     },
@@ -285,6 +316,11 @@ function makeHarness(options: {
         },
       })
     : undefined;
+  const rejectionCapture = vi.fn().mockResolvedValue(
+    options.evidenceCaptureStatus === "persistence_failed"
+      ? { status: "persistence_failed" as const }
+      : { status: "stored" as const, evidenceRef: "opaque-evidence-ref" },
+  );
   const handler = new V2LiveConversationHandler({
     lifecycle,
     understanding: understandingBoundary,
@@ -373,6 +409,7 @@ function makeHarness(options: {
       jobQueue: { enqueueJob: vi.fn() } as never,
     },
     decisionTraceSink: trace,
+    aiContractRejectionRecorder: { capture: rejectionCapture },
     persistStopContact,
     persistHandoff,
     now: options.clockFailure
@@ -390,6 +427,7 @@ function makeHarness(options: {
     persistHandoff,
     trace,
     verbalize,
+    rejectionCapture,
   };
 }
 
@@ -543,6 +581,80 @@ describe("V2LiveConversationHandler", () => {
       },
     });
     expect(JSON.stringify(harness.trace.getEvents(turnId))).not.toContain("private text");
+  });
+
+  it("captures rejected understanding output with exact durable tenant context", async () => {
+    const privateOutput = "{rejected private model output";
+    const harness = makeHarness({ understandingRawOutput: privateOutput });
+
+    await expect(harness.handler.handle(handleInput())).resolves.toEqual({
+      replied: false,
+      reason: "understanding_failed",
+    });
+
+    expect(harness.rejectionCapture).toHaveBeenCalledOnce();
+    expect(harness.rejectionCapture).toHaveBeenCalledWith({
+      organizationId: clinic.id,
+      conversationId: conversation.id,
+      inboundEventId,
+      turnId: inboundEventId,
+      stage: "understanding_structural",
+      modelId: "gpt-4o-mini",
+      promptVersion: "dental-understanding.v1",
+      contractVersion: "understanding.v1",
+      attempt: 1,
+      rawOutput: privateOutput,
+      issues: [{ path: [], code: "invalid_json" }],
+      occurredAt: now,
+    });
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "v2.understanding",
+        metadata: expect.objectContaining({
+          errorCode: "output_invalid",
+          rejectionStage: "understanding_structural",
+          rejectionCodes: "invalid_json",
+          evidenceCaptureStatus: "stored",
+          evidenceRef: "opaque-evidence-ref",
+        }),
+      }),
+    ]));
+    expect(JSON.stringify(harness.trace.getEvents(turnId))).not.toContain(privateOutput);
+  });
+
+  it("does not capture accepted understanding or provider transport failure", async () => {
+    const accepted = makeHarness();
+    await accepted.handler.handle(handleInput());
+    expect(accepted.rejectionCapture).not.toHaveBeenCalled();
+
+    const providerFailure = makeHarness({ understandingFailure: true });
+    await providerFailure.handler.handle(handleInput());
+    expect(providerFailure.rejectionCapture).not.toHaveBeenCalled();
+  });
+
+  it("keeps the same safe fallback when rejection persistence fails", async () => {
+    const harness = makeHarness({
+      understandingRawOutput: "not-json-private-output",
+      evidenceCaptureStatus: "persistence_failed",
+    });
+
+    await expect(harness.handler.handle(handleInput())).resolves.toEqual({
+      replied: false,
+      reason: "understanding_failed",
+    });
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue.mock.calls[0]?.[0]).toMatchObject({
+      payload: expect.objectContaining({ replyText: V2_SAFE_FAILURE_REPLY_TEXT }),
+    });
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "v2.understanding",
+        metadata: expect.objectContaining({
+          evidenceCaptureStatus: "persistence_failed",
+        }),
+      }),
+    ]));
   });
 
   it("classifies tenant reads before understanding as decision failure", async () => {
@@ -875,9 +987,8 @@ describe("V2LiveConversationHandler", () => {
   });
 
   it("recusa a prosa que inventa preço e responde com o texto autorizado", async () => {
-    const harness = makeHarness({
-      verbalizedText: "Fecho para você por R$ 199,00 hoje.",
-    });
+    const rejectedText = "Fecho para você por R$ 199,00 hoje.";
+    const harness = makeHarness({ verbalizedText: rejectedText });
 
     await harness.handler.handle(handleInput());
 
@@ -903,6 +1014,61 @@ describe("V2LiveConversationHandler", () => {
           model: "deterministic-fallback",
           promptVersion: "deterministic-renderer.v1",
           verbalizationViolations: "missing_authorized_value,unauthorized_number",
+        }),
+      }),
+    ]));
+    expect(harness.rejectionCapture).toHaveBeenCalledOnce();
+    expect(harness.rejectionCapture).toHaveBeenCalledWith({
+      organizationId: clinic.id,
+      conversationId: conversation.id,
+      inboundEventId,
+      turnId: inboundEventId,
+      stage: "response_verbalization",
+      modelId: "gpt-4o-mini",
+      promptVersion: "response-verbalization.v7",
+      contractVersion: "response-verbalization.v1",
+      attempt: 1,
+      rawOutput: rejectedText,
+      issues: [
+        { path: [], code: "missing_authorized_value" },
+        { path: [], code: "unauthorized_number" },
+      ],
+      occurredAt: now,
+    });
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "response.validated",
+        metadata: expect.objectContaining({
+          rejectionStage: "response_verbalization",
+          rejectionCodes: "missing_authorized_value,unauthorized_number",
+          evidenceCaptureStatus: "stored",
+          evidenceRef: "opaque-evidence-ref",
+        }),
+      }),
+    ]));
+    expect(JSON.stringify(harness.trace.getEvents(turnId))).not.toContain(rejectedText);
+  });
+
+  it("keeps the authorized response when rejected verbalization evidence cannot persist", async () => {
+    const harness = makeHarness({
+      verbalizedText: "Fecho para você por R$ 199,00 hoje.",
+      evidenceCaptureStatus: "persistence_failed",
+    });
+
+    await expect(harness.handler.handle(handleInput())).resolves.toEqual({ replied: true });
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          replyText: expect.stringContaining("R$ 800,00"),
+        }),
+      }),
+      expect.anything(),
+    );
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "response.validated",
+        metadata: expect.objectContaining({
+          evidenceCaptureStatus: "persistence_failed",
         }),
       }),
     ]));
