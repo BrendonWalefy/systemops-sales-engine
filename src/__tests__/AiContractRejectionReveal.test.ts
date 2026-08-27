@@ -19,7 +19,7 @@ vi.mock("@/infrastructure/repositories/drizzle-ai-contract-rejection-store", () 
 }));
 
 import { revealAiContractRejection } from "@/application/observability/reveal-ai-contract-rejection";
-import { GET } from "@/app/api/owner/clinics/[clinicId]/ai-contract-rejections/[rejectionId]/route";
+import { POST } from "@/app/api/owner/clinics/[clinicId]/ai-contract-rejections/[rejectionId]/route";
 
 const KEY = "83".repeat(32);
 const NOW = new Date("2026-08-27T03:00:00.000Z");
@@ -166,7 +166,10 @@ describe("reveal AI contract rejection", () => {
   });
 
   it("requires Owner and returns one no-store response for the exact clinic", async () => {
-    const response = await GET(new Request("http://systemops.test"), {
+    const response = await POST(new Request("http://systemops.test", {
+      method: "POST",
+      headers: { Origin: "http://systemops.test" },
+    }), {
       params: Promise.resolve({
         clinicId: ORGANIZATION_ID,
         rejectionId: REJECTION_ID,
@@ -191,7 +194,10 @@ describe("reveal AI contract rejection", () => {
   ])("returns indistinguishable 404 for %s", async (_label, session) => {
     routeMocks.readSession.mockResolvedValue(session);
 
-    const response = await GET(new Request("http://systemops.test"), {
+    const response = await POST(new Request("http://systemops.test", {
+      method: "POST",
+      headers: { Origin: "http://systemops.test" },
+    }), {
       params: Promise.resolve({
         clinicId: ORGANIZATION_ID,
         rejectionId: REJECTION_ID,
@@ -205,7 +211,10 @@ describe("reveal AI contract rejection", () => {
 
   it("does not reveal another tenant through the owner route", async () => {
     routeMocks.findRevealable.mockResolvedValue(null);
-    const response = await GET(new Request("http://systemops.test"), {
+    const response = await POST(new Request("http://systemops.test", {
+      method: "POST",
+      headers: { Origin: "http://systemops.test" },
+    }), {
       params: Promise.resolve({
         clinicId: OTHER_ORGANIZATION_ID,
         rejectionId: REJECTION_ID,
@@ -217,5 +226,25 @@ describe("reveal AI contract rejection", () => {
       OTHER_ORGANIZATION_ID,
       REJECTION_ID,
     );
+  });
+
+  it.each([
+    ["missing origin", undefined],
+    ["cross origin", "https://attacker.example"],
+  ])("rejects an explicit reveal with %s", async (_label, origin) => {
+    const headers = origin ? { Origin: origin } : undefined;
+    const response = await POST(new Request("http://systemops.test", {
+      method: "POST",
+      headers,
+    }), {
+      params: Promise.resolve({
+        clinicId: ORGANIZATION_ID,
+        rejectionId: REJECTION_ID,
+      }),
+    });
+
+    expect(response.status).toBe(404);
+    expect(routeMocks.findRevealable).not.toHaveBeenCalled();
+    expect(routeMocks.recordRevealAudit).not.toHaveBeenCalled();
   });
 });

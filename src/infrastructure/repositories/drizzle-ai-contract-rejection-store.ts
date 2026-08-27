@@ -189,6 +189,7 @@ implements AiContractRejectionStore {
       from ai_contract_rejections
       where organization_id = ${organizationId}::uuid
         and conversation_id = ${conversationId}::uuid
+        and metadata_expires_at > now()
       order by created_at asc, id asc
       limit ${boundedLimit(limit, 100)}
     `));
@@ -221,6 +222,9 @@ implements AiContractRejectionStore {
       from ai_contract_rejections
       where organization_id = ${organizationId}::uuid
         and id = ${rejectionId}::uuid
+        and metadata_expires_at > now()
+        and raw_expires_at > now()
+        and encrypted_output is not null
       limit 1
     `));
     const row = rows[0];

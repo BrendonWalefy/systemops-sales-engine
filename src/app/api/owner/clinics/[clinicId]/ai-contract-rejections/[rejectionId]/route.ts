@@ -17,12 +17,23 @@ function notFound(): NextResponse {
   );
 }
 
-export async function GET(
-  _request: Request,
+function hasSameOrigin(request: Request): boolean {
+  const origin = request.headers.get("origin");
+  if (!origin) return false;
+  try {
+    return new URL(origin).origin === new URL(request.url).origin;
+  } catch {
+    return false;
+  }
+}
+
+export async function POST(
+  request: Request,
   { params }: {
     params: Promise<{ clinicId: string; rejectionId: string }>;
   },
 ): Promise<NextResponse> {
+  if (!hasSameOrigin(request)) return notFound();
   const session = await readSession();
   if (!session || session.role !== "owner") return notFound();
 

@@ -27,6 +27,10 @@ import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resol
 import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 import { RuntimeAiContractRejectionRecorder } from "@/infrastructure/observability/runtime-ai-contract-rejection-recorder";
 import { sealAiEvidence } from "@/infrastructure/crypto/ai-evidence-vault";
+import {
+  isAiEvidenceCaptureEnabled,
+  type AiEvidenceRuntimeEnvironment,
+} from "@/infrastructure/crypto/ai-evidence-readiness";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleAiContractRejectionStore } from "@/infrastructure/repositories/drizzle-ai-contract-rejection-store";
 import { DrizzleClinicAutomationPolicyReader } from "@/infrastructure/repositories/drizzle-clinic-automation-policy-reader";
@@ -47,13 +51,9 @@ import { DrizzleV2ConversationHandoffStore } from "@/infrastructure/repositories
 import { requireV2ConversationHandoff } from "@/application/conversation-v2/v2-conversation-handoff";
 import { resolveClinicVoiceConfig } from "@/lib/tts-send";
 
-type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
+type RuntimeEnvironment = AiEvidenceRuntimeEnvironment;
 
-export function isAiEvidenceCaptureEnabled(env: RuntimeEnvironment): boolean {
-  const configured = env.AI_EVIDENCE_CAPTURE_ENABLED?.trim().toLowerCase();
-  if (configured === undefined) return true;
-  return configured === "true";
-}
+export { isAiEvidenceCaptureEnabled };
 
 export class V2LiveProviderConfigurationError extends Error {
   readonly code = "v2_understanding_provider_unavailable";

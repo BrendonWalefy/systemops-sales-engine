@@ -54,6 +54,13 @@ describe("AI contract rejection evidence architecture", () => {
       "sem backfill",
       "AI_EVIDENCE_CAPTURE_ENABLED=false",
       "não altera authority V2",
+      "1.500 ms",
+      "POST",
+      "same-origin",
+      "aiContractRejectionRawBacklogPossible",
+      "aiContractRejectionMetadataBacklogPossible",
+      "0104",
+      "lock",
     ]) {
       expect(runbook).toContain(required);
     }

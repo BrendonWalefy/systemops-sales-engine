@@ -297,10 +297,31 @@ describe("Cycle I Drizzle engine policy and sanitized comparison persistence", (
         conversationV2Comparisons: 1,
         aiContractRejectionRawExpired: 2,
         aiContractRejectionMetadataDeleted: 3,
+        aiContractRejectionRawBacklogPossible: false,
+        aiContractRejectionMetadataBacklogPossible: false,
       },
     });
     expect(rejectionCleanupMock.expireRaw).toHaveBeenCalledOnce();
     expect(rejectionCleanupMock.deleteExpiredMetadata).toHaveBeenCalledOnce();
+  });
+
+  it("reports a possible bounded evidence cleanup backlog", async () => {
+    dbMock.select
+      .mockReturnValueOnce(selectRows([]))
+      .mockReturnValueOnce(selectRows([]));
+    rejectionCleanupMock.expireRaw.mockResolvedValueOnce(500);
+    rejectionCleanupMock.deleteExpiredMetadata.mockResolvedValueOnce(500);
+
+    const response = await cleanupExpiredTraces(
+      new NextRequest("https://example.test/api/cron/decision-trace-cleanup"),
+    );
+
+    await expect(response.json()).resolves.toMatchObject({
+      deleted: {
+        aiContractRejectionRawBacklogPossible: true,
+        aiContractRejectionMetadataBacklogPossible: true,
+      },
+    });
   });
 
   it("still attempts comparison cleanup when decision-trace cleanup fails", async () => {
@@ -312,6 +333,22 @@ describe("Cycle I Drizzle engine policy and sanitized comparison persistence", (
       new NextRequest("https://example.test/api/cron/decision-trace-cleanup"),
     )).rejects.toThrow(/decision trace cleanup unavailable/i);
     expect(dbMock.select).toHaveBeenCalledTimes(2);
+    expect(rejectionCleanupMock.expireRaw).toHaveBeenCalledOnce();
+    expect(rejectionCleanupMock.deleteExpiredMetadata).toHaveBeenCalledOnce();
+  });
+
+  it("attempts metadata cleanup even when raw evidence expiry fails", async () => {
+    dbMock.select
+      .mockReturnValueOnce(selectRows([]))
+      .mockReturnValueOnce(selectRows([]));
+    rejectionCleanupMock.expireRaw.mockRejectedValueOnce(
+      new Error("raw evidence cleanup unavailable"),
+    );
+
+    await expect(cleanupExpiredTraces(
+      new NextRequest("https://example.test/api/cron/decision-trace-cleanup"),
+    )).rejects.toThrow(/raw evidence cleanup unavailable/i);
+    expect(rejectionCleanupMock.deleteExpiredMetadata).toHaveBeenCalledOnce();
   });
 
   it("deletes comparison rows in clinic reset and reports the count", async () => {

@@ -278,6 +278,29 @@ describe("AI contract rejection durable evidence", () => {
     expect(summaries[0]).not.toHaveProperty("outputSha256");
   });
 
+  it("hides expired metadata from list and reveal before physical cleanup", async () => {
+    const fixture = await createAuthorityFixture("Evidence expired read fence");
+    const store = new DrizzleAiContractRejectionStore();
+    const captured = await recorder(store).capture({
+      ...input(fixture, "expired but not cleaned"),
+      occurredAt: new Date("2026-07-01T03:00:00.000Z"),
+    });
+
+    await expect(store.listByConversation(
+      fixture.organizationId,
+      fixture.conversationId,
+    )).resolves.toEqual([]);
+    await expect(store.findRevealable(
+      fixture.organizationId,
+      captured.evidenceRef!,
+    )).resolves.toBeNull();
+    expect(await testDb().select({ id: aiContractRejections.id })
+      .from(aiContractRejections)
+      .where(eq(aiContractRejections.id, captured.evidenceRef!))).toEqual([
+        { id: captured.evidenceRef },
+      ]);
+  });
+
   it("records reveal audit only for the exact rejection and tenant", async () => {
     const fixture = await createAuthorityFixture("Evidence audit");
     const store = new DrizzleAiContractRejectionStore();

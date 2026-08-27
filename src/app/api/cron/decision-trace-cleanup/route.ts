@@ -19,16 +19,21 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }).deleteExpired(now),
     rejectionStore.expireRaw(now),
   ]);
+  const [metadataResult] = await Promise.allSettled([
+    rejectionStore.deleteExpiredMetadata(now),
+  ]);
   if (decisionTraceResult.status === "rejected") throw decisionTraceResult.reason;
   if (comparisonResult.status === "rejected") throw comparisonResult.reason;
   if (rawExpiryResult.status === "rejected") throw rawExpiryResult.reason;
-  const metadataDeleted = await rejectionStore.deleteExpiredMetadata(now);
+  if (metadataResult.status === "rejected") throw metadataResult.reason;
   return NextResponse.json({
     deleted: {
       decisionTraces: decisionTraceResult.value,
       conversationV2Comparisons: comparisonResult.value,
       aiContractRejectionRawExpired: rawExpiryResult.value,
-      aiContractRejectionMetadataDeleted: metadataDeleted,
+      aiContractRejectionMetadataDeleted: metadataResult.value,
+      aiContractRejectionRawBacklogPossible: rawExpiryResult.value === 500,
+      aiContractRejectionMetadataBacklogPossible: metadataResult.value === 500,
     },
   });
 }
