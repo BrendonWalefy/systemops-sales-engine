@@ -6,6 +6,7 @@ import { runV2ResponsePipeline } from "@/conversation-core/composer/response-pip
 import type {
   ResponseVerbalizerPort,
   SpeakerProfile,
+  VerbalizationRejectionObserver,
   VerbalizationOutcome,
 } from "@/conversation-core/composer/verbalization";
 import type { ActionResult, Decision, OutcomeSchema, OutcomeTypeOf } from "@/conversation-core/decision";
@@ -26,6 +27,7 @@ export type ResponseStageInput<OutcomeType extends string> = Readonly<{
     verbalizer: ResponseVerbalizerPort;
     speaker: SpeakerProfile;
     timeoutMs?: number;
+    onRejection?: VerbalizationRejectionObserver;
   }>;
 }>;
 

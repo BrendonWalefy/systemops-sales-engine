@@ -987,9 +987,8 @@ describe("V2LiveConversationHandler", () => {
   });
 
   it("recusa a prosa que inventa preço e responde com o texto autorizado", async () => {
-    const harness = makeHarness({
-      verbalizedText: "Fecho para você por R$ 199,00 hoje.",
-    });
+    const rejectedText = "Fecho para você por R$ 199,00 hoje.";
+    const harness = makeHarness({ verbalizedText: rejectedText });
 
     await harness.handler.handle(handleInput());
 
@@ -1015,6 +1014,61 @@ describe("V2LiveConversationHandler", () => {
           model: "deterministic-fallback",
           promptVersion: "deterministic-renderer.v1",
           verbalizationViolations: "missing_authorized_value,unauthorized_number",
+        }),
+      }),
+    ]));
+    expect(harness.rejectionCapture).toHaveBeenCalledOnce();
+    expect(harness.rejectionCapture).toHaveBeenCalledWith({
+      organizationId: clinic.id,
+      conversationId: conversation.id,
+      inboundEventId,
+      turnId: inboundEventId,
+      stage: "response_verbalization",
+      modelId: "gpt-4o-mini",
+      promptVersion: "response-verbalization.v7",
+      contractVersion: "response-verbalization.v1",
+      attempt: 1,
+      rawOutput: rejectedText,
+      issues: [
+        { path: [], code: "missing_authorized_value" },
+        { path: [], code: "unauthorized_number" },
+      ],
+      occurredAt: now,
+    });
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "response.validated",
+        metadata: expect.objectContaining({
+          rejectionStage: "response_verbalization",
+          rejectionCodes: "missing_authorized_value,unauthorized_number",
+          evidenceCaptureStatus: "stored",
+          evidenceRef: "opaque-evidence-ref",
+        }),
+      }),
+    ]));
+    expect(JSON.stringify(harness.trace.getEvents(turnId))).not.toContain(rejectedText);
+  });
+
+  it("keeps the authorized response when rejected verbalization evidence cannot persist", async () => {
+    const harness = makeHarness({
+      verbalizedText: "Fecho para você por R$ 199,00 hoje.",
+      evidenceCaptureStatus: "persistence_failed",
+    });
+
+    await expect(harness.handler.handle(handleInput())).resolves.toEqual({ replied: true });
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          replyText: expect.stringContaining("R$ 800,00"),
+        }),
+      }),
+      expect.anything(),
+    );
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "response.validated",
+        metadata: expect.objectContaining({
+          evidenceCaptureStatus: "persistence_failed",
         }),
       }),
     ]));

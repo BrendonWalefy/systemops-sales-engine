@@ -10,6 +10,7 @@ import { validateVerbalizedText } from "@/conversation-core/composer/verbalizati
 import type {
   ResponseVerbalizerPort,
   SpeakerProfile,
+  VerbalizationRejectionObserver,
   VerbalizationOutcome,
 } from "@/conversation-core/composer/verbalization";
 import type {
@@ -50,6 +51,7 @@ export async function runV2ResponsePipeline<OutcomeType extends string>(input: {
     verbalizer: ResponseVerbalizerPort;
     speaker: SpeakerProfile;
     timeoutMs?: number;
+    onRejection?: VerbalizationRejectionObserver;
   };
 }): Promise<V2ResponsePipelineResult> {
   const plan = snapshotV2AuthorizedResponsePlan(input.plan);
@@ -119,11 +121,24 @@ export async function runV2ResponsePipeline<OutcomeType extends string>(input: {
     }
     const checked = validateVerbalizedText({ text: candidate, surface });
     if (!checked.valid) {
+      const latencyMs = elapsed();
+      if (typeof candidate === "string" && requested.onRejection) {
+        try {
+          await requested.onRejection(Object.freeze({
+            rawOutput: candidate,
+            modelId,
+            latencyMs,
+            violations: Object.freeze([...checked.violations]),
+          }));
+        } catch {
+          // Evidence is best-effort; the deterministic response remains safe.
+        }
+      }
       return {
         outcome: {
           status: "rejected",
           modelId,
-          latencyMs: elapsed(),
+          latencyMs,
           violations: checked.violations,
         },
         text: null,

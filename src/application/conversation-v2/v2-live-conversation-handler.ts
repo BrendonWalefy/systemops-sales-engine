@@ -241,6 +241,10 @@ export class V2LiveConversationHandler implements ConversationHandler {
       codes: string;
       capture: AiContractRejectionCaptureResult;
     }> | null = null;
+    let verbalizationRejection: Readonly<{
+      codes: string;
+      capture: AiContractRejectionCaptureResult;
+    }> | null = null;
 
     const trace = async (
       stage: "v2.understanding" | "v2.decision" | "v2.action_result"
@@ -539,6 +543,16 @@ export class V2LiveConversationHandler implements ConversationHandler {
             verbalizationViolations: validation.verbalization.status === "rejected"
               ? validation.verbalization.violations.join(",")
               : "",
+            ...(verbalizationRejection
+              ? {
+                  rejectionStage: "response_verbalization",
+                  rejectionCodes: verbalizationRejection.codes,
+                  evidenceCaptureStatus: verbalizationRejection.capture.status,
+                  ...(verbalizationRejection.capture.evidenceRef
+                    ? { evidenceRef: verbalizationRejection.capture.evidenceRef }
+                    : {}),
+                }
+              : {}),
             latencyMs: validation.latencyMs,
           });
           if (validation.source === "fallback") {
@@ -564,7 +578,36 @@ export class V2LiveConversationHandler implements ConversationHandler {
           style: configuration.style,
           composer: new DeterministicResponseComposer(),
           verbalization: this.deps.verbalizer
-            ? { verbalizer: this.deps.verbalizer, speaker: configuration.speaker }
+            ? {
+                verbalizer: this.deps.verbalizer,
+                speaker: configuration.speaker,
+                onRejection: async (rejection) => {
+                  const authoritativeTurnId = context.inboundAuthority?.inboundEventId;
+                  const capture = authoritativeTurnId
+                    ? await captureAiContractRejectionBestEffort(
+                        this.deps.aiContractRejectionRecorder,
+                        {
+                          organizationId: context.clinicId,
+                          conversationId: context.conversationId,
+                          inboundEventId: authoritativeTurnId,
+                          turnId: authoritativeTurnId,
+                          stage: "response_verbalization",
+                          modelId: rejection.modelId,
+                          promptVersion: this.deps.verbalizer!.promptVersion,
+                          contractVersion: "response-verbalization.v1",
+                          attempt: 1,
+                          rawOutput: rejection.rawOutput,
+                          issues: rejection.violations.map((code) => ({ path: [], code })),
+                          occurredAt: new Date(turnNow!.getTime()),
+                        },
+                      )
+                    : { status: "persistence_failed" as const };
+                  verbalizationRejection = Object.freeze({
+                    codes: rejection.violations.join(","),
+                    capture,
+                  });
+                },
+              }
             : undefined,
         },
       });

@@ -97,6 +97,10 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     // resposta saiu determinística e nunca por qual regra — e a operação não
     // sabe se o gate está protegendo ou apenas atrapalhando.
     "verbalizationViolations",
+    "rejectionStage",
+    "rejectionCodes",
+    "evidenceCaptureStatus",
+    "evidenceRef",
   ],
   "response.fallback_applied": [
     "action",
