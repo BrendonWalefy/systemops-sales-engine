@@ -2,7 +2,7 @@
 
 **Data:** 2026-08-26
 
-**Status:** desenho aprovado em conversa; especificação escrita aguardando revisão do owner
+**Status:** arquitetura aprovada; pronta para plano executável e implementação TDD
 
 **Escopo:** saídas produzidas por modelos no runtime conversacional V2 que são rejeitadas por contratos determinísticos antes do envio
 
@@ -69,6 +69,28 @@ Existe também uma divergência concreta no código atual: o JSON Schema enviado
 10. **Idempotência:** repetir a mesma rejeição do mesmo turno não cria evidência duplicada.
 11. **Limite de tamanho:** uma saída acima do limite não é truncada e apresentada como completa; mantém hash, tamanho e estado `oversized` sem ciphertext.
 12. **Contrato explícito:** validação estrutural e validação semântica são estágios diferentes e rastreáveis.
+13. **Responsabilidade preservada:** observabilidade pode registrar uma rejeição, mas nunca decide intenção, risco, capability, texto autorizado, fallback, handoff, outbox ou entrega.
+14. **Sem vazamento por contrato:** texto bruto não participa de `Understanding`, `VerbalizationOutcome`, exceções públicas, retorno do handler ou Decision Trace; ele atravessa somente a callback estreita da rejeição e o adapter criptográfico.
+
+### 5.1 Donos de cada responsabilidade
+
+| Responsabilidade | Dono canônico | Limite desta mudança |
+| --- | --- | --- |
+| Formato estrutural de Understanding | `domain-packs/dental/understanding` | Exporta o único schema Zod usado pelo adapter OpenAI e pelo parser. |
+| Regras semânticas de Understanding | validador semântico dental | Devolve issues fechadas; não gera texto nem executa efeitos. |
+| Geração do Understanding | adapter OpenAI | Retorna somente o conteúdo bruto em memória; não valida regra de negócio nem persiste evidência. |
+| Orquestração parse/validação | `DentalUnderstandingProvider` | Decodifica, valida e notifica a callback de rejeição; não conhece Drizzle, chave ou autorização Owner. |
+| Plano do que pode ser dito | `V2AuthorizedResponsePlan` | Continua como única autoridade de conteúdo; a evidência não o altera. |
+| Verbalização | `ResponseVerbalizerPort` | Escolhe palavras dentro da superfície autorizada; não decide fatos ou efeitos. |
+| Aceitação do texto | `ResponseValidator` / response pipeline | Aceita ou recusa e escolhe o fallback já existente; notifica a rejeição sem expor o raw no outcome. |
+| Contexto tenant/turno | handler V2 live | Associa a rejeição ao tenant, conversation, inbound e turn exatos; não criptografa nem escreve SQL. |
+| Captura observável | porta `AiContractRejectionRecorder` | Recebe somente rejeições, retorna status sanitizado e nunca lança para o fluxo de negócio. |
+| Criptografia | `ai-evidence-vault` | Criptografa/decriptografa com AAD e chave dedicada; não consulta banco ou sessão. |
+| Persistência e retenção | repositório Drizzle | Prova escopo tenant/inbound/conversation no statement e aplica dedupe/cleanup bounded. |
+| Revelação | serviço/rota Owner | Autoriza sessão, audita, decripta em memória e responde `no-store`; não altera a evidência. |
+| Correlação operacional | Decision Trace | Guarda somente estágio, códigos, contagens e referência opaca; nunca guarda raw, hash ou ciphertext. |
+
+Se uma otimização futura de chamadas ao modelo exigir misturar esses donos, ela não pertence a esta mudança. A estratégia híbrida de uma ou duas chamadas será especificada e medida separadamente depois que esta evidência estiver disponível; menos chamadas é uma otimização, não justificativa para fundir responsabilidades.
 
 ## 6. Alternativas consideradas
 
@@ -134,7 +156,7 @@ type CaptureAiContractRejectionInput = Readonly<{
   promptVersion: string;
   contractVersion: string;
   attempt: number;
-  rawOutput: string;
+  rawOutput: string | null;
   issues: readonly AiContractRejectionIssue[];
   occurredAt: Date;
 }>;
@@ -147,6 +169,7 @@ O resultado da porta informa apenas:
 - `stored`, com uma referência opaca;
 - `deduplicated`;
 - `oversized`;
+- `no_raw_output`;
 - `encryption_unavailable`;
 - `persistence_failed`.
 
@@ -210,7 +233,7 @@ Toda alteração começa em `src/infrastructure/db/schema.ts` e usa `drizzle-kit
 | `contract_version` | versão do contrato que rejeitou |
 | `attempt` | inteiro entre 1 e o budget do estágio |
 | `issues` | JSONB sanitizado, não vazio, somente `path` e `code` |
-| `output_sha256` | digest hexadecimal do conteúdo bruto antes da criptografia |
+| `output_sha256` | digest hexadecimal dos bytes brutos; usa o digest de zero bytes quando `rawOutput=null`, distinguido por `capture_status=no_raw_output` |
 | `output_bytes` | tamanho UTF-8 original |
 | `capture_status` | `stored`, `oversized`, `no_raw_output`, `encryption_unavailable`, `expired` |
 | `encrypted_output` | ciphertext nullable; obrigatório somente em `stored` |
@@ -268,7 +291,7 @@ O limite do conteúdo bruto é 64 KiB UTF-8. Acima disso, a linha mantém hash, 
 
 ### 13.1 Understanding
 
-`OpenAIDentalUnderstandingModel` preserva o texto bruto somente até o parse. A boundary de geração devolve um envelope `{ rawOutput, decodedOutput }`; JSON inválido continua oferecendo `rawOutput` à captura.
+`OpenAIDentalUnderstandingModel` preserva e devolve somente o texto bruto em memória, ou `null` quando o provider não entrega conteúdo. Ele não executa `JSON.parse`: JSON inválido continua disponível à callback de captura, e o conteúdo bruto nunca entra em `Understanding` ou numa exceção pública.
 
 `DentalUnderstandingProvider` executa em ordem:
 
