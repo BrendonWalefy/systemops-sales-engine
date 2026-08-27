@@ -180,4 +180,30 @@ describe("runtime AI contract rejection recorder", () => {
       },
     }, input)).resolves.toEqual({ status: "persistence_failed" });
   });
+
+  it("aborts a stalled persistence request within the capture deadline", async () => {
+    let observedSignal: AbortSignal | undefined;
+    const stalledStore: AiContractRejectionWriter = {
+      async insert(_input, options) {
+        observedSignal = options?.signal;
+        return await new Promise((resolve, reject) => {
+          options?.signal?.addEventListener("abort", () => {
+            reject(new Error("capture aborted"));
+          }, { once: true });
+          void resolve;
+        });
+      },
+    };
+    const boundedRecorder = new RuntimeAiContractRejectionRecorder({
+      store: stalledStore,
+      generateId: () => REJECTION_ID,
+      seal: (rawOutput, aad) => sealAiEvidence(rawOutput, aad, KEY),
+      captureTimeoutMs: 5,
+    });
+
+    await expect(boundedRecorder.capture(baseInput("stalled raw"))).resolves.toEqual({
+      status: "persistence_failed",
+    });
+    expect(observedSignal?.aborted).toBe(true);
+  });
 });

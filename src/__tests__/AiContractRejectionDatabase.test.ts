@@ -42,7 +42,16 @@ const databaseMock = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/infrastructure/db/client", () => ({ db: databaseMock.proxy }));
+vi.mock("@/infrastructure/db/client", () => ({
+  db: databaseMock.proxy,
+  executeAbortableDatabaseStatement: (
+    statement: unknown,
+    signal: AbortSignal,
+  ) => {
+    if (signal.aborted) throw signal.reason;
+    return (databaseMock.proxy as TestDb).execute(statement as never);
+  },
+}));
 
 type TestDb = ReturnType<typeof drizzleNodePostgres>;
 

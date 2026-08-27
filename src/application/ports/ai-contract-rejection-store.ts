@@ -70,7 +70,10 @@ export type RecordAiContractRejectionRevealAuditInput = Readonly<{
 }>;
 
 export interface AiContractRejectionWriter {
-  insert(input: AiContractRejectionPersistenceInput): Promise<Readonly<{
+  insert(
+    input: AiContractRejectionPersistenceInput,
+    options?: Readonly<{ signal?: AbortSignal }>,
+  ): Promise<Readonly<{
     created: boolean;
     evidenceRef: string;
   }>>;

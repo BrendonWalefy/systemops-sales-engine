@@ -14,7 +14,10 @@ import type {
   RecordAiContractRejectionRevealAuditInput,
   RevealableAiContractRejection,
 } from "@/application/ports/ai-contract-rejection-store";
-import { db } from "@/infrastructure/db/client";
+import {
+  db,
+  executeAbortableDatabaseStatement,
+} from "@/infrastructure/db/client";
 
 type QueryResultLike = Readonly<{ rows?: readonly Record<string, unknown>[] }>;
 
@@ -82,8 +85,12 @@ export class DrizzleAiContractRejectionStore
 implements AiContractRejectionStore {
   async insert(
     input: AiContractRejectionPersistenceInput,
+    options: Readonly<{ signal?: AbortSignal }> = {},
   ): Promise<Readonly<{ created: boolean; evidenceRef: string }>> {
-    const inserted = rowsOf<InsertRow>(await db.execute(sql`
+    const execute = (statement: ReturnType<typeof sql>) => options.signal
+      ? executeAbortableDatabaseStatement(statement, options.signal)
+      : db.execute(statement);
+    const inserted = rowsOf<InsertRow>(await execute(sql`
       insert into ai_contract_rejections (
         id,
         organization_id,
@@ -141,7 +148,7 @@ implements AiContractRejectionStore {
       return { created: true, evidenceRef: inserted[0].id };
     }
 
-    const existing = rowsOf<InsertRow>(await db.execute(sql`
+    const existing = rowsOf<InsertRow>(await execute(sql`
       select id
       from ai_contract_rejections
       where organization_id = ${input.organizationId}::uuid

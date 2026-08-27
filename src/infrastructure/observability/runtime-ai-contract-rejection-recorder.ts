@@ -17,17 +17,20 @@ import {
 export const AI_EVIDENCE_MAX_RAW_BYTES = 65_536;
 export const AI_EVIDENCE_RAW_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
 export const AI_EVIDENCE_METADATA_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
+export const AI_EVIDENCE_CAPTURE_TIMEOUT_MS = 1_500;
 
 type RuntimeAiContractRejectionRecorderDependencies = Readonly<{
   store: AiContractRejectionWriter;
   generateId?: () => string;
   seal?: (rawOutput: string, aad: AiEvidenceAad) => string;
+  captureTimeoutMs?: number;
 }>;
 
 export class RuntimeAiContractRejectionRecorder
 implements AiContractRejectionRecorder {
   private readonly generateId: () => string;
   private readonly seal: (rawOutput: string, aad: AiEvidenceAad) => string;
+  private readonly captureTimeoutMs: number;
 
   constructor(
     private readonly dependencies: RuntimeAiContractRejectionRecorderDependencies,
@@ -35,6 +38,8 @@ implements AiContractRejectionRecorder {
     this.generateId = dependencies.generateId ?? randomUUID;
     this.seal = dependencies.seal ?? ((rawOutput, aad) =>
       sealAiEvidence(rawOutput, aad));
+    this.captureTimeoutMs = dependencies.captureTimeoutMs
+      ?? AI_EVIDENCE_CAPTURE_TIMEOUT_MS;
   }
 
   async capture(
@@ -68,6 +73,11 @@ implements AiContractRejectionRecorder {
       }
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => {
+      controller.abort(new Error("AI evidence capture deadline exceeded"));
+    }, this.captureTimeoutMs);
+    timeout.unref?.();
     try {
       const persisted = await this.dependencies.store.insert({
         rejectionId,
@@ -96,13 +106,15 @@ implements AiContractRejectionRecorder {
         ),
         occurredAt: new Date(input.occurredAt.getTime()),
         aad,
-      });
+      }, { signal: controller.signal });
       return {
         status: persisted.created ? captureStatus : "deduplicated",
         evidenceRef: persisted.evidenceRef,
       };
     } catch {
       return { status: "persistence_failed" };
+    } finally {
+      clearTimeout(timeout);
     }
   }
 }
