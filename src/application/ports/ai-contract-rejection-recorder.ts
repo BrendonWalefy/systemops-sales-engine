@@ -25,6 +25,44 @@ export type AiContractRejectionIssue = Readonly<{
   code: AiContractRejectionIssueCode;
 }>;
 
+const AI_CONTRACT_REJECTION_SAFE_PATH_SEGMENTS = new Set([
+  "version",
+  "request",
+  "dialogueMove",
+  "entities",
+  "service",
+  "date",
+  "period",
+  "time",
+  "serviceCandidates",
+  "quantity",
+  "ordinal",
+  "signals",
+  "purchaseIntent",
+  "priceSensitivity",
+  "sentiment",
+  "objection",
+  "safety",
+  "optOut",
+  "requestsHuman",
+  "emergency",
+  "confidence",
+  "ambiguity",
+  "kind",
+  "candidates",
+]);
+
+export function sanitizeAiContractRejectionIssuePath(
+  path: readonly string[],
+): readonly string[] {
+  const sanitized: string[] = [];
+  for (const segment of path) {
+    if (!AI_CONTRACT_REJECTION_SAFE_PATH_SEGMENTS.has(segment)) break;
+    sanitized.push(segment);
+  }
+  return Object.freeze(sanitized);
+}
+
 export type CaptureAiContractRejectionInput = Readonly<{
   organizationId: string;
   conversationId: string;

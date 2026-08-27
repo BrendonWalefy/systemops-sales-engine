@@ -4,6 +4,7 @@ import type {
   AiContractRejectionRecorder,
   CaptureAiContractRejectionInput,
 } from "@/application/ports/ai-contract-rejection-recorder";
+import { sanitizeAiContractRejectionIssuePath } from "@/application/ports/ai-contract-rejection-recorder";
 import type {
   AiContractRejectionWriter,
   AiEvidenceAad,
@@ -80,7 +81,7 @@ implements AiContractRejectionRecorder {
         contractVersion: input.contractVersion,
         attempt: input.attempt,
         issues: Object.freeze(input.issues.map((issue) => Object.freeze({
-          path: Object.freeze([...issue.path]),
+          path: sanitizeAiContractRejectionIssuePath(issue.path),
           code: issue.code,
         }))),
         outputSha256,

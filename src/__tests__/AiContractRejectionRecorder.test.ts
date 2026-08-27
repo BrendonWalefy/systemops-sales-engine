@@ -131,6 +131,25 @@ describe("runtime AI contract rejection recorder", () => {
     expect(JSON.stringify(store.inputs[0])).not.toContain("private raw");
   });
 
+  it("removes untrusted issue path segments before persistence", async () => {
+    const store = new RecordingStore();
+    const privatePath = "patient-phone-5511999999999";
+
+    await recorder(store).capture({
+      ...baseInput("private raw"),
+      issues: [{
+        path: ["entities", privatePath, "service"],
+        code: "schema_unknown_key",
+      }],
+    });
+
+    expect(store.inputs[0]?.issues).toEqual([{
+      path: ["entities"],
+      code: "schema_unknown_key",
+    }]);
+    expect(JSON.stringify(store.inputs[0]?.issues)).not.toContain(privatePath);
+  });
+
   it("reports a retry of the same durable tuple as deduplicated", async () => {
     const store = new RecordingStore();
     store.created = false;

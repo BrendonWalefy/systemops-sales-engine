@@ -6,6 +6,7 @@ import type {
   AiContractRejectionIssue,
   AiContractRejectionStage,
 } from "@/application/ports/ai-contract-rejection-recorder";
+import { sanitizeAiContractRejectionIssuePath } from "@/application/ports/ai-contract-rejection-recorder";
 import {
   dentalUnderstandingStructureSchema,
   validateDentalUnderstandingSemantics,
@@ -91,7 +92,7 @@ function freezeIssues(
   issues: readonly AiContractRejectionIssue[],
 ): readonly AiContractRejectionIssue[] {
   return Object.freeze(issues.map((issue) => Object.freeze({
-    path: Object.freeze([...issue.path]),
+    path: sanitizeAiContractRejectionIssuePath(issue.path),
     code: issue.code,
   })));
 }
@@ -103,12 +104,7 @@ function structuralIssues(
   for (const issue of issues) {
     const path = issue.path.map(String);
     if (issue.code === "unrecognized_keys") {
-      for (const key of issue.keys) {
-        mapped.push({
-          path: [...path, String(key)],
-          code: "schema_unknown_key",
-        });
-      }
+      mapped.push({ path, code: "schema_unknown_key" });
       continue;
     }
     if (issue.code === "invalid_type") {

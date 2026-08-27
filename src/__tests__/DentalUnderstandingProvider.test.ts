@@ -232,6 +232,31 @@ describe("provider dental de Understanding", () => {
     expect(JSON.stringify(error)).not.toContain(rawOutput);
   });
 
+  it("never exposes an untrusted unknown-key name in structural issue metadata", async () => {
+    const privateUnknownKey = "patient-phone-5511999999999";
+    const rawOutput = JSON.stringify(validUnderstanding({
+      [privateUnknownKey]: "private",
+    }));
+    const onContractRejection = vi.fn().mockResolvedValue(undefined);
+    const provider = new DentalUnderstandingProvider({
+      modelId: "fake-dental-model",
+      generate: vi.fn().mockResolvedValue(rawOutput),
+    });
+
+    const error = await captureThrown(() => provider.understand(
+      understandingInput,
+      { onContractRejection } as never,
+    ));
+
+    const observed = onContractRejection.mock.calls[0]?.[0];
+    expect(observed.issues).toContainEqual({
+      path: [],
+      code: "schema_unknown_key",
+    });
+    expect(JSON.stringify(observed.issues)).not.toContain(privateUnknownKey);
+    expect(JSON.stringify(error)).not.toContain(privateUnknownKey);
+  });
+
   it("captures a semantic rejection separately from structural parsing", async () => {
     const rawOutput = JSON.stringify(validUnderstanding({
       entities: { ...validUnderstanding().entities, service: null },
