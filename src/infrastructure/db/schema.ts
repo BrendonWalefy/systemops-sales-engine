@@ -22,6 +22,7 @@ import type { CommercialDiagnosticSnapshot } from "@/application/onboarding/comm
 import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
 import type { PostAppointmentRule } from "@/domain/entities/post-appointment-rule";
 import type { DecisionTraceRecord } from "@/core/observability/DecisionTrace";
+import type { AiContractRejectionIssue } from "@/application/ports/ai-contract-rejection-recorder";
 import type { BusinessSchedule } from "@/core/scheduling/BusinessSchedule";
 import { sql } from "drizzle-orm";
 
@@ -180,6 +181,31 @@ export const outboundAuthorizationKindEnum = pgEnum(
     "recovery",
     "legacy",
   ],
+);
+
+export const aiContractRejectionStageEnum = pgEnum(
+  "ai_contract_rejection_stage",
+  [
+    "understanding_structural",
+    "understanding_semantic",
+    "response_verbalization",
+  ],
+);
+
+export const aiContractRejectionCaptureStatusEnum = pgEnum(
+  "ai_contract_rejection_capture_status",
+  [
+    "stored",
+    "oversized",
+    "no_raw_output",
+    "encryption_unavailable",
+    "expired",
+  ],
+);
+
+export const aiContractRejectionAccessActionEnum = pgEnum(
+  "ai_contract_rejection_access_action",
+  ["raw_output_revealed"],
 );
 
 // Categoria de saída para políticas do Channel Safety Engine (gates no sender).
@@ -1010,6 +1036,10 @@ export const inboundEvents = pgTable(
     orgProviderMessageUnique: uniqueIndex(
       "inbound_events_org_provider_message_unique",
     ).on(table.clinicId, table.provider, table.providerMessageId),
+    idOrgUnique: unique("inbound_events_id_org_unique").on(
+      table.id,
+      table.clinicId,
+    ),
     streamOrgFk: foreignKey({
       name: "inbound_events_stream_org_fk",
       columns: [table.streamId, table.clinicId],
@@ -1252,6 +1282,134 @@ export const decisionTraces = pgTable(
       "decision_traces_conversation_updated_at_idx",
     ).on(table.conversationId, table.updatedAt),
     expiresAtIdx: index("decision_traces_expires_at_idx").on(table.expiresAt),
+  }),
+);
+
+export const aiContractRejections = pgTable(
+  "ai_contract_rejections",
+  {
+    id: uuid("id").primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    conversationId: uuid("conversation_id").notNull(),
+    inboundEventId: uuid("inbound_event_id").notNull(),
+    turnId: text("turn_id").notNull(),
+    stage: aiContractRejectionStageEnum("stage").notNull(),
+    modelId: text("model_id").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    contractVersion: text("contract_version").notNull(),
+    attempt: integer("attempt").notNull(),
+    issues: jsonb("issues").$type<readonly AiContractRejectionIssue[]>().notNull(),
+    outputSha256: text("output_sha256").notNull(),
+    outputBytes: integer("output_bytes").notNull(),
+    captureStatus: aiContractRejectionCaptureStatusEnum("capture_status")
+      .notNull(),
+    encryptedOutput: text("encrypted_output"),
+    rawExpiresAt: timestamp("raw_expires_at", { withTimezone: true }).notNull(),
+    metadataExpiresAt: timestamp("metadata_expires_at", { withTimezone: true })
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    idOrgUnique: unique("ai_contract_rejections_id_org_unique").on(
+      table.id,
+      table.organizationId,
+    ),
+    conversationOrgFk: foreignKey({
+      name: "ai_contract_rejections_conversation_org_fk",
+      columns: [table.conversationId, table.organizationId],
+      foreignColumns: [conversations.id, conversations.clinicId],
+    }).onDelete("cascade"),
+    inboundEventOrgFk: foreignKey({
+      name: "ai_contract_rejections_inbound_event_org_fk",
+      columns: [table.inboundEventId, table.organizationId],
+      foreignColumns: [inboundEvents.id, inboundEvents.clinicId],
+    }).onDelete("cascade"),
+    attemptCheck: check(
+      "ai_contract_rejections_attempt_check",
+      sql`${table.attempt} >= 1`,
+    ),
+    issuesCheck: check(
+      "ai_contract_rejections_issues_check",
+      sql`jsonb_typeof(${table.issues}) = 'array' and jsonb_array_length(${table.issues}) > 0`,
+    ),
+    outputShaCheck: check(
+      "ai_contract_rejections_output_sha256_check",
+      sql`${table.outputSha256} ~ '^[a-f0-9]{64}$'`,
+    ),
+    outputBytesCheck: check(
+      "ai_contract_rejections_output_bytes_check",
+      sql`${table.outputBytes} >= 0`,
+    ),
+    turnInboundCheck: check(
+      "ai_contract_rejections_turn_inbound_check",
+      sql`${table.turnId} = ${table.inboundEventId}::text`,
+    ),
+    retentionCheck: check(
+      "ai_contract_rejections_retention_check",
+      sql`${table.createdAt} <= ${table.rawExpiresAt} and ${table.rawExpiresAt} <= ${table.metadataExpiresAt}`,
+    ),
+    ciphertextStatusCheck: check(
+      "ai_contract_rejections_ciphertext_status_check",
+      sql`(
+        (${table.captureStatus} = 'stored' and ${table.encryptedOutput} is not null)
+        or
+        (${table.captureStatus} <> 'stored' and ${table.encryptedOutput} is null)
+      )`,
+    ),
+    dedupeUnique: uniqueIndex("ai_contract_rejections_dedupe_unique").on(
+      table.organizationId,
+      table.turnId,
+      table.stage,
+      table.outputSha256,
+    ),
+    organizationCreatedAtIdx: index(
+      "ai_contract_rejections_org_created_at_idx",
+    ).on(table.organizationId, table.createdAt.desc()),
+    organizationTurnCreatedAtIdx: index(
+      "ai_contract_rejections_org_turn_created_at_idx",
+    ).on(table.organizationId, table.turnId, table.createdAt),
+    rawExpiryIdx: index("ai_contract_rejections_raw_expiry_idx")
+      .on(table.rawExpiresAt)
+      .where(sql`${table.encryptedOutput} is not null`),
+    metadataExpiryIdx: index(
+      "ai_contract_rejections_metadata_expiry_idx",
+    ).on(table.metadataExpiresAt),
+  }),
+);
+
+export const aiContractRejectionAccessAudits = pgTable(
+  "ai_contract_rejection_access_audits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    rejectionId: uuid("rejection_id").notNull(),
+    ownerSubject: text("owner_subject").notNull(),
+    action: aiContractRejectionAccessActionEnum("action").notNull(),
+    accessedAt: timestamp("accessed_at", { withTimezone: true }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    rejectionOrgFk: foreignKey({
+      name: "ai_contract_rejection_access_audits_rejection_org_fk",
+      columns: [table.rejectionId, table.organizationId],
+      foreignColumns: [aiContractRejections.id, aiContractRejections.organizationId],
+    }).onDelete("cascade"),
+    retentionCheck: check(
+      "ai_contract_rejection_access_audits_retention_check",
+      sql`${table.accessedAt} <= ${table.expiresAt}`,
+    ),
+    rejectionAccessedAtIdx: index(
+      "ai_contract_rejection_access_audits_rejection_accessed_idx",
+    ).on(table.organizationId, table.rejectionId, table.accessedAt),
+    expiresAtIdx: index(
+      "ai_contract_rejection_access_audits_expires_at_idx",
+    ).on(table.expiresAt),
   }),
 );
 

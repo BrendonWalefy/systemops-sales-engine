@@ -82,6 +82,21 @@ describe("WhatsApp durable stream authority schema", () => {
       "identity_conflict",
       "history_only",
     ]);
+    expect(enumValues("aiContractRejectionStageEnum")).toEqual([
+      "understanding_structural",
+      "understanding_semantic",
+      "response_verbalization",
+    ]);
+    expect(enumValues("aiContractRejectionCaptureStatusEnum")).toEqual([
+      "stored",
+      "oversized",
+      "no_raw_output",
+      "encryption_unavailable",
+      "expired",
+    ]);
+    expect(enumValues("aiContractRejectionAccessActionEnum")).toEqual([
+      "raw_output_revealed",
+    ]);
   });
 
   it("declares stream and non-null provider-scope alias authority", () => {
@@ -279,6 +294,64 @@ describe("WhatsApp durable stream authority schema", () => {
     ]));
     expect(control.indexes).toHaveLength(0);
   });
+
+  it("persists tenant-scoped AI rejection evidence with bounded retention", () => {
+    const rejections = tableConfig("aiContractRejections");
+    expect(rejections.columns.map((column) => column.name)).toEqual([
+      "id",
+      "organization_id",
+      "conversation_id",
+      "inbound_event_id",
+      "turn_id",
+      "stage",
+      "model_id",
+      "prompt_version",
+      "contract_version",
+      "attempt",
+      "issues",
+      "output_sha256",
+      "output_bytes",
+      "capture_status",
+      "encrypted_output",
+      "raw_expires_at",
+      "metadata_expires_at",
+      "created_at",
+    ]);
+    expect(uniqueNames(rejections.uniqueConstraints)).toContain(
+      "ai_contract_rejections_id_org_unique",
+    );
+    expect(foreignKeyNames(rejections.foreignKeys)).toEqual(expect.arrayContaining([
+      "ai_contract_rejections_conversation_org_fk",
+      "ai_contract_rejections_inbound_event_org_fk",
+    ]));
+    expect(checkNames(rejections.checks)).toEqual(expect.arrayContaining([
+      "ai_contract_rejections_attempt_check",
+      "ai_contract_rejections_issues_check",
+      "ai_contract_rejections_output_sha256_check",
+      "ai_contract_rejections_turn_inbound_check",
+      "ai_contract_rejections_retention_check",
+      "ai_contract_rejections_ciphertext_status_check",
+    ]));
+    expect(indexNames(rejections.indexes)).toEqual(expect.arrayContaining([
+      "ai_contract_rejections_dedupe_unique",
+      "ai_contract_rejections_org_created_at_idx",
+      "ai_contract_rejections_org_turn_created_at_idx",
+      "ai_contract_rejections_raw_expiry_idx",
+      "ai_contract_rejections_metadata_expiry_idx",
+    ]));
+
+    const audits = tableConfig("aiContractRejectionAccessAudits");
+    expect(foreignKeyNames(audits.foreignKeys)).toContain(
+      "ai_contract_rejection_access_audits_rejection_org_fk",
+    );
+    expect(checkNames(audits.checks)).toContain(
+      "ai_contract_rejection_access_audits_retention_check",
+    );
+    expect(indexNames(audits.indexes)).toEqual(expect.arrayContaining([
+      "ai_contract_rejection_access_audits_rejection_accessed_idx",
+      "ai_contract_rejection_access_audits_expires_at_idx",
+    ]));
+  });
 });
 
 describe("WhatsApp durable stream authority generated migrations", () => {
@@ -303,11 +376,15 @@ describe("WhatsApp durable stream authority generated migrations", () => {
         'public.conversation_runtime_control',
         'public.whatsapp_streams',
         'public.whatsapp_stream_aliases',
-        'public.conversation_authority'
+        'public.conversation_authority',
+        'public.ai_contract_rejections',
+        'public.ai_contract_rejection_access_audits'
       ]) as requested(name)
       order by name
     `);
     expect(tables.rows.map((row) => row.name)).toEqual([
+      "ai_contract_rejection_access_audits",
+      "ai_contract_rejections",
       "conversation_authority",
       "conversation_runtime_control",
       "whatsapp_stream_aliases",
@@ -329,11 +406,20 @@ describe("WhatsApp durable stream authority generated migrations", () => {
         'outbound_messages_authorization_claim_job_id_jobs_id_fk',
         'conversation_authority_version_check',
         'conversation_runtime_control_global_key_check',
-        'conversation_runtime_control_version_check'
+        'conversation_runtime_control_version_check',
+        'inbound_events_id_org_unique',
+        'ai_contract_rejections_id_org_unique',
+        'ai_contract_rejections_conversation_org_fk',
+        'ai_contract_rejections_inbound_event_org_fk',
+        'ai_contract_rejections_turn_inbound_check',
+        'ai_contract_rejections_retention_check',
+        'ai_contract_rejections_ciphertext_status_check',
+        'ai_contract_rejection_access_audits_rejection_org_fk',
+        'ai_contract_rejection_access_audits_retention_check'
       ])
       order by conname
     `);
-    expect(constraints.rows.map((row) => row.conname)).toHaveLength(12);
+    expect(constraints.rows.map((row) => row.conname)).toHaveLength(21);
 
     const indexes = await db.execute<{ indexname: string }>(sql`
       select indexname
@@ -347,11 +433,16 @@ describe("WhatsApp durable stream authority generated migrations", () => {
           'messages_inbound_event_unique',
           'outbound_messages_live_stream_authority_unique',
           'whatsapp_stream_aliases_active_identity_unique',
-          'whatsapp_streams_active_conversation_unique'
+          'whatsapp_streams_active_conversation_unique',
+          'ai_contract_rejections_dedupe_unique',
+          'ai_contract_rejections_org_created_at_idx',
+          'ai_contract_rejections_org_turn_created_at_idx',
+          'ai_contract_rejections_raw_expiry_idx',
+          'ai_contract_rejections_metadata_expiry_idx'
         ])
       order by indexname
     `);
-    expect(indexes.rows.map((row) => row.indexname)).toHaveLength(8);
+    expect(indexes.rows.map((row) => row.indexname)).toHaveLength(13);
 
     const oldProviderIndex = await db.execute<{ name: string | null }>(sql`
       select to_regclass('public.inbound_events_provider_message_unique')::text as name

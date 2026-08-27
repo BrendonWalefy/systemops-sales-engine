@@ -196,9 +196,13 @@ git commit -m "feat(v2): define encrypted rejection evidence boundary"
 
 **Files:**
 - Modify: `src/infrastructure/db/schema.ts`
-- Create: the single Drizzle-generated migration with sequence `0104`
+- Create: Drizzle-generated migration `0104` for the prerequisite
+  `inbound_events_id_org_unique`
+- Create: Drizzle-generated migration `0105` for evidence enums, tables,
+  constraints and indexes
 - Modify: `drizzle/meta/_journal.json`
 - Create: the Drizzle-generated `drizzle/meta/0104_snapshot.json`
+- Create: the Drizzle-generated `drizzle/meta/0105_snapshot.json`
 - Create: `src/infrastructure/repositories/drizzle-ai-contract-rejection-store.ts`
 - Create: `src/__tests__/AiContractRejectionDatabase.test.ts`
 - Modify: `src/__tests__/DatabaseTestCommandIsolation.test.ts`
@@ -242,10 +246,15 @@ Define closed pg enums for rejection stage, capture status and access action. Ad
 ```bash
 npm run db:generate
 git diff -- src/infrastructure/db/schema.ts drizzle
-rg -n "DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM|ALTER COLUMN.*TYPE" drizzle/0104_*.sql
+rg -n "DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM|ALTER COLUMN.*TYPE" drizzle/0104_*.sql drizzle/0105_*.sql
 ```
 
-Expected: exactly one additive `0104` migration; destructive scan has no matches. Do not edit the generated SQL or snapshot.
+Expected: two additive generated migrations. `0104` must establish the composite
+inbound key before `0105` creates the FK that references it. This split is required
+because PostgreSQL validates the referenced uniqueness when the FK statement runs,
+while Drizzle may order a newly generated table/FK before an unrelated constraint in
+one migration. The destructive scan has no matches. Do not edit generated SQL or
+snapshots.
 
 - [ ] **Step 5: Implement the bounded store**
 
@@ -522,7 +531,10 @@ npm run test:db:schema
 npm run db:check
 ```
 
-Expected: zero skipped database tests and additive migration from an empty embedded database. Re-run the migration suite over a disposable database initialized through migration `0103` to prove upgrade to `0104` with existing tenant/inbound/conversation rows.
+Expected: zero skipped database tests and additive migrations from an empty embedded
+database. Re-run the migration suite over a disposable database initialized through
+migration `0103` to prove the ordered upgrade through `0104` and `0105` with existing
+tenant/inbound/conversation rows.
 
 - [ ] **Step 4: Run canonical verification on a clean tree**
 
