@@ -56,6 +56,15 @@ function request(): VerbalizationRequest {
     statements: authorizedStatementsFor(validation.draft),
     style: { tone: "warm", verbosity: "concise", greeting: "omit", emoji: "none" } as const,
     speaker,
+    conversationBrief: Object.freeze({
+      request: "price-of-service",
+      dialogueMove: "repeats",
+      sentiment: "negative",
+      purchaseIntent: "high",
+      priceSensitivity: "high",
+      hasObjection: true,
+      ambiguityKind: "service",
+    }),
   });
 }
 
@@ -76,7 +85,7 @@ describe("verbalizador vivo de resposta", () => {
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ model: "gpt-4o-mini" }));
   });
 
-  it("entrega ao modelo as intenções, os números permitidos e a voz da empresa", async () => {
+  it("entrega intenções autorizadas e contexto conversacional fechado", async () => {
     const create = clientReturning("Fica R$ 290,00.");
     const verbalizer = createLiveResponseVerbalizer({ chat: { completions: { create } } });
 
@@ -88,6 +97,15 @@ describe("verbalizador vivo de resposta", () => {
       allowedValues: ["R$ 290,00"],
       moneyValues: ["R$ 290,00"],
       maxQuestions: 0,
+      conversationBrief: {
+        request: "price-of-service",
+        dialogueMove: "repeats",
+        sentiment: "negative",
+        purchaseIntent: "high",
+        priceSensitivity: "high",
+        hasObjection: true,
+        ambiguityKind: "service",
+      },
       speaker: {
         agentName: "Marina",
         organizationName: "Casa Exemplo",
@@ -96,6 +114,11 @@ describe("verbalizador vivo de resposta", () => {
         guidelines: ["Responder primeiro, perguntar depois."],
       },
     });
+    const serialized = JSON.stringify(payload);
+    expect(serialized).not.toContain("leadMessage");
+    expect(serialized).not.toContain("history");
+    expect(serialized).not.toContain("entities");
+    expect(serialized).not.toContain("objectionText");
   });
 
   it("não manda a frase da máquina, para o modelo escrever do sentido e não copiar", async () => {

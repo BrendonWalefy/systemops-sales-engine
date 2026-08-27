@@ -13,6 +13,10 @@ import type {
   VerbalizationRejectionObserver,
   VerbalizationOutcome,
 } from "@/conversation-core/composer/verbalization";
+import {
+  EMPTY_RESPONSE_CONVERSATION_BRIEF,
+  type ResponseConversationBrief,
+} from "@/conversation-core/composer/response-conversation-brief";
 import type {
   ComposerStyle,
   CoreResponse,
@@ -50,6 +54,7 @@ export async function runV2ResponsePipeline<OutcomeType extends string>(input: {
   verbalization?: {
     verbalizer: ResponseVerbalizerPort;
     speaker: SpeakerProfile;
+    conversationBrief?: ResponseConversationBrief;
     timeoutMs?: number;
     onRejection?: VerbalizationRejectionObserver;
   };
@@ -106,6 +111,8 @@ export async function runV2ResponsePipeline<OutcomeType extends string>(input: {
           surface,
           style,
           speaker: requested.speaker,
+          conversationBrief: requested.conversationBrief
+            ?? EMPTY_RESPONSE_CONVERSATION_BRIEF,
         }), { signal: controller.signal }),
         new Promise<never>((_resolve, reject) => {
           expired = setTimeout(() => {
