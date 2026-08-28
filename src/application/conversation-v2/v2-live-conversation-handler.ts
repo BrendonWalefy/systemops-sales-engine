@@ -22,6 +22,7 @@ import type {
 } from "@/application/ports/conversation-handler";
 import type { ConversationState } from "@/conversation-core/capability/contract";
 import type { ComposerStyle } from "@/conversation-core/composer/contract";
+import type { ResponseConversationBrief } from "@/conversation-core/composer/response-conversation-brief";
 import { DeterministicResponseComposer } from "@/conversation-core/composer/deterministic-composer";
 import type { SpeakerProfile, VerbalizationOutcome } from "@/conversation-core/composer/verbalization";
 import type { ActionResult } from "@/conversation-core/decision";
@@ -42,6 +43,7 @@ import {
   DENTAL_OUTCOME_SCHEMA,
   type DentalPolicy,
 } from "@/domain-packs/dental";
+import { buildDentalResponseConversationBrief } from "@/domain-packs/dental/response-conversation-brief";
 import { dentalEffectDecisionIdentity } from "@/application/conversation-v2/dental-intended-effects";
 import { classifyUnderstandingFailure } from "@/application/conversation-v2/understanding-failure-code";
 import {
@@ -245,6 +247,8 @@ export class V2LiveConversationHandler implements ConversationHandler {
       codes: string;
       capture: AiContractRejectionCaptureResult;
     }> | null = null;
+    let responseConversationBrief: ResponseConversationBrief | null = null;
+    let understandingCalls = 0;
 
     const trace = async (
       stage: "v2.understanding" | "v2.decision" | "v2.action_result"
@@ -311,6 +315,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
         now: new Date(turnNow.getTime()),
         understand: async () => {
           try {
+            understandingCalls += 1;
             const result = await this.deps.understanding.understand({
               leadMessage: context.inboundMessage.body,
               history: historyForUnderstanding(context, snapshot),
@@ -352,6 +357,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
               },
             });
             understandingResolved = true;
+            responseConversationBrief = buildDentalResponseConversationBrief(result);
             if (result.request === "cancel-appointment" || result.request === "reschedule-appointment") {
               handoffReason = "v2_cancel_reschedule_requires_human";
             } else if (typeof result.signals.objection === "string" && result.signals.objection.trim()) {
@@ -543,6 +549,11 @@ export class V2LiveConversationHandler implements ConversationHandler {
             verbalizationViolations: validation.verbalization.status === "rejected"
               ? validation.verbalization.violations.join(",")
               : "",
+            responseStrategy: validation.verbalization.status === "absent"
+              ? "deterministic_only"
+              : "hybrid_contextual_v1",
+            understandingCalls,
+            verbalizationCalls: validation.verbalization.status === "absent" ? 0 : 1,
             ...(verbalizationRejection
               ? {
                   rejectionStage: "response_verbalization",
@@ -577,10 +588,11 @@ export class V2LiveConversationHandler implements ConversationHandler {
         response: {
           style: configuration.style,
           composer: new DeterministicResponseComposer(),
-          verbalization: this.deps.verbalizer
+          verbalization: this.deps.verbalizer && responseConversationBrief
             ? {
                 verbalizer: this.deps.verbalizer,
                 speaker: configuration.speaker,
+                conversationBrief: responseConversationBrief,
                 onRejection: async (rejection) => {
                   const authoritativeTurnId = context.inboundAuthority?.inboundEventId;
                   const capture = authoritativeTurnId

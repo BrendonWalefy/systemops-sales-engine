@@ -17,6 +17,7 @@ import {
 } from "../src/conversation-core/composer/authorized-surface";
 import { buildDeterministicDraft } from "../src/conversation-core/composer/deterministic-composer";
 import { renderDeterministicResponse } from "../src/conversation-core/composer/deterministic-renderer";
+import { EMPTY_RESPONSE_CONVERSATION_BRIEF } from "../src/conversation-core/composer/response-conversation-brief";
 import { validateDraft } from "../src/conversation-core/composer/validator";
 import { validateVerbalizedText } from "../src/conversation-core/composer/verbalization-validator";
 import type { SpeakerProfile } from "../src/conversation-core/composer/verbalization";
@@ -201,6 +202,7 @@ async function main(): Promise<void> {
           statements: authorizedStatementsFor(validation.draft),
           style: { tone: "warm", verbosity: "concise", greeting: "omit", emoji: "none" },
           speaker,
+          conversationBrief: EMPTY_RESPONSE_CONVERSATION_BRIEF,
         }, { signal: AbortSignal.timeout(20_000) }) as string;
       } catch (error) {
         console.log(`  falhou: ${error instanceof Error ? error.message : "erro"}`);

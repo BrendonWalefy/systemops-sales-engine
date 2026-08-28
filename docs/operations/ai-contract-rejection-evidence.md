@@ -84,6 +84,9 @@ TTLs no SQL, portanto registros fisicamente atrasados nunca voltam a aparecer ne
 
 1. Localize o turno pelo `turnId`/`inboundEventId` e abra a trilha da conversa como owner.
 2. Compare estágio, códigos fechados, modelo, tamanho e estado de captura.
+   Em `response.validated`, use também `responseStrategy`, `understandingCalls` e
+   `verbalizationCalls` para distinguir o caminho híbrido contextual do renderer determinístico.
+   Esses campos são metadados fechados e nunca contêm mensagem ou resposta.
 3. Revele uma única evidência somente quando o conteúdo for indispensável à investigação.
 4. Confirme que o acesso auditado foi persistido. Falha de tenant, validade, chave, AAD ou
    auditoria responde de forma uniforme e não revela existência nem detalhe criptográfico.

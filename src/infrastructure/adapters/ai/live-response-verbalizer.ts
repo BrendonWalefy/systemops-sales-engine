@@ -61,6 +61,15 @@ export class LiveResponseVerbalizer implements ResponseVerbalizerPort {
         toneOfVoice: request.speaker.toneOfVoice,
         guidelines: [...request.speaker.guidelines],
       },
+      conversationBrief: {
+        request: request.conversationBrief.request,
+        dialogueMove: request.conversationBrief.dialogueMove,
+        sentiment: request.conversationBrief.sentiment,
+        purchaseIntent: request.conversationBrief.purchaseIntent,
+        priceSensitivity: request.conversationBrief.priceSensitivity,
+        hasObjection: request.conversationBrief.hasObjection,
+        ambiguityKind: request.conversationBrief.ambiguityKind,
+      },
     };
     const input = {
       model: this.modelId,

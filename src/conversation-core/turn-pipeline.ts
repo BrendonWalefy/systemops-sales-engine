@@ -2,6 +2,7 @@ import type { Capability, CapabilityContext, ConversationState, StructuredPolicy
 import { coordinateCapabilities } from "@/conversation-core/capability/coordinator";
 import { buildV2AuthorizedResponsePlan, canonicalizeActionResults } from "@/conversation-core/authorized-response-plan";
 import type { ComposerStyle, CoreResponse, ResponseComposerPort } from "@/conversation-core/composer/contract";
+import type { ResponseConversationBrief } from "@/conversation-core/composer/response-conversation-brief";
 import { runV2ResponsePipeline } from "@/conversation-core/composer/response-pipeline";
 import type {
   ResponseVerbalizerPort,
@@ -26,6 +27,7 @@ export type ResponseStageInput<OutcomeType extends string> = Readonly<{
   verbalization?: Readonly<{
     verbalizer: ResponseVerbalizerPort;
     speaker: SpeakerProfile;
+    conversationBrief?: ResponseConversationBrief;
     timeoutMs?: number;
     onRejection?: VerbalizationRejectionObserver;
   }>;

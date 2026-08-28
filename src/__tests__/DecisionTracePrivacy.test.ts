@@ -63,8 +63,13 @@ describe("AI contract rejection Decision Trace privacy", () => {
         rejectionCodes: "unauthorized_number",
         evidenceCaptureStatus: "stored",
         evidenceRef: "opaque-verbalization-ref",
+        responseStrategy: "hybrid_contextual_v1",
+        understandingCalls: 1,
+        verbalizationCalls: 1,
         rawOutput: privateOutput,
         rejectedText: privateOutput,
+        leadMessage: privateOutput,
+        conversationBrief: privateOutput,
       },
     } as unknown as DecisionTraceRecord);
 
@@ -73,6 +78,9 @@ describe("AI contract rejection Decision Trace privacy", () => {
       rejectionCodes: "unauthorized_number",
       evidenceCaptureStatus: "stored",
       evidenceRef: "opaque-verbalization-ref",
+      responseStrategy: "hybrid_contextual_v1",
+      understandingCalls: 1,
+      verbalizationCalls: 1,
     });
     expect(JSON.stringify(sanitized)).not.toContain(privateOutput);
   });
