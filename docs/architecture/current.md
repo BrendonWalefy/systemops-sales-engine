@@ -193,6 +193,12 @@ observabilidade continua best-effort e não muda a decisão de negócio.
 como implementação histórica/testes de referência da V1. Nenhum deles é alcançável por roots
 produtivos; comportamento ainda útil deve virar capability ou serviço V2 com contrato próprio.
 
+A decisão para trazer esses comportamentos está em
+[Expansão das capacidades de negócio no runtime V2](v2-business-capability-architecture.md), e o
+estado de cada função do produto é acompanhado na
+[Matriz executável de paridade](v2-capability-parity.md). A matriz também registra qual fonte de
+verdade e qual tela existente alimentam cada capability, evitando configuração paralela da V2.
+
 O código e seus testes não autorizam operação externa. Validação com dados
 privados aprovados, banco de Lab e qualquer operação de cliente permanecem
 gates separados descritos em [Replay e Decision Trace](replay-and-decision-trace.md).
