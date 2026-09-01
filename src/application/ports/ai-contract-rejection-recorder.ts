@@ -24,6 +24,11 @@ export type AiContractRejectionIssueCode =
   | "comparison_services_forbidden"
   | "faq_question_required"
   | "faq_question_forbidden"
+  | "quantity_forbidden"
+  | "quantity_scope_forbidden"
+  | "quantity_scope_requires_quantity"
+  | "objection_question_required"
+  | "objection_question_forbidden"
   | VerbalizationViolationCode;
 
 export type AiContractRejectionIssue = Readonly<{
@@ -44,6 +49,8 @@ const AI_CONTRACT_REJECTION_SAFE_PATH_SEGMENTS = new Set([
   "serviceCandidates",
   "faqQuestion",
   "quantity",
+  "quantityScope",
+  "objectionQuestion",
   "ordinal",
   "signals",
   "purchaseIntent",

@@ -19,6 +19,8 @@ function understanding(
       serviceCandidates: null,
       faqQuestion: null,
       quantity: null,
+      quantityScope: null,
+      objectionQuestion: null,
       ordinal: null,
     },
     signals: {
