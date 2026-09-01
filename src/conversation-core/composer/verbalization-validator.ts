@@ -131,7 +131,10 @@ export function validateVerbalizedText(input: Readonly<{
     violations.push("unauthorized_currency");
   }
 
-  if (LINK.test(text)) violations.push("unauthorized_link");
+  // Links só podem sobreviver quando fazem parte exata de um valor já
+  // autorizado. `consumeAuthorizedValues` remove esses valores completos;
+  // qualquer link restante foi acrescentado pelo verbalizador.
+  if (LINK.test(consumed.remainder)) violations.push("unauthorized_link");
   if (COMMITMENT.test(withoutAccents(text))) violations.push("unauthorized_commitment");
 
   if (violations.length > 0) {

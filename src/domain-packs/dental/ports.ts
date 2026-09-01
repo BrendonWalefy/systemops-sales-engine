@@ -3,7 +3,12 @@ import type {
 } from "@/domain-packs/dental/vocabulary";
 
 export type DentalBusinessInformationFact = Readonly<{
-  key: "address" | "business_hours" | "location_guidance";
+  key:
+    | "address"
+    | "business_hours"
+    | "location_guidance"
+    | "parking_information"
+    | "social_channels";
   value: string;
 }>;
 

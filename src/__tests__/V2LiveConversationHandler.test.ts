@@ -112,6 +112,7 @@ function makeHarness(options: {
   evidenceCaptureStatus?: "stored" | "persistence_failed";
   businessInformationTurn?: boolean;
   businessInformationMissing?: boolean;
+  businessInformationTopic?: "address" | "parking" | "social";
 } = {}) {
   const entities = (overrides: Record<string, unknown> = {}) => ({
     service: null,
@@ -144,6 +145,10 @@ function makeHarness(options: {
         address: options.businessInformationMissing ? null : "Avenida Aurora, 321",
         addressComplement: null,
         locationMessage: null,
+        parkingInformation: options.businessInformationMissing ? null : "Vagas conveniadas ao lado.",
+        socialChannels: options.businessInformationMissing
+          ? null
+          : [{ label: "Instagram", url: "https://instagram.com/systemops" }],
       }
     : clinic;
   const context: LiveTurnContext = Object.freeze({
@@ -237,7 +242,7 @@ function makeHarness(options: {
         version: UNDERSTANDING_VERSION,
         request: "business-information" as const,
         dialogueMove: "new_topic" as const,
-        entities: entities({ businessInformationTopic: "address" }),
+        entities: entities({ businessInformationTopic: options.businessInformationTopic ?? "address" }),
         signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
       };
     }
@@ -530,6 +535,28 @@ describe("V2LiveConversationHandler", () => {
         }),
       }),
     ]));
+  });
+
+  it("answers a structured social channel through the same read-only pipeline", async () => {
+    const reply = "Nosso canal é Instagram: https://instagram.com/systemops.";
+    const harness = makeHarness({
+      businessInformationTurn: true,
+      businessInformationTopic: "social",
+      verbalizedText: reply,
+    });
+
+    await expect(harness.handler.handle(handleInput("Qual é o Instagram?")))
+      .resolves.toEqual({ replied: true });
+
+    expect(harness.understandingCreate).toHaveBeenCalledOnce();
+    expect(harness.verbalizerCreate).toHaveBeenCalledOnce();
+    expect(harness.booking.book).not.toHaveBeenCalled();
+    expect(harness.persistHandoff).not.toHaveBeenCalled();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: expect.objectContaining({ replyText: reply }) }),
+      { turnId },
+    );
   });
 
   it("suppresses a reaction/sticker turn from the real reply gate before provider and outbox", async () => {

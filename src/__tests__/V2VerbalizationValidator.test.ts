@@ -177,6 +177,27 @@ describe("validador do texto verbalizado", () => {
     expect(result).toEqual({ valid: false, violations: ["unauthorized_link"] });
   });
 
+  it("aceita o link somente dentro do valor institucional autorizado", () => {
+    const value = "Instagram: https://instagram.com/systemops";
+    const text = `Nosso canal é ${value}.`;
+
+    expect(validateVerbalizedText({
+      text,
+      surface: surfaceWith({ values: [value], moneyValues: [], currencyAllowed: false }),
+    })).toEqual({ valid: true, text });
+  });
+
+  it("recusa um segundo link mesmo quando existe um link institucional autorizado", () => {
+    const value = "Instagram: https://instagram.com/systemops";
+    const result = validateVerbalizedText({
+      text: `${value}. Veja também https://example.com`,
+      surface: surfaceWith({ values: [value], moneyValues: [], currencyAllowed: false }),
+    });
+
+    expect(result.valid).toBe(false);
+    expect(result.valid === false && result.violations).toContain("unauthorized_link");
+  });
+
   it("recusa promessa em qualquer conjugação", () => {
     for (const text of [
       "Garanto o resultado que você espera.",
