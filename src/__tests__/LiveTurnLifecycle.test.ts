@@ -26,6 +26,8 @@ const organization: Organization = {
   addressComplement: null,
   mapsUrl: null,
   locationMessage: null,
+  parkingInformation: null,
+  socialChannels: null,
   timezone: "America/Sao_Paulo",
   greetingMessage: null,
   menuItems: null,

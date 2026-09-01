@@ -26,8 +26,8 @@ const factKeys: Readonly<Record<DentalBusinessInformationTopic, DentalBusinessIn
   address: "address",
   "business-hours": "business_hours",
   "location-guidance": "location_guidance",
-  parking: null,
-  social: null,
+  parking: "parking_information",
+  social: "social_channels",
 };
 const unavailableText: Readonly<Record<DentalBusinessInformationTopic, string>> = {
   address: "O endereço ainda não está cadastrado para informar.",

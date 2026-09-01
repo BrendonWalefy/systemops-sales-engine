@@ -61,6 +61,10 @@ export const OUTCOME_SEMANTIC_CLASSES = Object.freeze([
   // informar nem dado a confirmar, e convidar o lead a dizer o que precisa é a
   // única resposta verdadeira disponível.
   "engagement_invited",
+  // Respostas sociais sem efeito e sem fato de negócio. Separadas da abertura
+  // para que um agradecimento ou despedida não reabra a conversa com pergunta.
+  "social_acknowledged",
+  "conversation_closed",
 ] as const);
 
 export type OutcomeSemanticClass = typeof OUTCOME_SEMANTIC_CLASSES[number];

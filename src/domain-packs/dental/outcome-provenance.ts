@@ -87,7 +87,12 @@ const provenanceRules = [
   {
     capabilityId: "dental-reception",
     decisionKind: "ask",
-    outcomes: [outcome("reception_answered")],
+    outcomes: [outcome("reception_answered"), outcome("reception_acknowledged")],
+  },
+  {
+    capabilityId: "dental-reception",
+    decisionKind: "close",
+    outcomes: [outcome("reception_closed")],
   },
   {
     capabilityId: "dental-catalog",

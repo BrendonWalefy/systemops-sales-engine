@@ -99,6 +99,8 @@ export async function confirmDepositDecision(params: {
       addressComplement: clinic.addressComplement ?? null,
       mapsUrl: clinic.mapsUrl ?? null,
       locationMessage: clinic.locationMessage ?? null,
+      parkingInformation: clinic.parkingInformation ?? null,
+      socialChannels: clinic.socialChannels ?? null,
       timezone: clinic.timezone,
       greetingMessage: clinic.greetingMessage,
       menuItems: clinic.menuItems,
