@@ -1915,6 +1915,10 @@ export const playbookVersions = pgTable(
       .$type<{ objection: string; response: string }[]>()
       .notNull()
       .default([]),
+    faqs: jsonb("faqs")
+      .$type<{ question: string; answer: string }[]>()
+      .notNull()
+      .default([]),
     // Política de garantia estruturada. Antes vivia (quando vivia) dentro do texto
     // livre de uma objeção — a Vitalli tinha, a Ximendes não, e ninguém percebeu a
     // falta porque não existia campo para ficar vazio. `null` = não cadastrado (a IA

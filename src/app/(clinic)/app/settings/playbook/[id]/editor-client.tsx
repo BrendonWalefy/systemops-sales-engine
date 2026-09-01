@@ -26,6 +26,7 @@ import type { FieldTarget } from "@/core/intelligence/FieldComposer";
 import { useReliableAutosave } from "../use-reliable-autosave";
 
 type Objection = { objection: string; response: string };
+type FrequentlyAskedQuestion = { question: string; answer: string };
 type LibraryAsset = { id: string; title: string; type: "video" | "image" | "document" };
 type ChatMessage = { role: "user" | "assistant"; text: string; intent?: string };
 
@@ -41,6 +42,7 @@ type EditorData = {
   differentials: string[];
   commercialPolicy: string;
   objections: Objection[];
+  faqs: FrequentlyAskedQuestion[];
   warrantyPolicy: WarrantyPolicy | null;
   notes: string;
   // Seleção de mídias da biblioteca clinic-level (gerenciada em
@@ -75,8 +77,9 @@ function completude(data: EditorData): number {
   if (data.differentials.filter((d) => d.trim()).length > 0) filled++;
   if (data.commercialPolicy.trim()) filled++;
   if (data.objections.filter((o) => o.objection.trim()).length > 0) filled++;
+  if (data.faqs.some((faq) => faq.question.trim() && faq.answer.trim())) filled++;
   if (data.warrantyPolicy) filled++;
-  return Math.round((filled / 8) * 100);
+  return Math.round((filled / 9) * 100);
 }
 
 type ObjectionFilter = "all" | "pending";
@@ -105,6 +108,7 @@ function toPlaybookVersionPayload(data: EditorData): PlaybookVersionPayload {
     differentials: data.differentials.filter((d) => d.trim()),
     commercialPolicy: data.commercialPolicy || null,
     objections: data.objections.filter((o) => o.objection.trim()),
+    faqs: data.faqs.filter((faq) => faq.question.trim() && faq.answer.trim()),
     warrantyPolicy: data.warrantyPolicy
       ? {
           offersWarranty: data.warrantyPolicy.offersWarranty,
@@ -681,6 +685,19 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage, b
   function updateObjection(index: number, field: keyof Objection, value: string) {
     const next = [...data.objections]; next[index] = { ...next[index], [field]: value }; updateVersion({ objections: next });
   }
+  function updateFaq(index: number, field: keyof FrequentlyAskedQuestion, value: string) {
+    const next = [...data.faqs];
+    next[index] = { ...next[index]!, [field]: value };
+    updateVersion({ faqs: next });
+  }
+  function addFaq() {
+    if (data.faqs.length < 20) {
+      updateVersion({ faqs: [...data.faqs, { question: "", answer: "" }] });
+    }
+  }
+  function removeFaq(index: number) {
+    updateVersion({ faqs: data.faqs.filter((_, candidate) => candidate !== index) });
+  }
   function addObjection() {
     const nextIndex = data.objections.length;
     updateVersion({ objections: [...data.objections, { objection: "", response: "" }] });
@@ -1026,7 +1043,47 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage, b
                 </FieldGroup>
               </EditorSection>
 
-              <EditorSection step="3" title="Objeções e respostas" description="Cada objeção fica em uma linha; abra somente a resposta que estiver editando.">
+              <EditorSection step="3" title="Perguntas frequentes" description="Respostas factuais que a IA pode usar quando reconhecer a pergunta cadastrada.">
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {data.faqs.map((faq, index) => (
+                    <div key={index} style={{ border: "1px solid rgba(255,255,255,0.07)", borderRadius: "12px", padding: "12px", background: "rgba(255,255,255,0.025)", display: "flex", flexDirection: "column", gap: "8px" }}>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                        <input
+                          type="text"
+                          aria-label={`Pergunta frequente ${index + 1}`}
+                          maxLength={120}
+                          value={faq.question}
+                          onChange={(event) => updateFaq(index, "question", event.target.value)}
+                          placeholder="Ex.: Preciso passar por avaliação?"
+                          style={{ ...inputStyle, flex: 1 }}
+                        />
+                        <button type="button" aria-label={`Remover pergunta frequente ${index + 1}`} onClick={() => removeFaq(index)} style={iconBtnStyle}>
+                          <X size={13} />
+                        </button>
+                      </div>
+                      <textarea
+                        aria-label={`Resposta frequente ${index + 1}`}
+                        maxLength={240}
+                        rows={3}
+                        value={faq.answer}
+                        onChange={(event) => updateFaq(index, "answer", event.target.value)}
+                        placeholder="Resposta factual e verificável, sem promessa de resultado."
+                        style={{ ...inputStyle, resize: "vertical" }}
+                      />
+                    </div>
+                  ))}
+                  {data.faqs.length === 0 && (
+                    <div style={{ border: "1px dashed rgba(255,255,255,0.11)", borderRadius: "10px", color: "#71717a", fontSize: "12px", padding: "14px" }}>
+                      Nenhuma pergunta frequente cadastrada.
+                    </div>
+                  )}
+                  <button type="button" disabled={data.faqs.length >= 20} onClick={addFaq} style={{ ...addBtnStyle, opacity: data.faqs.length >= 20 ? 0.5 : 1 }}>
+                    <Plus size={13} /> Adicionar pergunta
+                  </button>
+                </div>
+              </EditorSection>
+
+              <EditorSection step="4" title="Objeções e respostas" description="Cada objeção fica em uma linha; abra somente a resposta que estiver editando.">
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                   <div className="objection-toolbar">
                     <div style={{ display: "flex", flexDirection: "column", gap: "10px", minWidth: 0 }}>
@@ -1156,7 +1213,7 @@ export function PlaybookEditorClient({ id, name, initialData, greetingMessage, b
                 </div>
               </EditorSection>
 
-              <EditorSection step="4" title="Mídias que a IA pode enviar" description="Selecione, da biblioteca da clínica, os vídeos e fotos que este playbook autoriza a IA a enviar automaticamente ao lead.">
+              <EditorSection step="5" title="Mídias que a IA pode enviar" description="Selecione, da biblioteca da clínica, os vídeos e fotos que este playbook autoriza a IA a enviar automaticamente ao lead.">
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                   {libraryAssets.length === 0 ? (
                     <div style={{ border: "1px dashed rgba(255,255,255,0.11)", borderRadius: "10px", color: "#71717a", fontSize: "12px", lineHeight: 1.5, padding: "14px", background: "rgba(255,255,255,0.02)" }}>
