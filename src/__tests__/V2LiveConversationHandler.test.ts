@@ -1134,7 +1134,7 @@ describe("V2LiveConversationHandler", () => {
       expect.objectContaining({
         stage: "v2.decision",
         metadata: expect.objectContaining({
-          capabilityIds: "dental-catalog",
+          capabilityIds: "dental-commercial",
           decisionKinds: "answer",
           intendedEffects: "none",
         }),
@@ -1142,7 +1142,7 @@ describe("V2LiveConversationHandler", () => {
       expect.objectContaining({
         stage: "v2.action_result",
         metadata: expect.objectContaining({
-          outcomeTypes: "catalog_answered",
+          outcomeTypes: "commercial_answered",
           semanticClasses: "information_authorized",
         }),
       }),

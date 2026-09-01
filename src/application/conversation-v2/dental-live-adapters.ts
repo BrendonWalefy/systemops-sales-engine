@@ -25,6 +25,7 @@ import type { TreatmentRepository } from "@/domain/repositories/treatment-reposi
 import type {
   DentalBusinessInformationFact,
   DentalCatalogReadPort,
+  DentalCommercialReadPort,
   DentalKnowledgeReadPort,
   DentalPlaybookKnowledgeReadPort,
   DentalSchedulingReadPort,
@@ -34,6 +35,10 @@ import type {
   DentalSlot,
   ServiceResolution,
 } from "@/domain-packs/dental/ports";
+import {
+  resolveEffectivePrice,
+  type PriceCampaignRow,
+} from "@/application/config/price-campaigns";
 
 type LiveState = Pick<
   ConversationStateMachine,
@@ -44,6 +49,12 @@ type LiveState = Pick<
 
 export type DentalLiveAdapterDependencies = {
   treatments: Pick<TreatmentRepository, "listByClinic">;
+  priceCampaigns?: Readonly<{
+    listActiveByTreatment(
+      clinicId: string,
+      now: Date,
+    ): Promise<ReadonlyMap<string, PriceCampaignRow>>;
+  }>;
   calendar: Pick<CalendarGateway, "listAvailableSlots">;
   state: LiveState;
   appointments: Pick<
@@ -295,6 +306,7 @@ export function createDentalLiveAdapters(
   knowledgeRead: DentalKnowledgeReadPort;
   playbookKnowledgeRead: DentalPlaybookKnowledgeReadPort;
   catalogRead: DentalCatalogReadPort;
+  commercialRead: DentalCommercialReadPort;
   schedulingRead: DentalSchedulingReadPort;
   schedulingWrite: DentalSchedulingWritePort;
 } {
@@ -484,6 +496,57 @@ export function createDentalLiveAdapters(
         return { kind: "unknown", evidenceRef: `treatment-catalog:${clinic.id}` };
       };
       return [resolveOne(queries[0]), resolveOne(queries[1])];
+    },
+  };
+
+  const commercialRead: DentalCommercialReadPort = {
+    async resolveService(query) {
+      const tenantTreatments = await listTenantTreatments();
+      const resolution = resolveTreatment(tenantTreatments, query);
+      if (resolution.kind === "ambiguous") {
+        return {
+          kind: "ambiguous",
+          candidates: resolution.treatments.map(({ id, name }) => ({ id, name })),
+          evidenceRef: `treatment-catalog:${clinic.id}`,
+        };
+      }
+      if (resolution.kind !== "exact") {
+        return { kind: "unknown", evidenceRef: `treatment-catalog:${clinic.id}` };
+      }
+      const campaignMap = deps.priceCampaigns
+        ? await deps.priceCampaigns.listActiveByTreatment(clinic.id, new Date(turnNow.getTime()))
+        : new Map<string, PriceCampaignRow>();
+      const tenantIds = new Set(tenantTreatments.map(({ id }) => id));
+      if ([...campaignMap.keys()].some((treatmentId) => !tenantIds.has(treatmentId))) {
+        throw new DentalLiveAdapterError("campaign tenant binding mismatch");
+      }
+      const treatment = resolution.treatment;
+      const campaign = campaignMap.get(treatment.id) ?? null;
+      const effective = resolveEffectivePrice(treatment, campaign, turnNow);
+      const effectiveCents = effective.priceKind === "fixed"
+        ? effective.priceCents ?? effective.minPriceCents
+        : effective.minPriceCents ?? effective.priceCents;
+      return {
+        kind: "exact",
+        service: {
+          id: treatment.id,
+          name: treatment.name,
+          priceDisclosable: treatment.priceQuotableInChat,
+          priceKind: effective.priceKind,
+          priceCents: effectiveCents,
+          originalPriceCents: effective.originalPriceCents,
+          campaignName: effective.campaignName,
+          campaignEndsAt: effective.campaignEndsAt,
+          quantityPrices: (treatment.quantityPrices ?? []).map((price) => ({
+            quantity: price.quantity,
+            scope: price.scope ?? "total",
+            priceCents: price.priceCents,
+          })),
+        },
+        evidenceRef: effective.campaignName !== null && campaign
+          ? `price-campaign:${campaign.id}`
+          : catalogEvidence(treatment),
+      };
     },
   };
 
@@ -1010,6 +1073,7 @@ export function createDentalLiveAdapters(
     knowledgeRead,
     playbookKnowledgeRead,
     catalogRead,
+    commercialRead,
     schedulingRead,
     schedulingWrite,
   };

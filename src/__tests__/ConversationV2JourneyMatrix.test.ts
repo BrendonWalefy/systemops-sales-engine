@@ -246,7 +246,7 @@ describe("Cycle I supported journey matrix", () => {
 
     expect(result.status).toBe("evaluated");
     if (result.status !== "evaluated") throw new Error("price journey was not evaluated");
-    expect(result.actionResults.map(({ type }) => type)).toEqual(["catalog_answered"]);
+    expect(result.actionResults.map(({ type }) => type)).toEqual(["commercial_answered"]);
     expect(result.actionResults[0]?.subject).toEqual({
       type: "service",
       id: "service-private",

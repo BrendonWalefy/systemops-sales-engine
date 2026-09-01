@@ -77,6 +77,33 @@ export type DentalCatalogReadPort = {
   ): Promise<readonly [ServiceResolution, ServiceResolution]>;
 };
 
+export type DentalCommercialQuantityPrice = Readonly<{
+  quantity: number;
+  scope: "total" | "superior" | "inferior";
+  priceCents: number;
+}>;
+
+export type DentalCommercialService = Readonly<{
+  id: string;
+  name: string;
+  priceDisclosable: boolean;
+  priceKind: "from" | "fixed";
+  priceCents: number | null;
+  originalPriceCents: number | null;
+  campaignName: string | null;
+  campaignEndsAt: Date | null;
+  quantityPrices: readonly DentalCommercialQuantityPrice[];
+}>;
+
+export type DentalCommercialServiceResolution =
+  | Readonly<{ kind: "exact"; service: DentalCommercialService; evidenceRef: string }>
+  | Readonly<{ kind: "ambiguous"; candidates: readonly { id: string; name: string }[]; evidenceRef: string }>
+  | Readonly<{ kind: "unknown"; evidenceRef: string }>;
+
+export type DentalCommercialReadPort = Readonly<{
+  resolveService(query: string): Promise<DentalCommercialServiceResolution>;
+}>;
+
 export type DentalSlot = { id: string; label: string; evidenceRef: string };
 export type DentalSlotSearchResult = {
   service: { id: string; name: string; requiresEvaluationFirst?: boolean };

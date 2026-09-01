@@ -7,13 +7,18 @@ import { validateDraft } from "@/conversation-core/composer/validator";
 import type { CapabilityContext, ConversationState } from "@/conversation-core/capability/contract";
 import { UNDERSTANDING_VERSION, type Understanding } from "@/conversation-core/understanding/schema";
 import {
-  createDentalCatalogCapability,
   createDentalReceptionCapability,
   DENTAL_OUTCOME_SCHEMA,
   type DentalPolicy,
 } from "@/domain-packs/dental/capabilities";
 import { createDentalExplanationCapability } from "@/domain-packs/dental/explanation-capability";
-import type { DentalCatalogReadPort, ServiceResolution } from "@/domain-packs/dental/ports";
+import { createDentalCommercialCapability } from "@/domain-packs/dental/commercial-capability";
+import type {
+  DentalCatalogReadPort,
+  DentalCommercialReadPort,
+  DentalCommercialServiceResolution,
+  ServiceResolution,
+} from "@/domain-packs/dental/ports";
 import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
 
 const state: ConversationState = { phase: "idle", pendingStepId: null, completedStepIds: [] };
@@ -44,6 +49,12 @@ function catalogPort(resolution: ServiceResolution): DentalCatalogReadPort {
   };
 }
 
+function commercialPort(resolution: DentalCommercialServiceResolution): DentalCommercialReadPort {
+  return { resolveService: async () => resolution };
+}
+
+const ambiguousCommercial: DentalCommercialServiceResolution = ambiguous;
+
 function understanding(overrides: Partial<Understanding<DentalRequest>> = {}): Understanding<DentalRequest> {
   return {
     version: UNDERSTANDING_VERSION,
@@ -60,7 +71,7 @@ function understanding(overrides: Partial<Understanding<DentalRequest>> = {}): U
 
 describe("serviço ambíguo vira escolha, não convite genérico", () => {
   it("oferece os candidatos reais quando o catálogo não consegue decidir", async () => {
-    const capability = createDentalCatalogCapability(catalogPort(ambiguous));
+    const capability = createDentalCommercialCapability(commercialPort(ambiguousCommercial));
     const claim = capability.claim(understanding(), state)!;
 
     const result = await capability.execute(await capability.decide(claim, context), context);
@@ -86,7 +97,7 @@ describe("serviço ambíguo vira escolha, não convite genérico", () => {
   });
 
   it("entrega ao verbalizador os dois nomes e o direito a uma pergunta", async () => {
-    const capability = createDentalCatalogCapability(catalogPort(ambiguous));
+    const capability = createDentalCommercialCapability(commercialPort(ambiguousCommercial));
     const claim = capability.claim(understanding(), state)!;
     const result = await capability.execute(await capability.decide(claim, context), context);
 
@@ -102,7 +113,7 @@ describe("serviço ambíguo vira escolha, não convite genérico", () => {
   });
 
   it("não oferece opção nenhuma quando o catálogo não conhece o pedido", async () => {
-    const capability = createDentalCatalogCapability(catalogPort({
+    const capability = createDentalCommercialCapability(commercialPort({
       kind: "unknown",
       evidenceRef: "treatment-catalog:clinic-1",
     }));
