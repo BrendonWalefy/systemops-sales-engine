@@ -163,6 +163,7 @@ export type DentalSchedulingReadPort = {
     service: string | null;
     date: string | null;
     period: string | null;
+    professional?: string | null;
     minimumLeadTimeHours: number;
     now: Date;
   }): Promise<DentalSlotSearchResult>;

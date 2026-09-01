@@ -3,6 +3,7 @@ import { createDentalLiveAdapters } from "@/application/conversation-v2/dental-l
 import type { Organization } from "@/domain/entities/clinic";
 import type { Lead } from "@/domain/entities/lead";
 import type { Treatment } from "@/domain/entities/treatment";
+import type { Professional } from "@/domain/entities/professional";
 import type { Appointment, CalendarSlot } from "@/domain/entities/calendar-slot";
 import type { Conversation } from "@/domain/entities/conversation";
 import type { EditorialConfig } from "@/application/config/editorial-config";
@@ -164,6 +165,7 @@ function setup(options: {
   conversationOverride?: Conversation;
   editorial?: EditorialConfig | null;
   priceCampaigns?: ReadonlyMap<string, PriceCampaignRow>;
+  professionals?: Professional[];
 } = {}) {
   const availableTreatments = options.treatments ?? [treatment()];
   const activeLead = options.leadOverride ?? lead;
@@ -178,19 +180,21 @@ function setup(options: {
     }),
     offerSlots: vi.fn(async (
       _conversationId: string,
-      slots: Array<{ startsAt: Date; endsAt: Date }>,
+      slots: Array<{ startsAt: Date; endsAt: Date; professionalId?: string }>,
       timezone: { formatForHuman(value: Date): string },
       treatmentName?: string,
       durationMinutes?: number,
       _ttlMinutes?: number,
       _voiceEnabled?: boolean,
       treatmentId?: string,
+      professionalId?: string,
     ) => {
       const formatted = slots.map((slot, index) => ({
         index: index + 1,
         startsAt: slot.startsAt.toISOString(),
         endsAt: slot.endsAt.toISOString(),
         label: timezone.formatForHuman(slot.startsAt),
+        ...(slot.professionalId ? { professionalId: slot.professionalId } : {}),
       }));
       stateSequence += 1;
       currentState = {
@@ -203,6 +207,7 @@ function setup(options: {
           treatmentName,
           treatmentId,
           durationMinutes,
+          ...(professionalId ? { professionalId } : {}),
         },
         supersedesStateId: null,
         createdAt: now,
@@ -213,19 +218,21 @@ function setup(options: {
     offerSlotsForTurn: vi.fn(async (
       stateId: string,
       _conversationId: string,
-      slots: Array<{ startsAt: Date; endsAt: Date }>,
+      slots: Array<{ startsAt: Date; endsAt: Date; professionalId?: string }>,
       timezone: { formatForHuman(value: Date): string },
       treatmentName?: string,
       durationMinutes?: number,
       _ttlMinutes?: number,
       _voiceEnabled?: boolean,
       treatmentId?: string,
+      professionalId?: string,
     ) => {
       const formatted = slots.map((slot, index) => ({
         index: index + 1,
         startsAt: slot.startsAt.toISOString(),
         endsAt: slot.endsAt.toISOString(),
         label: timezone.formatForHuman(slot.startsAt),
+        ...(slot.professionalId ? { professionalId: slot.professionalId } : {}),
       }));
       currentState = {
         id: stateId,
@@ -237,6 +244,7 @@ function setup(options: {
           treatmentName,
           treatmentId,
           durationMinutes,
+          ...(professionalId ? { professionalId } : {}),
         },
         supersedesStateId: null,
         createdAt: now,
@@ -308,6 +316,9 @@ function setup(options: {
   const treatments = {
     listByClinic: vi.fn().mockResolvedValue(availableTreatments),
   };
+  const professionals = {
+    listByClinic: vi.fn().mockResolvedValue(options.professionals ?? []),
+  };
   const priceCampaigns = {
     listActiveByTreatment: vi.fn().mockResolvedValue(options.priceCampaigns ?? new Map()),
   };
@@ -320,6 +331,7 @@ function setup(options: {
   };
 
   const adapters = createDentalLiveAdapters({
+    professionals,
     treatments,
     priceCampaigns,
     calendar,
@@ -350,6 +362,7 @@ function setup(options: {
     state,
     treatments,
     priceCampaigns,
+    professionals,
   };
 }
 
@@ -781,6 +794,7 @@ describe("Dental live adapters — tenant-scoped catalog", () => {
     const fixture = setup();
     expect(() => createDentalLiveAdapters({
       treatments: fixture.treatments,
+      professionals: fixture.professionals,
       calendar: fixture.calendar,
       state: fixture.state,
       appointments: fixture.appointments,
@@ -811,6 +825,102 @@ describe("Dental live adapters — tenant-scoped catalog", () => {
 });
 
 describe("Dental live adapters — persisted offers", () => {
+  it("binds an explicit active professional through discovery, persisted state and booking", async () => {
+    const professional: Professional = {
+      id: "professional-1",
+      clinicId: clinic.id,
+      name: "Dra. Marina",
+      specialty: "Dentística",
+      color: "#123456",
+      workSchedule: { 2: { startHour: 8, startMinute: 0, endHour: 18, endMinute: 0 } },
+      googleCalendarId: null,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const fixture = setup({ professionals: [professional] });
+    const discovered = await fixture.adapters.schedulingRead.listSlots({
+      service: "clareamento",
+      date: "amanhã",
+      period: "afternoon",
+      professional: "Dra. Marina",
+      minimumLeadTimeHours: 2,
+      now,
+    } as never);
+
+    expect(fixture.calendar.listAvailableSlots).toHaveBeenCalledWith(
+      expect.objectContaining({ professionalId: professional.id }),
+    );
+    const persisted = await fixture.adapters.schedulingWrite.persistSlotOffer(discovered);
+    expect(fixture.getCurrentState()?.payload).toEqual(expect.objectContaining({
+      professionalId: professional.id,
+    }));
+
+    const result = await fixture.adapters.schedulingWrite.bookSlot(persisted.slots[0]!.id);
+    expect(result.success).toBe(true);
+    expect(fixture.booking.book).toHaveBeenCalledWith(
+      expect.objectContaining({ professionalId: professional.id }),
+    );
+  });
+
+  it("fails closed for inactive, unknown, ambiguous or cross-tenant professionals", async () => {
+    const base: Professional = {
+      id: "professional-1",
+      clinicId: clinic.id,
+      name: "Dra. Marina",
+      specialty: null,
+      color: "#123456",
+      workSchedule: null,
+      googleCalendarId: null,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    for (const professionals of [
+      [{ ...base, isActive: false }],
+      [base],
+      [base, { ...base, id: "professional-2" }],
+      [{ ...base, clinicId: "other-clinic" }],
+    ]) {
+      const fixture = setup({ professionals });
+      const requested = professionals.length === 1 && professionals[0]!.isActive
+        ? "Profissional desconhecido"
+        : "Dra. Marina";
+      await expect(fixture.adapters.schedulingRead.listSlots({
+        service: "clareamento",
+        date: "amanhã",
+        period: "afternoon",
+        professional: requested,
+        minimumLeadTimeHours: 2,
+        now,
+      } as never)).rejects.toThrow(/professional.*resolution|tenant binding/i);
+      expect(fixture.calendar.listAvailableSlots).not.toHaveBeenCalled();
+    }
+  });
+
+  it("enforces the selected professional work schedule independently of the calendar adapter", async () => {
+    const fixture = setup({ professionals: [{
+      id: "professional-1",
+      clinicId: clinic.id,
+      name: "Dra. Marina",
+      specialty: null,
+      color: "#123456",
+      workSchedule: { 2: { startHour: 16, startMinute: 0, endHour: 18, endMinute: 0 } },
+      googleCalendarId: null,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    }] });
+    await expect(fixture.adapters.schedulingRead.listSlots({
+      service: "clareamento",
+      date: "amanhã",
+      period: "afternoon",
+      professional: "Dra. Marina",
+      minimumLeadTimeHours: 2,
+      now,
+    } as never)).resolves.toMatchObject({ slots: [] });
+  });
+
   it("persists only tenant slots and binds their ids to the current offer state and index", async () => {
     const foreignSlot: CalendarSlot = {
       id: "foreign-slot",
@@ -849,6 +959,7 @@ describe("Dental live adapters — persisted offers", () => {
       15,
       false,
       "treatment-whitening",
+      undefined,
     );
 
     await expect(fixture.adapters.schedulingRead.resolveOfferedSlot({
@@ -961,6 +1072,7 @@ describe("Dental live adapters — BookingService write boundary", () => {
       treatmentId: "treatment-whitening",
       valueCents: 90_000,
       origin: "ai_conversation",
+      professionalId: null,
     });
     expect(fixture.state.invalidateIfCurrent).toHaveBeenCalledWith(
       "conversation-lab",

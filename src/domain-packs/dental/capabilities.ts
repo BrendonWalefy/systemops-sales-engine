@@ -87,6 +87,7 @@ export type DentalSchedulingClaimPayload =
       serviceQuery: string | null;
       requestedDate: string | null;
       requestedPeriod: string | null;
+      requestedProfessional: string | null;
     }
   | {
       kind: "scheduling";
@@ -292,7 +293,7 @@ export type DentalOutcomeType = OutcomeTypeOf<typeof DENTAL_OUTCOME_SCHEMA>;
 
 function stringEntity(
   understanding: Understanding<DentalRequest>,
-  key: "service" | "date" | "period" | "time",
+  key: "service" | "date" | "period" | "time" | "professional",
 ): string | null {
   const value = understanding.entities[key];
   return typeof value === "string" ? value : null;
@@ -497,6 +498,7 @@ export function createDentalSchedulingCapability(
           serviceQuery: stringEntity(understanding, "service"),
           requestedDate: stringEntity(understanding, "date"),
           requestedPeriod: stringEntity(understanding, "period"),
+          requestedProfessional: stringEntity(understanding, "professional"),
         });
       }
       if (understanding.request === "confirm-slot") {
@@ -525,6 +527,7 @@ export function createDentalSchedulingCapability(
           service: claim.payload.serviceQuery,
           date: claim.payload.requestedDate,
           period: claim.payload.requestedPeriod,
+          professional: claim.payload.requestedProfessional,
           minimumLeadTimeHours: context.policy.schedulingMinimumLeadTimeHours,
           now: context.now,
         });

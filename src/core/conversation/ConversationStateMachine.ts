@@ -27,6 +27,7 @@ export type FormattedSlot = {
   startsAt: string;    // ISO UTC string
   endsAt: string;      // ISO UTC string
   label: string;       // "Seg 26/05 às 14h"
+  professionalId?: string;
 };
 
 export type SlotsOfferedPayload = {
@@ -35,6 +36,7 @@ export type SlotsOfferedPayload = {
   treatmentId?: string;
   treatmentName?: string;
   durationMinutes?: number;
+  professionalId?: string;
 };
 
 export type ProcedureListItem = {
@@ -248,13 +250,14 @@ export class ConversationStateMachine {
   // Salva oferta de slots com TTL de 15 minutos
   async offerSlots(
     conversationId: string,
-    slots: Array<{ startsAt: Date; endsAt: Date }>,
+    slots: Array<{ startsAt: Date; endsAt: Date; professionalId?: string | null }>,
     timezone: ClinicTimezone,
     treatmentName?: string,
     durationMinutes?: number,
     ttlMinutes?: number,
     voiceEnabled?: boolean,
     treatmentId?: string,
+    professionalId?: string,
   ): Promise<FormattedSlot[]> {
     return this.persistSlotOffer(
       undefined,
@@ -266,6 +269,7 @@ export class ConversationStateMachine {
       ttlMinutes,
       voiceEnabled,
       treatmentId,
+      professionalId,
     );
   }
 
@@ -274,13 +278,14 @@ export class ConversationStateMachine {
   async offerSlotsForTurn(
     stateId: string,
     conversationId: string,
-    slots: Array<{ startsAt: Date; endsAt: Date }>,
+    slots: Array<{ startsAt: Date; endsAt: Date; professionalId?: string | null }>,
     timezone: ClinicTimezone,
     treatmentName?: string,
     durationMinutes?: number,
     ttlMinutes?: number,
     voiceEnabled?: boolean,
     treatmentId?: string,
+    professionalId?: string,
   ): Promise<FormattedSlot[]> {
     return this.persistSlotOffer(
       stateId,
@@ -292,25 +297,28 @@ export class ConversationStateMachine {
       ttlMinutes,
       voiceEnabled,
       treatmentId,
+      professionalId,
     );
   }
 
   private async persistSlotOffer(
     stateId: string | undefined,
     conversationId: string,
-    slots: Array<{ startsAt: Date; endsAt: Date }>,
+    slots: Array<{ startsAt: Date; endsAt: Date; professionalId?: string | null }>,
     timezone: ClinicTimezone,
     treatmentName?: string,
     durationMinutes?: number,
     ttlMinutes?: number,
     voiceEnabled?: boolean,
     treatmentId?: string,
+    professionalId?: string,
   ): Promise<FormattedSlot[]> {
     const formatted: FormattedSlot[] = slots.map((s, i) => ({
       index: i + 1,
       startsAt: s.startsAt.toISOString(),
       endsAt: s.endsAt.toISOString(),
       label: voiceEnabled ? timezone.formatForVoice(s.startsAt) : timezone.formatForHuman(s.startsAt),
+      ...(s.professionalId ? { professionalId: s.professionalId } : {}),
     }));
 
     const expiresAt = new Date(runtimeNow().getTime() + (ttlMinutes ?? SLOT_OFFER_TTL_MINUTES) * 60_000);
@@ -320,6 +328,7 @@ export class ConversationStateMachine {
       ...(treatmentId && { treatmentId }),
       ...(treatmentName && { treatmentName }),
       ...(durationMinutes && { durationMinutes }),
+      ...(professionalId && { professionalId }),
     };
 
     await db.insert(conversationStates).values({

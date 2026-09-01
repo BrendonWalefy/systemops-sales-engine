@@ -71,6 +71,7 @@ export class BookingService {
     treatmentName?: string;
     treatmentId?: string | null;
     valueCents?: number | null;
+    professionalId?: string | null;
     // Reserva provisória já feita (fluxo de sinal). Reaproveita o hold do próprio lead
     // em vez de tentar reservar de novo e colidir consigo mesmo (slot_taken falso).
     heldReservationId?: string | null;
@@ -79,7 +80,7 @@ export class BookingService {
     // Ver docs/architecture/current.md (Agenda).
     origin: AppointmentOrigin;
   }): Promise<BookingResult> {
-    const { clinic, lead, startsAt, endsAt, treatmentName, treatmentId = null, valueCents = null, heldReservationId = null, origin } = params;
+    const { clinic, lead, startsAt, endsAt, treatmentName, treatmentId = null, valueCents = null, professionalId = null, heldReservationId = null, origin } = params;
 
     // Passo 1: Lock otimista — previne double-booking. Se veio um hold do fluxo de
     // sinal ainda pendente para o mesmo lead/slot, reaproveita-o; senão, reserva do zero.
@@ -169,7 +170,7 @@ export class BookingService {
       });
       // O gateway devolve origin: null (não conhece o chamador); a origem real é a
       // que veio no input deste serviço.
-      appointment = { ...created, treatmentId, valueCents, origin };
+      appointment = { ...created, professionalId, treatmentId, valueCents, origin };
     } catch (err) {
       if (isCalendarTenantScopeError(err)) throw err;
       console.error("[BookingService] CalendarGateway createAppointment failed:", err);
@@ -177,7 +178,7 @@ export class BookingService {
         id: crypto.randomUUID(),
         clinicId: clinic.id,
         leadId: lead.id,
-        professionalId: null,
+        professionalId,
         roomId: null, description: null,
         calendarEventId: null,
         calendarEventUrl: null,

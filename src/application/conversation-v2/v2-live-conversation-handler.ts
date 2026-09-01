@@ -309,6 +309,14 @@ export class V2LiveConversationHandler implements ConversationHandler {
       const adapters = createDentalLiveAdapters({
         ...this.deps.dental,
         ...scheduling,
+        professionals: {
+          async listByClinic(claimedClinicId: string) {
+            if (claimedClinicId !== context.clinicId) {
+              throw new V2TreatmentTenantScopeError();
+            }
+            return [...professionals];
+          },
+        },
         clinic: context.clinic,
         editorial: context.editorial,
         lead: context.lead,

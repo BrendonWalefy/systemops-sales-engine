@@ -21,7 +21,9 @@ import type { Organization } from "@/domain/entities/clinic";
 import type { Conversation } from "@/domain/entities/conversation";
 import type { Lead } from "@/domain/entities/lead";
 import type { Treatment } from "@/domain/entities/treatment";
+import type { Professional } from "@/domain/entities/professional";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
+import type { ProfessionalRepository } from "@/domain/repositories/professional-repository";
 import type { TreatmentRepository } from "@/domain/repositories/treatment-repository";
 import type {
   DentalBusinessInformationFact,
@@ -50,6 +52,7 @@ type LiveState = Pick<
 
 export type DentalLiveAdapterDependencies = {
   treatments: Pick<TreatmentRepository, "listByClinic">;
+  professionals: Pick<ProfessionalRepository, "listByClinic">;
   priceCampaigns?: Readonly<{
     listActiveByTreatment(
       clinicId: string,
@@ -326,6 +329,7 @@ export function createDentalLiveAdapters(
     reservations,
     state,
     treatments,
+    professionals,
     turnId,
   } = deps;
   if (lead.clinicId !== clinic.id || lead.id !== leadId) {
@@ -347,7 +351,8 @@ export function createDentalLiveAdapters(
   let preparedSlotOffer: Readonly<{
     stateId: string;
     treatment: Treatment;
-    slots: readonly { startsAt: Date; endsAt: Date }[];
+    slots: readonly { startsAt: Date; endsAt: Date; professionalId?: string }[];
+    professionalId: string | null;
     exposed: Readonly<{ service: { id: string; name: string; requiresEvaluationFirst: boolean }; slots: readonly DentalSlot[] }>;
   }> | null = null;
 
@@ -355,6 +360,44 @@ export function createDentalLiveAdapters(
     return (await treatments.listByClinic(clinic.id)).filter(
       (treatment) => treatment.clinicId === clinic.id,
     );
+  }
+
+  async function listTenantActiveProfessionals(): Promise<Professional[]> {
+    const rows = await professionals.listByClinic(clinic.id);
+    if (rows.some((professional) => professional.clinicId !== clinic.id)) {
+      throw new DentalLiveAdapterError("professional tenant binding mismatch");
+    }
+    return rows.filter((professional) => professional.isActive);
+  }
+
+  async function resolveRequestedProfessional(
+    query: string | null | undefined,
+  ): Promise<Professional | null> {
+    if (!query || !normalize(query)) return null;
+    const normalized = normalize(query);
+    const matches = (await listTenantActiveProfessionals()).filter(
+      (professional) => normalize(professional.name) === normalized,
+    );
+    if (matches.length !== 1) {
+      throw new DentalLiveAdapterError("professional resolution required");
+    }
+    return matches[0]!;
+  }
+
+  function withinProfessionalSchedule(
+    professional: Professional | null,
+    startsAt: Date,
+    endsAt: Date,
+  ): boolean {
+    if (!professional?.workSchedule) return true;
+    const start = timezone.toLocalParts(startsAt);
+    const end = timezone.toLocalParts(endsAt);
+    const window = professional.workSchedule[start.weekday as keyof typeof professional.workSchedule];
+    if (!window || start.weekday !== end.weekday) return false;
+    const startMinutes = start.hour * 60 + start.minute;
+    const endMinutes = end.hour * 60 + end.minute;
+    return startMinutes >= window.startHour * 60 + window.startMinute
+      && endMinutes <= window.endHour * 60 + window.endMinute;
   }
 
   async function exactTreatmentForScheduling(
@@ -774,6 +817,7 @@ export function createDentalLiveAdapters(
   const schedulingRead: DentalSchedulingReadPort = {
     async listSlots(input) {
       const treatment = await exactTreatmentForScheduling(input.service);
+      const requestedProfessional = await resolveRequestedProfessional(input.professional);
       const service = {
         id: treatment.id,
         name: treatment.name,
@@ -805,6 +849,7 @@ export function createDentalLiveAdapters(
         from,
         to,
         slotDurationMinutes: treatment.durationMinutes,
+        ...(requestedProfessional ? { professionalId: requestedProfessional.id } : {}),
         allowedStartWindows: treatment.bookingWindows ?? null,
       }))
         .filter((slot) => slot.clinicId === clinic.id)
@@ -824,6 +869,16 @@ export function createDentalLiveAdapters(
             actual.day === requestedParts.day;
         })
         .filter((slot) => periodMatches(timezone, slot.startsAt, input.period))
+        .filter((slot) => {
+          if (requestedProfessional) {
+            return withinProfessionalSchedule(
+              requestedProfessional,
+              slot.startsAt,
+              slot.endsAt,
+            );
+          }
+          return true;
+        })
         .filter((slot) => !activeAppointments.some((appointment) =>
           appointment.clinicId === clinic.id &&
           isActiveAppointment(appointment) &&
@@ -857,9 +912,13 @@ export function createDentalLiveAdapters(
       preparedSlotOffer = Object.freeze({
         stateId,
         treatment,
+        professionalId: requestedProfessional?.id ?? null,
         slots: Object.freeze(slots.map((slot) => Object.freeze({
           startsAt: new Date(slot.startsAt.getTime()),
           endsAt: new Date(slot.endsAt.getTime()),
+          ...((requestedProfessional?.id ?? slot.professionalId)
+            ? { professionalId: requestedProfessional?.id ?? slot.professionalId! }
+            : {}),
         }))),
         exposed,
       });
@@ -956,9 +1015,10 @@ export function createDentalLiveAdapters(
       const formatted = await state.offerSlotsForTurn(
         prepared.stateId,
         conversationId,
-        prepared.slots.map(({ startsAt, endsAt }) => ({
+        prepared.slots.map(({ startsAt, endsAt, professionalId }) => ({
           startsAt: new Date(startsAt.getTime()),
           endsAt: new Date(endsAt.getTime()),
+          ...(professionalId ? { professionalId } : {}),
         })),
         timezone,
         prepared.treatment.name,
@@ -966,6 +1026,7 @@ export function createDentalLiveAdapters(
         clinic.slotOfferTtlMinutes,
         false,
         prepared.treatment.id,
+        prepared.professionalId ?? undefined,
       );
       effectLifecycle?.completed();
       if (
@@ -1033,6 +1094,7 @@ export function createDentalLiveAdapters(
         treatmentName: offered.treatment.name,
         treatmentId: offered.treatment.id,
         valueCents: offered.treatment.priceCents,
+        professionalId: offered.slot.professionalId ?? null,
         origin: "ai_conversation",
       });
       if (!result.success) {

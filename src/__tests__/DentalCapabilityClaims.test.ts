@@ -60,6 +60,7 @@ describe("claims mínimos do pack dental", () => {
       serviceQuery: null,
       requestedDate: null,
       requestedPeriod: null,
+      requestedProfessional: null,
     });
     const lifecycle = dentalPack.capabilities.find(
       ({ id }) => id === "dental-appointment-lifecycle",
