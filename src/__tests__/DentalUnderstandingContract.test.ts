@@ -29,6 +29,8 @@ function entities(service: string | null) {
     serviceCandidates: null,
     faqQuestion: null,
     quantity: null,
+    quantityScope: null,
+    objectionQuestion: null,
     ordinal: null,
   };
 }
@@ -142,6 +144,62 @@ describe("contrato de Understanding dental", () => {
     expect(() => parseDentalUnderstanding({
       ...valid,
       request: "business-differentials",
+    })).toThrow();
+  });
+
+  it("aceita pagamento com serviço opcional", () => {
+    expect(parseDentalUnderstanding({
+      ...base,
+      request: "payment-options",
+      entities: entities(null),
+    }).request).toBe("payment-options");
+    expect(parseDentalUnderstanding({
+      ...base,
+      request: "payment-options",
+      entities: entities("Clareamento"),
+    }).entities.service).toBe("Clareamento");
+  });
+
+  it("restringe quantidade e escopo a preço com quantidade positiva inteira", () => {
+    const valid = {
+      ...base,
+      request: "price-of-service",
+      entities: {
+        ...entities("Lentes"),
+        quantity: 10,
+        quantityScope: "superior",
+      },
+    } as const;
+    expect(parseDentalUnderstanding(valid).entities.quantity).toBe(10);
+    for (const quantity of [0, -1, 1.5]) {
+      expect(() => parseDentalUnderstanding({
+        ...valid,
+        entities: { ...valid.entities, quantity },
+      })).toThrow();
+    }
+    expect(() => parseDentalUnderstanding({
+      ...valid,
+      request: "service-availability",
+    })).toThrow();
+  });
+
+  it("exige uma pergunta canônica somente para objeção cadastrada", () => {
+    const valid = {
+      ...base,
+      request: "registered-objection",
+      entities: {
+        ...entities(null),
+        objectionQuestion: "Está caro para mim",
+      },
+    } as const;
+    expect(parseDentalUnderstanding(valid).request).toBe("registered-objection");
+    expect(() => parseDentalUnderstanding({
+      ...valid,
+      entities: { ...valid.entities, objectionQuestion: null },
+    })).toThrow();
+    expect(() => parseDentalUnderstanding({
+      ...valid,
+      request: "other",
     })).toThrow();
   });
 });

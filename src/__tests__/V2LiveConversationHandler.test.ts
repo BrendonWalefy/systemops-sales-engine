@@ -125,6 +125,8 @@ function makeHarness(options: {
     serviceCandidates: null,
     faqQuestion: null,
     quantity: null,
+    quantityScope: null,
+    objectionQuestion: null,
     ordinal: null,
     ...overrides,
   });
@@ -172,7 +174,9 @@ function makeHarness(options: {
           faqs: [
           { question: "Preciso de encaminhamento?", answer: "Não." },
           { question: "Aceita convênio?", answer: "Consulte a recepção." },
-        ] } as never)
+        ],
+          objections: [{ objection: "Está caro?", response: "Podemos parcelar." }],
+        } as never)
       : null,
     inboundAuthority: {
       inboundEventId,
@@ -531,7 +535,9 @@ describe("V2LiveConversationHandler", () => {
       "Preciso de encaminhamento?",
       "Aceita convênio?",
     ]);
+    expect(modelInput.objectionCatalog).toEqual(["Está caro?"]);
     expect(JSON.stringify(modelInput)).not.toContain("Consulte a recepção");
+    expect(JSON.stringify(modelInput)).not.toContain("Podemos parcelar");
   });
 
   it("answers institutional knowledge through the generic read-only pipeline", async () => {
@@ -805,7 +811,7 @@ describe("V2LiveConversationHandler", () => {
       turnId: inboundEventId,
       stage: "understanding_structural",
       modelId: "gpt-4o-mini",
-      promptVersion: "dental-understanding.v3",
+      promptVersion: "dental-understanding.v4",
       contractVersion: "understanding.v1",
       attempt: 1,
       rawOutput: privateOutput,
@@ -1128,7 +1134,7 @@ describe("V2LiveConversationHandler", () => {
       expect.objectContaining({
         stage: "v2.decision",
         metadata: expect.objectContaining({
-          capabilityIds: "dental-catalog",
+          capabilityIds: "dental-commercial",
           decisionKinds: "answer",
           intendedEffects: "none",
         }),
@@ -1136,7 +1142,7 @@ describe("V2LiveConversationHandler", () => {
       expect.objectContaining({
         stage: "v2.action_result",
         metadata: expect.objectContaining({
-          outcomeTypes: "catalog_answered",
+          outcomeTypes: "commercial_answered",
           semanticClasses: "information_authorized",
         }),
       }),

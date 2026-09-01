@@ -4,6 +4,7 @@ import type { ActionResult, ResponsePart } from "@/core/intelligence/ResponseCom
 import type { ConversationExperience } from "@/domain/entities/clinic";
 import type { Message } from "@/domain/entities/conversation";
 import type { ContentBlock, PipelineStep, Treatment } from "@/domain/entities/treatment";
+import { calculateFlatInstallment } from "@/domain/value-objects/installment";
 import type { OutboundPart } from "@/infrastructure/adapters/channels/whatsapp/outbound-delivery-service";
 import type { Logger } from "@/infrastructure/logging/logger";
 
@@ -103,9 +104,7 @@ export function buildMediaClarificationClinicContext(): string {
 export type InstallmentRate = { n: number; rate: number; active: boolean };
 
 /** Parcela exata usando taxa flat da maquininha: preço ÷ (1 − taxa) ÷ N */
-export function calculateFlatInstallment(principal: number, flatRatePercent: number, n: number): number {
-  return Math.ceil(principal / (1 - flatRatePercent / 100) / n);
-}
+export { calculateFlatInstallment } from "@/domain/value-objects/installment";
 
 /**
  * Gera tabela de parcelamento com taxas flat exatas da maquininha.

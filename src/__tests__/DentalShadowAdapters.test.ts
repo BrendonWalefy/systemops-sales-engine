@@ -24,6 +24,8 @@ describe("dental captured read adapters", () => {
     await expect(adapters.catalogRead.resolveService("limpeza")).resolves.toEqual({ kind: "unknown", evidenceRef: "catalog-1" });
     await expect(adapters.schedulingRead.listSlots({ service: null, date: null, period: null, minimumLeadTimeHours: 2, now: new Date("2026-08-16T12:00:00.000Z") })).resolves.toEqual({ service: { id: "svc", name: "Limpeza" }, slots: [] });
     await expect(adapters.catalogRead.resolveService("clareamento")).rejects.toThrow(/captured read unavailable/i);
+    await expect(adapters.commercialRead.resolvePaymentConfiguration()).rejects.toThrow(/captured read unavailable/i);
+    await expect(adapters.commercialRead.resolveRegisteredObjection("está caro")).rejects.toThrow(/captured read unavailable/i);
     await expect(adapters.schedulingRead.resolveOfferedSlot({ pendingStepId: "different", ordinal: null, date: null, time: null })).rejects.toThrow(/captured read unavailable/i);
     await expect(adapters.schedulingRead.resolveOfferedSlot({ pendingStepId: "offer-1", ordinal: null, date: null, time: null })).resolves.toEqual({ id: "slot-1", label: "17/08 15:00", evidenceRef: "offer-1" });
     await expect(adapters.schedulingRead.resolvePendingAppointment("offer-1")).resolves.toEqual({ id: "appt-1", label: "17/08 15:00", evidenceRef: "appointment-1" });

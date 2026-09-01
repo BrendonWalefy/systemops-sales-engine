@@ -1,6 +1,7 @@
 import type { CapturedV2TurnReads } from "@/application/conversation-v2/captured-turn-reads";
 import type {
   DentalCatalogReadPort,
+  DentalCommercialReadPort,
   DentalKnowledgeReadPort,
   DentalPlaybookKnowledgeReadPort,
   DentalSchedulingReadPort,
@@ -21,6 +22,7 @@ export function createDentalCapturedReadAdapters(reads: CapturedV2TurnReads): {
   knowledgeRead: DentalKnowledgeReadPort;
   playbookKnowledgeRead: DentalPlaybookKnowledgeReadPort;
   catalogRead: DentalCatalogReadPort;
+  commercialRead: DentalCommercialReadPort;
   schedulingRead: DentalSchedulingReadPort;
 } {
   return {
@@ -51,6 +53,35 @@ export function createDentalCapturedReadAdapters(reads: CapturedV2TurnReads): {
           return match?.result ?? unavailable();
         };
         return [resolve(queries[0]), resolve(queries[1])];
+      },
+    },
+    commercialRead: {
+      async resolveService(query) {
+        if (reads.catalog.status !== "captured") unavailable();
+        const match = reads.serviceResolutions.find((entry) => entry.query === query);
+        if (!match) unavailable();
+        const resolution = match.result;
+        if (resolution.kind !== "exact") return resolution;
+        return {
+          ...resolution,
+          service: {
+            id: resolution.service.id,
+            name: resolution.service.name,
+            priceDisclosable: resolution.service.priceDisclosable,
+            priceKind: "fixed",
+            priceCents: resolution.service.priceCents,
+            originalPriceCents: null,
+            campaignName: null,
+            campaignEndsAt: null,
+            quantityPrices: [],
+          },
+        };
+      },
+      async resolvePaymentConfiguration() {
+        return unavailable();
+      },
+      async resolveRegisteredObjection() {
+        return unavailable();
       },
     },
     schedulingRead: {

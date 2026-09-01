@@ -43,6 +43,7 @@ export type DentalUnderstandingModelRequest = {
   state: ConversationState | null;
   catalog: readonly DentalCatalogEntry[];
   faqCatalog: readonly string[];
+  objectionCatalog: readonly string[];
 };
 
 export type DentalUnderstandingModel = {

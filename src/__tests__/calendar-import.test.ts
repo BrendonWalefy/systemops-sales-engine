@@ -152,8 +152,12 @@ describe("Google Calendar event id normalization", () => {
 // política lança e o arquivo falha alto. O silêncio antigo é o que produziu 16
 // linhas de `professionals` órfãs no banco compartilhado.
 const databaseAccess = resolveTestDatabaseAccess(process.env);
+const REMOTE_DATABASE_TEST_TIMEOUT_MS = 20_000;
 
-describe.skipIf(databaseAccess.mode !== "authorized")("Calendar Import — Parse + DB", () => {
+describe.skipIf(databaseAccess.mode !== "authorized")(
+  "Calendar Import — Parse + DB",
+  { timeout: REMOTE_DATABASE_TEST_TIMEOUT_MS },
+  () => {
   // Tenant efêmero por execução: nada é reaproveitado entre runs, então nenhum
   // teste pode depender de resíduo anterior nem herdar linhas duplicadas. O
   // sufixo aleatório também deixa duas execuções simultâneas conviverem.
@@ -618,4 +622,5 @@ END:VCALENDAR`).events[0];
       await db.delete(organizations).where(eq(organizations.id, otherClinic.id));
     }
   });
-});
+  },
+);

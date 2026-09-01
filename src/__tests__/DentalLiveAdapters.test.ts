@@ -6,6 +6,7 @@ import type { Treatment } from "@/domain/entities/treatment";
 import type { Appointment, CalendarSlot } from "@/domain/entities/calendar-slot";
 import type { Conversation } from "@/domain/entities/conversation";
 import type { EditorialConfig } from "@/application/config/editorial-config";
+import type { PriceCampaignRow } from "@/application/config/price-campaigns";
 import type { SlotReservation } from "@/core/scheduling/SlotReservationService";
 import type {
   ConversationStateRow,
@@ -162,6 +163,7 @@ function setup(options: {
   reservationsInPeriod?: SlotReservation[];
   conversationOverride?: Conversation;
   editorial?: EditorialConfig | null;
+  priceCampaigns?: ReadonlyMap<string, PriceCampaignRow>;
 } = {}) {
   const availableTreatments = options.treatments ?? [treatment()];
   const activeLead = options.leadOverride ?? lead;
@@ -306,6 +308,9 @@ function setup(options: {
   const treatments = {
     listByClinic: vi.fn().mockResolvedValue(availableTreatments),
   };
+  const priceCampaigns = {
+    listActiveByTreatment: vi.fn().mockResolvedValue(options.priceCampaigns ?? new Map()),
+  };
   const reservations = {
     findActiveByPeriod: vi.fn().mockResolvedValue(options.reservationsInPeriod ?? []),
   };
@@ -316,6 +321,7 @@ function setup(options: {
 
   const adapters = createDentalLiveAdapters({
     treatments,
+    priceCampaigns,
     calendar,
     state,
     appointments,
@@ -343,6 +349,7 @@ function setup(options: {
     setCurrentState: (next: ConversationStateRow | null) => { currentState = next; },
     state,
     treatments,
+    priceCampaigns,
   };
 }
 
@@ -559,6 +566,88 @@ describe("Dental live adapters — active playbook knowledge", () => {
 });
 
 describe("Dental live adapters — tenant-scoped catalog", () => {
+  it("resolves payment methods, active rates and exact registered objections from the bound tenant", async () => {
+    const editorial: EditorialConfig = {
+      versionId: "version-commercial-1",
+      specialty: "odontologia",
+      toneOfVoice: "acolhedor",
+      commercialPolicy: null,
+      procedures: [],
+      receptionistName: "Marina",
+      differentials: [],
+      objections: [{
+        objection: "Está caro para mim",
+        response: "Podemos apresentar as condições cadastradas.",
+      }],
+      faqs: [],
+      warrantyPolicy: null,
+      mediaLibrary: [],
+      playbookText: "",
+    };
+    const { adapters } = setup({
+      clinicOverride: {
+        ...clinic,
+        paymentMethods: ["pix", "credit_card"],
+        installmentRates: [
+          { n: 4, rate: 0, active: true },
+          { n: 10, rate: 10, active: true },
+          { n: 12, rate: 12, active: false },
+        ],
+      },
+      editorial,
+    });
+
+    await expect(adapters.commercialRead.resolvePaymentConfiguration())
+      .resolves.toMatchObject({
+        kind: "resolved",
+        organization: { id: clinic.id },
+        methods: [{ code: "pix" }, { code: "credit_card" }],
+        installmentRates: [
+          { installments: 4, ratePercent: 0 },
+          { installments: 10, ratePercent: 10 },
+        ],
+      });
+    await expect(adapters.commercialRead.resolveRegisteredObjection(" está caro para mim "))
+      .resolves.toMatchObject({
+        kind: "resolved",
+        organization: { id: clinic.id },
+        answer: "Podemos apresentar as condições cadastradas.",
+        evidenceRef: "playbook:version-commercial-1:objection:0",
+      });
+    await expect(adapters.commercialRead.resolveRegisteredObjection("Outra objeção"))
+      .resolves.toEqual({ kind: "missing" });
+  });
+
+  it("fails closed for malformed payment methods or duplicate canonical objections", async () => {
+    const malformedPayment = setup({
+      clinicOverride: { ...clinic, paymentMethods: ["pix", "pix"] },
+    });
+    const duplicateObjection = setup({
+      editorial: {
+        versionId: "version-commercial-2",
+        specialty: null,
+        toneOfVoice: null,
+        commercialPolicy: null,
+        procedures: [],
+        receptionistName: "Marina",
+        differentials: [],
+        objections: [
+          { objection: "Está caro", response: "Resposta A" },
+          { objection: " está caro ", response: "Resposta B" },
+        ],
+        faqs: [],
+        warrantyPolicy: null,
+        mediaLibrary: [],
+        playbookText: "",
+      },
+    });
+
+    await expect(malformedPayment.adapters.commercialRead.resolvePaymentConfiguration())
+      .resolves.toEqual({ kind: "missing" });
+    await expect(duplicateObjection.adapters.commercialRead.resolveRegisteredObjection("Está caro"))
+      .resolves.toEqual({ kind: "missing" });
+  });
+
   it("resolves a comparison from one tenant-scoped catalog read", async () => {
     const foreign = treatment({ id: "foreign", clinicId: "other-clinic", name: "Implante" });
     const whitening = treatment({ id: "whitening", description: "Clareia a tonalidade." });
@@ -589,6 +678,89 @@ describe("Dental live adapters — tenant-scoped catalog", () => {
       },
     });
     expect(treatments.listByClinic).toHaveBeenCalledWith(clinic.id);
+  });
+
+  it("resolves one active campaign as the effective commercial authority", async () => {
+    const activeCampaign: PriceCampaignRow = {
+      id: "campaign-1",
+      treatmentId: "treatment-whitening",
+      name: "Semana do sorriso",
+      priceCents: 70_000,
+      minPriceCents: null,
+      maxPriceCents: null,
+      priceKind: "fixed",
+      startsAt: new Date("2026-08-01T00:00:00.000Z"),
+      endsAt: new Date("2026-08-31T23:59:59.000Z"),
+      isActive: true,
+    };
+    const { adapters, priceCampaigns } = setup({
+      priceCampaigns: new Map([["treatment-whitening", activeCampaign]]),
+    });
+
+    await expect(adapters.commercialRead.resolveService("branqueamento"))
+      .resolves.toMatchObject({
+        kind: "exact",
+        service: {
+          priceCents: 70_000,
+          originalPriceCents: 90_000,
+          campaignName: "Semana do sorriso",
+        },
+        evidenceRef: "price-campaign:campaign-1",
+      });
+    expect(priceCampaigns.listActiveByTreatment).toHaveBeenCalledWith(clinic.id, now);
+  });
+
+  it("ignores an expired campaign and keeps quantity packages authoritative", async () => {
+    const expired: PriceCampaignRow = {
+      id: "campaign-expired",
+      treatmentId: "treatment-whitening",
+      name: "Campanha encerrada",
+      priceCents: 1,
+      minPriceCents: null,
+      maxPriceCents: null,
+      priceKind: "fixed",
+      startsAt: null,
+      endsAt: new Date("2026-08-16T23:59:59.000Z"),
+      isActive: true,
+    };
+    const { adapters } = setup({
+      treatments: [treatment({
+        quantityPrices: [{ quantity: 10, scope: "superior", priceCents: 150_000 }],
+      })],
+      priceCampaigns: new Map([["treatment-whitening", expired]]),
+    });
+
+    await expect(adapters.commercialRead.resolveService("Clareamento"))
+      .resolves.toMatchObject({
+        kind: "exact",
+        service: {
+          priceCents: 90_000,
+          campaignName: null,
+          quantityPrices: [{ quantity: 10, scope: "superior", priceCents: 150_000 }],
+        },
+        evidenceRef: "treatment:treatment-whitening",
+      });
+  });
+
+  it("fails closed when a campaign reader returns a treatment outside the tenant catalog", async () => {
+    const foreignCampaign: PriceCampaignRow = {
+      id: "campaign-foreign",
+      treatmentId: "foreign-treatment",
+      name: "Foreign",
+      priceCents: 1,
+      minPriceCents: null,
+      maxPriceCents: null,
+      priceKind: "fixed",
+      startsAt: null,
+      endsAt: null,
+      isActive: true,
+    };
+    const { adapters } = setup({
+      priceCampaigns: new Map([["foreign-treatment", foreignCampaign]]),
+    });
+
+    await expect(adapters.commercialRead.resolveService("Clareamento"))
+      .rejects.toThrow(/campaign tenant binding mismatch/);
   });
 
   it("returns ambiguity instead of selecting one of multiple exact aliases", async () => {

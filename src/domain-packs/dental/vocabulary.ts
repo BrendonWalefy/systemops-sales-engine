@@ -13,6 +13,8 @@ export const DENTAL_REQUESTS = [
   "compare-services",
   "frequently-asked-question",
   "price-of-service",
+  "payment-options",
+  "registered-objection",
   "service-availability",
   "book-appointment",
   "confirm-slot",

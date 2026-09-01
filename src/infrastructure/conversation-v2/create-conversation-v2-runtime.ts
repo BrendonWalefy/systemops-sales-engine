@@ -50,6 +50,7 @@ import { persistStopContactDecision } from "@/infrastructure/repositories/drizzl
 import { DrizzleV2ConversationHandoffStore } from "@/infrastructure/repositories/drizzle-v2-conversation-handoff-store";
 import { requireV2ConversationHandoff } from "@/application/conversation-v2/v2-conversation-handoff";
 import { resolveClinicVoiceConfig } from "@/lib/tts-send";
+import { getActivePriceCampaignsByTreatment } from "@/application/config/price-campaigns";
 
 type RuntimeEnvironment = AiEvidenceRuntimeEnvironment;
 
@@ -218,6 +219,9 @@ function createLiveHandler(input: {
     verbalizer: createLiveResponseVerbalizer(client),
     dental: {
       treatments: new DrizzleTreatmentRepository(),
+      priceCampaigns: {
+        listActiveByTreatment: getActivePriceCampaignsByTreatment,
+      },
       state,
       appointments: appointmentRepository,
       reservations,

@@ -57,9 +57,28 @@ export type DentalPlaybookKnowledgeClaimPayload =
 
 export type DentalCatalogClaimPayload = {
   kind: "catalog";
-  request: "price-of-service" | "service-availability";
+  request: "service-availability";
   serviceQuery: string;
 };
+
+export type DentalCommercialClaimPayload =
+  | {
+      kind: "commercial";
+      request: "price-of-service";
+      serviceQuery: string;
+      quantity: number | null;
+      quantityScope: "total" | "superior" | "inferior" | null;
+    }
+  | {
+      kind: "commercial";
+      request: "payment-options";
+      serviceQuery: string | null;
+    }
+  | {
+      kind: "commercial";
+      request: "registered-objection";
+      objectionQuestion: string;
+    };
 
 export type DentalSchedulingClaimPayload =
   | {
@@ -102,6 +121,7 @@ export type DentalClaimPayload =
   | DentalPlaybookKnowledgeClaimPayload
   | DentalExplanationClaimPayload
   | DentalCatalogClaimPayload
+  | DentalCommercialClaimPayload
   | DentalSchedulingClaimPayload
   | DentalEscalationClaimPayload
   | DentalReceptionClaimPayload;
@@ -137,6 +157,16 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
   playbook_knowledge_answered: {
     semanticClass: "information_authorized",
     subjectRequirement: "required",
+    evidenceRequirement: "required",
+  },
+  commercial_answered: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "required",
+    evidenceRequirement: "required",
+  },
+  commercial_options_offered: {
+    semanticClass: "options_found",
+    subjectRequirement: "forbidden",
     evidenceRequirement: "required",
   },
   catalog_answered: {
@@ -247,8 +277,7 @@ export function createDentalCatalogCapability(
       const hasObjection = typeof understanding.signals.objection === "string" &&
         understanding.signals.objection.trim().length > 0;
       if (
-        (understanding.request !== "price-of-service" &&
-          understanding.request !== "service-availability") ||
+        understanding.request !== "service-availability" ||
         !serviceQuery || hasObjection
       ) {
         return null;
@@ -259,7 +288,7 @@ export function createDentalCatalogCapability(
         serviceQuery,
       });
     },
-    async decide(claim, context): Promise<Decision> {
+    async decide(claim): Promise<Decision> {
       if (claim.payload.kind !== "catalog") {
         return { kind: "ask", questionId: "invalid-catalog-claim" };
       }
@@ -272,44 +301,12 @@ export function createDentalCatalogCapability(
       if (resolution.kind !== "exact") {
         return { kind: "ask", questionId: "clarify-service" };
       }
-      if (claim.payload.request === "service-availability") {
-        return {
-          kind: "answer",
-          facts: [
-            {
-              key: "service_available",
-              value: { kind: "boolean", value: true },
-              subject: {
-                type: "service",
-                id: resolution.service.id,
-                displayName: resolution.service.name,
-              },
-              evidence: { source: "read", reference: resolution.evidenceRef },
-              disclosure: "allowed",
-            },
-          ],
-          nextBestStep: null,
-        };
-      }
-      if (
-        !context.policy.priceDisclosureEnabled ||
-        !resolution.service.priceDisclosable ||
-        resolution.service.priceCents === null
-      ) {
-        return context.policy.humanEscalationRequired
-          ? { kind: "escalate", reason: "price_disclosure_requires_human" }
-          : { kind: "ask", questionId: "price-requires-human" };
-      }
       return {
         kind: "answer",
         facts: [
           {
-            key: "price_cents",
-            value: {
-              kind: "money",
-              amountInMinor: resolution.service.priceCents,
-              currency: "BRL",
-            },
+            key: "service_available",
+            value: { kind: "boolean", value: true },
             subject: {
               type: "service",
               id: resolution.service.id,
@@ -706,7 +703,8 @@ export function createDentalEscalationCapability(): Capability<
   return {
     id: "dental-escalation",
     claim(understanding) {
-      const objection = typeof understanding.signals.objection === "string" &&
+      const objection = understanding.request !== "registered-objection" &&
+        typeof understanding.signals.objection === "string" &&
         understanding.signals.objection.trim().length > 0;
       const cancelReschedule = understanding.request === "cancel-appointment" ||
         understanding.request === "reschedule-appointment";
@@ -723,7 +721,7 @@ export function createDentalEscalationCapability(): Capability<
                   ? "objection"
                   : "structured_safety_signal",
             }),
-            conflictsWith: ["dental-catalog", "dental-scheduling"],
+            conflictsWith: ["dental-commercial", "dental-catalog", "dental-scheduling"],
           }
         : null;
     },
