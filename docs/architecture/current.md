@@ -1,6 +1,6 @@
 # Arquitetura atual
 
-Atualizado em 2026-08-25. Este documento descreve o runtime do release V2-only; planos antigos não são fonte de verdade.
+Atualizado em 2026-09-01. Este documento descreve o runtime do release V2-only; planos antigos não são fonte de verdade.
 
 ## Resumo
 
@@ -160,6 +160,13 @@ organização; `dental-explanation` explica ou compara tratamentos do catálogo 
 classifica e copia rótulos canônicos, enquanto essas capabilities autorizam os fatos. Respostas de
 FAQ não entram no prompt de Understanding, e nenhum desses caminhos consulta V1 ou minera notas
 livres.
+
+Conhecimento comercial pertence a `dental-commercial`: tratamentos autorizam preço e pacotes
+exatos, campanhas autorizam o override vigente, a organização autoriza métodos/taxas e o playbook
+ativo autoriza a resposta de uma objeção canônica. A capability calcula parcelas de forma
+determinística e devolve fatos com evidence refs; o modelo não recebe respostas de objeção nem
+autoriza preço, taxa, método, quantidade ou condição. Dado ausente, ambíguo ou malformado pede
+esclarecimento ou handoff, sem consultar V1 e sem inferir regra de `commercialPolicy`.
 
 ### Resposta autorizada e fallback seguro
 

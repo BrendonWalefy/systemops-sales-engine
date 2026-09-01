@@ -97,6 +97,7 @@ vi.mock("openai", () => ({
 }));
 
 import { RegisterInboundHistory } from "@/application/conversation/register-inbound-history";
+import { getActivePriceCampaignsByTreatment } from "@/application/config/price-campaigns";
 import { LiveTurnLifecycle } from "@/application/conversation/live-turn-lifecycle";
 import { V2LiveConversationHandler } from "@/application/conversation-v2/v2-live-conversation-handler";
 import type {
@@ -170,6 +171,7 @@ import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzl
 import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
 import { DrizzleWhatsAppStreamAuthority } from "@/infrastructure/repositories/drizzle-whatsapp-stream-authority";
 import { buildWhatsAppStreamAliases } from "@/core/whatsapp/WhatsAppContactIdentity";
+import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
 
 type ArmName = RuntimeArmMetrics["arm"];
 type TurnCardinality = Readonly<{
@@ -210,6 +212,7 @@ const REPLY_ACTION_TYPES = new Set([
 ]);
 const institutionalTopicsByCase = new Map<string, "address" | "parking" | "social">();
 const faqQuestionsByCase = new Map<string, string>();
+const objectionQuestionsByCase = new Map<string, string>();
 const ARM_ORDER = Object.freeze([
   Object.freeze(["v1_current", "v2_only"] as const),
   Object.freeze(["v2_only", "v1_current"] as const),
@@ -372,6 +375,8 @@ function understandingFor(fixture: CorpusCase): Record<string, unknown> {
       serviceCandidates: entities.serviceCandidates ?? null,
       faqQuestion: faqQuestionsByCase.get(fixture.caseId) ?? null,
       quantity: entities.quantity ?? null,
+      quantityScope: null,
+      objectionQuestion: objectionQuestionsByCase.get(fixture.caseId) ?? null,
       ordinal: entities.ordinal ?? null,
     },
     signals: {
@@ -527,7 +532,13 @@ describe("V2-only runtime performance measurement worker", () => {
     for (const fixture of fixtures) {
       const fixtureInput = fixtureInputsByCase.get(fixture.caseId);
       if (!fixtureInput) throw new Error(`missing derived runtime fixture ${fixture.caseId}`);
-      expectedV2OutcomesByCase.set(fixture.caseId, fixtureInput.expectedV2Outcome);
+      expectedV2OutcomesByCase.set(
+        fixture.caseId,
+        fixture.labels.understanding.request === "price-of-service"
+          && fixtureInput.expectedV2Outcome === "catalog_answered"
+          ? "commercial_answered"
+          : fixtureInput.expectedV2Outcome,
+      );
       const [organization] = await database.insert(organizations).values({
         ...fixtureInput.organization,
         // Dedicated offline comparison only: both frozen arms must cross the
@@ -680,6 +691,7 @@ describe("V2-only runtime performance measurement worker", () => {
       verbalizer: v2Verbalizer,
       dental: {
         treatments: new DrizzleTreatmentRepository(),
+        priceCampaigns: { listActiveByTreatment: getActivePriceCampaignsByTreatment },
         state,
         appointments: appointmentRepository,
         reservations,
@@ -1357,7 +1369,15 @@ describe("V2-only runtime performance measurement worker", () => {
     }
     const comparedTreatments = tenantTreatments.slice(0, 2);
     await runtime!.pool.query(
-      "update treatments set description = case when id = $1::uuid then $3 else $4 end where id in ($1::uuid, $2::uuid)",
+      `update treatments
+          set description = case when id = $1::uuid then $3 else $4 end,
+              price_cents = case when id = $1::uuid then 100000 else 90000 end,
+              price_quotable_in_chat = true,
+              price_kind = 'fixed',
+              quantity_prices = case when id = $2::uuid
+                then '[{"quantity":10,"scope":"total","priceCents":150000}]'::jsonb
+                else null end
+        where id in ($1::uuid, $2::uuid)`,
       [
         comparedTreatments[0]!.id,
         comparedTreatments[1]!.id,
@@ -1367,8 +1387,8 @@ describe("V2-only runtime performance measurement worker", () => {
     );
     await runtime!.pool.query(
       `insert into playbook_versions
-        (id, organization_id, name, status, specialty, commercial_policy, differentials, faqs)
-       values ($1::uuid, $2::uuid, $3, 'active', $4, $5, $6::jsonb, $7::jsonb)`,
+        (id, organization_id, name, status, specialty, commercial_policy, differentials, faqs, objections)
+       values ($1::uuid, $2::uuid, $3, 'active', $4, $5, $6::jsonb, $7::jsonb, $8::jsonb)`,
       [
         randomUUID(),
         referenceClinicId,
@@ -1377,6 +1397,30 @@ describe("V2-only runtime performance measurement worker", () => {
         "Política comercial cadastrada.",
         JSON.stringify(["Atendimento individualizado.", "Planejamento digital."]),
         JSON.stringify([{ question: "Preciso de encaminhamento?", answer: "Não é necessário." }]),
+        JSON.stringify([{
+          objection: "Está caro para mim",
+          response: "Podemos apresentar as condições cadastradas.",
+        }]),
+      ],
+    );
+    await runtime!.pool.query(
+      `update organizations
+          set payment_methods = '["pix","credit_card"]'::jsonb,
+              installment_rates = '[{"n":4,"rate":0,"active":true},{"n":10,"rate":10,"active":true}]'::jsonb
+        where id = $1::uuid`,
+      [referenceClinicId],
+    );
+    await runtime!.pool.query(
+      `insert into price_campaigns
+        (id, organization_id, treatment_id, name, price_cents, price_kind, starts_at, ends_at, is_active)
+       values ($1::uuid, $2::uuid, $3::uuid, $4, 80000, 'fixed', $5, $6, true)`,
+      [
+        randomUUID(),
+        referenceClinicId,
+        comparedTreatments[0]!.id,
+        "Condição vigente",
+        new Date("2026-08-01T00:00:00.000Z"),
+        new Date("2026-08-31T23:59:59.000Z"),
       ],
     );
     const comparisonFixture: CorpusCase = {
@@ -1418,7 +1462,63 @@ describe("V2-only runtime performance measurement worker", () => {
         },
       },
     };
+    const commercialFixture = (
+      caseId: string,
+      journey: CorpusCase["journey"],
+      leadMessage: string,
+      request: DentalRequest,
+      entities: CorpusCase["labels"]["understanding"]["entities"],
+    ): CorpusCase => ({
+      ...institutionalFixture(caseId, leadMessage),
+      journey,
+      labels: {
+        ...generalReference.labels,
+        understanding: {
+          ...generalReference.labels.understanding,
+          request,
+          entities,
+          signals: {},
+          ambiguity: null,
+        },
+      },
+    });
+    const campaignFixture = commercialFixture(
+      "price-9010",
+      "price",
+      "Qual é o valor atual?",
+      "price-of-service",
+      { service: comparedTreatments[0]!.name },
+    );
+    const quantityFixture = commercialFixture(
+      "price-9011",
+      "price",
+      "Qual é o pacote de 10?",
+      "price-of-service",
+      { service: comparedTreatments[1]!.name, quantity: 10 },
+    );
+    const paymentFixture = commercialFixture(
+      "other-9012",
+      "other",
+      "Quais formas de pagamento vocês aceitam?",
+      "payment-options",
+      {},
+    );
+    const installmentFixture = commercialFixture(
+      "price-9013",
+      "price",
+      "Quanto fica parcelado?",
+      "payment-options",
+      { service: comparedTreatments[0]!.name },
+    );
+    const objectionFixture = commercialFixture(
+      "objection-9014",
+      "objection",
+      "Está caro para mim",
+      "registered-objection",
+      {},
+    );
     faqQuestionsByCase.set(faqFixture.caseId, "Preciso de encaminhamento?");
+    objectionQuestionsByCase.set(objectionFixture.caseId, "Está caro para mim");
     institutionalTopicsByCase.set(addressFixture.caseId, "address");
     institutionalTopicsByCase.set(missingFixture.caseId, "address");
     institutionalTopicsByCase.set(parkingFixture.caseId, "parking");
@@ -1431,6 +1531,11 @@ describe("V2-only runtime performance measurement worker", () => {
       comparisonFixture,
       differentialsFixture,
       faqFixture,
+      campaignFixture,
+      quantityFixture,
+      paymentFixture,
+      installmentFixture,
+      objectionFixture,
     ]) {
       clinicIdsByCase.set(fixture.caseId, referenceClinicId);
       fixtureInputsByCase.set(fixture.caseId, {
@@ -1454,6 +1559,15 @@ describe("V2-only runtime performance measurement worker", () => {
     expectedV2OutcomesByCase.set(comparisonFixture.caseId, "services_compared");
     expectedV2OutcomesByCase.set(differentialsFixture.caseId, "playbook_knowledge_answered");
     expectedV2OutcomesByCase.set(faqFixture.caseId, "playbook_knowledge_answered");
+    for (const fixture of [
+      campaignFixture,
+      quantityFixture,
+      paymentFixture,
+      installmentFixture,
+      objectionFixture,
+    ]) {
+      expectedV2OutcomesByCase.set(fixture.caseId, "commercial_answered");
+    }
 
     const businessStateBefore = await runtime!.pool.query<{
       appointments: string;
@@ -1492,6 +1606,11 @@ describe("V2-only runtime performance measurement worker", () => {
     const groundedComparison = await runTurn("v2_only", comparisonFixture, 25, false);
     const groundedDifferentials = await runTurn("v2_only", differentialsFixture, 26, false);
     const groundedFaq = await runTurn("v2_only", faqFixture, 27, false);
+    const groundedCampaign = await runTurn("v2_only", campaignFixture, 28, false);
+    const groundedQuantity = await runTurn("v2_only", quantityFixture, 29, false);
+    const groundedPayment = await runTurn("v2_only", paymentFixture, 30, false);
+    const groundedInstallment = await runTurn("v2_only", installmentFixture, 31, false);
+    const groundedObjection = await runTurn("v2_only", objectionFixture, 32, false);
     const businessStateAfter = await runtime!.pool.query<{
       appointments: string;
       reservations: string;
@@ -1503,14 +1622,19 @@ describe("V2-only runtime performance measurement worker", () => {
         (select count(*)::text from conversation_states) as conversation_states
     `);
 
-    for (const [label, sample] of [
-      ["grounded address", groundedAddress],
-      ["missing address", missingAddress],
-      ["grounded parking", groundedParking],
-      ["grounded social", groundedSocial],
-      ["grounded comparison", groundedComparison],
-      ["grounded differentials", groundedDifferentials],
-      ["grounded FAQ", groundedFaq],
+    for (const [label, sample, additionalCommercialRead] of [
+      ["grounded address", groundedAddress, 0],
+      ["missing address", missingAddress, 0],
+      ["grounded parking", groundedParking, 0],
+      ["grounded social", groundedSocial, 0],
+      ["grounded comparison", groundedComparison, 0],
+      ["grounded differentials", groundedDifferentials, 0],
+      ["grounded FAQ", groundedFaq, 0],
+      ["grounded campaign", groundedCampaign, 1],
+      ["grounded quantity", groundedQuantity, 1],
+      ["grounded payment", groundedPayment, 0],
+      ["grounded installment", groundedInstallment, 1],
+      ["grounded objection", groundedObjection, 0],
     ] as const) {
       expect(sample.modelCalls).toBe(2);
       expect(sample.cardinality).toEqual({
@@ -1521,10 +1645,11 @@ describe("V2-only runtime performance measurement worker", () => {
         sentReplies: 1,
       });
       expect(sample.sql.statements, `${label} SQL statements`)
-        .toBeLessThanOrEqual(normalReply.sql.statements);
+        .toBeLessThanOrEqual(normalReply.sql.statements + additionalCommercialRead);
       expect(sample.sql.sequentialRoundTrips, `${label} sequential round trips`)
         .toBeLessThanOrEqual(
-          normalReply.sql.sequentialRoundTrips + SEQUENTIAL_ROUND_TRIP_JITTER_WAVES,
+          normalReply.sql.sequentialRoundTrips + SEQUENTIAL_ROUND_TRIP_JITTER_WAVES
+            + additionalCommercialRead,
         );
       expect(sample.sql.lockHoldMs).toBeLessThanOrEqual(
         normalReply.sql.lockHoldMs * LOCK_HOLD_TOLERANCE_RATIO + LOCK_HOLD_TOLERANCE_MS,

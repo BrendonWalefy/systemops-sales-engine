@@ -81,7 +81,6 @@ const journeyModeMatrix = [
 
 const deferredJourneyTaxonomy = [
   { journey: "media", disposition: "not_representable", evidence: "absent_from_vocabulary_and_journey_registry" },
-  { journey: "objection", disposition: "not_representable", evidence: "absent_from_vocabulary_and_journey_registry" },
   { journey: "discount", disposition: "not_representable", evidence: "absent_from_vocabulary_and_journey_registry" },
   { journey: "follow_up", disposition: "not_representable", evidence: "absent_from_vocabulary_and_journey_registry" },
 ] as const;
@@ -461,21 +460,25 @@ describe("Cycle I deferred journey boundary", () => {
 
   it("mantém a taxonomia deferred fechada e sem fabricar um sentinel produtivo", () => {
     expect(deferredJourneyTaxonomy.map(({ journey }) => journey)).toEqual([
-      "media", "objection", "discount", "follow_up",
+      "media", "discount", "follow_up",
     ]);
   });
 });
 
-describe("V2 treatment and playbook knowledge journey boundary", () => {
-  it("keeps comparison, differentials and FAQ representable by closed requests and owned journeys", () => {
+describe("V2 treatment, playbook and commercial journey boundary", () => {
+  it("keeps knowledge and commercial reads representable by closed requests and owned journeys", () => {
     expect(DENTAL_REQUESTS).toEqual(expect.arrayContaining([
       "compare-services",
       "business-differentials",
       "frequently-asked-question",
+      "price-of-service",
+      "payment-options",
+      "registered-objection",
     ]));
     expect(dentalPack.journeys).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "explanation", capabilityIds: expect.arrayContaining(["dental-explanation"]) }),
       expect.objectContaining({ id: "playbook-knowledge", capabilityIds: expect.arrayContaining(["dental-playbook-knowledge"]) }),
+      expect.objectContaining({ id: "price", capabilityIds: expect.arrayContaining(["dental-commercial"]) }),
     ]));
   });
 });
@@ -524,6 +527,6 @@ describe("V2-only capability parity contract", () => {
       .map((line) => /^\|\s*`([^`]+)`\s*\|\s*`safe_handoff`\s*\|/.exec(line)?.[1] ?? null)
       .filter((behavior): behavior is string => behavior !== null);
 
-    expect(safeHandoffs).toEqual(["objections", "cancel_reschedule"]);
+    expect(safeHandoffs).toEqual(["cancel_reschedule"]);
   });
 });
