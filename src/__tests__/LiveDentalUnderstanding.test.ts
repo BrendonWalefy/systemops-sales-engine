@@ -11,6 +11,7 @@ const rawUnderstanding = {
   dialogueMove: "new_topic",
   entities: {
     service: "clareamento",
+    businessInformationTopic: null,
     date: null,
     period: null,
     time: null,

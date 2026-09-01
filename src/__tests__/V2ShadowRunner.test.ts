@@ -148,6 +148,23 @@ describe("V2 shadow runner", () => {
     await expect(runner.run(reads())).resolves.toEqual({ status: "unsupported", reason: "shared_read_unavailable" });
   });
 
+  it("não fabrica conhecimento institucional ausente do snapshot histórico", async () => {
+    const runner = new V2ShadowRunner({
+      understand: async () => ({
+        ...understanding("business-information"),
+        dialogueMove: "new_topic",
+        entities: { businessInformationTopic: "address" },
+      }),
+      hmacKey: "test-key",
+      style,
+    });
+
+    await expect(runner.run(reads())).resolves.toEqual({
+      status: "unsupported",
+      reason: "shared_read_unavailable",
+    });
+  });
+
   it("keeps an ordinary provider error as a result when an unrelated cancellation reason exists", async () => {
     const cancellationReason = new Error("deadline cancellation");
     const providerError = new TypeError("provider unavailable");

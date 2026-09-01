@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isSafeAuthorizedDisplayText } from "@/conversation-core/authorized-response-plan";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import type {
   ConversationStateMachine,
@@ -20,7 +21,9 @@ import type { Treatment } from "@/domain/entities/treatment";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
 import type { TreatmentRepository } from "@/domain/repositories/treatment-repository";
 import type {
+  DentalBusinessInformationFact,
   DentalCatalogReadPort,
+  DentalKnowledgeReadPort,
   DentalSchedulingReadPort,
   DentalSchedulingWriteOutcome,
   DentalSchedulingWritePort,
@@ -285,6 +288,7 @@ function periodMatches(
 export function createDentalLiveAdapters(
   deps: DentalLiveAdapterDependencies,
 ): {
+  knowledgeRead: DentalKnowledgeReadPort;
   catalogRead: DentalCatalogReadPort;
   schedulingRead: DentalSchedulingReadPort;
   schedulingWrite: DentalSchedulingWritePort;
@@ -452,6 +456,93 @@ export function createDentalLiveAdapters(
         };
       }
       return { kind: "unknown", evidenceRef: `treatment-catalog:${clinic.id}` };
+    },
+  };
+
+  type InstitutionalText =
+    | Readonly<{ kind: "absent" }>
+    | Readonly<{ kind: "invalid" }>
+    | Readonly<{ kind: "valid"; value: string }>;
+
+  function institutionalText(value: string | null): InstitutionalText {
+    if (value === null || value.length === 0) return { kind: "absent" };
+    const normalized = value.trim();
+    return isSafeAuthorizedDisplayText(normalized)
+      ? { kind: "valid", value: normalized }
+      : { kind: "invalid" };
+  }
+
+  function addressText(): string | null {
+    const address = institutionalText(clinic.address);
+    if (address.kind !== "valid") return null;
+    const complement = institutionalText(clinic.addressComplement);
+    if (complement.kind === "invalid") return null;
+    const combined = complement.kind === "valid"
+      ? `${address.value}, ${complement.value}`
+      : address.value;
+    return isSafeAuthorizedDisplayText(combined) ? combined : null;
+  }
+
+  function institutionalResolution(
+    topic: Parameters<DentalKnowledgeReadPort["resolveBusinessInformation"]>[0],
+    fact: DentalBusinessInformationFact | null,
+    evidenceRef: string,
+  ) {
+    return fact
+      ? {
+          kind: "resolved" as const,
+          topic,
+          organization: { id: clinic.id, displayName: clinic.name },
+          facts: [fact],
+          evidenceRef,
+        }
+      : {
+          kind: "missing" as const,
+          topic,
+          organization: { id: clinic.id, displayName: clinic.name },
+          evidenceRef: `${evidenceRef}:missing`,
+        };
+  }
+
+  const knowledgeRead: DentalKnowledgeReadPort = {
+    async resolveBusinessInformation(topic) {
+      if (topic === "address") {
+        const value = addressText();
+        return institutionalResolution(
+          topic,
+          value ? { key: "address", value } : null,
+          `organization:${clinic.id}:address`,
+        );
+      }
+      if (topic === "business-hours") {
+        const candidate = institutionalText(clinic.businessHours);
+        const value = candidate.kind === "valid" ? candidate.value : null;
+        return institutionalResolution(
+          topic,
+          value ? { key: "business_hours", value } : null,
+          `organization:${clinic.id}:business-hours`,
+        );
+      }
+      if (topic === "location-guidance") {
+        const guidance = institutionalText(clinic.locationMessage);
+        const fallback = guidance.kind === "absent" ? addressText() : null;
+        return institutionalResolution(
+          topic,
+          guidance.kind === "valid" || fallback
+            ? { key: "location_guidance", value: guidance.kind === "valid" ? guidance.value : fallback! }
+            : null,
+          guidance.kind === "valid"
+            ? `organization:${clinic.id}:location-message`
+            : guidance.kind === "absent"
+              ? `organization:${clinic.id}:address`
+              : `organization:${clinic.id}:location-message`,
+        );
+      }
+      return institutionalResolution(
+        topic,
+        null,
+        `organization:${clinic.id}:${topic}`,
+      );
     },
   };
 
@@ -795,5 +886,5 @@ export function createDentalLiveAdapters(
     },
   };
 
-  return { catalogRead, schedulingRead, schedulingWrite };
+  return { knowledgeRead, catalogRead, schedulingRead, schedulingWrite };
 }

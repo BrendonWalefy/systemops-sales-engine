@@ -12,6 +12,7 @@ function understanding(
     dialogueMove: "answers_pending",
     entities: {
       service: "private service value",
+      businessInformationTopic: null,
       date: null,
       period: null,
       time: null,

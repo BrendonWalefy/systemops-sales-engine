@@ -26,6 +26,7 @@ describe("AI contract rejection Decision Trace privacy", () => {
         rawOutput: privateOutput,
         errorMessage: privateOutput,
         issueValues: privateOutput,
+        institutionalValue: privateOutput,
       },
     } as unknown as DecisionTraceRecord);
 

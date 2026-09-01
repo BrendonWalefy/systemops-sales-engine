@@ -19,6 +19,8 @@ function reads() {
 describe("dental captured read adapters", () => {
   it("responde apenas consultas exatamente capturadas", async () => {
     const adapters = createDentalCapturedReadAdapters(reads());
+    await expect(adapters.knowledgeRead.resolveBusinessInformation("address"))
+      .rejects.toThrow(/captured read unavailable/i);
     await expect(adapters.catalogRead.resolveService("limpeza")).resolves.toEqual({ kind: "unknown", evidenceRef: "catalog-1" });
     await expect(adapters.schedulingRead.listSlots({ service: null, date: null, period: null, minimumLeadTimeHours: 2, now: new Date("2026-08-16T12:00:00.000Z") })).resolves.toEqual({ service: { id: "svc", name: "Limpeza" }, slots: [] });
     await expect(adapters.catalogRead.resolveService("clareamento")).rejects.toThrow(/captured read unavailable/i);

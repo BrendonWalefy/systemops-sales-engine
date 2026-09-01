@@ -110,9 +110,12 @@ function makeHarness(options: {
   safeHandoffBehavior?: "objections" | "cancel_reschedule";
   understandingRawOutput?: string | null;
   evidenceCaptureStatus?: "stored" | "persistence_failed";
+  businessInformationTurn?: boolean;
+  businessInformationMissing?: boolean;
 } = {}) {
   const entities = (overrides: Record<string, unknown> = {}) => ({
     service: null,
+    businessInformationTopic: null,
     date: null,
     period: null,
     time: null,
@@ -135,13 +138,21 @@ function makeHarness(options: {
     ...overrides,
   });
   const releaseLease = vi.fn().mockResolvedValue(undefined);
+  const turnClinic = options.businessInformationTurn
+    ? {
+        ...clinic,
+        address: options.businessInformationMissing ? null : "Avenida Aurora, 321",
+        addressComplement: null,
+        locationMessage: null,
+      }
+    : clinic;
   const context: LiveTurnContext = Object.freeze({
     turnId,
     clinicId: clinic.id,
     leadId: lead.id,
     conversationId: conversation.id,
     inboundMessageId: inbound.id,
-    clinic,
+    clinic: turnClinic,
     lead,
     conversation,
     inboundMessage: inbound,
@@ -218,6 +229,15 @@ function makeHarness(options: {
         request: "book-appointment" as const,
         dialogueMove: "new_topic" as const,
         entities: entities({ service: "clareamento", date: "amanhã", period: "afternoon" }),
+        signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
+      };
+    }
+    if (options.businessInformationTurn) {
+      return {
+        version: UNDERSTANDING_VERSION,
+        request: "business-information" as const,
+        dialogueMove: "new_topic" as const,
+        entities: entities({ businessInformationTopic: "address" }),
         signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
       };
     }
@@ -320,19 +340,20 @@ function makeHarness(options: {
       ? { status: "persistence_failed" as const }
       : { status: "stored" as const, evidenceRef: "opaque-evidence-ref" },
   );
+  const listTreatments = options.decisionFailure
+    ? vi.fn().mockRejectedValue(new Error("catalog unavailable"))
+    : vi.fn().mockResolvedValue([
+        options.crossTenantTreatment
+          ? { ...treatment, clinicId: "clinic-other" }
+          : treatment,
+      ]);
   const handler = new V2LiveConversationHandler({
     lifecycle,
     understanding: understandingBoundary,
     verbalizer,
     dental: {
       treatments: {
-        listByClinic: options.decisionFailure
-          ? vi.fn().mockRejectedValue(new Error("catalog unavailable"))
-          : vi.fn().mockResolvedValue([
-              options.crossTenantTreatment
-                ? { ...treatment, clinicId: "clinic-other" }
-                : treatment,
-            ]),
+        listByClinic: listTreatments,
       },
       resolveTenantScheduling: vi.fn((claimedClinicId: string) => {
         if (claimedClinicId !== clinic.id) throw new Error("cross-tenant scheduling");
@@ -429,10 +450,88 @@ function makeHarness(options: {
     understandingCreate,
     verbalizerCreate,
     rejectionCapture,
+    listTreatments,
   };
 }
 
 describe("V2LiveConversationHandler", () => {
+  it("answers institutional knowledge through the generic read-only pipeline", async () => {
+    const privateAddress = "Avenida Aurora, 321";
+    const harness = makeHarness({
+      businessInformationTurn: true,
+      verbalizedText: `Ficamos na ${privateAddress}.`,
+    });
+
+    await expect(harness.handler.handle(handleInput("Onde vocês ficam?")))
+      .resolves.toEqual({ replied: true });
+
+    expect(harness.understandingCreate).toHaveBeenCalledOnce();
+    expect(harness.verbalizerCreate).toHaveBeenCalledOnce();
+    expect(harness.listTreatments).toHaveBeenCalledOnce();
+    expect(harness.booking.book).not.toHaveBeenCalled();
+    expect(harness.persistStopContact).not.toHaveBeenCalled();
+    expect(harness.persistHandoff).not.toHaveBeenCalled();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          replyText: `Ficamos na ${privateAddress}.`,
+        }),
+      }),
+      { turnId },
+    );
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "v2.decision",
+        metadata: expect.objectContaining({
+          capabilityIds: "dental-knowledge",
+          decisionKinds: "answer",
+          intendedEffects: "none",
+        }),
+      }),
+      expect.objectContaining({
+        stage: "v2.action_result",
+        metadata: expect.objectContaining({
+          outcomeTypes: "business_information_answered",
+          completedEffectCount: 0,
+        }),
+      }),
+    ]));
+    expect(JSON.stringify(harness.trace.getEvents(turnId))).not.toContain(privateAddress);
+  });
+
+  it("asks safely when institutional information is not registered", async () => {
+    const harness = makeHarness({
+      businessInformationTurn: true,
+      businessInformationMissing: true,
+    });
+
+    await expect(harness.handler.handle(handleInput("Qual é o endereço?")))
+      .resolves.toEqual({ replied: true });
+
+    expect(harness.understandingCreate).toHaveBeenCalledOnce();
+    expect(harness.verbalizerCreate).not.toHaveBeenCalled();
+    expect(harness.booking.book).not.toHaveBeenCalled();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          replyText: expect.stringContaining("endereço ainda não está cadastrado"),
+        }),
+      }),
+      { turnId },
+    );
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "v2.action_result",
+        metadata: expect.objectContaining({
+          outcomeTypes: "business_information_unavailable",
+          completedEffectCount: 0,
+        }),
+      }),
+    ]));
+  });
+
   it("suppresses a reaction/sticker turn from the real reply gate before provider and outbox", async () => {
     const harness = makeHarness({
       deriveReplyGate: true,
@@ -605,7 +704,7 @@ describe("V2LiveConversationHandler", () => {
       turnId: inboundEventId,
       stage: "understanding_structural",
       modelId: "gpt-4o-mini",
-      promptVersion: "dental-understanding.v1",
+      promptVersion: "dental-understanding.v2",
       contractVersion: "understanding.v1",
       attempt: 1,
       rawOutput: privateOutput,

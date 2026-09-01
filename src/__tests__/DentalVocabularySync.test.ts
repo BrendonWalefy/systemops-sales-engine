@@ -7,6 +7,7 @@ import {
   COMPARISON_REQUESTS,
 } from "@/application/conversation-v2/comparison-record";
 import {
+  EVIDENCE_CAPABILITY_IDS,
   EVIDENCE_OUTCOME_TYPES,
   EVIDENCE_REQUESTS,
 } from "@/application/labs/systemops-lab-evidence";
@@ -32,6 +33,13 @@ describe("sincronia dos vocabulários fechados do pack dental", () => {
   it("faz a evidência do Lab aceitar todo pedido do pack", () => {
     expect([...DENTAL_REQUESTS].filter((request) =>
       !(EVIDENCE_REQUESTS as readonly string[]).includes(request))).toEqual([]);
+  });
+
+  it("faz a evidência do Lab aceitar toda capability do pack", () => {
+    expect(dentalPack.capabilities
+      .map(({ id }) => id)
+      .filter((id) => !(EVIDENCE_CAPABILITY_IDS as readonly string[]).includes(id)))
+      .toEqual([]);
   });
 
   it("faz a evidência do Lab aceitar todo outcome do pack", () => {
