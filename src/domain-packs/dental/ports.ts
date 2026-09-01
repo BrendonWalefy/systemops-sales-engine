@@ -1,3 +1,32 @@
+import type {
+  DentalBusinessInformationTopic,
+} from "@/domain-packs/dental/vocabulary";
+
+export type DentalBusinessInformationFact = Readonly<{
+  key: "address" | "business_hours" | "location_guidance";
+  value: string;
+}>;
+
+export type DentalBusinessInformationResolution =
+  | Readonly<{
+      kind: "resolved";
+      topic: DentalBusinessInformationTopic;
+      organization: Readonly<{ id: string; displayName: string }>;
+      facts: readonly DentalBusinessInformationFact[];
+      evidenceRef: string;
+    }>
+  | Readonly<{
+      kind: "missing";
+      topic: DentalBusinessInformationTopic;
+      evidenceRef: string;
+    }>;
+
+export type DentalKnowledgeReadPort = Readonly<{
+  resolveBusinessInformation(
+    topic: DentalBusinessInformationTopic,
+  ): Promise<DentalBusinessInformationResolution>;
+}>;
+
 export type DentalService = {
   id: string;
   name: string;

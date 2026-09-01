@@ -23,6 +23,12 @@ export type {
   DentalPolicy,
 } from "@/domain-packs/dental/capabilities";
 export type { DentalSchedulingWritePort } from "@/domain-packs/dental/ports";
+export type {
+  DentalBusinessInformationFact,
+  DentalBusinessInformationResolution,
+  DentalKnowledgeReadPort,
+} from "@/domain-packs/dental/ports";
+export { createDentalKnowledgeCapability } from "@/domain-packs/dental/knowledge-capability";
 export { DENTAL_OUTCOME_SCHEMA } from "@/domain-packs/dental/capabilities";
 export {
   DENTAL_OUTCOME_PROVENANCE,
