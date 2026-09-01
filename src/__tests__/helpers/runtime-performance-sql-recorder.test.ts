@@ -1,3 +1,6 @@
+import { EventEmitter } from "node:events";
+import type EmbeddedPostgres from "embedded-postgres";
+import type { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   cleanupEmbeddedAuthorityDatabase,
@@ -11,6 +14,30 @@ import {
 } from "./runtime-performance-sql-recorder";
 
 describe("runtime performance SQL interval summary", () => {
+  it("waits for checked-in client sockets before stopping embedded PostgreSQL", async () => {
+    const events: string[] = [];
+    const poolEvents = new EventEmitter();
+    const pool = Object.assign(poolEvents, {
+      totalCount: 1,
+      async end() {
+        events.push("pool.end");
+        setTimeout(() => {
+          events.push("client.remove");
+          poolEvents.emit("remove");
+        }, 10);
+      },
+    }) as unknown as Pool;
+    const embedded = {
+      async stop() {
+        events.push("embedded.stop");
+      },
+    } as unknown as EmbeddedPostgres;
+
+    await cleanupEmbeddedAuthorityDatabase({ pool, embedded });
+
+    expect(events).toEqual(["pool.end", "client.remove", "embedded.stop"]);
+  });
+
   it("counts overlapping statements as one sequential round trip", () => {
     const intervals: SqlInterval[] = [
       { startedAt: 0, endedAt: 4, lockBearing: false, transactionId: null },
