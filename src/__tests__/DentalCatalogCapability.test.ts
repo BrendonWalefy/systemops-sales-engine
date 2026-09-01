@@ -15,19 +15,19 @@ const understanding = (request: DentalRequest, service: string): Understanding<D
 });
 
 describe("Dental Catalog capability", () => {
-  it("amarra preço autorizado ao serviço resolvido e só lê durante decide", async () => {
+  it("amarra disponibilidade ao serviço resolvido e só lê durante decide", async () => {
     const resolveService = vi.fn<DentalCatalogReadPort["resolveService"]>().mockResolvedValue({
       kind: "exact", service: { id: "svc-1", name: "Clareamento", priceCents: 29_000, priceDisclosable: true, description: null },
       evidenceRef: "catalog-revision-7",
     });
     const capability = createDentalCatalogCapability({ resolveService, resolveServices: vi.fn() });
-    const claim = capability.claim(understanding("price-of-service", "clareamento"), state)!;
+    const claim = capability.claim(understanding("service-availability", "clareamento"), state)!;
     expect(resolveService).not.toHaveBeenCalled();
 
     const decision = await capability.decide(claim, { state, policy, now: new Date(0) });
     expect(resolveService).toHaveBeenCalledOnce();
     expect(decision).toEqual(expect.objectContaining({ kind: "answer", facts: [expect.objectContaining({
-      key: "price_cents", value: { kind: "money", amountInMinor: 29_000, currency: "BRL" }, subject: { type: "service", id: "svc-1", displayName: "Clareamento" }, disclosure: "allowed",
+      key: "service_available", value: { kind: "boolean", value: true }, subject: { type: "service", id: "svc-1", displayName: "Clareamento" }, disclosure: "allowed",
     })] }));
     const result = await capability.execute(decision, { state, policy, now: new Date(0) });
     expect(result.type).toBe("catalog_answered");
@@ -39,7 +39,7 @@ describe("Dental Catalog capability", () => {
       resolveService: async () => ({ kind: "unknown", evidenceRef: "catalog-1" }),
       resolveServices: vi.fn(),
     });
-    const claim = capability.claim(understanding("price-of-service", "lente"), state)!;
+    const claim = capability.claim(understanding("service-availability", "lente"), state)!;
     const decision = await capability.decide(claim, { state, policy, now: new Date(0) });
     expect(decision.kind).toBe("ask");
     expect((await capability.execute(decision, { state, policy, now: new Date(0) })).facts).toEqual([]);
@@ -54,7 +54,7 @@ describe("Dental Catalog capability", () => {
       }),
       resolveServices: vi.fn(),
     });
-    const claim = capability.claim(understanding("price-of-service", "lente"), state)!;
+    const claim = capability.claim(understanding("service-availability", "lente"), state)!;
     const decision = await capability.decide(claim, { state, policy, now: new Date(0) });
 
     expect(decision.kind).toBe("offer");
@@ -63,23 +63,20 @@ describe("Dental Catalog capability", () => {
     expect(result.facts).toEqual([]);
   });
 
-  it("não divulga preço quando policy proíbe", async () => {
+  it("não reivindica preço, que pertence exclusivamente ao commercial", () => {
     const capability = createDentalCatalogCapability({ resolveService: async () => ({
       kind: "exact", service: { id: "svc-1", name: "Clareamento", priceCents: 29_000, priceDisclosable: true, description: null }, evidenceRef: "catalog-1",
     }), resolveServices: vi.fn() });
-    const claim = capability.claim(understanding("price-of-service", "clareamento"), state)!;
-    const decision = await capability.decide(claim, { state, policy: { ...policy, priceDisclosureEnabled: false }, now: new Date(0) });
-    expect(decision.kind).toBe("ask");
+    expect(capability.claim(understanding("price-of-service", "clareamento"), state)).toBeNull();
   });
 
-  it("escala preço bloqueado somente quando policy exige humano", async () => {
+  it("não reivindica disponibilidade quando há objeção livre", () => {
     const capability = createDentalCatalogCapability({ resolveService: async () => ({
       kind: "exact", service: { id: "svc-1", name: "Clareamento", priceCents: 29_000, priceDisclosable: false, description: null }, evidenceRef: "catalog-1",
     }), resolveServices: vi.fn() });
-    const claim = capability.claim(understanding("price-of-service", "clareamento"), state)!;
-    const blockedPolicy = { ...policy, humanEscalationRequired: true };
-    const decision = await capability.decide(claim, { state, policy: blockedPolicy, now: new Date(0) });
-    expect(decision.kind).toBe("escalate");
-    expect((await capability.execute(decision, { state, policy: blockedPolicy, now: new Date(0) })).type).toBe("escalation_required");
+    expect(capability.claim({
+      ...understanding("service-availability", "clareamento"),
+      signals: { objection: "price" },
+    }, state)).toBeNull();
   });
 });

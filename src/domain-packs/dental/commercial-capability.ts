@@ -15,7 +15,7 @@ import type {
   DentalPaymentConfigurationResolution,
 } from "@/domain-packs/dental/ports";
 import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
-import { calculateFlatInstallment } from "@/core/conversation/conversation-response-parts";
+import { calculateFlatInstallment } from "@/domain/value-objects/installment";
 
 const CAPABILITY_ID = "dental-commercial";
 
