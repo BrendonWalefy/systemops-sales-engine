@@ -10,10 +10,19 @@ import { DENTAL_OUTCOME_SCHEMA } from "@/domain-packs/dental/capabilities";
  * determinístico, validator e renderer. É onde "oi" vira resposta — ou não vira
  * nada, que foi o comportamento observado em produção.
  */
-function renderOutcome(type: "reception_answered" | "clarification_required"): string {
+function renderOutcome(
+  type: "reception_answered" | "reception_acknowledged" | "reception_closed" | "clarification_required",
+): string {
+  const semanticClass = type === "reception_answered"
+    ? "engagement_invited"
+    : type === "reception_acknowledged"
+      ? "social_acknowledged"
+      : type === "reception_closed"
+        ? "conversation_closed"
+        : "clarification_required";
   const plan = buildV2AuthorizedResponsePlan(DENTAL_OUTCOME_SCHEMA, [{
     type,
-    semanticClass: type === "reception_answered" ? "engagement_invited" : "clarification_required",
+    semanticClass,
     origin: { capabilityId: "dental-reception" },
     subject: null,
     evidence: [],
@@ -33,8 +42,21 @@ describe("reception engagement rendering", () => {
     expect(renderOutcome("clarification_required")).toBe("Pode confirmar os dados?");
   });
 
+  it("acknowledges without asking an unrelated question", () => {
+    expect(renderOutcome("reception_acknowledged")).toBe("Por nada! Fico à disposição.");
+  });
+
+  it("closes politely without reopening the conversation", () => {
+    expect(renderOutcome("reception_closed")).toBe("Até mais! Quando precisar, estou por aqui.");
+  });
+
   it("produces a non-empty reply for both, which is what silence broke", () => {
-    for (const type of ["reception_answered", "clarification_required"] as const) {
+    for (const type of [
+      "reception_answered",
+      "reception_acknowledged",
+      "reception_closed",
+      "clarification_required",
+    ] as const) {
       expect(renderOutcome(type).length).toBeGreaterThan(0);
     }
   });

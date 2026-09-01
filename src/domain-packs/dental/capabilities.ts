@@ -69,6 +69,7 @@ export type DentalReceptionClaimPayload = {
   kind: "reception";
   request: "greeting" | "other";
   repeating: boolean;
+  socialAct: "opening" | "acknowledgement" | "farewell";
 };
 
 export type DentalEscalationClaimPayload = {
@@ -151,6 +152,16 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
   },
   reception_answered: {
     semanticClass: "engagement_invited",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "optional",
+  },
+  reception_acknowledged: {
+    semanticClass: "social_acknowledged",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "optional",
+  },
+  reception_closed: {
+    semanticClass: "conversation_closed",
     subjectRequirement: "forbidden",
     evidenceRequirement: "optional",
   },
@@ -730,11 +741,22 @@ export function createDentalReceptionCapability(): Capability<
         // O modelo já disse que o lead está repetindo. Repetir o convite em cima
         // disso é a forma mais rápida de perder a conversa.
         repeating: understanding.dialogueMove === "repeats",
+        socialAct: understanding.dialogueMove === "closes"
+          ? "farewell"
+          : understanding.dialogueMove === "acknowledges"
+            ? "acknowledgement"
+            : "opening",
       });
     },
     async decide(claim): Promise<Decision> {
       if (claim.payload.kind === "reception" && claim.payload.repeating) {
         return { kind: "escalate", reason: "lead_repeated_after_unanswered_turn" };
+      }
+      if (claim.payload.kind === "reception" && claim.payload.socialAct === "farewell") {
+        return { kind: "close" };
+      }
+      if (claim.payload.kind === "reception" && claim.payload.socialAct === "acknowledgement") {
+        return { kind: "ask", questionId: "reception-acknowledge" };
       }
       return { kind: "ask", questionId: "reception-how-can-i-help" };
     },
@@ -743,6 +765,26 @@ export function createDentalReceptionCapability(): Capability<
         return {
           type: "escalation_required",
           semanticClass: "human_action_required",
+          origin: { capabilityId: "dental-reception" },
+          subject: null,
+          evidence: [],
+          facts: [],
+        };
+      }
+      if (decision.kind === "close") {
+        return {
+          type: "reception_closed",
+          semanticClass: "conversation_closed",
+          origin: { capabilityId: "dental-reception" },
+          subject: null,
+          evidence: [],
+          facts: [],
+        };
+      }
+      if (decision.kind === "ask" && decision.questionId === "reception-acknowledge") {
+        return {
+          type: "reception_acknowledged",
+          semanticClass: "social_acknowledged",
           origin: { capabilityId: "dental-reception" },
           subject: null,
           evidence: [],

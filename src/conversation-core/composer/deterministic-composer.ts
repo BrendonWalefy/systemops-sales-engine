@@ -63,6 +63,16 @@ export function buildDeterministicDraft<OutcomeType extends string>(
       continue;
     }
 
+    if (outcome.semanticClass === "social_acknowledged") {
+      acts.push({ kind: "acknowledge_social", outcomeRef: outcome.ref, subjectRef: outcome.subjectRef });
+      continue;
+    }
+
+    if (outcome.semanticClass === "conversation_closed") {
+      acts.push({ kind: "close_conversation", outcomeRef: outcome.ref, subjectRef: outcome.subjectRef });
+      continue;
+    }
+
     if (outcome.semanticClass === "human_action_required") {
       acts.push({ kind: "inform_required_action", outcomeRef: outcome.ref, subjectRef: outcome.subjectRef });
       continue;
