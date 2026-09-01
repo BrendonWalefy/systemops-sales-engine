@@ -20,10 +20,66 @@ const gateInput = {
 };
 
 describe("pipeline operacional dental", () => {
+  it("routes institutional knowledge without invoking a write port", async () => {
+    const bookSlot = vi.fn();
+    const pack = createDentalPack({
+      knowledgeRead: {
+        resolveBusinessInformation: vi.fn().mockResolvedValue({
+          kind: "resolved",
+          topic: "address",
+          organization: { id: "clinic-1", displayName: "Clínica Exemplo" },
+          facts: [{ key: "address", value: "Rua Exemplo, 100" }],
+          evidenceRef: "organization:clinic-1:address",
+        }),
+      },
+      catalogRead: { resolveService: vi.fn() },
+      schedulingRead: {
+        listSlots: vi.fn(),
+        resolveOfferedSlot: vi.fn(),
+        resolvePendingAppointment: vi.fn(),
+      },
+      schedulingWrite: {
+        persistSlotOffer: vi.fn(),
+        bookSlot,
+        confirmAppointment: vi.fn(),
+      },
+    });
+
+    const result = await runTurnPipeline({
+      gateInput,
+      state: { phase: "idle", pendingStepId: null, completedStepIds: [] },
+      policy,
+      now: new Date("2026-09-01T12:00:00.000Z"),
+      understand: async () => ({
+        version: UNDERSTANDING_VERSION,
+        request: "business-information" as const,
+        dialogueMove: "new_topic" as const,
+        entities: { businessInformationTopic: "address" },
+        signals: {},
+        safety: {},
+        confidence: 1,
+        ambiguity: null,
+      }),
+      capabilities: pack.capabilities,
+      outcomeSchema: pack.outcomeSchema,
+      response: {
+        style: { tone: "neutral", verbosity: "concise", greeting: "omit", emoji: "none" },
+        composer: new DeterministicResponseComposer(),
+      },
+    });
+
+    expect(result).toMatchObject({
+      status: "delivered",
+      actionResults: [{ type: "business_information_answered" }],
+    });
+    expect(bookSlot).not.toHaveBeenCalled();
+  });
+
   it("conflito de safety bloqueia reads e writes de todas as capabilities", async () => {
     const resolveService = vi.fn();
     const bookSlot = vi.fn();
     const pack = createDentalPack({
+      knowledgeRead: { resolveBusinessInformation: vi.fn() },
       catalogRead: { resolveService },
       schedulingRead: {
         listSlots: vi.fn(),
@@ -69,6 +125,7 @@ describe("pipeline operacional dental", () => {
       }],
     });
     const pack = createDentalPack({
+      knowledgeRead: { resolveBusinessInformation: vi.fn() },
       catalogRead: { resolveService: vi.fn() },
       schedulingRead: {
         listSlots: vi.fn().mockResolvedValue({
@@ -135,6 +192,7 @@ describe("pipeline operacional dental", () => {
       slots: [],
     });
     const pack = createDentalPack({
+      knowledgeRead: { resolveBusinessInformation: vi.fn() },
       catalogRead: { resolveService: vi.fn() },
       schedulingRead: {
         listSlots,

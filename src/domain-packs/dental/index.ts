@@ -9,8 +9,10 @@ import {
   type DentalPolicy,
 } from "@/domain-packs/dental/capabilities";
 import { createDentalExplanationCapability } from "@/domain-packs/dental/explanation-capability";
+import { createDentalKnowledgeCapability } from "@/domain-packs/dental/knowledge-capability";
 import type {
   DentalCatalogReadPort,
+  DentalKnowledgeReadPort,
   DentalSchedulingReadPort,
   DentalSchedulingWritePort,
 } from "@/domain-packs/dental/ports";
@@ -45,6 +47,7 @@ export {
 export type { DentalRequest } from "@/domain-packs/dental/vocabulary";
 
 export function createDentalPack(ports: {
+  knowledgeRead: DentalKnowledgeReadPort;
   catalogRead: DentalCatalogReadPort;
   schedulingRead: DentalSchedulingReadPort;
   schedulingWrite: DentalSchedulingWritePort;
@@ -58,6 +61,7 @@ export function createDentalPack(ports: {
     id: "dental",
     outcomeSchema: DENTAL_OUTCOME_SCHEMA,
     capabilities: [
+      createDentalKnowledgeCapability(ports.knowledgeRead),
       createDentalExplanationCapability(ports.catalogRead),
       createDentalCatalogCapability(ports.catalogRead),
       createDentalSchedulingCapability(
@@ -68,6 +72,7 @@ export function createDentalPack(ports: {
       createDentalReceptionCapability(),
     ],
     journeys: [
+      { id: "knowledge", capabilityIds: ["dental-knowledge", "dental-escalation"] },
       { id: "explanation", capabilityIds: ["dental-explanation", "dental-escalation"] },
       { id: "price", capabilityIds: ["dental-catalog", "dental-escalation"] },
       {
@@ -87,6 +92,7 @@ const unavailable = async (): Promise<never> => {
 };
 
 export const dentalPack = createDentalPack({
+  knowledgeRead: { resolveBusinessInformation: unavailable },
   catalogRead: { resolveService: unavailable },
   schedulingRead: {
     listSlots: unavailable,

@@ -150,6 +150,7 @@ function appointment(
 }
 
 function setup(options: {
+  clinicOverride?: Organization;
   treatments?: Treatment[];
   leadOverride?: Lead;
   calendarSlots?: CalendarSlot[];
@@ -316,7 +317,7 @@ function setup(options: {
     appointments,
     reservations,
     booking,
-    clinic,
+    clinic: options.clinicOverride ?? clinic,
     lead: activeLead,
     leadId: activeLead.id,
     conversation: options.conversationOverride ?? conversation,
@@ -354,6 +355,75 @@ async function offerOneSlot(fixture: ReturnType<typeof setup>) {
   const discovered = await discoverOneSlot(fixture);
   return fixture.adapters.schedulingWrite.persistSlotOffer(discovered);
 }
+
+describe("Dental live adapters — institutional knowledge", () => {
+  it("resolves only bounded facts from the already-bound organization", async () => {
+    const fixture = setup({
+      clinicOverride: {
+        ...clinic,
+        address: "  Rua Exemplo, 100  ",
+        addressComplement: "  Sala 2  ",
+        businessHours: "  Seg-Sex 8h-18h  ",
+        locationMessage: "  Entrada pela recepção lateral.  ",
+        mapsUrl: "https://maps.example/private",
+      },
+    });
+
+    await expect(fixture.adapters.knowledgeRead.resolveBusinessInformation("address"))
+      .resolves.toEqual({
+        kind: "resolved",
+        topic: "address",
+        organization: { id: clinic.id, displayName: clinic.name },
+        facts: [{ key: "address", value: "Rua Exemplo, 100, Sala 2" }],
+        evidenceRef: `organization:${clinic.id}:address`,
+      });
+    await expect(fixture.adapters.knowledgeRead.resolveBusinessInformation("business-hours"))
+      .resolves.toMatchObject({
+        kind: "resolved",
+        facts: [{ key: "business_hours", value: "Seg-Sex 8h-18h" }],
+      });
+    await expect(fixture.adapters.knowledgeRead.resolveBusinessInformation("location-guidance"))
+      .resolves.toMatchObject({
+        kind: "resolved",
+        facts: [{ key: "location_guidance", value: "Entrada pela recepção lateral." }],
+      });
+    expect(JSON.stringify(await fixture.adapters.knowledgeRead.resolveBusinessInformation("location-guidance")))
+      .not.toContain("maps.example");
+  });
+
+  it("uses the address as location fallback and never invents unavailable topics", async () => {
+    const fixture = setup({
+      clinicOverride: {
+        ...clinic,
+        address: "Rua Exemplo, 100",
+        locationMessage: null,
+        mapsUrl: "https://maps.example/private",
+      },
+    });
+
+    await expect(fixture.adapters.knowledgeRead.resolveBusinessInformation("location-guidance"))
+      .resolves.toMatchObject({
+        kind: "resolved",
+        facts: [{ key: "location_guidance", value: "Rua Exemplo, 100" }],
+      });
+    await expect(fixture.adapters.knowledgeRead.resolveBusinessInformation("parking"))
+      .resolves.toMatchObject({ kind: "missing", topic: "parking" });
+    await expect(fixture.adapters.knowledgeRead.resolveBusinessInformation("social"))
+      .resolves.toMatchObject({ kind: "missing", topic: "social" });
+  });
+
+  it("returns missing for absent or oversized organization data", async () => {
+    const absent = setup();
+    const oversized = setup({
+      clinicOverride: { ...clinic, address: "x".repeat(241) },
+    });
+
+    await expect(absent.adapters.knowledgeRead.resolveBusinessInformation("address"))
+      .resolves.toMatchObject({ kind: "missing", topic: "address" });
+    await expect(oversized.adapters.knowledgeRead.resolveBusinessInformation("address"))
+      .resolves.toMatchObject({ kind: "missing", topic: "address" });
+  });
+});
 
 describe("Dental live adapters — tenant-scoped catalog", () => {
   it("resolves price only from an exact tenant treatment or alias", async () => {

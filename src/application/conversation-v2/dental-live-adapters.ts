@@ -20,7 +20,9 @@ import type { Treatment } from "@/domain/entities/treatment";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
 import type { TreatmentRepository } from "@/domain/repositories/treatment-repository";
 import type {
+  DentalBusinessInformationFact,
   DentalCatalogReadPort,
+  DentalKnowledgeReadPort,
   DentalSchedulingReadPort,
   DentalSchedulingWriteOutcome,
   DentalSchedulingWritePort,
@@ -285,6 +287,7 @@ function periodMatches(
 export function createDentalLiveAdapters(
   deps: DentalLiveAdapterDependencies,
 ): {
+  knowledgeRead: DentalKnowledgeReadPort;
   catalogRead: DentalCatalogReadPort;
   schedulingRead: DentalSchedulingReadPort;
   schedulingWrite: DentalSchedulingWritePort;
@@ -452,6 +455,80 @@ export function createDentalLiveAdapters(
         };
       }
       return { kind: "unknown", evidenceRef: `treatment-catalog:${clinic.id}` };
+    },
+  };
+
+  function boundedText(value: string | null): string | null {
+    const normalized = value?.trim() ?? "";
+    return normalized.length > 0 && normalized.length <= 240
+      ? normalized
+      : null;
+  }
+
+  function addressText(): string | null {
+    const address = boundedText(clinic.address);
+    if (!address) return null;
+    const complement = boundedText(clinic.addressComplement);
+    const combined = complement ? `${address}, ${complement}` : address;
+    return combined.length <= 240 ? combined : null;
+  }
+
+  function institutionalResolution(
+    topic: Parameters<DentalKnowledgeReadPort["resolveBusinessInformation"]>[0],
+    fact: DentalBusinessInformationFact | null,
+    evidenceRef: string,
+  ) {
+    return fact
+      ? {
+          kind: "resolved" as const,
+          topic,
+          organization: { id: clinic.id, displayName: clinic.name },
+          facts: [fact],
+          evidenceRef,
+        }
+      : {
+          kind: "missing" as const,
+          topic,
+          evidenceRef: `${evidenceRef}:missing`,
+        };
+  }
+
+  const knowledgeRead: DentalKnowledgeReadPort = {
+    async resolveBusinessInformation(topic) {
+      if (topic === "address") {
+        const value = addressText();
+        return institutionalResolution(
+          topic,
+          value ? { key: "address", value } : null,
+          `organization:${clinic.id}:address`,
+        );
+      }
+      if (topic === "business-hours") {
+        const value = boundedText(clinic.businessHours);
+        return institutionalResolution(
+          topic,
+          value ? { key: "business_hours", value } : null,
+          `organization:${clinic.id}:business-hours`,
+        );
+      }
+      if (topic === "location-guidance") {
+        const guidance = boundedText(clinic.locationMessage);
+        const fallback = guidance ? null : addressText();
+        return institutionalResolution(
+          topic,
+          guidance || fallback
+            ? { key: "location_guidance", value: guidance ?? fallback! }
+            : null,
+          guidance
+            ? `organization:${clinic.id}:location-message`
+            : `organization:${clinic.id}:address`,
+        );
+      }
+      return institutionalResolution(
+        topic,
+        null,
+        `organization:${clinic.id}:${topic}`,
+      );
     },
   };
 
@@ -795,5 +872,5 @@ export function createDentalLiveAdapters(
     },
   };
 
-  return { catalogRead, schedulingRead, schedulingWrite };
+  return { knowledgeRead, catalogRead, schedulingRead, schedulingWrite };
 }
