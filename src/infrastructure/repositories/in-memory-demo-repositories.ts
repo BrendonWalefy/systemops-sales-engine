@@ -71,6 +71,25 @@ export class InMemoryDemoStore
     return confirmed;
   }
 
+  async cancelActiveForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+    updatedAt: Date,
+  ): Promise<Appointment | null> {
+    const appointment = await this.findByIdForClinicAndLead(
+      clinicId,
+      leadId,
+      appointmentId,
+    );
+    if (!appointment || (appointment.status !== "scheduled" && appointment.status !== "confirmed")) {
+      return null;
+    }
+    const cancelled = { ...appointment, status: "cancelled" as const, updatedAt };
+    this.appointments.set(appointmentId, cancelled);
+    return cancelled;
+  }
+
   async findByPhone(clinicId: string, phone: string): Promise<Lead | null> {
     return (
       Array.from(this.leads.values()).find(

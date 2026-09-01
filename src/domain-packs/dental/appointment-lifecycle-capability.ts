@@ -207,6 +207,17 @@ export function createDentalAppointmentLifecycleCapability(
     },
     async execute(decision): Promise<ActionResult<typeof DENTAL_OUTCOME_SCHEMA>> {
       if (decision.kind === "ask") {
+        const noActiveFact: Fact = {
+          key: "active_appointment_status",
+          value: { kind: "display_text", value: "Nenhum agendamento ativo" },
+          subject: {
+            type: "appointment-list",
+            id: "active",
+            displayName: "seus agendamentos",
+          },
+          evidence: { source: "read", reference: "active-appointments:none" },
+          disclosure: "allowed",
+        };
         return {
           type: decision.questionId === "no-active-appointment"
             ? "no_active_appointment"
@@ -216,8 +227,10 @@ export function createDentalAppointmentLifecycleCapability(
             : "effect_failed",
           origin: { capabilityId: "dental-appointment-lifecycle" },
           subject: null,
-          evidence: [],
-          facts: [],
+          evidence: decision.questionId === "no-active-appointment"
+            ? [noActiveFact.evidence]
+            : [],
+          facts: decision.questionId === "no-active-appointment" ? [noActiveFact] : [],
         } as ActionResult<typeof DENTAL_OUTCOME_SCHEMA>;
       }
       if (decision.kind === "offer") {

@@ -96,6 +96,27 @@ export class DrizzleAppointmentRepository implements AppointmentRepository {
     return mapRow(row);
   }
 
+  async cancelActiveForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+    updatedAt: Date,
+  ): Promise<Appointment | null> {
+    const [row] = await db
+      .update(appointments)
+      .set({ status: "cancelled", updatedAt })
+      .where(and(
+        eq(appointments.id, appointmentId),
+        eq(appointments.clinicId, clinicId),
+        eq(appointments.leadId, leadId),
+        inArray(appointments.status, ["scheduled", "confirmed"]),
+      ))
+      .returning();
+    if (!row) return null;
+    bumpInboxVersion(clinicId);
+    return mapRow(row);
+  }
+
   async findByLeadId(leadId: string): Promise<Appointment | null> {
     const row = await db.query.appointments.findFirst({
       where: eq(appointments.leadId, leadId),

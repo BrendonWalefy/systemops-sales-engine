@@ -394,9 +394,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
             });
             understandingResolved = true;
             responseConversationBrief = buildDentalResponseConversationBrief(result);
-            if (result.request === "cancel-appointment" || result.request === "reschedule-appointment") {
-              handoffReason = "v2_cancel_reschedule_requires_human";
-            } else if (typeof result.signals.objection === "string" && result.signals.objection.trim()) {
+            if (typeof result.signals.objection === "string" && result.signals.objection.trim()) {
               handoffReason = "v2_objection_requires_human";
             } else if (result.safety.emergency === true || result.safety.requestsHuman === true) {
               handoffReason = "v2_explicit_human_request";

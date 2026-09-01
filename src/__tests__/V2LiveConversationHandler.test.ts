@@ -325,6 +325,7 @@ function makeHarness(options: {
   const booking = {
     book: vi.fn().mockResolvedValue({ success: true, appointment }),
     confirmAppointment: vi.fn(),
+    cancelAppointment: vi.fn(),
   };
   const currentState = vi.fn().mockResolvedValue(offeredState);
   const createOutboundMessageAndEnqueue = options.outboxFailure
@@ -429,6 +430,7 @@ function makeHarness(options: {
       appointments: {
         findByPeriod: vi.fn().mockResolvedValue([]),
         findByIdForClinicAndLead: vi.fn(),
+        findAllActiveByLeadId: vi.fn().mockResolvedValue([]),
       },
       reservations: { findActiveByPeriod: vi.fn().mockResolvedValue([]) },
     },
@@ -713,7 +715,6 @@ describe("V2LiveConversationHandler", () => {
 
   it.each([
     ["objections", "v2_objection_requires_human"],
-    ["cancel_reschedule", "v2_cancel_reschedule_requires_human"],
   ] as const)(
     "persists the %s safe handoff with one stable tenant-scoped identity before replying",
     async (safeHandoffBehavior, reason) => {
@@ -731,6 +732,15 @@ describe("V2LiveConversationHandler", () => {
       expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
     },
   );
+
+  it("handles cancellation in V2 without creating a human handoff", async () => {
+    const harness = makeHarness({ safeHandoffBehavior: "cancel_reschedule" });
+
+    await expect(harness.handler.handle(handleInput())).resolves.toEqual({ replied: true });
+
+    expect(harness.persistHandoff).not.toHaveBeenCalled();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+  });
   it("runs the real prepared pipeline and enqueues one authorized current-version reply", async () => {
     const harness = makeHarness();
 

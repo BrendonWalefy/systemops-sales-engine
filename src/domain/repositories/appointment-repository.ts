@@ -14,6 +14,12 @@ export type AppointmentRepository = {
     appointmentId: string,
     updatedAt: Date,
   ): Promise<Appointment | null>;
+  cancelActiveForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+    updatedAt: Date,
+  ): Promise<Appointment | null>;
   findByLeadId(leadId: string): Promise<Appointment | null>;
   findActiveByLeadId(leadId: string): Promise<Appointment | null>;
   findAllActiveByLeadId(leadId: string): Promise<Appointment[]>;

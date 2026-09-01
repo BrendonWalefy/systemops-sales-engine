@@ -111,6 +111,7 @@ class FakeCalendarGateway implements CalendarGateway {
   createAppointmentError: Error | null = null;
   createAppointmentCalls = 0;
   lastCreatedTitle: string | null = null;
+  cancelAppointmentCalls = 0;
 
   constructor(private readonly order: string[]) {}
 
@@ -126,7 +127,9 @@ class FakeCalendarGateway implements CalendarGateway {
     return appointment();
   }
 
-  async cancelAppointment(): Promise<void> {}
+  async cancelAppointment(): Promise<void> {
+    this.cancelAppointmentCalls += 1;
+  }
 
   async listBlockEvents(): Promise<[]> {
     return [];
@@ -184,6 +187,7 @@ class FakeAppointmentRepository implements AppointmentRepository {
   saveError: Error | null = null;
   authoritative: Appointment | null = appointment();
   confirmationAttempts = 0;
+  cancellationAttempts = 0;
 
   constructor(private readonly order: string[]) {}
 
@@ -219,6 +223,21 @@ class FakeAppointmentRepository implements AppointmentRepository {
     const candidate = await this.findByIdForClinicAndLead(clinicId, leadId, appointmentId);
     if (!candidate || candidate.status !== "scheduled") return null;
     this.authoritative = { ...candidate, status: "confirmed", updatedAt };
+    return this.authoritative;
+  }
+
+  async cancelActiveForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+    updatedAt: Date,
+  ): Promise<Appointment | null> {
+    this.cancellationAttempts += 1;
+    const candidate = await this.findByIdForClinicAndLead(clinicId, leadId, appointmentId);
+    if (!candidate || (candidate.status !== "scheduled" && candidate.status !== "confirmed")) {
+      return null;
+    }
+    this.authoritative = { ...candidate, status: "cancelled", updatedAt };
     return this.authoritative;
   }
 
@@ -327,6 +346,47 @@ describe("BookingService — título do evento no Calendar", () => {
     const leadSemNome = { ...lead, name: null };
     await service.book({ clinic, lead: leadSemNome, startsAt, endsAt, treatmentName: "Avaliação" , origin: "ai_conversation" });
     expect(calendar.lastCreatedTitle).toBe("Avaliação — Paciente | Clínica Teste");
+  });
+});
+
+describe("BookingService — tenant-scoped appointment cancellation", () => {
+  it("cancels one exact active appointment and treats retry as the same success", async () => {
+    const { appointmentRepo, calendar, service } = setup();
+    appointmentRepo.authoritative = appointment();
+
+    const first = await service.cancelAppointment({
+      clinic,
+      lead,
+      appointmentId: "appointment-1",
+    });
+    const retry = await service.cancelAppointment({
+      clinic,
+      lead,
+      appointmentId: "appointment-1",
+    });
+
+    expect(first).toMatchObject({ success: true, appointment: { status: "cancelled" } });
+    expect(retry).toEqual(first);
+    expect(appointmentRepo.cancellationAttempts).toBe(1);
+    expect(calendar.cancelAppointmentCalls).toBe(1);
+  });
+
+  it("rejects tenant/lead mismatches and inactive terminal appointments without effects", async () => {
+    const { appointmentRepo, calendar, service } = setup();
+    await expect(service.cancelAppointment({
+      clinic,
+      lead: { ...lead, clinicId: "other-clinic" },
+      appointmentId: "appointment-1",
+    })).resolves.toEqual({ success: false, reason: "invalid_binding" });
+
+    appointmentRepo.authoritative = { ...appointment(), status: "completed" };
+    await expect(service.cancelAppointment({
+      clinic,
+      lead,
+      appointmentId: "appointment-1",
+    })).resolves.toEqual({ success: false, reason: "appointment_not_active" });
+    expect(appointmentRepo.cancellationAttempts).toBe(0);
+    expect(calendar.cancelAppointmentCalls).toBe(0);
   });
 });
 

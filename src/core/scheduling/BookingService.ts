@@ -40,6 +40,17 @@ export type AppointmentConfirmationResult =
         | "db_error";
     };
 
+export type AppointmentCancellationResult =
+  | { success: true; appointment: Appointment }
+  | {
+      success: false;
+      reason:
+        | "invalid_binding"
+        | "appointment_not_found"
+        | "appointment_not_active"
+        | "db_error";
+    };
+
 export type BookingReservationService = {
   releaseExpired(): Promise<void>;
   reserve(clinicId: string, leadId: string, startsAt: Date, endsAt: Date, ttlMinutes?: number): Promise<SlotReservation | null>;
@@ -358,5 +369,69 @@ export class BookingService {
     }
 
     return { success: true };
+  }
+
+  async cancelAppointment(params: {
+    clinic: Organization;
+    lead: Lead;
+    appointmentId: string;
+  }): Promise<AppointmentCancellationResult> {
+    const { clinic, lead, appointmentId } = params;
+    if (lead.clinicId !== clinic.id) {
+      return { success: false, reason: "invalid_binding" };
+    }
+    const existing = await this.appointmentRepo.findByIdForClinicAndLead(
+      clinic.id,
+      lead.id,
+      appointmentId,
+    );
+    if (!existing || existing.clinicId !== clinic.id || existing.leadId !== lead.id) {
+      return { success: false, reason: "appointment_not_found" };
+    }
+    if (existing.status === "cancelled") return { success: true, appointment: existing };
+    if (existing.status !== "scheduled" && existing.status !== "confirmed") {
+      return { success: false, reason: "appointment_not_active" };
+    }
+
+    let cancelled: Appointment | null;
+    try {
+      cancelled = await this.appointmentRepo.cancelActiveForClinicAndLead(
+        clinic.id,
+        lead.id,
+        appointmentId,
+        new Date(),
+      );
+    } catch {
+      return { success: false, reason: "db_error" };
+    }
+    if (!cancelled) {
+      const reconciled = await this.appointmentRepo.findByIdForClinicAndLead(
+        clinic.id,
+        lead.id,
+        appointmentId,
+      );
+      if (reconciled?.status === "cancelled") {
+        return { success: true, appointment: reconciled };
+      }
+      return {
+        success: false,
+        reason: reconciled ? "appointment_not_active" : "appointment_not_found",
+      };
+    }
+    if (cancelled.clinicId !== clinic.id || cancelled.leadId !== lead.id) {
+      return { success: false, reason: "db_error" };
+    }
+
+    if (cancelled.calendarEventId) {
+      try {
+        await this.calendarGateway.cancelAppointment({
+          calendarEventId: cancelled.calendarEventId,
+        });
+      } catch {
+        // The tenant-bound DB cancellation is authoritative; provider repair is operational.
+      }
+    }
+    await this.reservationService.releaseBySlot(clinic.id, cancelled.startsAt);
+    return { success: true, appointment: cancelled };
   }
 }

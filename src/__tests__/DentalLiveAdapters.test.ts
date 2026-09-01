@@ -160,6 +160,7 @@ function setup(options: {
   leadOverride?: Lead;
   calendarSlots?: CalendarSlot[];
   appointmentsInPeriod?: Appointment[];
+  activeAppointments?: Appointment[];
   appointmentById?: Appointment | null;
   reservationsInPeriod?: SlotReservation[];
   conversationOverride?: Conversation;
@@ -281,6 +282,7 @@ function setup(options: {
   const appointments = {
     findByPeriod: vi.fn().mockResolvedValue(options.appointmentsInPeriod ?? []),
     findById: vi.fn().mockResolvedValue(options.appointmentById ?? null),
+    findAllActiveByLeadId: vi.fn().mockResolvedValue(options.activeAppointments ?? []),
     findByIdForClinicAndLead: vi.fn().mockImplementation(async (
       clinicId: string,
       leadId: string,
@@ -299,6 +301,12 @@ function setup(options: {
       const input = options.appointmentById ?? null;
       return input?.id === appointmentId
         ? { success: true, appointment: { ...input, status: "confirmed" } }
+        : { success: false, reason: "appointment_not_found" };
+    }),
+    cancelAppointment: vi.fn().mockImplementation(async ({ appointmentId }) => {
+      const input = (options.activeAppointments ?? []).find(({ id }) => id === appointmentId);
+      return input
+        ? { success: true, appointment: { ...input, status: "cancelled" } }
         : { success: false, reason: "appointment_not_found" };
     }),
   };
@@ -528,6 +536,59 @@ describe("Dental live adapters — institutional knowledge", () => {
       .resolves.toMatchObject({ kind: "missing", topic: "location-guidance" });
     await expect(unsafeControl.adapters.knowledgeRead.resolveBusinessInformation("address"))
       .resolves.toMatchObject({ kind: "missing", topic: "address" });
+  });
+});
+
+describe("Dental live adapters — appointment lifecycle", () => {
+  it("lists in deterministic start/id order and resolves one exact cancellation", async () => {
+    const later = appointment({
+      id: "appointment-b",
+      startsAt: new Date("2026-08-20T13:00:00.000Z"),
+      endsAt: new Date("2026-08-20T14:00:00.000Z"),
+    });
+    const earlierB = appointment({ id: "appointment-b2" });
+    const earlierA = appointment({ id: "appointment-a" });
+    const fixture = setup({ activeAppointments: [later, earlierB, earlierA] });
+
+    await expect(fixture.adapters.appointmentLifecycleRead.listActiveAppointments())
+      .resolves.toEqual([
+        expect.objectContaining({ id: "appointment-a" }),
+        expect.objectContaining({ id: "appointment-b2" }),
+        expect.objectContaining({ id: "appointment-b" }),
+      ]);
+    await expect(fixture.adapters.appointmentLifecycleRead.resolveActiveAppointment({
+      ordinal: 2,
+      date: null,
+      time: null,
+    })).resolves.toEqual(expect.objectContaining({
+      kind: "resolved",
+      appointment: expect.objectContaining({ id: "appointment-b2" }),
+    }));
+    await expect(fixture.adapters.appointmentLifecycleWrite.cancelAppointment("appointment-b2"))
+      .resolves.toMatchObject({ success: true, appointmentId: "appointment-b2" });
+    expect(fixture.booking.cancelAppointment).toHaveBeenCalledWith({
+      clinic,
+      lead,
+      appointmentId: "appointment-b2",
+    });
+  });
+
+  it("does not choose among multiple appointments and rejects cross-tenant rows", async () => {
+    const first = appointment({ id: "appointment-a" });
+    const second = appointment({ id: "appointment-b" });
+    const ambiguous = setup({ activeAppointments: [first, second] });
+    await expect(ambiguous.adapters.appointmentLifecycleRead.resolveActiveAppointment({
+      ordinal: null,
+      date: null,
+      time: null,
+    })).resolves.toMatchObject({ kind: "ambiguous" });
+    expect(ambiguous.booking.cancelAppointment).not.toHaveBeenCalled();
+
+    const foreign = setup({
+      activeAppointments: [{ ...first, clinicId: "other-clinic" }],
+    });
+    await expect(foreign.adapters.appointmentLifecycleRead.listActiveAppointments())
+      .rejects.toThrow(/appointment tenant binding mismatch/i);
   });
 });
 
