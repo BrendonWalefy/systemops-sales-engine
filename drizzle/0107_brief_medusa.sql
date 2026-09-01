@@ -1,0 +1,1 @@
+ALTER TABLE "playbook_versions" ADD COLUMN "faqs" jsonb DEFAULT '[]'::jsonb NOT NULL;

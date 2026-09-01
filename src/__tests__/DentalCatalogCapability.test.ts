@@ -20,7 +20,7 @@ describe("Dental Catalog capability", () => {
       kind: "exact", service: { id: "svc-1", name: "Clareamento", priceCents: 29_000, priceDisclosable: true, description: null },
       evidenceRef: "catalog-revision-7",
     });
-    const capability = createDentalCatalogCapability({ resolveService });
+    const capability = createDentalCatalogCapability({ resolveService, resolveServices: vi.fn() });
     const claim = capability.claim(understanding("price-of-service", "clareamento"), state)!;
     expect(resolveService).not.toHaveBeenCalled();
 
@@ -37,6 +37,7 @@ describe("Dental Catalog capability", () => {
   it("pede clarificação para resolução unknown sem inventar fato", async () => {
     const capability = createDentalCatalogCapability({
       resolveService: async () => ({ kind: "unknown", evidenceRef: "catalog-1" }),
+      resolveServices: vi.fn(),
     });
     const claim = capability.claim(understanding("price-of-service", "lente"), state)!;
     const decision = await capability.decide(claim, { state, policy, now: new Date(0) });
@@ -51,6 +52,7 @@ describe("Dental Catalog capability", () => {
         candidates: [{ id: "a", name: "Lente A" }, { id: "b", name: "Lente B" }],
         evidenceRef: "catalog-1",
       }),
+      resolveServices: vi.fn(),
     });
     const claim = capability.claim(understanding("price-of-service", "lente"), state)!;
     const decision = await capability.decide(claim, { state, policy, now: new Date(0) });
@@ -64,7 +66,7 @@ describe("Dental Catalog capability", () => {
   it("não divulga preço quando policy proíbe", async () => {
     const capability = createDentalCatalogCapability({ resolveService: async () => ({
       kind: "exact", service: { id: "svc-1", name: "Clareamento", priceCents: 29_000, priceDisclosable: true, description: null }, evidenceRef: "catalog-1",
-    }) });
+    }), resolveServices: vi.fn() });
     const claim = capability.claim(understanding("price-of-service", "clareamento"), state)!;
     const decision = await capability.decide(claim, { state, policy: { ...policy, priceDisclosureEnabled: false }, now: new Date(0) });
     expect(decision.kind).toBe("ask");
@@ -73,7 +75,7 @@ describe("Dental Catalog capability", () => {
   it("escala preço bloqueado somente quando policy exige humano", async () => {
     const capability = createDentalCatalogCapability({ resolveService: async () => ({
       kind: "exact", service: { id: "svc-1", name: "Clareamento", priceCents: 29_000, priceDisclosable: false, description: null }, evidenceRef: "catalog-1",
-    }) });
+    }), resolveServices: vi.fn() });
     const claim = capability.claim(understanding("price-of-service", "clareamento"), state)!;
     const blockedPolicy = { ...policy, humanEscalationRequired: true };
     const decision = await capability.decide(claim, { state, policy: blockedPolicy, now: new Date(0) });

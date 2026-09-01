@@ -28,6 +28,7 @@ export const dentalUnderstandingStructureSchema = z.object({
     period: z.string().nullable(),
     time: z.string().nullable(),
     serviceCandidates: z.array(z.string()).nullable(),
+    faqQuestion: z.string().nullable(),
     quantity: z.number().nullable(),
     ordinal: z.number().nullable(),
   }).strict(),
@@ -58,7 +59,11 @@ export type DentalUnderstandingSemanticIssue = Readonly<{
   code:
     | "service_required_for_request"
     | "business_information_topic_required"
-    | "business_information_topic_forbidden";
+    | "business_information_topic_forbidden"
+    | "comparison_services_required"
+    | "comparison_services_forbidden"
+    | "faq_question_required"
+    | "faq_question_forbidden";
 }>;
 
 export type DentalUnderstandingSemanticValidation =
@@ -124,6 +129,57 @@ export function validateDentalUnderstandingSemantics(
       issues: Object.freeze([{
         path: Object.freeze(["entities", "service"]),
         code: "service_required_for_request" as const,
+      }]),
+    };
+  }
+
+  const serviceCandidates = value.entities.serviceCandidates;
+  if (value.request === "compare-services") {
+    const normalizedCandidates = Array.isArray(serviceCandidates)
+      ? serviceCandidates.map((candidate) => candidate.trim().toLocaleLowerCase("pt-BR"))
+      : [];
+    if (
+      normalizedCandidates.length !== 2
+      || normalizedCandidates.some((candidate) => candidate.length === 0)
+      || new Set(normalizedCandidates).size !== 2
+    ) {
+      return {
+        valid: false,
+        issues: Object.freeze([{
+          path: Object.freeze(["entities", "serviceCandidates"]),
+          code: "comparison_services_required" as const,
+        }]),
+      };
+    }
+  } else if (serviceCandidates !== null) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "serviceCandidates"]),
+        code: "comparison_services_forbidden" as const,
+      }]),
+    };
+  }
+
+  const faqQuestion = value.entities.faqQuestion;
+  if (
+    value.request === "frequently-asked-question"
+    && (typeof faqQuestion !== "string" || faqQuestion.trim().length === 0)
+  ) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "faqQuestion"]),
+        code: "faq_question_required" as const,
+      }]),
+    };
+  }
+  if (value.request !== "frequently-asked-question" && faqQuestion !== null) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "faqQuestion"]),
+        code: "faq_question_forbidden" as const,
       }]),
     };
   }

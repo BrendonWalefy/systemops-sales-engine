@@ -154,6 +154,13 @@ Pontos principais de IA:
 
 Understanding e verbalizador recebem o contexto V2 necessário para suas responsabilidades. Conteúdo específico da organização vem do playbook ativo e do catálogo; comportamento universal fica no código de inteligência.
 
+Conhecimento live é dividido por dono: `dental-knowledge` resolve informações institucionais da
+organização; `dental-explanation` explica ou compara tratamentos do catálogo tenant-scoped; e
+`dental-playbook-knowledge` resolve diferenciais e FAQ da versão editorial ativa. Understanding
+classifica e copia rótulos canônicos, enquanto essas capabilities autorizam os fatos. Respostas de
+FAQ não entram no prompt de Understanding, e nenhum desses caminhos consulta V1 ou minera notas
+livres.
+
 ### Resposta autorizada e fallback seguro
 
 Nos caminhos que compõem uma resposta a partir de uma ação, o resultado

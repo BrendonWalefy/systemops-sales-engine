@@ -113,6 +113,8 @@ function makeHarness(options: {
   businessInformationTurn?: boolean;
   businessInformationMissing?: boolean;
   businessInformationTopic?: "address" | "parking" | "social";
+  editorialFaq?: boolean;
+  playbookKnowledgeTurn?: "differentials" | "faq";
 } = {}) {
   const entities = (overrides: Record<string, unknown> = {}) => ({
     service: null,
@@ -121,6 +123,7 @@ function makeHarness(options: {
     period: null,
     time: null,
     serviceCandidates: null,
+    faqQuestion: null,
     quantity: null,
     ordinal: null,
     ...overrides,
@@ -162,7 +165,15 @@ function makeHarness(options: {
     conversation,
     inboundMessage: inbound,
     outboundAddress: lead.phone!,
-    editorial: null,
+    editorial: options.editorialFaq || options.playbookKnowledgeTurn
+      ? ({
+          versionId: "version-active-7",
+          differentials: ["Atendimento individualizado.", "Planejamento digital."],
+          faqs: [
+          { question: "Preciso de encaminhamento?", answer: "Não." },
+          { question: "Aceita convênio?", answer: "Consulte a recepção." },
+        ] } as never)
+      : null,
     inboundAuthority: {
       inboundEventId,
       streamId: "d4d87572-92e8-4865-a1fc-fc9b53fd4f34",
@@ -246,6 +257,24 @@ function makeHarness(options: {
         signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
       };
     }
+    if (options.playbookKnowledgeTurn === "differentials") {
+      return {
+        version: UNDERSTANDING_VERSION,
+        request: "business-differentials" as const,
+        dialogueMove: "new_topic" as const,
+        entities: entities(),
+        signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
+      };
+    }
+    if (options.playbookKnowledgeTurn === "faq") {
+      return {
+        version: UNDERSTANDING_VERSION,
+        request: "frequently-asked-question" as const,
+        dialogueMove: "new_topic" as const,
+        entities: entities({ faqQuestion: "Preciso de encaminhamento?" }),
+        signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
+      };
+    }
     if (options.safeHandoffBehavior === "objections") {
       return {
         version: UNDERSTANDING_VERSION,
@@ -305,15 +334,16 @@ function makeHarness(options: {
   const persistHandoff = options.handoffFailure
     ? vi.fn().mockRejectedValue(new Error("handoff unavailable"))
     : vi.fn().mockResolvedValue(undefined);
-  const understandingCreate = vi.fn(async () => ({
-    choices: [{
+  const understandingCreate = vi.fn(async (input: unknown) => {
+    void input;
+    return { choices: [{
       message: {
         content: Object.hasOwn(options, "understandingRawOutput")
           ? options.understandingRawOutput ?? null
           : JSON.stringify(await understand()),
       },
-    }],
-  }));
+    }] };
+  });
   const registeredUnderstanding = createLiveDentalUnderstanding({
     chat: {
       completions: { create: understandingCreate },
@@ -460,6 +490,50 @@ function makeHarness(options: {
 }
 
 describe("V2LiveConversationHandler", () => {
+  it.each([
+    ["differentials", "Atendimento individualizado"],
+    ["faq", "Não."],
+  ] as const)("answers active playbook %s without business effects", async (turn, expected) => {
+    const harness = makeHarness({ playbookKnowledgeTurn: turn });
+
+    await expect(harness.handler.handle(handleInput("Pergunta de conhecimento")))
+      .resolves.toEqual({ replied: true });
+
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({ replyText: expect.stringContaining(expected) }),
+      }),
+      { turnId },
+    );
+    expect(harness.booking.book).not.toHaveBeenCalled();
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "v2.decision",
+        metadata: expect.objectContaining({
+          capabilityIds: "dental-playbook-knowledge",
+          intendedEffects: "none",
+        }),
+      }),
+    ]));
+    expect(JSON.stringify(harness.trace.getEvents(turnId))).not.toContain(expected);
+  });
+
+  it("supplies only bounded canonical FAQ questions to Understanding", async () => {
+    const harness = makeHarness({ editorialFaq: true });
+
+    await harness.handler.handle(handleInput());
+
+    const openAiRequest = harness.understandingCreate.mock.calls[0]![0] as {
+      messages: { content: string }[];
+    };
+    const modelInput = JSON.parse(openAiRequest.messages[1]!.content);
+    expect(modelInput.faqCatalog).toEqual([
+      "Preciso de encaminhamento?",
+      "Aceita convênio?",
+    ]);
+    expect(JSON.stringify(modelInput)).not.toContain("Consulte a recepção");
+  });
+
   it("answers institutional knowledge through the generic read-only pipeline", async () => {
     const privateAddress = "Avenida Aurora, 321";
     const harness = makeHarness({
@@ -731,7 +805,7 @@ describe("V2LiveConversationHandler", () => {
       turnId: inboundEventId,
       stage: "understanding_structural",
       modelId: "gpt-4o-mini",
-      promptVersion: "dental-understanding.v2",
+      promptVersion: "dental-understanding.v3",
       contractVersion: "understanding.v1",
       attempt: 1,
       rawOutput: privateOutput,

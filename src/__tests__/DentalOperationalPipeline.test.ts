@@ -18,6 +18,10 @@ const gateInput = {
   humanControlled: false,
   optedOut: false,
 };
+const unavailablePlaybookKnowledge = {
+  resolveDifferentials: vi.fn(),
+  resolveFaq: vi.fn(),
+};
 
 describe("pipeline operacional dental", () => {
   it("routes institutional knowledge without invoking a write port", async () => {
@@ -32,7 +36,8 @@ describe("pipeline operacional dental", () => {
           evidenceRef: "organization:clinic-1:address",
         }),
       },
-      catalogRead: { resolveService: vi.fn() },
+      playbookKnowledgeRead: unavailablePlaybookKnowledge,
+      catalogRead: { resolveService: vi.fn(), resolveServices: vi.fn() },
       schedulingRead: {
         listSlots: vi.fn(),
         resolveOfferedSlot: vi.fn(),
@@ -80,7 +85,8 @@ describe("pipeline operacional dental", () => {
     const bookSlot = vi.fn();
     const pack = createDentalPack({
       knowledgeRead: { resolveBusinessInformation: vi.fn() },
-      catalogRead: { resolveService },
+      playbookKnowledgeRead: unavailablePlaybookKnowledge,
+      catalogRead: { resolveService, resolveServices: vi.fn() },
       schedulingRead: {
         listSlots: vi.fn(),
         resolveOfferedSlot: vi.fn(),
@@ -126,7 +132,8 @@ describe("pipeline operacional dental", () => {
     });
     const pack = createDentalPack({
       knowledgeRead: { resolveBusinessInformation: vi.fn() },
-      catalogRead: { resolveService: vi.fn() },
+      playbookKnowledgeRead: unavailablePlaybookKnowledge,
+      catalogRead: { resolveService: vi.fn(), resolveServices: vi.fn() },
       schedulingRead: {
         listSlots: vi.fn().mockResolvedValue({
           service: { id: "whitening", name: "Clareamento" },
@@ -193,7 +200,8 @@ describe("pipeline operacional dental", () => {
     });
     const pack = createDentalPack({
       knowledgeRead: { resolveBusinessInformation: vi.fn() },
-      catalogRead: { resolveService: vi.fn() },
+      playbookKnowledgeRead: unavailablePlaybookKnowledge,
+      catalogRead: { resolveService: vi.fn(), resolveServices: vi.fn() },
       schedulingRead: {
         listSlots,
         resolveOfferedSlot: vi.fn(),

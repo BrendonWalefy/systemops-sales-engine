@@ -37,6 +37,7 @@ export class LiveDentalUnderstanding {
     history: readonly { author: "lead" | "agent"; body: string }[];
     state: ConversationState | null;
     catalog: readonly DentalCatalogEntry[];
+    faqCatalog: readonly string[];
   }, options?: DentalUnderstandingOptions): Promise<Understanding<DentalRequest>> {
     return this.provider.understand(input, options);
   }

@@ -79,6 +79,7 @@ export type V2LiveTurnConfiguration = Readonly<{
 
 type DynamicDentalDependencies =
   | "clinic"
+  | "editorial"
   | "lead"
   | "leadId"
   | "conversation"
@@ -292,6 +293,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
         ...this.deps.dental,
         ...scheduling,
         clinic: context.clinic,
+        editorial: context.editorial,
         lead: context.lead,
         leadId: context.leadId,
         conversation: context.conversation,
@@ -325,6 +327,9 @@ export class V2LiveConversationHandler implements ConversationHandler {
                 displayName: treatment.name,
                 aliases: Object.freeze([...treatment.aliases]),
               })),
+              faqCatalog: Object.freeze(
+                (context.editorial?.faqs ?? []).slice(0, 20).map((faq) => faq.question),
+              ),
             }, {
               onContractRejection: async (rejection) => {
                 const authoritativeTurnId = context.inboundAuthority?.inboundEventId;

@@ -42,6 +42,7 @@ export type DentalUnderstandingModelRequest = {
   history: readonly { author: "lead" | "agent"; body: string }[];
   state: ConversationState | null;
   catalog: readonly DentalCatalogEntry[];
+  faqCatalog: readonly string[];
 };
 
 export type DentalUnderstandingModel = {

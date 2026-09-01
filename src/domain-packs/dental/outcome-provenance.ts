@@ -6,6 +6,7 @@ import {
 
 export type DentalCapabilityId =
   | "dental-knowledge"
+  | "dental-playbook-knowledge"
   | "dental-explanation"
   | "dental-catalog"
   | "dental-scheduling"
@@ -52,6 +53,16 @@ function outcome<const Type extends DentalOutcomeType>(
 
 const provenanceRules = [
   {
+    capabilityId: "dental-playbook-knowledge",
+    decisionKind: "answer",
+    outcomes: [outcome("playbook_knowledge_answered")],
+  },
+  {
+    capabilityId: "dental-playbook-knowledge",
+    decisionKind: "ask",
+    outcomes: [outcome("clarification_required")],
+  },
+  {
     capabilityId: "dental-knowledge",
     decisionKind: "answer",
     outcomes: [
@@ -67,7 +78,7 @@ const provenanceRules = [
   {
     capabilityId: "dental-explanation",
     decisionKind: "answer",
-    outcomes: [outcome("service_explained")],
+    outcomes: [outcome("service_explained"), outcome("services_compared")],
   },
   {
     capabilityId: "dental-explanation",

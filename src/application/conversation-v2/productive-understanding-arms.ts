@@ -104,6 +104,7 @@ export function createProductiveCycleIUnderstandingArms(input: Readonly<{
       history: turn.history.map((entry) => ({ author: entry.author === "lead" ? "lead" as const : "agent" as const, body: entry.body })),
       state: null,
       catalog: config.services.map((service, index) => ({ id: `fixture-service-${index}`, displayName: service.name, aliases: [] })),
+      faqCatalog: [],
     });
     return freeze({ request: result.request, model: summary(input.manifest.v2.modelId, performance.now() - started) });
   } });

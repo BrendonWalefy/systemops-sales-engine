@@ -466,6 +466,20 @@ describe("Cycle I deferred journey boundary", () => {
   });
 });
 
+describe("V2 treatment and playbook knowledge journey boundary", () => {
+  it("keeps comparison, differentials and FAQ representable by closed requests and owned journeys", () => {
+    expect(DENTAL_REQUESTS).toEqual(expect.arrayContaining([
+      "compare-services",
+      "business-differentials",
+      "frequently-asked-question",
+    ]));
+    expect(dentalPack.journeys).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "explanation", capabilityIds: expect.arrayContaining(["dental-explanation"]) }),
+      expect.objectContaining({ id: "playbook-knowledge", capabilityIds: expect.arrayContaining(["dental-playbook-knowledge"]) }),
+    ]));
+  });
+});
+
 describe("V2-only capability parity contract", () => {
   const requiredBehaviors = [
     "opening_reception",

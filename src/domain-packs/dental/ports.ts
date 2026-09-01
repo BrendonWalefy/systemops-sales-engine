@@ -33,6 +33,29 @@ export type DentalKnowledgeReadPort = Readonly<{
   ): Promise<DentalBusinessInformationResolution>;
 }>;
 
+export type DentalPlaybookKnowledgeFact = Readonly<{
+  key: "business_differential" | "faq_answer";
+  value: string;
+  evidenceRef: string;
+}>;
+
+export type DentalPlaybookKnowledgeResolution =
+  | Readonly<{
+      kind: "resolved";
+      request: "business-differentials" | "frequently-asked-question";
+      organization: Readonly<{ id: string; displayName: string }>;
+      facts: readonly DentalPlaybookKnowledgeFact[];
+    }>
+  | Readonly<{
+      kind: "missing";
+      request: "business-differentials" | "frequently-asked-question";
+    }>;
+
+export type DentalPlaybookKnowledgeReadPort = Readonly<{
+  resolveDifferentials(): Promise<DentalPlaybookKnowledgeResolution>;
+  resolveFaq(question: string): Promise<DentalPlaybookKnowledgeResolution>;
+}>;
+
 export type DentalService = {
   id: string;
   name: string;
@@ -49,6 +72,9 @@ export type ServiceResolution =
 
 export type DentalCatalogReadPort = {
   resolveService(query: string): Promise<ServiceResolution>;
+  resolveServices(
+    queries: readonly [string, string],
+  ): Promise<readonly [ServiceResolution, ServiceResolution]>;
 };
 
 export type DentalSlot = { id: string; label: string; evidenceRef: string };

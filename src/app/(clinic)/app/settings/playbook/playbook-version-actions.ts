@@ -12,6 +12,7 @@ import { preserveVoiceOutputEnabled, type VoiceTtsConfig, type VoiceElevenLabsCo
 import type { VoiceMode } from "@/domain/entities/voice-mode";
 import { activateExistingPlaybookVersion } from "@/application/config/playbook-publication";
 import { parseInstitutionalDetails } from "@/application/config/institutional-details";
+import { parseFrequentlyAskedQuestions } from "@/application/config/faq-config";
 
 
 type PlaybookVersionData = {
@@ -21,6 +22,7 @@ type PlaybookVersionData = {
   differentials?: string[];
   commercialPolicy?: string | null;
   objections?: { objection: string; response: string }[];
+  faqs?: { question: string; answer: string }[];
   // null = não cadastrado (a IA diz que confirma com a equipe);
   // offersWarranty: false = a clínica não dá garantia, e a IA pode informar isso.
   warrantyPolicy?: {
@@ -47,9 +49,12 @@ export async function createPlaybookVersion(name: string) {
 
 export async function updatePlaybookVersion(id: string, data: PlaybookVersionData) {
   const CLINIC_ID = await requireSessionClinicId();
+  const normalizedData = data.faqs === undefined
+    ? data
+    : { ...data, faqs: parseFrequentlyAskedQuestions(data.faqs) };
   await db
     .update(playbookVersions)
-    .set({ ...data, updatedAt: new Date() })
+    .set({ ...normalizedData, updatedAt: new Date() })
     .where(and(eq(playbookVersions.id, id), eq(playbookVersions.clinicId, CLINIC_ID)));
 
   revalidatePath(`/app/settings/playbook/${id}`);
@@ -71,6 +76,7 @@ export async function activatePlaybookVersion(id: string) {
     receptionistName: version.receptionistName,
     differentials: version.differentials ?? [],
     commercialPolicy: version.commercialPolicy ?? "",
+    faqs: version.faqs ?? [],
   });
 
   if (!validation.success) {
@@ -141,6 +147,7 @@ export async function duplicatePlaybookVersion(id: string) {
     differentials: original.differentials,
     commercialPolicy: original.commercialPolicy,
     objections: original.objections,
+    faqs: original.faqs,
     notes: original.notes,
     mediaAssetIds: original.mediaAssetIds,
   });
