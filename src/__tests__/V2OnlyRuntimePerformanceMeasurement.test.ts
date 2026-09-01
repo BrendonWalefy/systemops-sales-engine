@@ -187,6 +187,10 @@ type SeededFixtureContext = Readonly<{
 
 const FIXED_NOW = new Date(RUNTIME_FIXED_NOW_ISO);
 const DRAIN_NOW = new Date(RUNTIME_DRAIN_NOW_ISO);
+// Outbound enqueue uses PostgreSQL's wall clock. This benchmark measures an
+// immediate send, not calendar eligibility, so its send drain must stay due
+// even after the frozen corpus dates have passed.
+const IMMEDIATE_SEND_DRAIN_NOW = new Date("9999-12-31T23:59:59.000Z");
 const DUPLICATE_CASE_ID = "injection-0001";
 const REPLY_ACTION_TYPES = new Set([
   "general_question",
@@ -350,6 +354,7 @@ function understandingFor(fixture: CorpusCase): Record<string, unknown> {
     dialogueMove: source.dialogueMove,
     entities: {
       service: entities.service ?? null,
+      businessInformationTopic: null,
       date: entities.date ?? null,
       period: entities.period ?? null,
       time: entities.time ?? null,
@@ -1165,7 +1170,7 @@ describe("V2-only runtime performance measurement worker", () => {
           handler: sender,
           workerId: `runtime-send-${arm}-${turnIndex}`,
           maxJobs: 1,
-          now: DRAIN_NOW,
+          now: IMMEDIATE_SEND_DRAIN_NOW,
         }));
       expect(sendResult).toMatchObject({ claimed: 1, sent: 1, ignored: 0, retried: 0, dead: 0 });
       expect(providerDeliveries - deliveriesBefore).toBe(1);
