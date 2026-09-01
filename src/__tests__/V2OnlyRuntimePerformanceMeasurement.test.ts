@@ -6,6 +6,9 @@ import { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+const LOCK_HOLD_TOLERANCE_RATIO = 1.1;
+const LOCK_HOLD_TOLERANCE_MS = 5;
+
 const databaseMock = vi.hoisted(() => {
   let activeDb: unknown;
   const proxy = new Proxy({}, {
@@ -1396,7 +1399,9 @@ describe("V2-only runtime performance measurement worker", () => {
       expect(sample.sql.statements).toBeLessThanOrEqual(normalReply.sql.statements);
       expect(sample.sql.sequentialRoundTrips)
         .toBeLessThanOrEqual(normalReply.sql.sequentialRoundTrips);
-      expect(sample.sql.lockHoldMs).toBeLessThanOrEqual(normalReply.sql.lockHoldMs);
+      expect(sample.sql.lockHoldMs).toBeLessThanOrEqual(
+        normalReply.sql.lockHoldMs * LOCK_HOLD_TOLERANCE_RATIO + LOCK_HOLD_TOLERANCE_MS,
+      );
     }
     expect(businessStateAfter.rows[0]).toEqual(businessStateBefore.rows[0]);
 

@@ -106,6 +106,7 @@ type DentalBusinessInformationResolution =
   | Readonly<{
       kind: "missing";
       topic: DentalBusinessInformationTopic;
+      organization: Readonly<{ id: string; displayName: string }>;
       evidenceRef: string;
     }>;
 ```
@@ -117,9 +118,14 @@ copy historical V1 prompt text.
 ### Decision and outcome
 
 `dental-knowledge` claims only `business-information` with a valid topic. Resolved data produces
-`Decision.answer`; missing data produces one clarification/handoff-safe question. The outcome
-`business_information_answered` uses `information_authorized`, requires an organization subject and
-read evidence.
+`Decision.answer`. Canonical absence is an observed tenant fact, not ambiguity the lead can resolve,
+so it produces a topic-specific safe `Decision.answer` and outcome
+`business_information_unavailable`. Both answer outcomes use `information_authorized` and require
+an organization subject plus read evidence. A malformed, mismatched or unsafe adapter result fails
+closed as `Decision.ask` / `clarification_required` instead of being treated as canonical absence.
+An absent source value, or a persisted source value that cannot be represented safely on the
+authorized response surface, is reported by the live adapter as unavailable; it is never copied,
+partially recovered or silently replaced by a less authoritative source.
 
 No write port exists. A regression must prove the slice cannot produce `Decision.execute`.
 
@@ -153,8 +159,8 @@ The current stages remain canonical. A successful first-slice turn must contain:
 
 - `v2.understanding` with request `business-information`;
 - `v2.decision` with capability `dental-knowledge` and kind `answer` or `ask`;
-- `v2.action_result` with outcome `business_information_answered` or
-  `clarification_required` and zero completed effects;
+- `v2.action_result` with outcome `business_information_answered`,
+  `business_information_unavailable` or `clarification_required` and zero completed effects;
 - response plan and validation stages;
 - outbox and delivery stages when a reply is created.
 

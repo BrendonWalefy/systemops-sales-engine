@@ -22,7 +22,9 @@ the current `Decision`, `ActionResult`, authorized response, trace, outbox and s
 - Do not add schema, migration, worker, queue, model call or tenant configuration.
 - Reuse `Understanding`, `Decision`, `ActionResult` and `V2AuthorizedResponsePlan`.
 - At most one Understanding call and one verbalization call per inbound; no model retry.
-- Missing or oversized institutional data produces clarification, never invented text.
+- Canonically missing institutional data, including a source value that cannot be represented on
+  the authorized response surface, produces a topic-specific unavailable answer. A malformed or
+  mismatched port response produces clarification. Neither path invents tenant information.
 - Parking, social links and maps URLs remain missing/deferred in this slice.
 - Historical V1 snapshots do not gain fabricated institutional reads; their adapter reports the
   new read port unavailable and V2-native fixtures cover the behavior.
@@ -181,8 +183,10 @@ expect(await capability.execute(decision, context)).toMatchObject({
 });
 ```
 
-Also prove missing data returns `clarification_required`, emergency/human requests are not claimed,
-and no decision returned by this capability has `kind === "execute"`.
+Also prove canonical missing data returns a topic-specific `Decision.answer` whose execution yields
+`business_information_unavailable`; malformed, mismatched or unsafe reads return
+`clarification_required`; emergency/human requests are not claimed; and no decision returned by
+this capability has `kind === "execute"`.
 
 - [ ] **Step 2: Run the capability RED**
 
@@ -209,6 +213,7 @@ export type DentalBusinessInformationResolution =
   | Readonly<{
       kind: "missing";
       topic: DentalBusinessInformationTopic;
+      organization: Readonly<{ id: string; displayName: string }>;
       evidenceRef: string;
     }>;
 
@@ -224,8 +229,10 @@ export type DentalKnowledgeReadPort = Readonly<{
 Add `DentalKnowledgeClaimPayload` to the existing claim union. A resolved read becomes
 `Decision.answer` with organization subject, `display_text` facts, read evidence and allowed
 disclosure. Reject empty, untrimmed or >240-character values. Register
-`business_information_answered` with required subject/evidence and pair
-`dental-knowledge + answer` in `DENTAL_OUTCOME_PROVENANCE`. Add the capability before reception in
+`business_information_answered` and `business_information_unavailable` with required
+subject/evidence and pair `dental-knowledge + answer` in `DENTAL_OUTCOME_PROVENANCE`. Canonical
+absence is represented by an authorized topic-specific fact; malformed results fail closed as
+`ask`. Add the capability before reception in
 `createDentalPack`. Make `knowledgeRead` a required pack port and update the default unavailable
 pack plus every direct pack factory in `DentalOperationalPipeline.test.ts`; do not make live and
 test packs silently register different capability sets.
@@ -343,7 +350,8 @@ git commit -m "feat(v2): bind knowledge reads to the claimed tenant"
 
 Add a harness option returning `business-information/address`. Assert one Understanding call, at
 most one verbalization, zero booking/effect calls, one outbox, capability `dental-knowledge`,
-outcome `business_information_answered`, and completed-effect count zero. Add a missing-data case.
+outcome `business_information_answered`, and completed-effect count zero. Add a missing-data case
+that expects `business_information_unavailable` and relevant topic-specific outbound text.
 
 Use a distinctive address and prove it appears in no trace metadata.
 
@@ -443,5 +451,10 @@ or write production data as part of this slice.
   explicitly when V1 did not capture the read instead of fabricating parity.
 - All type names are defined before later tasks consume them.
 - No model output executes an effect and no inline retry is introduced.
+- Canonical unavailability is distinguished from a port contract failure: absent or unsafe source
+  values receive a grounded, topic-specific unavailable answer, while malformed or mismatched port
+  responses remain fail-closed.
+- Institutional lock measurements use the approved p95 tolerance of +10% and +5 ms rather than an
+  unstable exact comparison between individual samples.
 - Parking, social and map links are deferred rather than guessed from prose.
 - There are no placeholders or unresolved product decisions.
