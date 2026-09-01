@@ -1,6 +1,6 @@
 # Matriz executável de paridade de capacidades V2
 
-Status: roadmap do produto em 2026-08-31. A V1 é referência histórica, nunca runtime ou fallback.
+Status: roadmap do produto em 2026-09-01. A V1 é referência histórica, nunca runtime ou fallback.
 Arquitetura: [Expansão das capacidades de negócio no runtime V2](v2-business-capability-architecture.md).
 
 ## Legenda
@@ -19,7 +19,7 @@ Arquitetura: [Expansão das capacidades de negócio no runtime V2](v2-business-c
 | Recepção | Reconhecimento e despedida | `slice` | Playbook/Geral | recepção social sem efeito |
 | Conhecimento | Descrição de tratamento | `green` | Tratamentos | `dental-explanation` |
 | Conhecimento | Comparação, diferenciais e FAQ | `slice` | Playbook/Conhecimento + Tratamentos | conhecimento com evidência |
-| Conhecimento | Endereço, horário e localização | `slice` | Perfil + Playbook/Geral | informação institucional |
+| Conhecimento | Endereço, horário e localização | `green` | Perfil | `dental-knowledge` |
 | Conhecimento | Estacionamento, redes e dúvidas gerais | `slice` | Playbook/Conhecimento | informação institucional |
 | Comercial | Preço explicitamente divulgável | `green` | Tratamentos | `dental-catalog` |
 | Comercial | Campanha de preço vigente | `shared` | Tratamentos/Campanhas | resolver campanha antes do plano |
@@ -56,10 +56,23 @@ Arquitetura: [Expansão das capacidades de negócio no runtime V2](v2-business-c
 | Canal | Voz | `shared` | Playbook/Voz | sender mantém formato de entrega |
 | Legado | Qualificação inferida por texto do modelo | `obsolete` | — | somente efeitos explícitos e determinísticos |
 
+### Evidência da fatia institucional
+
+`business-information` usa um tópico fechado e `dental-knowledge` produz somente `answer` ou
+`ask`. Endereço vem de `organizations.address` e `addressComplement`; horário vem de
+`businessHours`; orientação usa `locationMessage` e, quando ausente, o endereço. O adapter está
+fechado sobre a organização reivindicada e usa o snapshot já carregado, portanto acrescenta zero
+query, zero lock e zero efeito de negócio. O turno mantém uma chamada de Understanding, no máximo
+uma verbalização e a cardinalidade normal de uma única resposta/outbox.
+
+Dado ausente, não normalizado ou acima de 240 caracteres gera esclarecimento seguro. `mapsUrl` não
+é exposta nesta fatia. Estacionamento e redes continuam `slice`, pois ainda não possuem campo
+estruturado canônico aprovado; nenhum texto editorial livre é minerado para preencher essa lacuna.
+
 ## Ordem de implementação
 
-1. conhecimento institucional como prova do caminho de leitura;
-2. conhecimento restante e recepção social;
+1. conhecimento institucional básico concluído;
+2. estacionamento, redes, conhecimento restante e recepção social;
 3. comercial e objeções;
 4. ciclo completo da agenda;
 5. jornada, mídia e sinal;

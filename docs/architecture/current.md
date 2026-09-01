@@ -203,6 +203,19 @@ O código e seus testes não autorizam operação externa. Validação com dados
 privados aprovados, banco de Lab e qualquer operação de cliente permanecem
 gates separados descritos em [Replay e Decision Trace](replay-and-decision-trace.md).
 
+### Conhecimento institucional V2
+
+Perguntas de endereço, horário de funcionamento e orientação de localização usam o request fechado
+`business-information` e a capability read-only `dental-knowledge`. A leitura vem da organização
+já reivindicada no `LiveTurnContext`: `address`/`addressComplement`, `businessHours` e
+`locationMessage`, com endereço como fallback de orientação. O dado precisa estar presente,
+normalizado e ter no máximo 240 caracteres; caso contrário a V2 pede esclarecimento e não inventa.
+
+Esse caminho reutiliza o snapshot do turno, não consulta outro tenant, não cria efeito de negócio e
+não altera agenda, estado ou configuração. O trace registra request, capability, outcome, chamadas
+e contagens, mas nunca endereço ou texto. Estacionamento, redes e links de mapa permanecem fora
+desta fatia até possuírem uma fonte estruturada e uma superfície de link autorizada.
+
 ### Conversation Intelligence V2: runtime único e fail-closed
 
 `V2LiveConversationHandler` é o único runtime conversacional produtivo. Webhooks e workers não
