@@ -5,6 +5,7 @@ export const DENTAL_REQUESTS = [
   // maioria dos leads.
   "greeting",
   "other",
+  "business-information",
   // "o que é lente de resina?" chega antes de "quanto custa". Sem um conceito
   // próprio, essa pergunta caía em "other" e o lead recebia um convite genérico.
   "explain-service",
@@ -18,6 +19,17 @@ export const DENTAL_REQUESTS = [
 ] as const;
 
 export type DentalRequest = (typeof DENTAL_REQUESTS)[number];
+
+export const DENTAL_BUSINESS_INFORMATION_TOPICS = [
+  "address",
+  "business-hours",
+  "location-guidance",
+  "parking",
+  "social",
+] as const;
+
+export type DentalBusinessInformationTopic =
+  (typeof DENTAL_BUSINESS_INFORMATION_TOPICS)[number];
 
 export const DENTAL_CONCEPTS = [
   "service",

@@ -113,6 +113,7 @@ function makeHarness(options: {
 } = {}) {
   const entities = (overrides: Record<string, unknown> = {}) => ({
     service: null,
+    businessInformationTopic: null,
     date: null,
     period: null,
     time: null,
@@ -605,7 +606,7 @@ describe("V2LiveConversationHandler", () => {
       turnId: inboundEventId,
       stage: "understanding_structural",
       modelId: "gpt-4o-mini",
-      promptVersion: "dental-understanding.v1",
+      promptVersion: "dental-understanding.v2",
       contractVersion: "understanding.v1",
       attempt: 1,
       rawOutput: privateOutput,
