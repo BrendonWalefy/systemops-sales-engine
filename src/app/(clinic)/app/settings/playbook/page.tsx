@@ -29,6 +29,8 @@ async function getData() {
         mediaTakeoverTtlHours: organizations.mediaTakeoverTtlHours,
         installmentRates: organizations.installmentRates,
         serviceNoun: organizations.serviceNoun,
+        parkingInformation: organizations.parkingInformation,
+        socialChannels: organizations.socialChannels,
       })
       .from(organizations)
       .where(eq(organizations.id, clinicId))
@@ -87,6 +89,8 @@ export default async function PlaybookPage() {
         slotLookaheadDays: clinic?.slotLookaheadDays ?? 14,
         mediaTakeoverTtlHours: clinic?.mediaTakeoverTtlHours ?? null,
         installmentRates: (clinic?.installmentRates as { n: number; rate: number; active: boolean }[] | null) ?? null,
+        parkingInformation: clinic?.parkingInformation ?? null,
+        socialChannels: clinic?.socialChannels ?? null,
         activeModules,
       }}
       versions={versions.map((v) => ({

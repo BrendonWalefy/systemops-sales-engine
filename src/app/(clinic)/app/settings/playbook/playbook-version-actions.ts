@@ -11,6 +11,7 @@ import { publishablePlaybookSchema, blockingPlaybookNotesIssues, blockingCommerc
 import { preserveVoiceOutputEnabled, type VoiceTtsConfig, type VoiceElevenLabsConfig } from "@/application/modules/module-configs";
 import type { VoiceMode } from "@/domain/entities/voice-mode";
 import { activateExistingPlaybookVersion } from "@/application/config/playbook-publication";
+import { parseInstitutionalDetails } from "@/application/config/institutional-details";
 
 
 type PlaybookVersionData = {
@@ -164,6 +165,19 @@ export async function updateClinicOperationalSettings(data: {
   await db
     .update(organizations)
     .set({ ...data, updatedAt: new Date() })
+    .where(eq(organizations.id, CLINIC_ID));
+  revalidatePath("/app/settings/playbook");
+}
+
+export async function updateInstitutionalDetails(input: {
+  parkingInformation?: string | null;
+  socialChannels?: readonly { label?: string | null; url?: string | null }[] | null;
+}) {
+  const CLINIC_ID = await requireSessionClinicId();
+  const details = parseInstitutionalDetails(input);
+  await db
+    .update(organizations)
+    .set({ ...details, updatedAt: new Date() })
     .where(eq(organizations.id, CLINIC_ID));
   revalidatePath("/app/settings/playbook");
 }
