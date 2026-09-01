@@ -18,6 +18,7 @@ export type DentalBusinessInformationResolution =
   | Readonly<{
       kind: "missing";
       topic: DentalBusinessInformationTopic;
+      organization: Readonly<{ id: string; displayName: string }>;
       evidenceRef: string;
     }>;
 

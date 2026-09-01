@@ -104,6 +104,11 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
     subjectRequirement: "required",
     evidenceRequirement: "required",
   },
+  business_information_unavailable: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "required",
+    evidenceRequirement: "required",
+  },
   catalog_answered: {
     semanticClass: "information_authorized",
     subjectRequirement: "required",

@@ -108,27 +108,60 @@ describe("capability de conhecimento institucional", () => {
     expect(DENTAL_OUTCOME_SCHEMA[result.type].semanticClass).toBe("information_authorized");
   });
 
-  it("pede esclarecimento quando a fonte canônica não possui o dado", async () => {
+  it.each([
+    ["address", "O endereço ainda não está cadastrado para informar."],
+    ["business-hours", "O horário de atendimento ainda não está cadastrado para informar."],
+    ["location-guidance", "As orientações de localização ainda não estão cadastradas para informar."],
+    ["parking", "As informações de estacionamento ainda não estão cadastradas para informar."],
+    ["social", "Os canais de redes sociais ainda não estão cadastrados para informar."],
+  ] as const)("informa com precisão quando %s não está cadastrado", async (topic, expectedText) => {
     const capability = createDentalKnowledgeCapability(knowledge({
       kind: "missing",
-      topic: "parking",
-      evidenceRef: "organization:clinic-1:parking:missing",
+      topic,
+      organization: { id: "clinic-1", displayName: "Clínica Exemplo" },
+      evidenceRef: `organization:clinic-1:${topic}:missing`,
     }));
     const claim = capability.claim(understanding({
       entities: {
         ...understanding().entities,
-        businessInformationTopic: "parking",
+        businessInformationTopic: topic,
       },
     }), state)!;
 
     const decision = await capability.decide(claim, context);
     const result = await capability.execute(decision, context);
 
-    expect(decision).toEqual({ kind: "ask", questionId: "business-information-not-registered" });
+    expect(decision).toMatchObject({
+      kind: "answer",
+      facts: [{
+        key: "business_information_unavailable",
+        value: {
+          kind: "display_text",
+          value: expectedText,
+        },
+      }],
+    });
     expect(result).toMatchObject({
-      type: "clarification_required",
+      type: "business_information_unavailable",
       origin: { capabilityId: "dental-knowledge" },
-      facts: [],
+      subject: { type: "organization", id: "clinic-1" },
+    });
+  });
+
+  it("recusa uma chave de fato incompatível com o tópico pedido", async () => {
+    const mismatched: DentalBusinessInformationResolution = {
+      kind: "resolved",
+      topic: "address",
+      organization: { id: "clinic-1", displayName: "Clínica Exemplo" },
+      facts: [{ key: "business_hours", value: "Seg-Sex 8h-18h" }],
+      evidenceRef: "organization:clinic-1:address",
+    };
+    const capability = createDentalKnowledgeCapability(knowledge(mismatched));
+    const claim = capability.claim(understanding(), state)!;
+
+    expect(await capability.decide(claim, context)).toEqual({
+      kind: "ask",
+      questionId: "business-information-not-registered",
     });
   });
 

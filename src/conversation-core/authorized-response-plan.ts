@@ -59,6 +59,13 @@ const validatedPlans = new WeakSet<object>();
 const canonicalActionResultSets = new WeakSet<object>();
 const unsafeDisplayControlPattern = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 
+export function isSafeAuthorizedDisplayText(value: string): boolean {
+  return value.length > 0
+    && value.length <= 240
+    && value === value.trim()
+    && !unsafeDisplayControlPattern.test(value);
+}
+
 declare const canonicalActionResultsBrand: unique symbol;
 export type CanonicalActionResults<Schema extends OutcomeSchema> =
   readonly ActionResult<Schema>[] & { readonly [canonicalActionResultsBrand]: true };
@@ -183,12 +190,7 @@ function assertUnique(values: readonly string[], label: string): void {
 
 function snapshotFactValue(value: FactValue): FactValue {
   if (value.kind === "display_text") {
-    if (
-      value.value.length === 0 ||
-      value.value.length > 240 ||
-      value.value !== value.value.trim() ||
-      unsafeDisplayControlPattern.test(value.value)
-    ) {
+    if (!isSafeAuthorizedDisplayText(value.value)) {
       throw new Error("authorized plan display text value is invalid");
     }
     return Object.freeze({ kind: value.kind, value: value.value });

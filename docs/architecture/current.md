@@ -208,13 +208,17 @@ gates separados descritos em [Replay e Decision Trace](replay-and-decision-trace
 Perguntas de endereço, horário de funcionamento e orientação de localização usam o request fechado
 `business-information` e a capability read-only `dental-knowledge`. A leitura vem da organização
 já reivindicada no `LiveTurnContext`: `address`/`addressComplement`, `businessHours` e
-`locationMessage`, com endereço como fallback de orientação. O dado precisa estar presente,
-normalizado e ter no máximo 240 caracteres; caso contrário a V2 pede esclarecimento e não inventa.
+`locationMessage`, com endereço como fallback de orientação somente quando a orientação está
+ausente. Dado ausente gera uma resposta específica do tópico. Dado presente inválido — incluindo
+caractere de controle, texto não normalizado ou acima de 240 caracteres — falha fechado sem
+fallback parcial e sem invenção.
 
 Esse caminho reutiliza o snapshot do turno, não consulta outro tenant, não cria efeito de negócio e
-não altera agenda, estado ou configuração. O trace registra request, capability, outcome, chamadas
-e contagens, mas nunca endereço ou texto. Estacionamento, redes e links de mapa permanecem fora
-desta fatia até possuírem uma fonte estruturada e uma superfície de link autorizada.
+não altera agenda, estado ou configuração. O gate PostgreSQL prova cardinalidade `1/1/1/1/1` e
+ausência de aumento de statements, round trips e lock hold contra uma resposta comum. O trace
+registra request, capability, outcome, chamadas e contagens, mas nunca endereço ou texto.
+Estacionamento, redes e links de mapa permanecem fora desta fatia até possuírem uma fonte
+estruturada e uma superfície de link autorizada.
 
 ### Conversation Intelligence V2: runtime único e fail-closed
 

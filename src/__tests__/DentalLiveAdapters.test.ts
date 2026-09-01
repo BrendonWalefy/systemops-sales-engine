@@ -423,6 +423,36 @@ describe("Dental live adapters — institutional knowledge", () => {
     await expect(oversized.adapters.knowledgeRead.resolveBusinessInformation("address"))
       .resolves.toMatchObject({ kind: "missing", topic: "address" });
   });
+
+  it("fails closed for present malformed secondary location fields", async () => {
+    const oversizedComplement = setup({
+      clinicOverride: {
+        ...clinic,
+        address: "Rua Exemplo, 100",
+        addressComplement: "x".repeat(241),
+      },
+    });
+    const oversizedGuidance = setup({
+      clinicOverride: {
+        ...clinic,
+        address: "Rua Exemplo, 100",
+        locationMessage: "x".repeat(241),
+      },
+    });
+    const unsafeControl = setup({
+      clinicOverride: {
+        ...clinic,
+        address: "Rua Exemplo,\u0000 100",
+      },
+    });
+
+    await expect(oversizedComplement.adapters.knowledgeRead.resolveBusinessInformation("address"))
+      .resolves.toMatchObject({ kind: "missing", topic: "address" });
+    await expect(oversizedGuidance.adapters.knowledgeRead.resolveBusinessInformation("location-guidance"))
+      .resolves.toMatchObject({ kind: "missing", topic: "location-guidance" });
+    await expect(unsafeControl.adapters.knowledgeRead.resolveBusinessInformation("address"))
+      .resolves.toMatchObject({ kind: "missing", topic: "address" });
+  });
 });
 
 describe("Dental live adapters — tenant-scoped catalog", () => {

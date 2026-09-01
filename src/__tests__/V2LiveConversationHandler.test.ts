@@ -513,11 +513,19 @@ describe("V2LiveConversationHandler", () => {
     expect(harness.verbalizerCreate).not.toHaveBeenCalled();
     expect(harness.booking.book).not.toHaveBeenCalled();
     expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          replyText: expect.stringContaining("endereço ainda não está cadastrado"),
+        }),
+      }),
+      { turnId },
+    );
     expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
       expect.objectContaining({
         stage: "v2.action_result",
         metadata: expect.objectContaining({
-          outcomeTypes: "clarification_required",
+          outcomeTypes: "business_information_unavailable",
           completedEffectCount: 0,
         }),
       }),

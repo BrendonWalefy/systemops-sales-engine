@@ -89,9 +89,17 @@ fechado sobre a organização reivindicada e usa o snapshot já carregado, porta
 query, zero lock e zero efeito de negócio. O turno mantém uma chamada de Understanding, no máximo
 uma verbalização e a cardinalidade normal de uma única resposta/outbox.
 
-Dado ausente, não normalizado ou acima de 240 caracteres gera esclarecimento seguro. `mapsUrl` não
-é exposta nesta fatia. Estacionamento e redes continuam `slice`, pois ainda não possuem campo
-estruturado canônico aprovado; nenhum texto editorial livre é minerado para preencher essa lacuna.
+Dado ausente gera uma resposta específica para o tópico, informando honestamente que ele não está
+cadastrado. Dado presente que esteja não normalizado, contenha caracteres de controle ou exceda
+240 caracteres falha fechado da mesma forma; complemento ou orientação inválida não é ocultado por
+fallback parcial. `mapsUrl` não é exposta nesta fatia. Estacionamento e redes continuam `slice`,
+pois ainda não possuem campo estruturado canônico aprovado; nenhum texto editorial livre é
+minerado para preencher essa lacuna.
+
+O gate PostgreSQL executa endereço presente e ausente por ingress, claim de processamento,
+handler, outbox, claim de envio e sender. Ambos mantêm cardinalidade `1/1/1/1/1`, duas chamadas de
+modelo no máximo (Understanding + verbalização), nenhuma mutação de agenda/reserva/estado e nenhum
+aumento de statements, round trips sequenciais ou lock hold contra uma resposta comum.
 
 ## Ordem de implementação
 

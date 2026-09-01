@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isSafeAuthorizedDisplayText } from "@/conversation-core/authorized-response-plan";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import type {
   ConversationStateMachine,
@@ -458,19 +459,28 @@ export function createDentalLiveAdapters(
     },
   };
 
-  function boundedText(value: string | null): string | null {
-    const normalized = value?.trim() ?? "";
-    return normalized.length > 0 && normalized.length <= 240
-      ? normalized
-      : null;
+  type InstitutionalText =
+    | Readonly<{ kind: "absent" }>
+    | Readonly<{ kind: "invalid" }>
+    | Readonly<{ kind: "valid"; value: string }>;
+
+  function institutionalText(value: string | null): InstitutionalText {
+    if (value === null || value.length === 0) return { kind: "absent" };
+    const normalized = value.trim();
+    return isSafeAuthorizedDisplayText(normalized)
+      ? { kind: "valid", value: normalized }
+      : { kind: "invalid" };
   }
 
   function addressText(): string | null {
-    const address = boundedText(clinic.address);
-    if (!address) return null;
-    const complement = boundedText(clinic.addressComplement);
-    const combined = complement ? `${address}, ${complement}` : address;
-    return combined.length <= 240 ? combined : null;
+    const address = institutionalText(clinic.address);
+    if (address.kind !== "valid") return null;
+    const complement = institutionalText(clinic.addressComplement);
+    if (complement.kind === "invalid") return null;
+    const combined = complement.kind === "valid"
+      ? `${address.value}, ${complement.value}`
+      : address.value;
+    return isSafeAuthorizedDisplayText(combined) ? combined : null;
   }
 
   function institutionalResolution(
@@ -489,6 +499,7 @@ export function createDentalLiveAdapters(
       : {
           kind: "missing" as const,
           topic,
+          organization: { id: clinic.id, displayName: clinic.name },
           evidenceRef: `${evidenceRef}:missing`,
         };
   }
@@ -504,7 +515,8 @@ export function createDentalLiveAdapters(
         );
       }
       if (topic === "business-hours") {
-        const value = boundedText(clinic.businessHours);
+        const candidate = institutionalText(clinic.businessHours);
+        const value = candidate.kind === "valid" ? candidate.value : null;
         return institutionalResolution(
           topic,
           value ? { key: "business_hours", value } : null,
@@ -512,16 +524,18 @@ export function createDentalLiveAdapters(
         );
       }
       if (topic === "location-guidance") {
-        const guidance = boundedText(clinic.locationMessage);
-        const fallback = guidance ? null : addressText();
+        const guidance = institutionalText(clinic.locationMessage);
+        const fallback = guidance.kind === "absent" ? addressText() : null;
         return institutionalResolution(
           topic,
-          guidance || fallback
-            ? { key: "location_guidance", value: guidance ?? fallback! }
+          guidance.kind === "valid" || fallback
+            ? { key: "location_guidance", value: guidance.kind === "valid" ? guidance.value : fallback! }
             : null,
-          guidance
+          guidance.kind === "valid"
             ? `organization:${clinic.id}:location-message`
-            : `organization:${clinic.id}:address`,
+            : guidance.kind === "absent"
+              ? `organization:${clinic.id}:address`
+              : `organization:${clinic.id}:location-message`,
         );
       }
       return institutionalResolution(
