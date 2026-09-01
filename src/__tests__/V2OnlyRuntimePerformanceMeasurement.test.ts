@@ -1622,19 +1622,19 @@ describe("V2-only runtime performance measurement worker", () => {
         (select count(*)::text from conversation_states) as conversation_states
     `);
 
-    for (const [label, sample, additionalCommercialRead] of [
-      ["grounded address", groundedAddress, 0],
-      ["missing address", missingAddress, 0],
-      ["grounded parking", groundedParking, 0],
-      ["grounded social", groundedSocial, 0],
-      ["grounded comparison", groundedComparison, 0],
-      ["grounded differentials", groundedDifferentials, 0],
-      ["grounded FAQ", groundedFaq, 0],
-      ["grounded campaign", groundedCampaign, 1],
-      ["grounded quantity", groundedQuantity, 1],
-      ["grounded payment", groundedPayment, 0],
-      ["grounded installment", groundedInstallment, 1],
-      ["grounded objection", groundedObjection, 0],
+    for (const [label, sample, readBaseline, additionalIndexedRead] of [
+      ["grounded address", groundedAddress, normalReply, 0],
+      ["missing address", missingAddress, normalReply, 0],
+      ["grounded parking", groundedParking, normalReply, 0],
+      ["grounded social", groundedSocial, normalReply, 0],
+      ["grounded comparison", groundedComparison, normalReply, 0],
+      ["grounded differentials", groundedDifferentials, normalReply, 0],
+      ["grounded FAQ", groundedFaq, normalReply, 0],
+      ["grounded campaign", groundedCampaign, groundedComparison, 1],
+      ["grounded quantity", groundedQuantity, groundedComparison, 1],
+      ["grounded payment", groundedPayment, normalReply, 0],
+      ["grounded installment", groundedInstallment, groundedComparison, 1],
+      ["grounded objection", groundedObjection, normalReply, 0],
     ] as const) {
       expect(sample.modelCalls).toBe(2);
       expect(sample.cardinality).toEqual({
@@ -1645,14 +1645,14 @@ describe("V2-only runtime performance measurement worker", () => {
         sentReplies: 1,
       });
       expect(sample.sql.statements, `${label} SQL statements`)
-        .toBeLessThanOrEqual(normalReply.sql.statements + additionalCommercialRead);
+        .toBeLessThanOrEqual(readBaseline.sql.statements + additionalIndexedRead);
       expect(sample.sql.sequentialRoundTrips, `${label} sequential round trips`)
         .toBeLessThanOrEqual(
-          normalReply.sql.sequentialRoundTrips + SEQUENTIAL_ROUND_TRIP_JITTER_WAVES
-            + additionalCommercialRead,
+          readBaseline.sql.sequentialRoundTrips + SEQUENTIAL_ROUND_TRIP_JITTER_WAVES
+            + additionalIndexedRead,
         );
       expect(sample.sql.lockHoldMs).toBeLessThanOrEqual(
-        normalReply.sql.lockHoldMs * LOCK_HOLD_TOLERANCE_RATIO + LOCK_HOLD_TOLERANCE_MS,
+        readBaseline.sql.lockHoldMs * LOCK_HOLD_TOLERANCE_RATIO + LOCK_HOLD_TOLERANCE_MS,
       );
     }
     expect(businessStateAfter.rows[0]).toEqual(businessStateBefore.rows[0]);
