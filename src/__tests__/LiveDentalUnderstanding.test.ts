@@ -16,6 +16,7 @@ const rawUnderstanding = {
     period: null,
     time: null,
     serviceCandidates: null,
+    faqQuestion: null,
     quantity: null,
     ordinal: null,
   },
@@ -35,6 +36,7 @@ const input = {
   history: [],
   state: null,
   catalog: [],
+  faqCatalog: [],
 } as const;
 
 async function invokeAfterRegistration(value: LiveDentalUnderstanding): Promise<void> {

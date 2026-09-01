@@ -1157,6 +1157,7 @@ describe("Cycle I post-sender shadow batch", () => {
                     aliases: [],
                   }))
                 : [],
+              faqCatalog: [],
             }, { signal }),
           });
           const result = await runner.run(reads, { signal });

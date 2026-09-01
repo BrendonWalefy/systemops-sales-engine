@@ -27,6 +27,7 @@ function entities(service: string | null) {
     period: null,
     time: null,
     serviceCandidates: null,
+    faqQuestion: null,
     quantity: null,
     ordinal: null,
   };
@@ -92,6 +93,55 @@ describe("contrato de Understanding dental", () => {
       ...valid,
       request: "price-of-service",
       entities: { ...valid.entities, service: "clareamento" },
+    })).toThrow();
+  });
+
+  it("exige exatamente dois tratamentos canônicos e distintos para comparação", () => {
+    const valid = {
+      ...base,
+      request: "compare-services",
+      entities: {
+        ...entities(null),
+        serviceCandidates: ["Clareamento", "Faceta"],
+      },
+    } as const;
+
+    expect(parseDentalUnderstanding(valid).request).toBe("compare-services");
+    for (const serviceCandidates of [
+      null,
+      ["Clareamento"],
+      ["Clareamento", "Faceta", "Implante"],
+      ["Clareamento", " clareamento "],
+    ]) {
+      expect(() => parseDentalUnderstanding({
+        ...valid,
+        entities: { ...valid.entities, serviceCandidates },
+      })).toThrow();
+    }
+    expect(() => parseDentalUnderstanding({
+      ...valid,
+      request: "other",
+    })).toThrow();
+  });
+
+  it("exige a pergunta canônica somente para FAQ", () => {
+    const valid = {
+      ...base,
+      request: "frequently-asked-question",
+      entities: {
+        ...entities(null),
+        faqQuestion: "Preciso de encaminhamento?",
+      },
+    } as const;
+
+    expect(parseDentalUnderstanding(valid).request).toBe("frequently-asked-question");
+    expect(() => parseDentalUnderstanding({
+      ...valid,
+      entities: { ...valid.entities, faqQuestion: null },
+    })).toThrow();
+    expect(() => parseDentalUnderstanding({
+      ...valid,
+      request: "business-differentials",
     })).toThrow();
   });
 });

@@ -17,6 +17,7 @@ function understanding(
       period: null,
       time: null,
       serviceCandidates: null,
+      faqQuestion: null,
       quantity: null,
       ordinal: null,
     },

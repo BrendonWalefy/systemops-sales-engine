@@ -113,6 +113,7 @@ function makeHarness(options: {
   businessInformationTurn?: boolean;
   businessInformationMissing?: boolean;
   businessInformationTopic?: "address" | "parking" | "social";
+  editorialFaq?: boolean;
 } = {}) {
   const entities = (overrides: Record<string, unknown> = {}) => ({
     service: null,
@@ -121,6 +122,7 @@ function makeHarness(options: {
     period: null,
     time: null,
     serviceCandidates: null,
+    faqQuestion: null,
     quantity: null,
     ordinal: null,
     ...overrides,
@@ -162,7 +164,12 @@ function makeHarness(options: {
     conversation,
     inboundMessage: inbound,
     outboundAddress: lead.phone!,
-    editorial: null,
+    editorial: options.editorialFaq
+      ? ({ faqs: [
+          { question: "Preciso de encaminhamento?", answer: "Não." },
+          { question: "Aceita convênio?", answer: "Consulte a recepção." },
+        ] } as never)
+      : null,
     inboundAuthority: {
       inboundEventId,
       streamId: "d4d87572-92e8-4865-a1fc-fc9b53fd4f34",
@@ -305,15 +312,16 @@ function makeHarness(options: {
   const persistHandoff = options.handoffFailure
     ? vi.fn().mockRejectedValue(new Error("handoff unavailable"))
     : vi.fn().mockResolvedValue(undefined);
-  const understandingCreate = vi.fn(async () => ({
-    choices: [{
+  const understandingCreate = vi.fn(async (input: unknown) => {
+    void input;
+    return { choices: [{
       message: {
         content: Object.hasOwn(options, "understandingRawOutput")
           ? options.understandingRawOutput ?? null
           : JSON.stringify(await understand()),
       },
-    }],
-  }));
+    }] };
+  });
   const registeredUnderstanding = createLiveDentalUnderstanding({
     chat: {
       completions: { create: understandingCreate },
@@ -460,6 +468,22 @@ function makeHarness(options: {
 }
 
 describe("V2LiveConversationHandler", () => {
+  it("supplies only bounded canonical FAQ questions to Understanding", async () => {
+    const harness = makeHarness({ editorialFaq: true });
+
+    await harness.handler.handle(handleInput());
+
+    const openAiRequest = harness.understandingCreate.mock.calls[0]![0] as {
+      messages: { content: string }[];
+    };
+    const modelInput = JSON.parse(openAiRequest.messages[1]!.content);
+    expect(modelInput.faqCatalog).toEqual([
+      "Preciso de encaminhamento?",
+      "Aceita convênio?",
+    ]);
+    expect(JSON.stringify(modelInput)).not.toContain("Consulte a recepção");
+  });
+
   it("answers institutional knowledge through the generic read-only pipeline", async () => {
     const privateAddress = "Avenida Aurora, 321";
     const harness = makeHarness({
@@ -731,7 +755,7 @@ describe("V2LiveConversationHandler", () => {
       turnId: inboundEventId,
       stage: "understanding_structural",
       modelId: "gpt-4o-mini",
-      promptVersion: "dental-understanding.v2",
+      promptVersion: "dental-understanding.v3",
       contractVersion: "understanding.v1",
       attempt: 1,
       rawOutput: privateOutput,

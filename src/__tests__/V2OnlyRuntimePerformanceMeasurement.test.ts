@@ -369,6 +369,7 @@ function understandingFor(fixture: CorpusCase): Record<string, unknown> {
       period: entities.period ?? null,
       time: entities.time ?? null,
       serviceCandidates: entities.serviceCandidates ?? null,
+      faqQuestion: null,
       quantity: entities.quantity ?? null,
       ordinal: entities.ordinal ?? null,
     },

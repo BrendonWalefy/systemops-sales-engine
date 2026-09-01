@@ -325,6 +325,9 @@ export class V2LiveConversationHandler implements ConversationHandler {
                 displayName: treatment.name,
                 aliases: Object.freeze([...treatment.aliases]),
               })),
+              faqCatalog: Object.freeze(
+                (context.editorial?.faqs ?? []).slice(0, 20).map((faq) => faq.question),
+              ),
             }, {
               onContractRejection: async (rejection) => {
                 const authoritativeTurnId = context.inboundAuthority?.inboundEventId;

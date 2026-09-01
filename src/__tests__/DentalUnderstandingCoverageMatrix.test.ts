@@ -14,7 +14,7 @@ function reply(request: string, service: string | null) {
     version: "understanding.v1",
     request,
     dialogueMove: "new_topic",
-    entities: { service, businessInformationTopic: null, date: null, period: null, time: null, serviceCandidates: null, quantity: null, ordinal: null },
+    entities: { service, businessInformationTopic: null, date: null, period: null, time: null, serviceCandidates: null, faqQuestion: null, quantity: null, ordinal: null },
     signals: { purchaseIntent: null, priceSensitivity: null, sentiment: null, objection: null },
     safety: { optOut: false, requestsHuman: false, emergency: false },
     confidence: 0.9,

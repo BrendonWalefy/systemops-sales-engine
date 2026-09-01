@@ -6,9 +6,12 @@ export const DENTAL_REQUESTS = [
   "greeting",
   "other",
   "business-information",
+  "business-differentials",
   // "o que é lente de resina?" chega antes de "quanto custa". Sem um conceito
   // próprio, essa pergunta caía em "other" e o lead recebia um convite genérico.
   "explain-service",
+  "compare-services",
+  "frequently-asked-question",
   "price-of-service",
   "service-availability",
   "book-appointment",

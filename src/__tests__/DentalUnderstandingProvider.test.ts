@@ -15,6 +15,7 @@ function validUnderstanding(overrides: Record<string, unknown> = {}) {
       period: null,
       time: null,
       serviceCandidates: null,
+      faqQuestion: null,
       quantity: null,
       ordinal: null,
     },
@@ -36,6 +37,7 @@ const understandingInput = {
   history: [],
   state: null,
   catalog: [{ id: "svc-1", displayName: "Clareamento", aliases: [] }],
+  faqCatalog: ["Preciso de encaminhamento?"],
 };
 
 async function captureThrown(run: () => Promise<unknown>): Promise<unknown> {
@@ -53,7 +55,7 @@ describe("provider dental de Understanding", () => {
       version: "understanding.v1",
       request: "price-of-service",
       dialogueMove: "new_topic",
-      entities: { service: "clareamento", businessInformationTopic: null, date: null, period: null, time: null, serviceCandidates: null, quantity: null, ordinal: null },
+      entities: { service: "clareamento", businessInformationTopic: null, date: null, period: null, time: null, serviceCandidates: null, faqQuestion: null, quantity: null, ordinal: null },
       signals: { purchaseIntent: null, priceSensitivity: null, sentiment: null, objection: null },
       safety: { optOut: false, requestsHuman: false, emergency: false },
       confidence: 0.8,
@@ -69,29 +71,31 @@ describe("provider dental de Understanding", () => {
       history: [],
       state: null,
       catalog: [{ id: "svc-1", displayName: "Clareamento", aliases: [] }],
+      faqCatalog: ["Preciso de encaminhamento?"],
     });
 
     expect(output.request).toBe("price-of-service");
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({
       modelId: "fake-dental-model",
-      promptVersion: "dental-understanding.v2",
+      promptVersion: "dental-understanding.v3",
       schemaVersion: "understanding.v1",
+      faqCatalog: ["Preciso de encaminhamento?"],
     }));
   });
 
   it("envia json_schema estrito no boundary específico do provider", async () => {
     const rawOutput = JSON.stringify({
       version: "understanding.v1", request: "book-appointment", dialogueMove: "new_topic",
-      entities: { service: null, businessInformationTopic: null, date: null, period: null, time: null, serviceCandidates: null, quantity: null, ordinal: null },
+      entities: { service: null, businessInformationTopic: null, date: null, period: null, time: null, serviceCandidates: null, faqQuestion: null, quantity: null, ordinal: null },
       signals: { purchaseIntent: null, priceSensitivity: null, sentiment: null, objection: null },
       safety: { optOut: false, requestsHuman: false, emergency: false }, confidence: 0.8, ambiguity: null,
     });
     const create = vi.fn().mockResolvedValue({ choices: [{ message: { content: rawOutput } }] });
     const model = new OpenAIDentalUnderstandingModel({ chat: { completions: { create } } }, "gpt-test");
     const result = await model.generate({
-      modelId: "gpt-test", promptVersion: "dental-understanding.v2",
+      modelId: "gpt-test", promptVersion: "dental-understanding.v3",
       schemaVersion: "understanding.v1", systemPrompt: "system", leadMessage: "quero marcar",
-      history: [], state: null, catalog: [],
+      history: [], state: null, catalog: [], faqCatalog: ["Aceita convênio?"],
     });
 
     expect(result).toBe(rawOutput);
@@ -103,12 +107,15 @@ describe("provider dental de Understanding", () => {
     expect(request.response_format.json_schema.schema.properties.entities.additionalProperties).toBe(false);
     expect(request.response_format.json_schema.schema.properties.signals.additionalProperties).toBe(false);
     expect(request.response_format.json_schema.schema.properties.safety.additionalProperties).toBe(false);
+    const userInput = JSON.parse(request.messages[1].content);
+    expect(userInput.faqCatalog).toEqual(["Aceita convênio?"]);
+    expect(userInput).not.toHaveProperty("faqAnswers");
   });
 
   it("encaminha o AbortSignal ao client OpenAI", async () => {
     const create = vi.fn().mockResolvedValue({ choices: [{ message: { content: JSON.stringify({
       version: "understanding.v1", request: "book-appointment", dialogueMove: "new_topic",
-      entities: { service: null, businessInformationTopic: null, date: null, period: null, time: null, serviceCandidates: null, quantity: null, ordinal: null },
+      entities: { service: null, businessInformationTopic: null, date: null, period: null, time: null, serviceCandidates: null, faqQuestion: null, quantity: null, ordinal: null },
       signals: { purchaseIntent: null, priceSensitivity: null, sentiment: null, objection: null },
       safety: { optOut: false, requestsHuman: false, emergency: false }, confidence: 0.8, ambiguity: null,
     }) } }] });
@@ -119,9 +126,9 @@ describe("provider dental de Understanding", () => {
     );
 
     await model.generate({
-      modelId: "gpt-test", promptVersion: "dental-understanding.v2",
+      modelId: "gpt-test", promptVersion: "dental-understanding.v3",
       schemaVersion: "understanding.v1", systemPrompt: "system", leadMessage: "quero marcar",
-      history: [], state: null, catalog: [],
+      history: [], state: null, catalog: [], faqCatalog: [],
     }, { signal: controller.signal });
 
     expect(create).toHaveBeenCalledWith(
@@ -141,9 +148,9 @@ describe("provider dental de Understanding", () => {
     );
 
     const run = model.generate({
-      modelId: "gpt-test", promptVersion: "dental-understanding.v2",
+      modelId: "gpt-test", promptVersion: "dental-understanding.v3",
       schemaVersion: "understanding.v1", systemPrompt: "system", leadMessage: "quero marcar",
-      history: [], state: null, catalog: [],
+      history: [], state: null, catalog: [], faqCatalog: [],
     }, { signal: controller.signal });
 
     await expect(run).rejects.toBe(reason);
@@ -164,7 +171,7 @@ describe("provider dental de Understanding", () => {
     expect(onContractRejection).toHaveBeenCalledWith({
       stage: "understanding_structural",
       modelId: "fake-dental-model",
-      promptVersion: "dental-understanding.v2",
+      promptVersion: "dental-understanding.v3",
       contractVersion: "understanding.v1",
       rawOutput: null,
       issues: [{ path: [], code: "missing_output" }],
