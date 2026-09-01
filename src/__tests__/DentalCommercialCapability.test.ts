@@ -43,7 +43,11 @@ function understanding(entities: Record<string, unknown> = {}): Understanding<De
 }
 
 function port(resolution: DentalCommercialServiceResolution): DentalCommercialReadPort {
-  return { resolveService: async () => resolution };
+  return {
+    resolveService: async () => resolution,
+    resolvePaymentConfiguration: async () => ({ kind: "missing" }),
+    resolveRegisteredObjection: async () => ({ kind: "missing" }),
+  };
 }
 
 const campaign: DentalCommercialServiceResolution = {

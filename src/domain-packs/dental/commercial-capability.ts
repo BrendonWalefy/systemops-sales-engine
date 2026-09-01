@@ -12,8 +12,10 @@ import type {
   DentalCommercialQuantityPrice,
   DentalCommercialReadPort,
   DentalCommercialService,
+  DentalPaymentConfigurationResolution,
 } from "@/domain-packs/dental/ports";
 import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
+import { calculateFlatInstallment } from "@/core/conversation/conversation-response-parts";
 
 const CAPABILITY_ID = "dental-commercial";
 
@@ -53,6 +55,137 @@ function textFact(
     evidence: evidence(evidenceRef),
     disclosure: "allowed",
   };
+}
+
+function integerFact(
+  key: string,
+  value: number,
+  subject: Subject,
+  evidenceRef: string,
+): Fact {
+  return {
+    key,
+    value: { kind: "integer", value },
+    subject,
+    evidence: evidence(evidenceRef),
+    disclosure: "allowed",
+  };
+}
+
+type ValidPaymentConfiguration = Extract<
+  DentalPaymentConfigurationResolution,
+  { kind: "resolved" }
+>;
+
+function validPaymentConfiguration(
+  resolution: DentalPaymentConfigurationResolution,
+): resolution is ValidPaymentConfiguration {
+  if (resolution.kind !== "resolved") return false;
+  if (
+    !resolution.organization.id
+    || !isSafeAuthorizedDisplayText(resolution.organization.displayName)
+    || resolution.methods.length > 6
+    || resolution.installmentRates.length > 8
+    || resolution.methods.length + resolution.installmentRates.length === 0
+  ) return false;
+  const methodCodes = new Set<string>();
+  for (const method of resolution.methods) {
+    if (
+      !method.code
+      || methodCodes.has(method.code)
+      || !isSafeAuthorizedDisplayText(method.label)
+      || !method.evidenceRef
+    ) return false;
+    methodCodes.add(method.code);
+  }
+  const installments = new Set<number>();
+  for (const rate of resolution.installmentRates) {
+    if (
+      !Number.isSafeInteger(rate.installments)
+      || rate.installments < 1
+      || rate.installments > 24
+      || !Number.isFinite(rate.ratePercent)
+      || rate.ratePercent < 0
+      || rate.ratePercent >= 100
+      || !rate.evidenceRef
+      || installments.has(rate.installments)
+    ) return false;
+    installments.add(rate.installments);
+  }
+  return true;
+}
+
+function organizationSubject(
+  organization: ValidPaymentConfiguration["organization"],
+): Subject {
+  return {
+    type: "organization",
+    id: organization.id,
+    displayName: organization.displayName,
+  };
+}
+
+function generalPaymentDecision(
+  configuration: ValidPaymentConfiguration,
+): Decision {
+  const subject = organizationSubject(configuration.organization);
+  const methods = configuration.methods.map((method) =>
+    textFact("payment_method", method.label, subject, method.evidenceRef));
+  const rates = [...configuration.installmentRates]
+    .sort((left, right) => left.installments - right.installments)
+    .map((rate) => integerFact(
+      "installment_count",
+      rate.installments,
+      subject,
+      rate.evidenceRef,
+    ));
+  return { kind: "answer", facts: [...methods, ...rates], nextBestStep: null };
+}
+
+function installmentDecision(
+  service: DentalCommercialService,
+  serviceEvidenceRef: string,
+  configuration: ValidPaymentConfiguration,
+): Decision {
+  if (
+    !service.priceDisclosable
+    || !isSafeAuthorizedDisplayText(service.name)
+    || !validCents(service.priceCents)
+    || service.quantityPrices.length > 0
+    || configuration.installmentRates.length === 0
+  ) return { kind: "ask", questionId: "installments-not-registered" };
+  const subject = serviceSubject(service);
+  const facts: Fact[] = [];
+  for (const rate of [...configuration.installmentRates]
+    .sort((left, right) => left.installments - right.installments)) {
+    facts.push(integerFact(
+      "installment_count",
+      rate.installments,
+      subject,
+      rate.evidenceRef,
+    ));
+    const amount = calculateFlatInstallment(
+      service.priceCents,
+      rate.ratePercent,
+      rate.installments,
+    );
+    if (!Number.isSafeInteger(amount) || amount < 0) {
+      return { kind: "ask", questionId: "installments-not-registered" };
+    }
+    facts.push({
+      ...moneyFact(
+        "installment_amount",
+        amount,
+        subject,
+        `installment:${service.id}:${rate.installments}:${serviceEvidenceRef}:${rate.evidenceRef}`,
+      ),
+      evidence: {
+        source: "derived",
+        reference: `installment:${service.id}:${rate.installments}:${serviceEvidenceRef}:${rate.evidenceRef}`,
+      },
+    });
+  }
+  return { kind: "answer", facts, nextBestStep: null };
 }
 
 function quantityFact(
@@ -227,6 +360,34 @@ export function createDentalCommercialCapability(
       const serviceQuery = understanding.entities.service;
       const hasObjection = typeof understanding.signals.objection === "string"
         && understanding.signals.objection.trim().length > 0;
+      if (understanding.request === "payment-options") {
+        return {
+          capabilityId: CAPABILITY_ID,
+          confidence: understanding.confidence,
+          reason: "structured_payment_request",
+          payload: {
+            kind: "commercial",
+            request: "payment-options",
+            serviceQuery: typeof serviceQuery === "string" && serviceQuery.trim().length > 0
+              ? serviceQuery
+              : null,
+          },
+        };
+      }
+      if (understanding.request === "registered-objection") {
+        const question = understanding.entities.objectionQuestion;
+        if (typeof question !== "string" || question.trim().length === 0) return null;
+        return {
+          capabilityId: CAPABILITY_ID,
+          confidence: understanding.confidence,
+          reason: "registered_objection_request",
+          payload: {
+            kind: "commercial",
+            request: "registered-objection",
+            objectionQuestion: question,
+          },
+        };
+      }
       if (
         understanding.request !== "price-of-service"
         || typeof serviceQuery !== "string"
@@ -253,6 +414,56 @@ export function createDentalCommercialCapability(
     async decide(claim, capabilityContext): Promise<Decision> {
       if (claim.payload.kind !== "commercial") {
         return { kind: "ask", questionId: "invalid-commercial-claim" };
+      }
+      if (claim.payload.request === "registered-objection") {
+        const resolution = await readPort.resolveRegisteredObjection(
+          claim.payload.objectionQuestion,
+        );
+        if (
+          resolution.kind !== "resolved"
+          || !resolution.organization.id
+          || !isSafeAuthorizedDisplayText(resolution.organization.displayName)
+          || !isSafeAuthorizedDisplayText(resolution.answer)
+          || !resolution.evidenceRef
+        ) return { kind: "escalate", reason: "registered_objection_requires_human" };
+        const subject: Subject = {
+          type: "organization",
+          id: resolution.organization.id,
+          displayName: resolution.organization.displayName,
+        };
+        return {
+          kind: "answer",
+          facts: [textFact(
+            "registered_objection_answer",
+            resolution.answer,
+            subject,
+            resolution.evidenceRef,
+          )],
+          nextBestStep: null,
+        };
+      }
+      if (claim.payload.request === "payment-options") {
+        const configuration = await readPort.resolvePaymentConfiguration();
+        if (!validPaymentConfiguration(configuration)) {
+          return { kind: "ask", questionId: "payment-options-not-registered" };
+        }
+        if (claim.payload.serviceQuery === null) {
+          return generalPaymentDecision(configuration);
+        }
+        if (!capabilityContext.policy.priceDisclosureEnabled) {
+          return { kind: "ask", questionId: "price-requires-human" };
+        }
+        const resolution = await readPort.resolveService(claim.payload.serviceQuery);
+        if (resolution.kind === "ambiguous") {
+          return serviceChoice(resolution.candidates, resolution.evidenceRef);
+        }
+        return resolution.kind === "exact"
+          ? installmentDecision(
+              resolution.service,
+              resolution.evidenceRef,
+              configuration,
+            )
+          : { kind: "ask", questionId: "clarify-service" };
       }
       const resolution = await readPort.resolveService(claim.payload.serviceQuery);
       if (resolution.kind === "ambiguous") {

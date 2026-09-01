@@ -50,7 +50,11 @@ function catalogPort(resolution: ServiceResolution): DentalCatalogReadPort {
 }
 
 function commercialPort(resolution: DentalCommercialServiceResolution): DentalCommercialReadPort {
-  return { resolveService: async () => resolution };
+  return {
+    resolveService: async () => resolution,
+    resolvePaymentConfiguration: async () => ({ kind: "missing" }),
+    resolveRegisteredObjection: async () => ({ kind: "missing" }),
+  };
 }
 
 const ambiguousCommercial: DentalCommercialServiceResolution = ambiguous;

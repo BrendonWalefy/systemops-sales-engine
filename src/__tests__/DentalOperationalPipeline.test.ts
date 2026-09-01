@@ -22,7 +22,11 @@ const unavailablePlaybookKnowledge = {
   resolveDifferentials: vi.fn(),
   resolveFaq: vi.fn(),
 };
-const unavailableCommercial = { resolveService: vi.fn() };
+const unavailableCommercial = {
+  resolveService: vi.fn(),
+  resolvePaymentConfiguration: vi.fn(),
+  resolveRegisteredObjection: vi.fn(),
+};
 
 describe("pipeline operacional dental", () => {
   it("routes institutional knowledge without invoking a write port", async () => {

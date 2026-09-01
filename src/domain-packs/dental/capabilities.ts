@@ -61,13 +61,24 @@ export type DentalCatalogClaimPayload = {
   serviceQuery: string;
 };
 
-export type DentalCommercialClaimPayload = {
-  kind: "commercial";
-  request: "price-of-service";
-  serviceQuery: string;
-  quantity: number | null;
-  quantityScope: "total" | "superior" | "inferior" | null;
-};
+export type DentalCommercialClaimPayload =
+  | {
+      kind: "commercial";
+      request: "price-of-service";
+      serviceQuery: string;
+      quantity: number | null;
+      quantityScope: "total" | "superior" | "inferior" | null;
+    }
+  | {
+      kind: "commercial";
+      request: "payment-options";
+      serviceQuery: string | null;
+    }
+  | {
+      kind: "commercial";
+      request: "registered-objection";
+      objectionQuestion: string;
+    };
 
 export type DentalSchedulingClaimPayload =
   | {
@@ -692,7 +703,8 @@ export function createDentalEscalationCapability(): Capability<
   return {
     id: "dental-escalation",
     claim(understanding) {
-      const objection = typeof understanding.signals.objection === "string" &&
+      const objection = understanding.request !== "registered-objection" &&
+        typeof understanding.signals.objection === "string" &&
         understanding.signals.objection.trim().length > 0;
       const cancelReschedule = understanding.request === "cancel-appointment" ||
         understanding.request === "reschedule-appointment";

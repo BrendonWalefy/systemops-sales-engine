@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { isSafeAuthorizedDisplayText } from "@/conversation-core/authorized-response-plan";
 import { parseInstitutionalDetails } from "@/application/config/institutional-details";
+import { parsePaymentMethods, PAYMENT_METHOD_OPTIONS } from "@/application/config/payment-methods";
 import type { EditorialConfig } from "@/application/config/editorial-config";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import type {
@@ -546,6 +547,47 @@ export function createDentalLiveAdapters(
         evidenceRef: effective.campaignName !== null && campaign
           ? `price-campaign:${campaign.id}`
           : catalogEvidence(treatment),
+      };
+    },
+    async resolvePaymentConfiguration() {
+      let methods: ReturnType<typeof parsePaymentMethods>;
+      try {
+        methods = parsePaymentMethods(clinic.paymentMethods ?? []);
+      } catch {
+        return { kind: "missing" };
+      }
+      const labels = new Map(PAYMENT_METHOD_OPTIONS.map((option) => [option.code, option.label]));
+      const installmentRates = (clinic.installmentRates ?? [])
+        .filter((rate) => rate.active)
+        .map((rate) => ({
+          installments: rate.n,
+          ratePercent: rate.rate,
+          evidenceRef: `organization:${clinic.id}:installment-rate:${rate.n}`,
+        }));
+      if (methods.length === 0 && installmentRates.length === 0) return { kind: "missing" };
+      return {
+        kind: "resolved",
+        organization: { id: clinic.id, displayName: clinic.name },
+        methods: methods.map((code) => ({
+          code,
+          label: labels.get(code)!,
+          evidenceRef: `organization:${clinic.id}:payment-method:${code}`,
+        })),
+        installmentRates,
+      };
+    },
+    async resolveRegisteredObjection(question) {
+      const canonical = normalize(question);
+      const matches = (editorial?.objections ?? []).filter(
+        (entry) => normalize(entry.objection) === canonical,
+      );
+      if (matches.length !== 1) return { kind: "missing" };
+      const index = (editorial?.objections ?? []).indexOf(matches[0]!);
+      return {
+        kind: "resolved",
+        organization: { id: clinic.id, displayName: clinic.name },
+        answer: matches[0]!.response,
+        evidenceRef: `playbook:${editorial!.versionId}:objection:${index}`,
       };
     },
   };

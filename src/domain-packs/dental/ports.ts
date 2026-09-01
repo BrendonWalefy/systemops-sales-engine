@@ -1,6 +1,7 @@
 import type {
   DentalBusinessInformationTopic,
 } from "@/domain-packs/dental/vocabulary";
+import type { PaymentMethod } from "@/domain/entities/payment-method";
 
 export type DentalBusinessInformationFact = Readonly<{
   key:
@@ -100,8 +101,38 @@ export type DentalCommercialServiceResolution =
   | Readonly<{ kind: "ambiguous"; candidates: readonly { id: string; name: string }[]; evidenceRef: string }>
   | Readonly<{ kind: "unknown"; evidenceRef: string }>;
 
+export type DentalPaymentConfigurationResolution =
+  | Readonly<{
+      kind: "resolved";
+      organization: Readonly<{ id: string; displayName: string }>;
+      methods: readonly Readonly<{
+        code: PaymentMethod;
+        label: string;
+        evidenceRef: string;
+      }>[];
+      installmentRates: readonly Readonly<{
+        installments: number;
+        ratePercent: number;
+        evidenceRef: string;
+      }>[];
+    }>
+  | Readonly<{ kind: "missing" }>;
+
+export type DentalRegisteredObjectionResolution =
+  | Readonly<{
+      kind: "resolved";
+      organization: Readonly<{ id: string; displayName: string }>;
+      answer: string;
+      evidenceRef: string;
+    }>
+  | Readonly<{ kind: "missing" }>;
+
 export type DentalCommercialReadPort = Readonly<{
   resolveService(query: string): Promise<DentalCommercialServiceResolution>;
+  resolvePaymentConfiguration(): Promise<DentalPaymentConfigurationResolution>;
+  resolveRegisteredObjection(
+    question: string,
+  ): Promise<DentalRegisteredObjectionResolution>;
 }>;
 
 export type DentalSlot = { id: string; label: string; evidenceRef: string };

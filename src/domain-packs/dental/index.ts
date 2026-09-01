@@ -107,7 +107,11 @@ export const dentalPack = createDentalPack({
     resolveFaq: unavailable,
   },
   catalogRead: { resolveService: unavailable, resolveServices: unavailable },
-  commercialRead: { resolveService: unavailable },
+  commercialRead: {
+    resolveService: unavailable,
+    resolvePaymentConfiguration: unavailable,
+    resolveRegisteredObjection: unavailable,
+  },
   schedulingRead: {
     listSlots: unavailable,
     resolveOfferedSlot: unavailable,

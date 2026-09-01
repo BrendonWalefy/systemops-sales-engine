@@ -77,6 +77,12 @@ export function createDentalCapturedReadAdapters(reads: CapturedV2TurnReads): {
           },
         };
       },
+      async resolvePaymentConfiguration() {
+        return unavailable();
+      },
+      async resolveRegisteredObjection() {
+        return unavailable();
+      },
     },
     schedulingRead: {
       async listSlots(input) {

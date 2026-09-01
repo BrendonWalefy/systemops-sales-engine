@@ -566,6 +566,88 @@ describe("Dental live adapters — active playbook knowledge", () => {
 });
 
 describe("Dental live adapters — tenant-scoped catalog", () => {
+  it("resolves payment methods, active rates and exact registered objections from the bound tenant", async () => {
+    const editorial: EditorialConfig = {
+      versionId: "version-commercial-1",
+      specialty: "odontologia",
+      toneOfVoice: "acolhedor",
+      commercialPolicy: null,
+      procedures: [],
+      receptionistName: "Marina",
+      differentials: [],
+      objections: [{
+        objection: "Está caro para mim",
+        response: "Podemos apresentar as condições cadastradas.",
+      }],
+      faqs: [],
+      warrantyPolicy: null,
+      mediaLibrary: [],
+      playbookText: "",
+    };
+    const { adapters } = setup({
+      clinicOverride: {
+        ...clinic,
+        paymentMethods: ["pix", "credit_card"],
+        installmentRates: [
+          { n: 4, rate: 0, active: true },
+          { n: 10, rate: 10, active: true },
+          { n: 12, rate: 12, active: false },
+        ],
+      },
+      editorial,
+    });
+
+    await expect(adapters.commercialRead.resolvePaymentConfiguration())
+      .resolves.toMatchObject({
+        kind: "resolved",
+        organization: { id: clinic.id },
+        methods: [{ code: "pix" }, { code: "credit_card" }],
+        installmentRates: [
+          { installments: 4, ratePercent: 0 },
+          { installments: 10, ratePercent: 10 },
+        ],
+      });
+    await expect(adapters.commercialRead.resolveRegisteredObjection(" está caro para mim "))
+      .resolves.toMatchObject({
+        kind: "resolved",
+        organization: { id: clinic.id },
+        answer: "Podemos apresentar as condições cadastradas.",
+        evidenceRef: "playbook:version-commercial-1:objection:0",
+      });
+    await expect(adapters.commercialRead.resolveRegisteredObjection("Outra objeção"))
+      .resolves.toEqual({ kind: "missing" });
+  });
+
+  it("fails closed for malformed payment methods or duplicate canonical objections", async () => {
+    const malformedPayment = setup({
+      clinicOverride: { ...clinic, paymentMethods: ["pix", "pix"] },
+    });
+    const duplicateObjection = setup({
+      editorial: {
+        versionId: "version-commercial-2",
+        specialty: null,
+        toneOfVoice: null,
+        commercialPolicy: null,
+        procedures: [],
+        receptionistName: "Marina",
+        differentials: [],
+        objections: [
+          { objection: "Está caro", response: "Resposta A" },
+          { objection: " está caro ", response: "Resposta B" },
+        ],
+        faqs: [],
+        warrantyPolicy: null,
+        mediaLibrary: [],
+        playbookText: "",
+      },
+    });
+
+    await expect(malformedPayment.adapters.commercialRead.resolvePaymentConfiguration())
+      .resolves.toEqual({ kind: "missing" });
+    await expect(duplicateObjection.adapters.commercialRead.resolveRegisteredObjection("Está caro"))
+      .resolves.toEqual({ kind: "missing" });
+  });
+
   it("resolves a comparison from one tenant-scoped catalog read", async () => {
     const foreign = treatment({ id: "foreign", clinicId: "other-clinic", name: "Implante" });
     const whitening = treatment({ id: "whitening", description: "Clareia a tonalidade." });
