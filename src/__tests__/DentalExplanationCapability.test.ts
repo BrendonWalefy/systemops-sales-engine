@@ -218,6 +218,7 @@ describe("capability de explicação dental", () => {
       date: null,
       period: null,
       time: null,
+      professional: null,
       serviceCandidates: null,
       faqQuestion: null,
       quantity: null,

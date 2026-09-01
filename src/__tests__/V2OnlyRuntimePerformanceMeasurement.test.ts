@@ -168,6 +168,7 @@ import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lea
 import { DrizzleLiveConversationContextReader } from "@/infrastructure/repositories/drizzle-live-conversation-context-reader";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
+import { DrizzleProfessionalRepository } from "@/infrastructure/repositories/drizzle-professional-repository";
 import { DrizzleUsageCostRepository } from "@/infrastructure/repositories/drizzle-usage-cost-repository";
 import { DrizzleWhatsAppStreamAuthority } from "@/infrastructure/repositories/drizzle-whatsapp-stream-authority";
 import { buildWhatsAppStreamAliases } from "@/core/whatsapp/WhatsAppContactIdentity";
@@ -691,6 +692,7 @@ describe("V2-only runtime performance measurement worker", () => {
       verbalizer: v2Verbalizer,
       dental: {
         treatments: new DrizzleTreatmentRepository(),
+        professionals: new DrizzleProfessionalRepository(),
         priceCampaigns: { listActiveByTreatment: getActivePriceCampaignsByTreatment },
         state,
         appointments: appointmentRepository,

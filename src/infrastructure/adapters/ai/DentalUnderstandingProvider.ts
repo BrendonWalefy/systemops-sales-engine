@@ -44,6 +44,7 @@ export type DentalUnderstandingModelRequest = {
   catalog: readonly DentalCatalogEntry[];
   faqCatalog: readonly string[];
   objectionCatalog: readonly string[];
+  professionalCatalog: readonly string[];
 };
 
 export type DentalUnderstandingModel = {

@@ -36,6 +36,8 @@ import {
 } from "@/core/observability/DecisionTrace";
 import type { TtsConfig } from "@/domain/entities/tts-config";
 import type { Treatment } from "@/domain/entities/treatment";
+import type { Professional } from "@/domain/entities/professional";
+import type { ProfessionalRepository } from "@/domain/repositories/professional-repository";
 import type { V2ConversationHandoffReason } from "@/application/conversation-v2/v2-conversation-handoff";
 import { V2TerminalHandoffRequiredError } from "@/application/conversation-v2/v2-terminal-failure-policy";
 import {
@@ -92,6 +94,7 @@ type StaticDentalDependencies = Omit<
   DentalLiveAdapterDependencies,
   DynamicDentalDependencies | "calendar" | "booking"
 > & Readonly<{
+  professionals: Pick<ProfessionalRepository, "listByClinic">;
   resolveTenantScheduling(claimedClinicId: string): Pick<
     DentalLiveAdapterDependencies,
     "calendar" | "booking"
@@ -173,6 +176,16 @@ function scopedTreatments(
     throw new V2TreatmentTenantScopeError();
   }
   return Object.freeze([...treatments]);
+}
+
+function scopedActiveProfessionals(
+  professionals: readonly Professional[],
+  clinicId: string,
+): readonly Professional[] {
+  if (professionals.some((professional) => professional.clinicId !== clinicId)) {
+    throw new V2TreatmentTenantScopeError();
+  }
+  return Object.freeze(professionals.filter((professional) => professional.isActive));
 }
 
 function historyForUnderstanding(
@@ -288,6 +301,10 @@ export class V2LiveConversationHandler implements ConversationHandler {
         await this.deps.dental.treatments.listByClinic(context.clinicId),
         context.clinicId,
       );
+      const professionals = scopedActiveProfessionals(
+        await this.deps.dental.professionals.listByClinic(context.clinicId),
+        context.clinicId,
+      );
       const scheduling = this.deps.dental.resolveTenantScheduling(context.clinicId);
       const adapters = createDentalLiveAdapters({
         ...this.deps.dental,
@@ -332,6 +349,9 @@ export class V2LiveConversationHandler implements ConversationHandler {
               ),
               objectionCatalog: Object.freeze(
                 (context.editorial?.objections ?? []).slice(0, 20).map(({ objection }) => objection),
+              ),
+              professionalCatalog: Object.freeze(
+                professionals.slice(0, 20).map((professional) => professional.name),
               ),
             }, {
               onContractRejection: async (rejection) => {

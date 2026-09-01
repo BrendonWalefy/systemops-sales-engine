@@ -26,6 +26,7 @@ function entities(service: string | null) {
     date: null,
     period: null,
     time: null,
+    professional: null,
     serviceCandidates: null,
     faqQuestion: null,
     quantity: null,
@@ -42,6 +43,9 @@ describe("contrato de Understanding dental", () => {
     ["book-appointment", entities(null)],
     ["confirm-slot", entities(null)],
     ["confirm-appointment", entities(null)],
+    ["list-appointments", entities(null)],
+    ["cancel-appointment", entities(null)],
+    ["reschedule-appointment", entities(null)],
   ])("aceita %s no recorte F", (request, requestEntities) => {
     expect(parseDentalUnderstanding({ ...base, request, entities: requestEntities }).request).toBe(request);
   });
@@ -158,6 +162,24 @@ describe("contrato de Understanding dental", () => {
       request: "payment-options",
       entities: entities("Clareamento"),
     }).entities.service).toBe("Clareamento");
+  });
+
+  it("aceita profissional canônico somente em pedidos de agenda", () => {
+    expect(parseDentalUnderstanding({
+      ...base,
+      request: "book-appointment",
+      entities: { ...entities("Avaliação"), professional: "Dra. Marina" },
+    }).entities.professional).toBe("Dra. Marina");
+    expect(parseDentalUnderstanding({
+      ...base,
+      request: "reschedule-appointment",
+      entities: { ...entities(null), professional: "Dra. Marina" },
+    }).entities.professional).toBe("Dra. Marina");
+    expect(() => parseDentalUnderstanding({
+      ...base,
+      request: "price-of-service",
+      entities: { ...entities("Avaliação"), professional: "Dra. Marina" },
+    })).toThrow();
   });
 
   it("restringe quantidade e escopo a preço com quantidade positiva inteira", () => {

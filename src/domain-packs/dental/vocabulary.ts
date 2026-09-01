@@ -16,6 +16,7 @@ export const DENTAL_REQUESTS = [
   "payment-options",
   "registered-objection",
   "service-availability",
+  "list-appointments",
   "book-appointment",
   "confirm-slot",
   "confirm-appointment",

@@ -122,6 +122,7 @@ function makeHarness(options: {
     date: null,
     period: null,
     time: null,
+    professional: null,
     serviceCandidates: null,
     faqQuestion: null,
     quantity: null,
@@ -393,6 +394,9 @@ function makeHarness(options: {
     dental: {
       treatments: {
         listByClinic: listTreatments,
+      },
+      professionals: {
+        listByClinic: vi.fn().mockResolvedValue([]),
       },
       resolveTenantScheduling: vi.fn((claimedClinicId: string) => {
         if (claimedClinicId !== clinic.id) throw new Error("cross-tenant scheduling");
@@ -811,7 +815,7 @@ describe("V2LiveConversationHandler", () => {
       turnId: inboundEventId,
       stage: "understanding_structural",
       modelId: "gpt-4o-mini",
-      promptVersion: "dental-understanding.v4",
+      promptVersion: "dental-understanding.v5",
       contractVersion: "understanding.v1",
       attempt: 1,
       rawOutput: privateOutput,
