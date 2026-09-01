@@ -58,19 +58,18 @@ Arquitetura: [Expansão das capacidades de negócio no runtime V2](v2-business-c
 
 ## Ordem de implementação
 
-1. contrato comum de capability/trace e fixtures de paridade;
-2. diagnóstico read-only do trace no Inbox existente;
-3. conhecimento e recepção;
-4. comercial e objeções;
-5. ciclo completo da agenda;
-6. jornada e mídia;
-7. sinal;
-8. operação clínica e handoff;
-9. automações de relacionamento;
-10. auditoria final e remoção futura dos roots históricos V1.
+1. conhecimento institucional como prova do caminho de leitura;
+2. conhecimento restante e recepção social;
+3. comercial e objeções;
+4. ciclo completo da agenda;
+5. jornada, mídia e sinal;
+6. operação clínica, handoff e automações;
+7. diagnóstico read-only do trace no Inbox e corpus final de paridade;
+8. auditoria final e remoção futura dos roots históricos V1.
 
-A ordem prioriza respostas frequentes e reutiliza serviços maduros antes de fluxos com estado mais
-longo. Uma linha só muda para `green` após replay ponta a ponta, isolamento por tenant,
+A ordem prioriza respostas frequentes e prova primeiro o caminho de baixo risco. O pipeline já
+existente fornece os contratos comuns; não haverá uma fase de criação de aliases, roteador ou
+guardas genéricas. Uma linha só muda para `green` após replay ponta a ponta, isolamento por tenant,
 idempotência, trace completo e resposta validada.
 
 ## Contrato da UI

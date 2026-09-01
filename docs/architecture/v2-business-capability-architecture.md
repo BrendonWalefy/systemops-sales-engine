@@ -1,244 +1,260 @@
-# ADR — Expansão das capacidades de negócio no runtime V2
+# ADR — Conversação V2 orientada pelo risco
 
-Date: 2026-08-31
-Status: accepted for planning
+Date: 2026-09-01
+Status: accepted
 
 ## Contexto
 
-O runtime produtivo é V2-only. A V1 permanece no repositório somente como referência histórica e
-como fonte de casos de teste; ela não pode ser chamada, selecionada ou usada como fallback.
+O runtime produtivo é V2-only. A V1 permanece somente como referência histórica e fonte de casos
+sanitizados; nunca pode ser selecionada ou usada como fallback.
 
-A V1 acumulou comportamentos úteis do negócio — recepção, objeções, jornada de tratamento,
-mídia, agenda completa, sinal, urgência e automações — dentro de um orquestrador grande. A V2 já
-resolve autoridade, separação entre entendimento, decisão, efeito e linguagem, mas ainda não
-possui paridade funcional em todos esses domínios.
+A V2 já possui as fronteiras corretas: `Understanding`, `Decision`, `ActionResult`, plano de
+resposta autorizado, outbox durável e sender com preflight. Criar um novo contrato, roteador ou
+classe para cada intenção duplicaria essa arquitetura e aumentaria a rigidez da conversa.
 
-Parte relevante da configuração já tem uma interface no produto. Criar uma segunda configuração
-"da V2" duplicaria fontes de verdade e faria a UI divergir da conversa.
+O objetivo é recuperar a cobertura e a naturalidade úteis da V1 sem recuperar seu orquestrador
+monolítico e sem transformar a V2 em um conjunto excessivo de guardas.
 
 ## Decisão
 
-Traremos os comportamentos úteis para a V2 como **capacidades verticais de negócio**. Cada
-capacidade terá uma leitura tenant-scoped, uma decisão determinística, efeitos executados por um
-serviço de aplicação existente e um `ActionResult` com provenance. O modelo continuará limitado a
-duas responsabilidades:
+Manteremos um único runtime e o pipeline atual. Os comportamentos serão organizados em cinco
+módulos de negócio e três caminhos proporcionais ao risco:
 
-1. transformar a conversa em entendimento estruturado;
-2. verbalizar fatos e ações já autorizados.
+1. caminho conversacional de leitura;
+2. caminho transacional com efeito;
+3. automações iniciadas pelo sistema.
 
-Não haverá cópia de condicionais da V1 para `V2LiveConversationHandler`, nem um novo motor genérico
-de regras, nem configuração duplicada. A V1 serve para descobrir casos e construir fixtures; o
-código produtivo novo respeita as fronteiras da V2.
+Os nomes conceituais abaixo correspondem aos contratos que já existem; não serão criados aliases
+ou wrappers apenas para renomeá-los.
 
-## Desenho simples
+| Conceito | Contrato existente |
+| --- | --- |
+| Entendimento do turno | `Understanding<DentalRequest>` |
+| Decisão do domínio | `Decision` |
+| Recibo do resultado | `ActionResult<DentalOutcomeSchema>` |
+| Envelope autorizado | `V2AuthorizedResponsePlan` + resposta validada |
+
+## Arquitetura
 
 ```text
-UI existente
-  Playbook | Tratamentos | Pipeline | Biblioteca | Agenda
-  Profissionais | Inbox | Campanhas | Configurações financeiras
-                         |
-                         v
-              fontes de verdade no PostgreSQL
-                         |
-WhatsApp -> inbox/authority/job -> snapshot tenant-scoped do turno
-                         |
-                         v
-               Understanding V2 (estrutura)
-                         |
-                         v
-                 coordenador de capabilities
-       +-------------+-------------+-------------+
-       |             |             |             |
-   conhecimento   comercial    jornada/mídia   agenda
-       |          e objeções       e sinal      completa
-       +-------------+-------------+-------------+
-                         |          clínico/handoff
-                         v
-             decisão determinística + serviço existente
-                         |
-                         v
-              ActionResult + provenance + receipt
-                         |
-                         v
-      AuthorizedResponsePlan -> verbalizador -> validator/fallback
-                         |
-                         v
-          outbox com authority -> sender preflight -> WhatsApp
-
-Decision Trace: correlaciona todas as etapas pelo turnId, sem conteúdo sensível.
+WhatsApp
+   |
+   v
+inbox + stream authority v2 + job
+   |
+   v
+LiveTurnContext + snapshot (carregados uma vez)
+   |
+   v
+Understanding estruturado (uma chamada)
+   |
+   +----------------------+-----------------------+
+   |                      |                       |
+   v                      v                       v
+LEITURA                TRANSAÇÃO               AUTOMAÇÃO
+conhecimento           agenda/sinal            lembrete/follow-up
+comercial/objeção      jornada/opt-out          campanha/recuperação
+   |                      |                       |
+   |                 serviço canônico             | sem Understanding
+   |                 + idempotência                |
+   +----------------------+-----------------------+
+                          |
+                          v
+        ActionResult -> plano autorizado -> verbalização
+                          |
+                          v
+              outbox -> sender preflight -> WhatsApp
 ```
 
-## Responsabilidade de cada peça
+## Cinco módulos, não uma classe por intenção
 
-| Peça | Responsabilidade | Não pode fazer |
-| --- | --- | --- |
-| UI | Editar a configuração canônica e permitir operação humana | Decidir o fluxo de uma mensagem em runtime |
-| Turn snapshot | Resolver uma vez tenant, conversa, estado e configuração ativa | Misturar dados de tenants ou buscar config global |
-| Understanding | Classificar pedido, entidades e sinais conversacionais em schema fechado | Escolher efeito, preço, horário ou texto final |
-| Capability | Verificar fatos e produzir uma `Decision` explícita | Enviar mensagem ou inventar fato ausente |
-| Serviço de aplicação | Executar um efeito idempotente e tenant-scoped | Interpretar texto livre ou compor resposta |
-| ActionResult | Registrar resultado, evidência e provenance do efeito | Carregar segredo, prompt ou conteúdo bruto no trace |
-| Response plan | Definir exatamente o que pode ser dito | Criar fatos ou executar efeito |
-| Verbalizador | Dar naturalidade ao plano autorizado | Alterar decisão ou adicionar promessa, preço ou agenda |
-| Validator/fallback | Bloquear saída fora do contrato e produzir saída segura | Repetir chamada ao modelo em loop |
-| Outbox/sender | Persistir e entregar exatamente uma resposta autorizada | Recalcular conversa ou ignorar authority/safety |
+| Módulo | Responsabilidade |
+| --- | --- |
+| Knowledge (`knowledge-capability.ts`) | Recepção, informações institucionais, tratamentos e FAQ |
+| Commercial | Preços, campanhas, pagamentos, quantidade e objeções |
+| Scheduling | Horários, profissionais, criar, listar, cancelar e reagendar |
+| Journey | Pipeline, mídia, reserva, sinal e comprovante |
+| Operations | Handoff, urgência, chegada, opt-out e automações |
 
-## Famílias de capacidades
+Um módulo pode oferecer várias `Capability` factories no mesmo arquivo quando compartilham uma
+fonte de verdade e uma política. Uma capability representa uma autoridade de negócio, não uma
+frase que o cliente pode escrever.
 
-### 1. Conhecimento e recepção
+## Caminho conversacional de leitura
 
-- saudação, reconhecimento e despedida;
-- endereço, horários, localização, estacionamento, redes e informações institucionais;
-- explicação e comparação de tratamentos;
-- perguntas frequentes e limites de resposta.
+Usado quando o turno não altera estado externo: saudação, conhecimento, explicação, comparação,
+preço autorizado, condição comercial e objeção.
 
-Fontes: `organizations`, `playbook_versions` e `treatments`.
-UI proprietária: perfil, Playbook/Geral, Playbook/Conhecimento e Tratamentos.
+- O Understanding escolhe um pedido e entidades em schema fechado.
+- O módulo resolve fatos exclusivamente da organização reivindicada.
+- A `Decision` do tipo `answer`, `ask`, `offer` ou `escalate` contém fatos e evidências.
+- O `ActionResult` transforma esses fatos no plano autorizado.
+- O verbalizador produz a resposta natural em uma única chamada adicional somente quando existe
+  conteúdo a verbalizar.
 
-### 2. Comercial e objeções
+Não haverá validação semântica duplicada da prosa inteira. O validator protege somente superfícies
+de risco: dinheiro, números, datas/horários, links, mídia, promessas, fatos sem evidence ref,
+quantidade de perguntas e tamanho. Demais qualidade conversacional é governada por evals.
 
-- preço autorizado, campanhas vigentes, condições e parcelamento;
-- dúvidas de quantidade/escopo e confirmação antes de calcular;
-- sensibilidade a preço e objeções mapeadas;
-- encaminhamento quando a política não autoriza uma afirmação.
+## Caminho transacional
 
-Fontes: `playbook_versions.commercialPolicy`, `price_campaigns`, `treatments` e configuração
-financeira da organização. O sistema escolhe a informação permitida; o modelo apenas verbaliza.
-UI proprietária: Playbook/Financeiro, Tratamentos e Campanhas.
+Usado quando existe efeito: agenda, reserva, estado da jornada, sinal, consentimento ou handoff.
 
-### 3. Jornada de tratamento, mídia e sinal
+- O modelo apenas propõe pedido e parâmetros.
+- A capability verifica a leitura atual e produz uma `Decision.execute` tipada.
+- O serviço canônico executa com tenant scope e chave idempotente.
+- O `ActionResult` registra o que realmente ocorreu, inclusive falha.
+- A resposta comunica o receipt; retry nunca recompõe um efeito confirmado.
 
-- execução ordenada de `pipelineSteps` de conteúdo, pergunta, foto, vídeo e oferta de agenda;
-- recebimento de mídia e continuação segura da jornada;
-- envio apenas de mídia cadastrada na biblioteca;
-- reserva provisória, instruções de sinal, recebimento de comprovante, revisão humana e expiração.
+Agenda continua em `BookingService`/casos de uso de calendário. Reserva continua em
+`SlotReservationService`. Comprovante continua em revisão humana. Capabilities não escrevem
+diretamente em PostgreSQL, Google Calendar ou provider.
 
-Fontes: `treatments.pipelineSteps`, biblioteca de mídia, estado da conversa, configuração de sinal
-e reservas. A IA não valida comprovante e não escolhe mídia por URL livre.
-UI proprietária: Pipeline, Biblioteca, Tratamentos, Inbox/DepositBanner e configurações financeiras.
+## Automações
 
-### 4. Ciclo completo da agenda
+Lembretes, follow-ups, recuperação, pós-atendimento e campanhas não executam Understanding sem um
+novo inbound. Seus produtores determinísticos criam um `ActionResult`, usam a mesma fronteira de
+resposta autorizada e preservam authorization kind, opt-out, horário seguro, dedupe e sender
+preflight.
 
-- buscar, oferecer, rejeitar e refazer ofertas de horário;
-- expiração ou tomada concorrente de slot com nova oferta;
-- criar, confirmar, listar, cancelar e reagendar compromissos;
-- redirecionar tratamento que exige avaliação;
-- selecionar profissional e calendário dentro da configuração do tenant.
+## Guardas mínimas obrigatórias
 
-Fontes e efeitos: `BookingService`, `SlotReservationService`, appointments, calendar blocks,
-profissionais e gateways tenant-scoped. Nenhuma capability escreve diretamente no Google Calendar.
-UI proprietária: Agenda, Profissionais e Playbook/Agenda.
+Cada regra deve existir em um único dono. Permanecem somente guardas que protegem um risco real:
 
-### 5. Operação clínica e handoff
+1. tenant, stream, claim e `conversation_authority.version >= 2`;
+2. schema estruturado na saída do modelo;
+3. invariantes do serviço antes de qualquer escrita;
+4. grounding de dinheiro, agenda, link, mídia, promessa e demais fatos de alto risco;
+5. idempotência, consentimento, takeover, kill switch e autorização no sender.
 
-- urgência clínica sem diagnóstico;
-- problema em trabalho existente;
-- chegada e atraso do paciente;
-- pedido explícito de humano, ambiguidade insegura ou caso não suportado;
-- takeover e pausa de IA já controlados pelo Inbox.
+Defesa em profundidade permanece apenas nas duas fronteiras irreversíveis: criação da outbox e
+entrega ao provider. Não serão adicionados guardas repetidos no handler, capability, composer e
+sender para a mesma regra.
 
-O resultado é uma classificação operacional fechada, notificação/handoff idempotente e uma
-resposta segura. Não haverá recomendação clínica gerada pelo modelo.
+Um turno só pode entrar em automação live quando a organização exata está `active`, com
+`auto_reply_enabled` e `live_automation_enabled`, sem shadow/observe, e possui
+`conversation_authority.version >= 2`. Tenant pausado, desabilitado, demo, prospect ou sem
+authority v2 permanece fail-closed: o deploy não altera nem ativa sua configuração.
 
-### 6. Automações do ciclo de relacionamento
+No instante da entrega, o sender relê e exige cumulativamente: kill switch global aberto,
+authority v2, tupla exata stream/generation/inbound/claim, status operacional ativo, auto-reply,
+permissão live tenant-scoped, ausência de shadow/observe e takeover, consentimento/opt-out e safety
+gates. A remoção de approval por build não remove nenhum desses controles. Falha ou leitura
+inconclusiva bloqueia o outbound e nunca redireciona para V1.
 
-- confirmação e lembrete de consulta;
-- follow-up, recuperação e pós-atendimento;
-- continuação após vídeo;
-- campanhas e opt-out.
+Não haverá retry inline de modelo. Falha de Understanding encerra com código fechado e handoff ou
+resposta segura conforme a política. Falha/rejeição da verbalização usa uma única resposta
+determinística derivada do mesmo plano.
 
-Essas automações não fingem ser um novo inbound. Elas reutilizam `ActionResult`, plano autorizado,
-outbox, authorization kind e sender preflight da V2, mantendo seus próprios gatilhos e dedupe.
-UI proprietária: Campanhas, Agenda, Inbox e configurações de automação.
+Os budgets duráveis existentes permanecem: até três claims para um novo `message.process` e até
+dez para `message.send`. Retry reutiliza claim, dedupe, outbox e efeitos confirmados. Ao esgotar o
+budget, o turno termina em uma resposta segura já autorizada ou `handoff_required`; entrega termina
+em `sent`, `cancelled`, `dead` ou handoff explícito. Não há silêncio indefinido, loop nem
+recomposição de efeito.
 
-## Contrato de rastreabilidade
+## Rollout e rollback
 
-Todo turno ou automação deve ser reconstruível por referências opacas, sem telefone ou conteúdo:
+Cada ativação futura continua tenant-scoped, validada e feita por compare-and-set depois de drenar
+workers/outbounds antigos. O corte nunca promove em massa tenants pausados ou inelegíveis. O
+primeiro mecanismo de contenção é fechar o kill switch global e fazer handoff/correção forward; ele
+nunca reativa V1. Depois de existir um release V2-only comprovadamente saudável, redeploy desse
+release passa a ser uma opção adicional. O procedimento canônico permanece em
+`docs/operations/v2-only-runtime-rollout.md`.
 
-1. `ingress.received`: evento e stream registrados;
-2. claim: job, geração, inbound e token ligados uma única vez;
-3. `v2.understanding`: versão, request, modelo, duração ou código fechado de falha;
-4. `v2.decision`: capabilities, tipos de decisão e efeitos pretendidos;
-5. `v2.action_result`: outcomes, efeitos concluídos/falhos e receipts;
-6. `response.plan_built`: fatos/opções/evidências autorizados;
-7. `response.validated` e, quando necessário, `response.fallback_applied`;
-8. `v2.outbox`: mensagem/job criados ou deduplicados;
-9. sender preflight e `delivery.sent` ou estado terminal com razão fechada.
+## Gates de desempenho
 
-O `turnId` liga a cadeia. O Decision Trace continua armazenando somente metadados allowlisted por
-30 dias. Uma saída bruta rejeitada pelo contrato permanece no cofre criptografado já existente,
-com revelação owner auditada e retenção curta; ela nunca é copiada para o trace.
+Cada fatia compara o resultado ao baseline congelado em `evals/v2-only/runtime-baseline.json` com
+o comando canônico de medição. Os limites permanecem: latência p50/p95 até +10% e no máximo
++100 ms/+250 ms absolutos; chamadas de modelo sem aumento; tokens médios até +10% e p95 até +15%;
+statements p95 até +10% e no máximo +2 round trips; lock hold p95 até +10% e +5 ms; cardinalidade
+de evento/job/outbox/resposta sem aumento; atividade Neon ociosa sem novos wakes/SQL e compute-active
+no máximo +5%. Uma capability de leitura que usa o snapshot já carregado deve acrescentar zero
+query, zero lock e zero job.
 
-Cada capability deve acrescentar ao trace somente identificadores fechados: `capabilityId`,
-`decisionKind`, `outcomeType`, `effectKind`, status e contagens. O receipt do efeito prova qual
-serviço respondeu sem expor o dado de negócio.
+## Fontes de verdade e UI
 
-A rota tenant-scoped de Decision Trace já existente será exposta como diagnóstico read-only dentro
-da conversa no Inbox. A visão mostrará a linha do tempo, o primeiro estágio ausente/falho, códigos
-fechados, latência e contagens. Somente owner poderá ver metadados das evidências de rejeição e a
-revelação do conteúdo continuará no fluxo privilegiado e auditado já existente. Assim, a
-rastreabilidade não depende de acesso direto ao banco nem cria uma segunda tela de conversa.
+Não será criada configuração paralela para V2:
 
-## Contratos de segurança e qualidade
+| UI existente | Fonte consumida pelos módulos |
+| --- | --- |
+| Perfil e Playbook/Geral | organização, localização, horários e identidade |
+| Playbook/Conhecimento | FAQ e conteúdo editorial publicado |
+| Tratamentos | catálogo, aliases, descrição, preços e requisitos |
+| Playbook/Financeiro e Campanhas | política comercial e campanhas ativas |
+| Pipeline e Biblioteca | passos e mídia autorizada |
+| Agenda e Profissionais | disponibilidade, compromissos e calendários |
+| Inbox | takeover, handoff e revisão de comprovante |
 
-- runtime produtivo V2-only e `conversation_authority.version >= 2`;
-- tenant pausado, demo, prospect, desabilitado ou sem authority v2 permanece fail-closed;
-- kill switch global, consentimento, opt-out, takeover, shadow/observe e safety gates continuam
-  cumulativos no sender;
-- no máximo uma chamada de Understanding e uma de verbalização por turno;
-- nenhum retry inline de modelo;
-- efeito confirmado não é recomposto em retry;
-- toda escrita tem chave de idempotência e escopo de tenant;
-- resposta contém somente fatos com provenance; ausência ou ambiguidade produz esclarecimento ou
-  handoff, nunca adivinhação;
-- exatamente uma resposta segura ou um estado terminal explícito;
-- nenhuma capability introduz polling, heartbeat ou worker contínuo;
-- nenhum deploy ativa tenants ou altera suas configurações.
+Um campo/tabela/tela nova só é permitido quando uma fatia provar que o dado de negócio não possui
+dono canônico. Nesse caso a evolução recebe especificação e migration próprias; nunca nasce como
+um segundo campo “da V2”.
 
-## Estratégia de entrega rápida
+## Rastreabilidade operacional
 
-O trabalho será dividido em fatias verticais pequenas. Uma fatia entrega um comportamento de
-negócio completo: request, capability, adapter, efeito, resposta, trace e testes. Não haverá um PR
-único de “paridade total”.
+O trace técnico atual permanece detalhado. A visão do Inbox o resume em seis marcos:
 
-Meta operacional para uma fatia que apenas envolve serviços e UI já existentes: 2–4 horas de
-trabalho ativo, excluindo espera de CI/deploy. Se a fatia exigir schema, uma nova fonte de verdade,
-mais de um domínio ou ultrapassar quatro horas sem ficar verde, ela deve ser dividida antes de
-continuar. Jornada/mídia/sinal e agenda serão naturalmente compostas por mais de uma fatia.
+1. recebida;
+2. entendida;
+3. decidida;
+4. executada;
+5. respondida;
+6. entregue ou terminal.
 
-O tempo de espera será medido separadamente em investigação, RED, implementação, gates locais,
-CI e deploy. Isso evita confundir execução lenta de infraestrutura com complexidade do produto.
+O primeiro marco ausente ou falho localiza a fronteira do problema. Detalhes mostram apenas códigos
+fechados, capability, outcome, serviço/efeito, latência, tokens, fallback e status de entrega. Não
+mostram telefone, mensagem, prompt ou resposta. Saída bruta rejeitada continua no cofre
+criptografado existente, com acesso owner auditado e retenção curta.
+
+## Qualidade e excelência conversacional
+
+Não prometemos eliminar matematicamente toda alucinação de texto. Garantimos que texto não pode
+autorizar dinheiro, agenda, sinal, consentimento ou outro efeito. Para respostas de leitura:
+
+- fatos dinâmicos vêm de dados tenant-scoped e carregam evidence refs;
+- ausência de fato gera esclarecimento ou handoff, não invenção;
+- prompt é curto, com estilo e objetivo declarados uma vez;
+- uma suíte de casos reais mede correção factual, entendimento, avanço da jornada, naturalidade,
+  latência, tokens e handoff desnecessário;
+- restrições novas só entram quando um caso reproduzido demonstrar o risco.
+
+## Limites de complexidade
+
+- um monólito modular, um banco e um deploy;
+- sem microsserviços, broker, multiagente, supervisor agent, DSL ou rule engine;
+- sem event sourcing completo;
+- sem nova chamada ao modelo para roteamento;
+- no máximo uma chamada de Understanding e uma de verbalização por inbound;
+- consultas limitadas e reutilização do contexto já carregado;
+- nenhum polling, heartbeat ou worker contínuo novo;
+- nenhuma ativação automática de tenant.
+
+## Entrega incremental
+
+Cada fatia entrega um comportamento útil ponta a ponta e deve caber, quando reutiliza serviços
+existentes, em uma meta de 2–4 horas de trabalho ativo. Espera de CI/deploy é medida separadamente.
+Se uma fatia ultrapassar o orçamento por misturar fontes de verdade ou domínios, ela é dividida;
+não se adiciona abstração genérica para fazê-la “caber”.
+
+A ordem é:
+
+1. Knowledge institucional como primeira prova do caminho de leitura;
+2. Commercial;
+3. Scheduling lifecycle;
+4. Journey/sinal/mídia;
+5. Operations/automações;
+6. painel de trace e corpus final de paridade.
 
 ## Alternativas rejeitadas
 
-### Copiar o orquestrador V1
-
-Parece rápido no primeiro comportamento, mas recupera o monólito, mistura linguagem e efeito,
-impede provenance por decisão e aumenta o risco de efeitos duplicados.
-
-### Chamar V1 quando a V2 não souber
-
-Viola o runtime definitivo, cria dois donos da conversa e torna authority, retry e investigação
-dependentes de qual engine respondeu.
-
-### Criar uma DSL genérica para todas as jornadas
-
-Reduz arquivos, mas esconde regras de agenda, comercial e sinal no mesmo interpretador. Os
-contratos verticais são mais simples de testar e podem reutilizar diretamente os serviços atuais.
-
-### Criar telas e tabelas “V2” paralelas
-
-Duplicaria playbook, tratamentos, pipeline, agenda e campanhas. A UI existente continuará sendo a
-porta de edição das fontes canônicas; somente dado de negócio realmente inexistente pode justificar
-uma evolução de schema e UI em PR próprio.
+- **Agente único com acesso direto a tudo:** natural, porém mistura interpretação e autoridade.
+- **Capability por intenção/frase:** rastreável, porém cria explosão de classes e validações.
+- **Fallback para V1:** dois donos para o mesmo turno e investigação ambígua.
+- **Plataforma genérica de workflows:** concorre com a UI e os serviços verticais já existentes.
 
 ## Consequências
 
-- A paridade chega em incrementos utilizáveis e reversíveis.
-- A conversa pode ser investigada estágio a estágio, inclusive quando não houve outbound.
-- A naturalidade da V1 é recuperada pelo verbalizador híbrido, sem devolver ao modelo autoridade
-  sobre fatos e efeitos.
-- Alguns comportamentos permanecerão em handoff até a sua fatia ser entregue; não haverá fallback
-  silencioso.
-- A V1 só poderá ser removida depois que a matriz de paridade estiver completa, os casos históricos
-  estiverem representados em fixtures V2 e uma busca provar que nenhum root produtivo a alcança.
+- A arquitetura aproveita o que já existe e adiciona principalmente decisões e adapters finos.
+- Respostas de baixo risco permanecem naturais; operações de alto risco permanecem determinísticas.
+- O custo de estrutura fica concentrado nas fronteiras irreversíveis.
+- Alguns pedidos continuarão em handoff até a fatia correspondente ficar pronta.
+- A remoção futura da V1 depende de paridade comprovada por fixtures, não de chamadas em runtime.
