@@ -67,7 +67,7 @@ const provenanceRules = [
   {
     capabilityId: "dental-explanation",
     decisionKind: "answer",
-    outcomes: [outcome("service_explained")],
+    outcomes: [outcome("service_explained"), outcome("services_compared")],
   },
   {
     capabilityId: "dental-explanation",

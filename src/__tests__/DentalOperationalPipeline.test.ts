@@ -32,7 +32,7 @@ describe("pipeline operacional dental", () => {
           evidenceRef: "organization:clinic-1:address",
         }),
       },
-      catalogRead: { resolveService: vi.fn() },
+      catalogRead: { resolveService: vi.fn(), resolveServices: vi.fn() },
       schedulingRead: {
         listSlots: vi.fn(),
         resolveOfferedSlot: vi.fn(),
@@ -80,7 +80,7 @@ describe("pipeline operacional dental", () => {
     const bookSlot = vi.fn();
     const pack = createDentalPack({
       knowledgeRead: { resolveBusinessInformation: vi.fn() },
-      catalogRead: { resolveService },
+      catalogRead: { resolveService, resolveServices: vi.fn() },
       schedulingRead: {
         listSlots: vi.fn(),
         resolveOfferedSlot: vi.fn(),
@@ -126,7 +126,7 @@ describe("pipeline operacional dental", () => {
     });
     const pack = createDentalPack({
       knowledgeRead: { resolveBusinessInformation: vi.fn() },
-      catalogRead: { resolveService: vi.fn() },
+      catalogRead: { resolveService: vi.fn(), resolveServices: vi.fn() },
       schedulingRead: {
         listSlots: vi.fn().mockResolvedValue({
           service: { id: "whitening", name: "Clareamento" },
@@ -193,7 +193,7 @@ describe("pipeline operacional dental", () => {
     });
     const pack = createDentalPack({
       knowledgeRead: { resolveBusinessInformation: vi.fn() },
-      catalogRead: { resolveService: vi.fn() },
+      catalogRead: { resolveService: vi.fn(), resolveServices: vi.fn() },
       schedulingRead: {
         listSlots,
         resolveOfferedSlot: vi.fn(),

@@ -27,10 +27,17 @@ export type DentalPolicy = {
   schedulingRequiresEvaluationFirst: boolean;
 };
 
-export type DentalExplanationClaimPayload = {
-  kind: "explanation";
-  serviceQuery: string;
-};
+export type DentalExplanationClaimPayload =
+  | {
+      kind: "explanation";
+      request: "explain-service";
+      serviceQuery: string;
+    }
+  | {
+      kind: "explanation";
+      request: "compare-services";
+      serviceQueries: readonly [string, string];
+    };
 
 export type DentalKnowledgeClaimPayload = {
   kind: "business-information";
@@ -98,6 +105,11 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
   service_explained: {
     semanticClass: "information_authorized",
     subjectRequirement: "required",
+    evidenceRequirement: "required",
+  },
+  services_compared: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "forbidden",
     evidenceRequirement: "required",
   },
   business_information_answered: {

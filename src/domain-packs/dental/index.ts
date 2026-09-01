@@ -93,7 +93,7 @@ const unavailable = async (): Promise<never> => {
 
 export const dentalPack = createDentalPack({
   knowledgeRead: { resolveBusinessInformation: unavailable },
-  catalogRead: { resolveService: unavailable },
+  catalogRead: { resolveService: unavailable, resolveServices: unavailable },
   schedulingRead: {
     listSlots: unavailable,
     resolveOfferedSlot: unavailable,

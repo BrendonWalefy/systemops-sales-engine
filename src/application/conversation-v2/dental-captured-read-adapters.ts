@@ -34,6 +34,14 @@ export function createDentalCapturedReadAdapters(reads: CapturedV2TurnReads): {
         if (!match) unavailable();
         return match.result;
       },
+      async resolveServices(queries) {
+        if (reads.catalog.status !== "captured") unavailable();
+        const resolve = (query: string) => {
+          const match = reads.serviceResolutions.find((entry) => entry.query === query);
+          return match?.result ?? unavailable();
+        };
+        return [resolve(queries[0]), resolve(queries[1])];
+      },
     },
     schedulingRead: {
       async listSlots(input) {

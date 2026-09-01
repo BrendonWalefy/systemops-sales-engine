@@ -509,6 +509,22 @@ describe("Dental live adapters — institutional knowledge", () => {
 });
 
 describe("Dental live adapters — tenant-scoped catalog", () => {
+  it("resolves a comparison from one tenant-scoped catalog read", async () => {
+    const foreign = treatment({ id: "foreign", clinicId: "other-clinic", name: "Implante" });
+    const whitening = treatment({ id: "whitening", description: "Clareia a tonalidade." });
+    const facets = treatment({ id: "facets", name: "Facetas", aliases: ["lentes"], description: "Altera forma e cor." });
+    const { adapters, treatments } = setup({ treatments: [foreign, whitening, facets] });
+
+    await expect(adapters.catalogRead.resolveServices(["Clareamento", "lentes"]))
+      .resolves.toMatchObject([
+        { kind: "exact", service: { id: "whitening" } },
+        { kind: "exact", service: { id: "facets" } },
+      ]);
+    expect(treatments.listByClinic).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(await adapters.catalogRead.resolveServices(["Implante", "Facetas"])))
+      .not.toContain("foreign");
+  });
+
   it("resolves price only from an exact tenant treatment or alias", async () => {
     const foreign = treatment({ id: "foreign", clinicId: "other-clinic", priceCents: 1 });
     const { adapters, treatments } = setup({ treatments: [foreign, treatment()] });

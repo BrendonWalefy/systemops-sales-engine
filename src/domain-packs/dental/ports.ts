@@ -49,6 +49,9 @@ export type ServiceResolution =
 
 export type DentalCatalogReadPort = {
   resolveService(query: string): Promise<ServiceResolution>;
+  resolveServices(
+    queries: readonly [string, string],
+  ): Promise<readonly [ServiceResolution, ServiceResolution]>;
 };
 
 export type DentalSlot = { id: string; label: string; evidenceRef: string };

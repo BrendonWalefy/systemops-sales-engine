@@ -458,6 +458,28 @@ export function createDentalLiveAdapters(
       }
       return { kind: "unknown", evidenceRef: `treatment-catalog:${clinic.id}` };
     },
+    async resolveServices(queries) {
+      const tenantTreatments = await listTenantTreatments();
+      const resolveOne = (query: string): ServiceResolution => {
+        const resolution = resolveTreatment(tenantTreatments, query);
+        if (resolution.kind === "exact") {
+          return {
+            kind: "exact",
+            service: toDentalService(resolution.treatment),
+            evidenceRef: catalogEvidence(resolution.treatment),
+          };
+        }
+        if (resolution.kind === "ambiguous") {
+          return {
+            kind: "ambiguous",
+            candidates: resolution.treatments.map(({ id, name }) => ({ id, name })),
+            evidenceRef: `treatment-catalog:${clinic.id}`,
+          };
+        }
+        return { kind: "unknown", evidenceRef: `treatment-catalog:${clinic.id}` };
+      };
+      return [resolveOne(queries[0]), resolveOne(queries[1])];
+    },
   };
 
   type InstitutionalText =
