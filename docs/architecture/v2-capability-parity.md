@@ -42,10 +42,10 @@ V1; a roadmap detalhada abaixo apenas decompõe a evolução interna de cada fro
 | Recepção | Saudação e abertura | `green` | Playbook/Geral | `dental-reception` |
 | Recepção | Reconhecimento e despedida | `green` | Comportamento universal V2 | `dental-reception` sem efeito |
 | Conhecimento | Descrição de tratamento | `green` | Tratamentos | `dental-explanation` |
-| Conhecimento | Comparação, diferenciais e FAQ | `slice` | Playbook/Conhecimento + Tratamentos | conhecimento com evidência |
+| Conhecimento | Comparação, diferenciais e FAQ | `green` | Playbook/Conhecimento + Tratamentos | `dental-explanation` + `dental-playbook-knowledge` |
 | Conhecimento | Endereço, horário e localização | `green` | Perfil | `dental-knowledge` |
 | Conhecimento | Estacionamento e redes | `green` | Conhecimento/Organização | `dental-knowledge` estruturado |
-| Conhecimento | Dúvidas gerais cadastradas | `slice` | Playbook/Conhecimento | FAQ com evidência |
+| Conhecimento | Dúvidas gerais cadastradas | `green` | Playbook/Conhecimento | FAQ estruturada com evidência |
 | Comercial | Preço explicitamente divulgável | `green` | Tratamentos | `dental-catalog` |
 | Comercial | Campanha de preço vigente | `shared` | Tratamentos/Campanhas | resolver campanha antes do plano |
 | Comercial | Pagamento e parcelamento | `slice` | Playbook/Financeiro | política comercial estruturada |
@@ -109,11 +109,28 @@ Os movimentos `acknowledges` e `closes` produzem, respectivamente, `social_ackno
 `conversation_closed`. São atos sociais fechados, sem facts ou efeitos: agradecimento não recebe
 uma nova pergunta e despedida não reabre a jornada.
 
+### Evidência da fatia de tratamentos e playbook
+
+`compare-services` exige exatamente dois nomes canônicos distintos. `dental-explanation` resolve os
+dois no mesmo catálogo tenant-scoped e emite uma descrição autorizada e uma evidência por
+tratamento; ausência, ambiguidade, duplicidade ou descrição insegura produz esclarecimento. O
+resultado multi-subject mantém cada fato ligado ao próprio tratamento sem criar um subject global
+falso.
+
+`business-differentials` e `frequently-asked-question` pertencem a
+`dental-playbook-knowledge`. A capability lê somente o snapshot da versão ativa já carregado no
+turno. Diferenciais permanecem na ordem cadastrada; FAQ seleciona uma pergunta canônica por
+igualdade normalizada e expõe somente a resposta correspondente. Evidence refs contêm versão e
+posição, nunca o conteúdo. Understanding recebe nomes de tratamentos e perguntas de FAQ limitadas,
+mas nunca recebe respostas. A execução mantém uma chamada de Understanding, no máximo uma
+verbalização, zero efeitos de negócio, zero query adicional para playbook e uma única
+resposta/outbox.
+
 ## Ordem de implementação
 
 1. conhecimento institucional básico concluído;
-2. estacionamento, redes e recepção social concluídos; comparação, diferenciais e FAQ são a próxima fatia;
-3. comercial e objeções;
+2. estacionamento, redes, recepção social, comparação, diferenciais e FAQ concluídos;
+3. comercial, campanhas e objeções são a próxima fatia;
 4. ciclo completo da agenda;
 5. jornada, mídia e sinal;
 6. operação clínica, handoff e automações;

@@ -209,6 +209,7 @@ const REPLY_ACTION_TYPES = new Set([
   "appointment_confirmed",
 ]);
 const institutionalTopicsByCase = new Map<string, "address" | "parking" | "social">();
+const faqQuestionsByCase = new Map<string, string>();
 const ARM_ORDER = Object.freeze([
   Object.freeze(["v1_current", "v2_only"] as const),
   Object.freeze(["v2_only", "v1_current"] as const),
@@ -369,7 +370,7 @@ function understandingFor(fixture: CorpusCase): Record<string, unknown> {
       period: entities.period ?? null,
       time: entities.time ?? null,
       serviceCandidates: entities.serviceCandidates ?? null,
-      faqQuestion: null,
+      faqQuestion: faqQuestionsByCase.get(fixture.caseId) ?? null,
       quantity: entities.quantity ?? null,
       ordinal: entities.ordinal ?? null,
     },
@@ -1350,11 +1351,87 @@ describe("V2-only runtime performance measurement worker", () => {
       "location-9004",
       "Qual é o Instagram?",
     );
+    const tenantTreatments = await new DrizzleTreatmentRepository().listByClinic(referenceClinicId);
+    if (tenantTreatments.length < 2) {
+      throw new Error("treatment comparison performance proof requires two registered treatments");
+    }
+    const comparedTreatments = tenantTreatments.slice(0, 2);
+    await runtime!.pool.query(
+      "update treatments set description = case when id = $1::uuid then $3 else $4 end where id in ($1::uuid, $2::uuid)",
+      [
+        comparedTreatments[0]!.id,
+        comparedTreatments[1]!.id,
+        "Descrição segura do primeiro tratamento.",
+        "Descrição segura do segundo tratamento.",
+      ],
+    );
+    await runtime!.pool.query(
+      `insert into playbook_versions
+        (id, organization_id, name, status, specialty, commercial_policy, differentials, faqs)
+       values ($1::uuid, $2::uuid, $3, 'active', $4, $5, $6::jsonb, $7::jsonb)`,
+      [
+        randomUUID(),
+        referenceClinicId,
+        "Performance active playbook",
+        "odontologia",
+        "Política comercial cadastrada.",
+        JSON.stringify(["Atendimento individualizado.", "Planejamento digital."]),
+        JSON.stringify([{ question: "Preciso de encaminhamento?", answer: "Não é necessário." }]),
+      ],
+    );
+    const comparisonFixture: CorpusCase = {
+      ...institutionalFixture("knowledge-9005", "Qual é a diferença entre os dois tratamentos?"),
+      journey: "comparison",
+      labels: {
+        ...generalReference.labels,
+        understanding: {
+          ...generalReference.labels.understanding,
+          request: "compare-services",
+          entities: { serviceCandidates: comparedTreatments.map(({ name }) => name) },
+          ambiguity: null,
+        },
+      },
+    };
+    const differentialsFixture: CorpusCase = {
+      ...institutionalFixture("knowledge-9006", "Quais são os diferenciais?"),
+      journey: "other",
+      labels: {
+        ...generalReference.labels,
+        understanding: {
+          ...generalReference.labels.understanding,
+          request: "business-differentials",
+          entities: {},
+          ambiguity: null,
+        },
+      },
+    };
+    const faqFixture: CorpusCase = {
+      ...institutionalFixture("knowledge-9007", "Preciso de encaminhamento?"),
+      journey: "other",
+      labels: {
+        ...generalReference.labels,
+        understanding: {
+          ...generalReference.labels.understanding,
+          request: "frequently-asked-question",
+          entities: {},
+          ambiguity: null,
+        },
+      },
+    };
+    faqQuestionsByCase.set(faqFixture.caseId, "Preciso de encaminhamento?");
     institutionalTopicsByCase.set(addressFixture.caseId, "address");
     institutionalTopicsByCase.set(missingFixture.caseId, "address");
     institutionalTopicsByCase.set(parkingFixture.caseId, "parking");
     institutionalTopicsByCase.set(socialFixture.caseId, "social");
-    for (const fixture of [addressFixture, missingFixture, parkingFixture, socialFixture]) {
+    for (const fixture of [
+      addressFixture,
+      missingFixture,
+      parkingFixture,
+      socialFixture,
+      comparisonFixture,
+      differentialsFixture,
+      faqFixture,
+    ]) {
       clinicIdsByCase.set(fixture.caseId, referenceClinicId);
       fixtureInputsByCase.set(fixture.caseId, {
         ...referenceInput,
@@ -1374,6 +1451,9 @@ describe("V2-only runtime performance measurement worker", () => {
     );
     expectedV2OutcomesByCase.set(parkingFixture.caseId, "business_information_answered");
     expectedV2OutcomesByCase.set(socialFixture.caseId, "business_information_answered");
+    expectedV2OutcomesByCase.set(comparisonFixture.caseId, "services_compared");
+    expectedV2OutcomesByCase.set(differentialsFixture.caseId, "playbook_knowledge_answered");
+    expectedV2OutcomesByCase.set(faqFixture.caseId, "playbook_knowledge_answered");
 
     const businessStateBefore = await runtime!.pool.query<{
       appointments: string;
@@ -1409,6 +1489,9 @@ describe("V2-only runtime performance measurement worker", () => {
       }])],
     );
     const groundedSocial = await runTurn("v2_only", socialFixture, 24, false);
+    const groundedComparison = await runTurn("v2_only", comparisonFixture, 25, false);
+    const groundedDifferentials = await runTurn("v2_only", differentialsFixture, 26, false);
+    const groundedFaq = await runTurn("v2_only", faqFixture, 27, false);
     const businessStateAfter = await runtime!.pool.query<{
       appointments: string;
       reservations: string;
@@ -1425,6 +1508,9 @@ describe("V2-only runtime performance measurement worker", () => {
       ["missing address", missingAddress],
       ["grounded parking", groundedParking],
       ["grounded social", groundedSocial],
+      ["grounded comparison", groundedComparison],
+      ["grounded differentials", groundedDifferentials],
+      ["grounded FAQ", groundedFaq],
     ] as const) {
       expect(sample.modelCalls).toBe(2);
       expect(sample.cardinality).toEqual({
