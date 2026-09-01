@@ -9,7 +9,7 @@ import {
 } from "@/domain-packs/dental";
 
 const understanding = (
-  request: "price-of-service" | "book-appointment" | "confirm-slot",
+  request: "price-of-service" | "book-appointment" | "confirm-slot" | "cancel-appointment",
 ): Understanding<DentalRequest> => ({
   version: UNDERSTANDING_VERSION,
   request,
@@ -33,6 +33,7 @@ describe("claims mínimos do pack dental", () => {
       "dental-commercial",
       "dental-catalog",
       "dental-scheduling",
+      "dental-appointment-lifecycle",
       "dental-escalation",
       "dental-reception",
     ]);
@@ -45,7 +46,7 @@ describe("claims mínimos do pack dental", () => {
             completedStepIds: [],
           })?.capabilityId ?? null,
       ),
-    ).toEqual([null, null, null, "dental-commercial", null, null, null, null]);
+    ).toEqual([null, null, null, "dental-commercial", null, null, null, null, null]);
     const scheduling = dentalPack.capabilities.find(({ id }) => id === "dental-scheduling")!;
     const claim = scheduling.claim(understanding("book-appointment"), {
       phase: "active",
@@ -60,6 +61,20 @@ describe("claims mínimos do pack dental", () => {
       requestedDate: null,
       requestedPeriod: null,
     });
+    const lifecycle = dentalPack.capabilities.find(
+      ({ id }) => id === "dental-appointment-lifecycle",
+    )!;
+    expect(lifecycle.claim(understanding("cancel-appointment"), {
+      phase: "active",
+      pendingStepId: null,
+      completedStepIds: [],
+    })?.capabilityId).toBe("dental-appointment-lifecycle");
+    const escalation = dentalPack.capabilities.find(({ id }) => id === "dental-escalation")!;
+    expect(escalation.claim(understanding("cancel-appointment"), {
+      phase: "active",
+      pendingStepId: null,
+      completedStepIds: [],
+    })).toBeNull();
   });
 
   it("mantém o contexto livre de linguagem e providers", () => {

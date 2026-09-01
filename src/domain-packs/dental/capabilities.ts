@@ -102,6 +102,27 @@ export type DentalSchedulingClaimPayload =
       pendingStepId: string | null;
     };
 
+export type DentalAppointmentLifecycleClaimPayload =
+  | {
+      kind: "appointment-lifecycle";
+      request: "list-appointments";
+    }
+  | {
+      kind: "appointment-lifecycle";
+      request: "cancel-appointment";
+      ordinal: number | null;
+      date: string | null;
+      time: string | null;
+    }
+  | {
+      kind: "appointment-lifecycle";
+      request: "reschedule-appointment";
+      ordinal: number | null;
+      requestedDate: string | null;
+      requestedPeriod: string | null;
+      requestedProfessional: string | null;
+    };
+
 export type DentalReceptionClaimPayload = {
   kind: "reception";
   request: "greeting" | "other";
@@ -123,6 +144,7 @@ export type DentalClaimPayload =
   | DentalCatalogClaimPayload
   | DentalCommercialClaimPayload
   | DentalSchedulingClaimPayload
+  | DentalAppointmentLifecycleClaimPayload
   | DentalEscalationClaimPayload
   | DentalReceptionClaimPayload;
 
@@ -198,6 +220,41 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
     semanticClass: "effect_failed",
     subjectRequirement: "optional",
     evidenceRequirement: "write_required",
+  },
+  appointments_listed: {
+    semanticClass: "options_found",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "required",
+  },
+  appointment_selection_required: {
+    semanticClass: "options_found",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "required",
+  },
+  no_active_appointment: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "optional",
+  },
+  appointment_cancelled: {
+    semanticClass: "effect_completed",
+    subjectRequirement: "required",
+    evidenceRequirement: "write_required",
+  },
+  appointment_cancel_failed: {
+    semanticClass: "effect_failed",
+    subjectRequirement: "optional",
+    evidenceRequirement: "write_required",
+  },
+  appointment_reschedule_offered: {
+    semanticClass: "options_found",
+    subjectRequirement: "required",
+    evidenceRequirement: "write_required",
+  },
+  appointment_reschedule_failed: {
+    semanticClass: "effect_failed",
+    subjectRequirement: "optional",
+    evidenceRequirement: "optional",
   },
   scheduling_failed: {
     semanticClass: "effect_failed",
@@ -706,20 +763,14 @@ export function createDentalEscalationCapability(): Capability<
       const objection = understanding.request !== "registered-objection" &&
         typeof understanding.signals.objection === "string" &&
         understanding.signals.objection.trim().length > 0;
-      const cancelReschedule = understanding.request === "cancel-appointment" ||
-        understanding.request === "reschedule-appointment";
       return understanding.safety.emergency ||
-        understanding.safety.requestsHuman || objection || cancelReschedule
+        understanding.safety.requestsHuman || objection
         ? {
             ...ownedClaim("dental-escalation", understanding.confidence, {
               kind: "escalation",
               emergency: understanding.safety.emergency ?? false,
               requestsHuman: understanding.safety.requestsHuman ?? false,
-              reason: cancelReschedule
-                ? "cancel_reschedule"
-                : objection
-                  ? "objection"
-                  : "structured_safety_signal",
+              reason: objection ? "objection" : "structured_safety_signal",
             }),
             conflictsWith: ["dental-commercial", "dental-catalog", "dental-scheduling"],
           }

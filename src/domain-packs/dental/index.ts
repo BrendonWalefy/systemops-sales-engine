@@ -12,7 +12,10 @@ import { createDentalExplanationCapability } from "@/domain-packs/dental/explana
 import { createDentalKnowledgeCapability } from "@/domain-packs/dental/knowledge-capability";
 import { createDentalPlaybookKnowledgeCapability } from "@/domain-packs/dental/playbook-knowledge-capability";
 import { createDentalCommercialCapability } from "@/domain-packs/dental/commercial-capability";
+import { createDentalAppointmentLifecycleCapability } from "@/domain-packs/dental/appointment-lifecycle-capability";
 import type {
+  DentalAppointmentLifecycleReadPort,
+  DentalAppointmentLifecycleWritePort,
   DentalCatalogReadPort,
   DentalCommercialReadPort,
   DentalKnowledgeReadPort,
@@ -57,12 +60,23 @@ export function createDentalPack(ports: {
   commercialRead: DentalCommercialReadPort;
   schedulingRead: DentalSchedulingReadPort;
   schedulingWrite: DentalSchedulingWritePort;
+  appointmentLifecycleRead?: DentalAppointmentLifecycleReadPort;
+  appointmentLifecycleWrite?: DentalAppointmentLifecycleWritePort;
 }): DomainPack<
   DentalRequest,
   DentalPolicy,
   DentalClaimPayload,
   typeof DENTAL_OUTCOME_SCHEMA
 > {
+  const appointmentLifecycleRead = ports.appointmentLifecycleRead ?? {
+    listActiveAppointments: unavailable,
+    resolveActiveAppointment: unavailable,
+    listReplacementSlots: unavailable,
+  };
+  const appointmentLifecycleWrite = ports.appointmentLifecycleWrite ?? {
+    persistReplacementOffer: unavailable,
+    cancelAppointment: unavailable,
+  };
   return {
     id: "dental",
     outcomeSchema: DENTAL_OUTCOME_SCHEMA,
@@ -75,6 +89,10 @@ export function createDentalPack(ports: {
       createDentalSchedulingCapability(
         ports.schedulingRead,
         ports.schedulingWrite,
+      ),
+      createDentalAppointmentLifecycleCapability(
+        appointmentLifecycleRead,
+        appointmentLifecycleWrite,
       ),
       createDentalEscalationCapability(),
       createDentalReceptionCapability(),
@@ -90,7 +108,11 @@ export function createDentalPack(ports: {
       },
       {
         id: "scheduling",
-        capabilityIds: ["dental-scheduling", "dental-escalation"],
+        capabilityIds: [
+          "dental-scheduling",
+          "dental-appointment-lifecycle",
+          "dental-escalation",
+        ],
       },
     ],
   };

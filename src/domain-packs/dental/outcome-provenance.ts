@@ -11,10 +11,11 @@ export type DentalCapabilityId =
   | "dental-commercial"
   | "dental-catalog"
   | "dental-scheduling"
+  | "dental-appointment-lifecycle"
   | "dental-escalation"
   | "dental-reception";
 
-export type DentalExecuteAction = "book_slot" | "confirm_appointment";
+export type DentalExecuteAction = "book_slot" | "confirm_appointment" | "cancel_appointment";
 
 type DentalOutcomeDefinition<Type extends DentalOutcomeType = DentalOutcomeType> =
   Readonly<{
@@ -152,6 +153,27 @@ const provenanceRules = [
     outcomes: [outcome("clarification_required")],
   },
   {
+    capabilityId: "dental-appointment-lifecycle",
+    decisionKind: "ask",
+    outcomes: [outcome("no_active_appointment"), outcome("appointment_reschedule_failed")],
+  },
+  {
+    capabilityId: "dental-appointment-lifecycle",
+    decisionKind: "offer",
+    outcomes: [
+      outcome("appointments_listed"),
+      outcome("appointment_selection_required"),
+      outcome("appointment_reschedule_offered"),
+    ],
+  },
+  {
+    capabilityId: "dental-appointment-lifecycle",
+    decisionKind: "execute",
+    decisionActionType: "cancel-appointment",
+    action: "cancel_appointment",
+    outcomes: [outcome("appointment_cancelled"), outcome("appointment_cancel_failed")],
+  },
+  {
     capabilityId: "dental-scheduling",
     decisionKind: "offer",
     outcomes: [outcome("slots_found")],
@@ -269,7 +291,7 @@ export function dentalDecisionProvenanceIdentity(input: Readonly<{
   const rule = DENTAL_OUTCOME_PROVENANCE.find((candidate) =>
     ruleMatchesDecision(candidate, input.capabilityId, input.decision));
   if (!rule) return null;
-  return rule.decisionKind === "execute"
+  return (rule.decisionKind === "execute"
     ? Object.freeze({
         capabilityId: rule.capabilityId,
         decisionKind: "execute",
@@ -278,7 +300,7 @@ export function dentalDecisionProvenanceIdentity(input: Readonly<{
     : Object.freeze({
         capabilityId: rule.capabilityId,
         decisionKind: rule.decisionKind,
-      }) as DentalDecisionProvenanceIdentity;
+      })) as DentalDecisionProvenanceIdentity;
 }
 
 function hasExactStringKeys(
