@@ -205,20 +205,27 @@ gates separados descritos em [Replay e Decision Trace](replay-and-decision-trace
 
 ### Conhecimento institucional V2
 
-Perguntas de endereço, horário de funcionamento e orientação de localização usam o request fechado
+Perguntas de endereço, horário de funcionamento, orientação de localização, estacionamento e redes
+sociais usam o request fechado
 `business-information` e a capability read-only `dental-knowledge`. A leitura vem da organização
 já reivindicada no `LiveTurnContext`: `address`/`addressComplement`, `businessHours` e
 `locationMessage`, com endereço como fallback de orientação somente quando a orientação está
-ausente. Dado ausente gera uma resposta específica do tópico. Dado presente inválido — incluindo
+ausente; `parkingInformation` e `socialChannels` são editados na aba Conhecimento. Dado ausente
+gera uma resposta específica do tópico. Dado presente inválido — incluindo
 caractere de controle, texto não normalizado ou acima de 240 caracteres — falha fechado sem
 fallback parcial e sem invenção.
 
 Esse caminho reutiliza o snapshot do turno, não consulta outro tenant, não cria efeito de negócio e
 não altera agenda, estado ou configuração. O gate PostgreSQL prova cardinalidade `1/1/1/1/1` e
-ausência de aumento de statements, round trips e lock hold contra uma resposta comum. O trace
-registra request, capability, outcome, chamadas e contagens, mas nunca endereço ou texto.
-Estacionamento, redes e links de mapa permanecem fora desta fatia até possuírem uma fonte
-estruturada e uma superfície de link autorizada.
+ausência de novas statements, round trips dentro da tolerância de duas ondas do medidor temporal e
+lock hold dentro da tolerância contra uma resposta comum. O trace
+registra request, capability, outcome, chamadas e contagens, mas nunca o valor institucional.
+Links sociais só passam quando fazem parte inteira do valor estruturado autorizado; qualquer link
+adicional continua bloqueado. `mapsUrl` não é exposta por esse contrato.
+
+Reconhecimento e despedida usam os movimentos fechados `acknowledges` e `closes`. Eles produzem
+classes semânticas sociais sem efeito e, portanto, não reabrem a conversa com uma pergunta nem
+criam estado, job ou ação de negócio.
 
 ### Conversation Intelligence V2: runtime único e fail-closed
 

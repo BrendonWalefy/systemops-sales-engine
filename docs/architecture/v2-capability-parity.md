@@ -40,11 +40,12 @@ V1; a roadmap detalhada abaixo apenas decompõe a evolução interna de cada fro
 | Domínio | Comportamento de negócio | Estado | Dono canônico / UI existente | Entrega V2 |
 | --- | --- | --- | --- | --- |
 | Recepção | Saudação e abertura | `green` | Playbook/Geral | `dental-reception` |
-| Recepção | Reconhecimento e despedida | `slice` | Playbook/Geral | recepção social sem efeito |
+| Recepção | Reconhecimento e despedida | `green` | Comportamento universal V2 | `dental-reception` sem efeito |
 | Conhecimento | Descrição de tratamento | `green` | Tratamentos | `dental-explanation` |
 | Conhecimento | Comparação, diferenciais e FAQ | `slice` | Playbook/Conhecimento + Tratamentos | conhecimento com evidência |
 | Conhecimento | Endereço, horário e localização | `green` | Perfil | `dental-knowledge` |
-| Conhecimento | Estacionamento, redes e dúvidas gerais | `slice` | Playbook/Conhecimento | informação institucional |
+| Conhecimento | Estacionamento e redes | `green` | Conhecimento/Organização | `dental-knowledge` estruturado |
+| Conhecimento | Dúvidas gerais cadastradas | `slice` | Playbook/Conhecimento | FAQ com evidência |
 | Comercial | Preço explicitamente divulgável | `green` | Tratamentos | `dental-catalog` |
 | Comercial | Campanha de preço vigente | `shared` | Tratamentos/Campanhas | resolver campanha antes do plano |
 | Comercial | Pagamento e parcelamento | `slice` | Playbook/Financeiro | política comercial estruturada |
@@ -84,7 +85,8 @@ V1; a roadmap detalhada abaixo apenas decompõe a evolução interna de cada fro
 
 `business-information` usa um tópico fechado e `dental-knowledge` produz somente `answer` ou
 `ask`. Endereço vem de `organizations.address` e `addressComplement`; horário vem de
-`businessHours`; orientação usa `locationMessage` e, quando ausente, o endereço. O adapter está
+`businessHours`; orientação usa `locationMessage` e, quando ausente, o endereço; estacionamento usa
+`parkingInformation`; redes usam a lista estruturada `socialChannels`. O adapter está
 fechado sobre a organização reivindicada e usa o snapshot já carregado, portanto acrescenta zero
 query, zero lock e zero efeito de negócio. O turno mantém uma chamada de Understanding, no máximo
 uma verbalização e a cardinalidade normal de uma única resposta/outbox.
@@ -92,19 +94,25 @@ uma verbalização e a cardinalidade normal de uma única resposta/outbox.
 Dado ausente gera uma resposta específica para o tópico, informando honestamente que ele não está
 cadastrado. Dado presente que esteja não normalizado, contenha caracteres de controle ou exceda
 240 caracteres falha fechado da mesma forma; complemento ou orientação inválida não é ocultado por
-fallback parcial. `mapsUrl` não é exposta nesta fatia. Estacionamento e redes continuam `slice`,
-pois ainda não possuem campo estruturado canônico aprovado; nenhum texto editorial livre é
-minerado para preencher essa lacuna.
+fallback parcial. `mapsUrl` não é exposta. Links sociais só são verbalizados quando o valor
+estruturado completo aparece na superfície autorizada; um segundo link continua proibido. Nenhum
+texto editorial livre é minerado para preencher lacunas.
 
-O gate PostgreSQL executa endereço presente e ausente por ingress, claim de processamento,
-handler, outbox, claim de envio e sender. Ambos mantêm cardinalidade `1/1/1/1/1`, duas chamadas de
+O gate PostgreSQL executa endereço presente/ausente, estacionamento e redes por ingress, claim de
+processamento, handler, outbox, claim de envio e sender. Todos mantêm cardinalidade `1/1/1/1/1`, duas chamadas de
 modelo no máximo (Understanding + verbalização), nenhuma mutação de agenda/reserva/estado e nenhum
-aumento de statements, round trips sequenciais ou lock hold contra uma resposta comum.
+aumento de statements. Round trips sequenciais admitem a tolerância de duas ondas causada pela
+sobreposição temporal do medidor, e lock hold permanece dentro da tolerância contra uma resposta
+comum.
+
+Os movimentos `acknowledges` e `closes` produzem, respectivamente, `social_acknowledged` e
+`conversation_closed`. São atos sociais fechados, sem facts ou efeitos: agradecimento não recebe
+uma nova pergunta e despedida não reabre a jornada.
 
 ## Ordem de implementação
 
 1. conhecimento institucional básico concluído;
-2. estacionamento, redes, conhecimento restante e recepção social;
+2. estacionamento, redes e recepção social concluídos; comparação, diferenciais e FAQ são a próxima fatia;
 3. comercial e objeções;
 4. ciclo completo da agenda;
 5. jornada, mídia e sinal;
