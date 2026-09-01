@@ -109,7 +109,9 @@ function copyAct(value: unknown): DraftSpeechAct | null {
     kind === "communicate_failure" ||
     kind === "inform_required_action" ||
     kind === "ask_clarification" ||
-    kind === "invite_engagement"
+    kind === "invite_engagement" ||
+    kind === "acknowledge_social" ||
+    kind === "close_conversation"
   ) {
     const outcomeRef: unknown = value.outcomeRef;
     const subjectRef: unknown = value.subjectRef;
@@ -154,6 +156,8 @@ const compatibleClass: Record<DraftSpeechAct["kind"], OutcomeSemanticClass> = {
   inform_required_action: "human_action_required",
   ask_clarification: "clarification_required",
   invite_engagement: "engagement_invited",
+  acknowledge_social: "social_acknowledged",
+  close_conversation: "conversation_closed",
 };
 
 function push(

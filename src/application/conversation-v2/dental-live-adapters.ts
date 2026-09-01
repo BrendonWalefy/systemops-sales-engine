@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { isSafeAuthorizedDisplayText } from "@/conversation-core/authorized-response-plan";
+import { parseInstitutionalDetails } from "@/application/config/institutional-details";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import type {
   ConversationStateMachine,
@@ -483,6 +484,36 @@ export function createDentalLiveAdapters(
     return isSafeAuthorizedDisplayText(combined) ? combined : null;
   }
 
+  function parkingText(): string | null {
+    try {
+      return parseInstitutionalDetails({
+        parkingInformation: clinic.parkingInformation,
+        socialChannels: null,
+      }).parkingInformation;
+    } catch {
+      return null;
+    }
+  }
+
+  function socialText(): string | null {
+    try {
+      const channels = parseInstitutionalDetails({
+        parkingInformation: null,
+        socialChannels: clinic.socialChannels,
+      }).socialChannels;
+      if (!channels) return null;
+      const rendered = [...channels]
+        .sort((left, right) => left.label.localeCompare(right.label, "pt-BR", {
+          sensitivity: "base",
+        }))
+        .map(({ label, url }) => `${label}: ${url}`)
+        .join(" · ");
+      return isSafeAuthorizedDisplayText(rendered) ? rendered : null;
+    } catch {
+      return null;
+    }
+  }
+
   function institutionalResolution(
     topic: Parameters<DentalKnowledgeReadPort["resolveBusinessInformation"]>[0],
     fact: DentalBusinessInformationFact | null,
@@ -536,6 +567,22 @@ export function createDentalLiveAdapters(
             : guidance.kind === "absent"
               ? `organization:${clinic.id}:address`
               : `organization:${clinic.id}:location-message`,
+        );
+      }
+      if (topic === "parking") {
+        const value = parkingText();
+        return institutionalResolution(
+          topic,
+          value ? { key: "parking_information", value } : null,
+          `organization:${clinic.id}:parking-information`,
+        );
+      }
+      if (topic === "social") {
+        const value = socialText();
+        return institutionalResolution(
+          topic,
+          value ? { key: "social_channels", value } : null,
+          `organization:${clinic.id}:social-channels`,
         );
       }
       return institutionalResolution(

@@ -389,6 +389,14 @@ export const organizations = pgTable("organizations", {
   // referência ou "toque o interfone". O sistema nunca calcula nada com esses fatos —
   // só imprime. Estrutura só se paga quando há conta a fazer (preço, garantia).
   locationMessage: text("location_message"),
+  // Informação institucional exibida como cadastrada; nenhum cálculo ou
+  // inferência operacional depende deste texto.
+  parkingInformation: text("parking_information"),
+  // Canais sociais estruturados para validar e autorizar cada URL antes da
+  // verbalização. Null preserva a ausência honesta para tenants existentes.
+  socialChannels: jsonb("social_channels").$type<
+    import("@/domain/entities/clinic").SocialChannel[]
+  >(),
   timezone: text("timezone").notNull().default("America/Sao_Paulo"),
   greetingMessage: text("greeting_message"),
   menuItems: jsonb("menu_items").$type<MenuItem[]>(),

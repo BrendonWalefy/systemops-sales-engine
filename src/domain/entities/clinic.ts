@@ -7,6 +7,11 @@ export type MenuItemIntent =
 
 export type ConversationExperience = "menu_first" | "concierge";
 
+export type SocialChannel = Readonly<{
+  label: string;
+  url: string;
+}>;
+
 export const DEFAULT_CONVERSATION_EXPERIENCE: ConversationExperience = "menu_first";
 
 export type MenuItem = {
@@ -47,6 +52,8 @@ export type Organization = {
   addressComplement: string | null;
   mapsUrl: string | null;
   locationMessage: string | null;
+  parkingInformation: string | null;
+  socialChannels: SocialChannel[] | null;
   timezone: string;
   greetingMessage: string | null;
   menuItems: MenuItem[] | null;

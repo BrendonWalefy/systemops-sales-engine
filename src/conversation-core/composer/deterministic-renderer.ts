@@ -79,6 +79,12 @@ export function renderDeterministicResponse<OutcomeType extends string>(input: {
     if (act.kind === "invite_engagement") {
       return qualify(act.subjectRef, "Como posso ajudar?");
     }
+    if (act.kind === "acknowledge_social") {
+      return qualify(act.subjectRef, "Por nada! Fico à disposição.");
+    }
+    if (act.kind === "close_conversation") {
+      return qualify(act.subjectRef, "Até mais! Quando precisar, estou por aqui.");
+    }
     if (act.kind === "inform_required_action") {
       return qualify(act.subjectRef, "É necessário atendimento humano.");
     }

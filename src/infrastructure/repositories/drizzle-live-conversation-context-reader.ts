@@ -23,6 +23,8 @@ export function buildOrganization(row: OrganizationRow): Organization {
     addressComplement: row.addressComplement ?? null,
     mapsUrl: row.mapsUrl ?? null,
     locationMessage: row.locationMessage ?? null,
+    parkingInformation: row.parkingInformation ?? null,
+    socialChannels: row.socialChannels ?? null,
     timezone: row.timezone,
     greetingMessage: row.greetingMessage ?? null,
     menuItems: (row.menuItems as MenuItem[] | null) ?? null,

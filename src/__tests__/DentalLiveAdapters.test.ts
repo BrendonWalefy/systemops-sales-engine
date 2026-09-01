@@ -25,6 +25,8 @@ const clinic: Organization = {
   addressComplement: null,
   mapsUrl: null,
   locationMessage: null,
+  parkingInformation: null,
+  socialChannels: null,
   timezone: "America/Sao_Paulo",
   greetingMessage: null,
   menuItems: null,
@@ -408,6 +410,57 @@ describe("Dental live adapters — institutional knowledge", () => {
       });
     await expect(fixture.adapters.knowledgeRead.resolveBusinessInformation("parking"))
       .resolves.toMatchObject({ kind: "missing", topic: "parking" });
+    await expect(fixture.adapters.knowledgeRead.resolveBusinessInformation("social"))
+      .resolves.toMatchObject({ kind: "missing", topic: "social" });
+  });
+
+  it("resolves parking and social channels from structured tenant data", async () => {
+    const fixture = setup({
+      clinicOverride: {
+        ...clinic,
+        parkingInformation: "  Vagas conveniadas no prédio ao lado.  ",
+        socialChannels: [
+          { label: "YouTube", url: "https://youtube.com/@clinic" },
+          { label: "Instagram", url: "https://instagram.com/clinic" },
+        ],
+      },
+    });
+
+    await expect(fixture.adapters.knowledgeRead.resolveBusinessInformation("parking"))
+      .resolves.toMatchObject({
+        kind: "resolved",
+        topic: "parking",
+        facts: [{ key: "parking_information", value: "Vagas conveniadas no prédio ao lado." }],
+        evidenceRef: `organization:${clinic.id}:parking-information`,
+      });
+    await expect(fixture.adapters.knowledgeRead.resolveBusinessInformation("social"))
+      .resolves.toMatchObject({
+        kind: "resolved",
+        topic: "social",
+        facts: [{
+          key: "social_channels",
+          value: "Instagram: https://instagram.com/clinic · YouTube: https://youtube.com/@clinic",
+        }],
+        evidenceRef: `organization:${clinic.id}:social-channels`,
+      });
+  });
+
+  it.each([
+    ["duplicate labels", [
+      { label: "Instagram", url: "https://instagram.com/a" },
+      { label: " instagram ", url: "https://instagram.com/b" },
+    ]],
+    ["non-https URL", [{ label: "Site", url: "http://example.com" }]],
+    ["partial channel", [{ label: "Instagram", url: "" }]],
+    ["too many channels", Array.from({ length: 6 }, (_, index) => ({
+      label: `Canal ${index}`,
+      url: `https://example.com/${index}`,
+    }))],
+  ] as const)("fails closed for malformed social data: %s", async (_label, socialChannels) => {
+    const fixture = setup({
+      clinicOverride: { ...clinic, socialChannels: [...socialChannels] },
+    });
+
     await expect(fixture.adapters.knowledgeRead.resolveBusinessInformation("social"))
       .resolves.toMatchObject({ kind: "missing", topic: "social" });
   });

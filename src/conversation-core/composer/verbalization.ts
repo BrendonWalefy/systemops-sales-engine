@@ -30,6 +30,8 @@ export type AuthorizedStatement = Readonly<{
     | "communicate_failure"
     | "inform_required_action"
     | "invite_engagement"
+    | "acknowledge_social"
+    | "close_conversation"
     | "ask_clarification";
   subject: string | null;
   values: readonly string[];

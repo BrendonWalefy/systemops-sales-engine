@@ -72,7 +72,40 @@ export async function cleanupEmbeddedAuthorityDatabase(
   runtime: Partial<EmbeddedAuthorityDatabase>,
 ): Promise<void> {
   try {
-    await runtime.pool?.end();
+    if (runtime.pool) {
+      const expectedRemovals = runtime.pool.totalCount;
+      if (expectedRemovals === 0) {
+        await runtime.pool.end();
+      } else {
+        let observedRemovals = 0;
+        let resolveRemoved!: () => void;
+        let rejectRemoved!: (error: Error) => void;
+        const clientsRemoved = new Promise<void>((resolve, reject) => {
+          resolveRemoved = resolve;
+          rejectRemoved = reject;
+        });
+        const onRemove = () => {
+          observedRemovals += 1;
+          if (observedRemovals >= expectedRemovals) resolveRemoved();
+        };
+        runtime.pool.on("remove", onRemove);
+        const timeout = setTimeout(() => {
+          rejectRemoved(new Error(
+            `embedded PostgreSQL pool removal timed out (${observedRemovals}/${expectedRemovals})`,
+          ));
+        }, 5_000);
+        try {
+          // pg-pool resolves end() after removing clients from its internal
+          // list, just before each underlying socket emits its remove event.
+          // Await the events so the server is never stopped in that gap.
+          await runtime.pool.end();
+          await clientsRemoved;
+        } finally {
+          clearTimeout(timeout);
+          runtime.pool.off("remove", onRemove);
+        }
+      }
+    }
   } finally {
     try {
       await runtime.embedded?.stop();

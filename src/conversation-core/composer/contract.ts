@@ -22,6 +22,8 @@ export type DraftSpeechAct =
   | { kind: "communicate_failure"; outcomeRef: string; subjectRef: string | null }
   | { kind: "inform_required_action"; outcomeRef: string; subjectRef: string | null }
   | { kind: "invite_engagement"; outcomeRef: string; subjectRef: string | null }
+  | { kind: "acknowledge_social"; outcomeRef: string; subjectRef: string | null }
+  | { kind: "close_conversation"; outcomeRef: string; subjectRef: string | null }
   | { kind: "ask_clarification"; outcomeRef: string; subjectRef: string | null };
 
 export type DraftResponse = { acts: readonly DraftSpeechAct[] };
