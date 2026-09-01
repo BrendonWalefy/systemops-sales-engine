@@ -1,5 +1,9 @@
 import type { CapturedV2TurnReads } from "@/application/conversation-v2/captured-turn-reads";
-import type { DentalCatalogReadPort, DentalSchedulingReadPort } from "@/domain-packs/dental/ports";
+import type {
+  DentalCatalogReadPort,
+  DentalKnowledgeReadPort,
+  DentalSchedulingReadPort,
+} from "@/domain-packs/dental/ports";
 
 export class CapturedReadUnavailableError extends Error {
   constructor() {
@@ -13,10 +17,16 @@ function unavailable(): never {
 }
 
 export function createDentalCapturedReadAdapters(reads: CapturedV2TurnReads): {
+  knowledgeRead: DentalKnowledgeReadPort;
   catalogRead: DentalCatalogReadPort;
   schedulingRead: DentalSchedulingReadPort;
 } {
   return {
+    knowledgeRead: {
+      async resolveBusinessInformation() {
+        return unavailable();
+      },
+    },
     catalogRead: {
       async resolveService(query) {
         if (reads.catalog.status !== "captured") unavailable();

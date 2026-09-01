@@ -4,6 +4,7 @@ import {
   type Understanding,
 } from "@/conversation-core/understanding/schema";
 import {
+  DENTAL_BUSINESS_INFORMATION_TOPICS,
   DENTAL_REQUESTS,
   type DentalRequest,
 } from "@/domain-packs/dental/vocabulary";
@@ -22,6 +23,7 @@ export const dentalUnderstandingStructureSchema = z.object({
   dialogueMove: z.enum(CORE_DIALOGUE_MOVES),
   entities: z.object({
     service: z.string().nullable(),
+    businessInformationTopic: z.enum(DENTAL_BUSINESS_INFORMATION_TOPICS).nullable(),
     date: z.string().nullable(),
     period: z.string().nullable(),
     time: z.string().nullable(),
@@ -53,7 +55,10 @@ export type DentalUnderstandingStructure = z.infer<
 
 export type DentalUnderstandingSemanticIssue = Readonly<{
   path: readonly string[];
-  code: "service_required_for_request";
+  code:
+    | "service_required_for_request"
+    | "business_information_topic_required"
+    | "business_information_topic_forbidden";
 }>;
 
 export type DentalUnderstandingSemanticValidation =
@@ -90,6 +95,25 @@ export function parseDentalUnderstandingStructure(
 export function validateDentalUnderstandingSemantics(
   value: Understanding<DentalRequest>,
 ): DentalUnderstandingSemanticValidation {
+  const businessInformationTopic = value.entities.businessInformationTopic;
+  if (value.request === "business-information" && typeof businessInformationTopic !== "string") {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "businessInformationTopic"]),
+        code: "business_information_topic_required" as const,
+      }]),
+    };
+  }
+  if (value.request !== "business-information" && businessInformationTopic !== null) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "businessInformationTopic"]),
+        code: "business_information_topic_forbidden" as const,
+      }]),
+    };
+  }
   if (
     value.request !== null
     && SERVICE_REQUIRED_REQUESTS.has(value.request)

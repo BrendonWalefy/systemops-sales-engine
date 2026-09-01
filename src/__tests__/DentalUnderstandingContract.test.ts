@@ -22,6 +22,7 @@ const base = {
 function entities(service: string | null) {
   return {
     service,
+    businessInformationTopic: null,
     date: null,
     period: null,
     time: null,
@@ -66,5 +67,31 @@ describe("contrato de Understanding dental", () => {
       }],
     });
     expect(() => parseDentalUnderstanding(value)).toThrow();
+  });
+
+  it("exige tópico fechado para informação institucional", () => {
+    const valid = {
+      ...base,
+      request: "business-information",
+      entities: {
+        ...entities(null),
+        businessInformationTopic: "business-hours",
+      },
+    } as const;
+
+    expect(parseDentalUnderstanding(valid).request).toBe("business-information");
+    expect(() => parseDentalUnderstanding({
+      ...valid,
+      entities: { ...valid.entities, businessInformationTopic: null },
+    })).toThrow();
+    expect(() => parseDentalUnderstanding({
+      ...valid,
+      entities: { ...valid.entities, businessInformationTopic: "unknown" },
+    })).toThrow();
+    expect(() => parseDentalUnderstanding({
+      ...valid,
+      request: "price-of-service",
+      entities: { ...valid.entities, service: "clareamento" },
+    })).toThrow();
   });
 });

@@ -129,6 +129,7 @@ describe("capability de explicação dental", () => {
       ambiguity: null,
     };
     const entities = {
+      businessInformationTopic: null,
       date: null,
       period: null,
       time: null,

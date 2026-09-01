@@ -6,6 +6,9 @@ import { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
+const LOCK_HOLD_TOLERANCE_RATIO = 1.1;
+const LOCK_HOLD_TOLERANCE_MS = 5;
+
 const databaseMock = vi.hoisted(() => {
   let activeDb: unknown;
   const proxy = new Proxy({}, {
@@ -187,6 +190,10 @@ type SeededFixtureContext = Readonly<{
 
 const FIXED_NOW = new Date(RUNTIME_FIXED_NOW_ISO);
 const DRAIN_NOW = new Date(RUNTIME_DRAIN_NOW_ISO);
+// Outbound enqueue uses PostgreSQL's wall clock. This benchmark measures an
+// immediate send, not calendar eligibility, so its send drain must stay due
+// even after the frozen corpus dates have passed.
+const IMMEDIATE_SEND_DRAIN_NOW = new Date("9999-12-31T23:59:59.000Z");
 const DUPLICATE_CASE_ID = "injection-0001";
 const REPLY_ACTION_TYPES = new Set([
   "general_question",
@@ -350,6 +357,9 @@ function understandingFor(fixture: CorpusCase): Record<string, unknown> {
     dialogueMove: source.dialogueMove,
     entities: {
       service: entities.service ?? null,
+      businessInformationTopic: source.request === "business-information"
+        ? "address"
+        : null,
       date: entities.date ?? null,
       period: entities.period ?? null,
       time: entities.time ?? null,
@@ -1050,7 +1060,12 @@ describe("V2-only runtime performance measurement worker", () => {
     }
   }
 
-  async function runTurn(arm: ArmName, fixture: CorpusCase, repetition: number): Promise<void> {
+  async function runTurn(
+    arm: ArmName,
+    fixture: CorpusCase,
+    repetition: number,
+    recordSample = true,
+  ): Promise<TurnSample> {
     const turnIndex = repetition * fixtures.length + fixtures.indexOf(fixture);
     const clinicId = clinicIdsByCase.get(fixture.caseId);
     if (!clinicId) throw new Error(`missing runtime clinic ${fixture.caseId}`);
@@ -1165,7 +1180,7 @@ describe("V2-only runtime performance measurement worker", () => {
           handler: sender,
           workerId: `runtime-send-${arm}-${turnIndex}`,
           maxJobs: 1,
-          now: DRAIN_NOW,
+          now: IMMEDIATE_SEND_DRAIN_NOW,
         }));
       expect(sendResult).toMatchObject({ claimed: 1, sent: 1, ignored: 0, retried: 0, dead: 0 });
       expect(providerDeliveries - deliveriesBefore).toBe(1);
@@ -1199,7 +1214,14 @@ describe("V2-only runtime performance measurement worker", () => {
       expect(telemetry.calls).toBeGreaterThan(0);
       expect(telemetry.tokens).toBeGreaterThan(0);
       await assertDurableFixtureEffect(arm, fixture, repetition, clinicId, seededContext);
-      samples[arm].push(Object.freeze({ latencyMs, modelCalls: telemetry.calls, tokens: telemetry.tokens, sql, cardinality }));
+      const sample = Object.freeze({
+        latencyMs,
+        modelCalls: telemetry.calls,
+        tokens: telemetry.tokens,
+        sql,
+        cardinality,
+      });
+      if (recordSample) samples[arm].push(sample);
       if (fixture.labels.expectedActionResult.type === "appointment_confirmed") {
         const createdAppointments = await appointmentRepository.findByPeriod(
           clinicId,
@@ -1211,6 +1233,7 @@ describe("V2-only runtime performance measurement worker", () => {
           await reservations.releaseBySlot(clinicId, appointment.startsAt);
         }
       }
+      return sample;
     } finally {
       if (!sql) sqlRecorder!.endTurn();
       activeV2Fixture = undefined;
@@ -1277,6 +1300,111 @@ describe("V2-only runtime performance measurement worker", () => {
       population: { cases: 17, repetitions: 6, turnsPerArm: 102 },
       arms: [armMetrics("v1_current", samples.v1_current), armMetrics("v2_only", samples.v2_only)],
     };
+
+    const generalReference = fixtures.find(
+      (fixture) => fixture.labels.expectedActionResult.type === "general_question",
+    );
+    if (!generalReference) throw new Error("missing general-question performance reference");
+    const referenceClinicId = clinicIdsByCase.get(generalReference.caseId);
+    const referenceInput = fixtureInputsByCase.get(generalReference.caseId);
+    if (!referenceClinicId || !referenceInput) {
+      throw new Error("missing institutional performance reference binding");
+    }
+    const institutionalFixture = (
+      caseId: string,
+      leadMessage: string,
+    ): CorpusCase => ({
+      ...generalReference,
+      caseId,
+      journey: "location",
+      input: { ...generalReference.input, leadMessage, history: [] },
+      labels: {
+        ...generalReference.labels,
+        understanding: {
+          ...generalReference.labels.understanding,
+          request: "business-information",
+          entities: {},
+          ambiguity: null,
+        },
+      },
+    });
+    const addressFixture = institutionalFixture(
+      "location-9001",
+      "Onde vocês ficam?",
+    );
+    const missingFixture = institutionalFixture(
+      "location-9002",
+      "Qual é o endereço do laboratório?",
+    );
+    for (const fixture of [addressFixture, missingFixture]) {
+      clinicIdsByCase.set(fixture.caseId, referenceClinicId);
+      fixtureInputsByCase.set(fixture.caseId, {
+        ...referenceInput,
+        caseId: fixture.caseId,
+        history: [],
+        requestedState: null,
+        actionContext: { kind: "none" },
+      });
+    }
+    expectedV2OutcomesByCase.set(
+      addressFixture.caseId,
+      "business_information_answered",
+    );
+    expectedV2OutcomesByCase.set(
+      missingFixture.caseId,
+      "business_information_unavailable",
+    );
+
+    const businessStateBefore = await runtime!.pool.query<{
+      appointments: string;
+      reservations: string;
+      conversation_states: string;
+    }>(`
+      select
+        (select count(*)::text from appointments) as appointments,
+        (select count(*)::text from slot_reservations) as reservations,
+        (select count(*)::text from conversation_states) as conversation_states
+    `);
+    const normalReply = await runTurn("v2_only", generalReference, 20, false);
+    await runtime!.pool.query(
+      "update organizations set address = $2, address_complement = null where id = $1::uuid",
+      [referenceClinicId, "Avenida Aurora, 321"],
+    );
+    const groundedAddress = await runTurn("v2_only", addressFixture, 21, false);
+    await runtime!.pool.query(
+      "update organizations set address = null, address_complement = null where id = $1::uuid",
+      [referenceClinicId],
+    );
+    const missingAddress = await runTurn("v2_only", missingFixture, 22, false);
+    const businessStateAfter = await runtime!.pool.query<{
+      appointments: string;
+      reservations: string;
+      conversation_states: string;
+    }>(`
+      select
+        (select count(*)::text from appointments) as appointments,
+        (select count(*)::text from slot_reservations) as reservations,
+        (select count(*)::text from conversation_states) as conversation_states
+    `);
+
+    for (const sample of [groundedAddress, missingAddress]) {
+      expect(sample.modelCalls).toBe(2);
+      expect(sample.cardinality).toEqual({
+        events: 1,
+        processJobs: 1,
+        liveReplies: 1,
+        sendJobs: 1,
+        sentReplies: 1,
+      });
+      expect(sample.sql.statements).toBeLessThanOrEqual(normalReply.sql.statements);
+      expect(sample.sql.sequentialRoundTrips)
+        .toBeLessThanOrEqual(normalReply.sql.sequentialRoundTrips);
+      expect(sample.sql.lockHoldMs).toBeLessThanOrEqual(
+        normalReply.sql.lockHoldMs * LOCK_HOLD_TOLERANCE_RATIO + LOCK_HOLD_TOLERANCE_MS,
+      );
+    }
+    expect(businessStateAfter.rows[0]).toEqual(businessStateBefore.rows[0]);
+
     if (process.env.V2_RUNTIME_PERFORMANCE_OUTPUT) {
       writeFileSync(process.env.V2_RUNTIME_PERFORMANCE_OUTPUT, JSON.stringify(report));
     }

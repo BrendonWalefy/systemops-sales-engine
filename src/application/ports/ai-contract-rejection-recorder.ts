@@ -18,6 +18,8 @@ export type AiContractRejectionIssueCode =
   | "schema_enum"
   | "schema_range"
   | "service_required_for_request"
+  | "business_information_topic_required"
+  | "business_information_topic_forbidden"
   | VerbalizationViolationCode;
 
 export type AiContractRejectionIssue = Readonly<{
@@ -31,6 +33,7 @@ const AI_CONTRACT_REJECTION_SAFE_PATH_SEGMENTS = new Set([
   "dialogueMove",
   "entities",
   "service",
+  "businessInformationTopic",
   "date",
   "period",
   "time",

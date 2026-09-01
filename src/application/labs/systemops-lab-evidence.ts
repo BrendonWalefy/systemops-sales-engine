@@ -20,6 +20,7 @@ import {
 } from "@/application/labs/systemops-lab-persona";
 import { isDentalOutcomeStructuralSummary } from "@/domain-packs/dental/outcome-provenance";
 import { DENTAL_OUTCOME_SCHEMA } from "@/domain-packs/dental/capabilities";
+import { dentalPack } from "@/domain-packs/dental";
 import { DENTAL_REQUESTS, type DentalRequest } from "@/domain-packs/dental/vocabulary";
 
 /**
@@ -242,9 +243,10 @@ function closedCsv(
     }
   });
 }
-const capabilityIdsCsv = closedCsv([
-  "dental-catalog", "dental-scheduling", "dental-escalation",
-], true, true);
+export const EVIDENCE_CAPABILITY_IDS = Object.freeze(
+  dentalPack.capabilities.map(({ id }) => id),
+);
+const capabilityIdsCsv = closedCsv([...EVIDENCE_CAPABILITY_IDS], true, true);
 const decisionKindsCsv = closedCsv([
   "answer", "ask", "offer", "execute", "escalate", "close", "suppress",
 ], true);

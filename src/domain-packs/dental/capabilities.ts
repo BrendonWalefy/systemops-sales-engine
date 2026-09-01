@@ -15,7 +15,10 @@ import type {
   DentalSchedulingReadPort,
   DentalSchedulingWritePort,
 } from "@/domain-packs/dental/ports";
-import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
+import type {
+  DentalBusinessInformationTopic,
+  DentalRequest,
+} from "@/domain-packs/dental/vocabulary";
 
 export type DentalPolicy = {
   priceDisclosureEnabled: boolean;
@@ -27,6 +30,11 @@ export type DentalPolicy = {
 export type DentalExplanationClaimPayload = {
   kind: "explanation";
   serviceQuery: string;
+};
+
+export type DentalKnowledgeClaimPayload = {
+  kind: "business-information";
+  topic: DentalBusinessInformationTopic;
 };
 
 export type DentalCatalogClaimPayload = {
@@ -71,6 +79,7 @@ export type DentalEscalationClaimPayload = {
 };
 
 export type DentalClaimPayload =
+  | DentalKnowledgeClaimPayload
   | DentalExplanationClaimPayload
   | DentalCatalogClaimPayload
   | DentalSchedulingClaimPayload
@@ -86,6 +95,16 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
     evidenceRequirement: "required",
   },
   service_explained: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "required",
+    evidenceRequirement: "required",
+  },
+  business_information_answered: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "required",
+    evidenceRequirement: "required",
+  },
+  business_information_unavailable: {
     semanticClass: "information_authorized",
     subjectRequirement: "required",
     evidenceRequirement: "required",
