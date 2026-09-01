@@ -20,6 +20,10 @@ export type AiContractRejectionIssueCode =
   | "service_required_for_request"
   | "business_information_topic_required"
   | "business_information_topic_forbidden"
+  | "comparison_services_required"
+  | "comparison_services_forbidden"
+  | "faq_question_required"
+  | "faq_question_forbidden"
   | VerbalizationViolationCode;
 
 export type AiContractRejectionIssue = Readonly<{
@@ -38,6 +42,7 @@ const AI_CONTRACT_REJECTION_SAFE_PATH_SEGMENTS = new Set([
   "period",
   "time",
   "serviceCandidates",
+  "faqQuestion",
   "quantity",
   "ordinal",
   "signals",

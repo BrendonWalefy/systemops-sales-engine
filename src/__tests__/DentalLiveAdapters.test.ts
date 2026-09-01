@@ -5,6 +5,7 @@ import type { Lead } from "@/domain/entities/lead";
 import type { Treatment } from "@/domain/entities/treatment";
 import type { Appointment, CalendarSlot } from "@/domain/entities/calendar-slot";
 import type { Conversation } from "@/domain/entities/conversation";
+import type { EditorialConfig } from "@/application/config/editorial-config";
 import type { SlotReservation } from "@/core/scheduling/SlotReservationService";
 import type {
   ConversationStateRow,
@@ -160,6 +161,7 @@ function setup(options: {
   appointmentById?: Appointment | null;
   reservationsInPeriod?: SlotReservation[];
   conversationOverride?: Conversation;
+  editorial?: EditorialConfig | null;
 } = {}) {
   const availableTreatments = options.treatments ?? [treatment()];
   const activeLead = options.leadOverride ?? lead;
@@ -320,6 +322,7 @@ function setup(options: {
     reservations,
     booking,
     clinic: options.clinicOverride ?? clinic,
+    editorial: options.editorial ?? null,
     lead: activeLead,
     leadId: activeLead.id,
     conversation: options.conversationOverride ?? conversation,
@@ -508,7 +511,70 @@ describe("Dental live adapters — institutional knowledge", () => {
   });
 });
 
+describe("Dental live adapters — active playbook knowledge", () => {
+  const editorial: EditorialConfig = {
+    versionId: "version-active-7",
+    specialty: "odontologia",
+    toneOfVoice: "acolhedor",
+    commercialPolicy: "Política cadastrada.",
+    procedures: [],
+    receptionistName: "Marina",
+    differentials: ["Atendimento individualizado.", "Planejamento digital."],
+    objections: [],
+    faqs: [{ question: "Preciso de encaminhamento?", answer: "Não é necessário." }],
+    warrantyPolicy: null,
+    mediaLibrary: [],
+    playbookText: "",
+  };
+
+  it("reads differentials and FAQ only from the supplied active snapshot", async () => {
+    const { adapters } = setup({ editorial });
+
+    await expect(adapters.playbookKnowledgeRead.resolveDifferentials()).resolves.toMatchObject({
+      kind: "resolved",
+      organization: { id: clinic.id },
+      facts: [
+        { value: "Atendimento individualizado.", evidenceRef: "playbook:version-active-7:differential:0" },
+        { value: "Planejamento digital.", evidenceRef: "playbook:version-active-7:differential:1" },
+      ],
+    });
+    await expect(adapters.playbookKnowledgeRead.resolveFaq(" preciso de encaminhamento? "))
+      .resolves.toMatchObject({
+        kind: "resolved",
+        facts: [{ value: "Não é necessário.", evidenceRef: "playbook:version-active-7:faq:0" }],
+      });
+  });
+
+  it("fails closed when no active snapshot or an unsafe value is supplied", async () => {
+    const missing = setup();
+    const malformed = setup({
+      editorial: { ...editorial, differentials: [" texto não normalizado "] },
+    });
+
+    await expect(missing.adapters.playbookKnowledgeRead.resolveFaq("Pergunta?"))
+      .resolves.toEqual({ kind: "missing", request: "frequently-asked-question" });
+    await expect(malformed.adapters.playbookKnowledgeRead.resolveDifferentials())
+      .resolves.toEqual({ kind: "missing", request: "business-differentials" });
+  });
+});
+
 describe("Dental live adapters — tenant-scoped catalog", () => {
+  it("resolves a comparison from one tenant-scoped catalog read", async () => {
+    const foreign = treatment({ id: "foreign", clinicId: "other-clinic", name: "Implante" });
+    const whitening = treatment({ id: "whitening", description: "Clareia a tonalidade." });
+    const facets = treatment({ id: "facets", name: "Facetas", aliases: ["lentes"], description: "Altera forma e cor." });
+    const { adapters, treatments } = setup({ treatments: [foreign, whitening, facets] });
+
+    await expect(adapters.catalogRead.resolveServices(["Clareamento", "lentes"]))
+      .resolves.toMatchObject([
+        { kind: "exact", service: { id: "whitening" } },
+        { kind: "exact", service: { id: "facets" } },
+      ]);
+    expect(treatments.listByClinic).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(await adapters.catalogRead.resolveServices(["Implante", "Facetas"])))
+      .not.toContain("foreign");
+  });
+
   it("resolves price only from an exact tenant treatment or alias", async () => {
     const foreign = treatment({ id: "foreign", clinicId: "other-clinic", priceCents: 1 });
     const { adapters, treatments } = setup({ treatments: [foreign, treatment()] });
@@ -549,6 +615,7 @@ describe("Dental live adapters — tenant-scoped catalog", () => {
       reservations: fixture.reservations,
       booking: fixture.booking,
       clinic,
+      editorial: null,
       lead: { ...lead, clinicId: "other-clinic" },
       leadId: lead.id,
       conversation,

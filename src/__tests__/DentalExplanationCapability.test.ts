@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CapabilityContext, ConversationState } from "@/conversation-core/capability/contract";
 import type { Understanding } from "@/conversation-core/understanding/schema";
 import { UNDERSTANDING_VERSION } from "@/conversation-core/understanding/schema";
@@ -7,6 +7,10 @@ import { createDentalExplanationCapability } from "@/domain-packs/dental/explana
 import type { DentalCatalogReadPort, ServiceResolution } from "@/domain-packs/dental/ports";
 import { parseDentalUnderstanding } from "@/domain-packs/dental/understanding";
 import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
+import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
+import { buildDeterministicDraft } from "@/conversation-core/composer/deterministic-composer";
+import { renderDeterministicResponse } from "@/conversation-core/composer/deterministic-renderer";
+import { validateDraft } from "@/conversation-core/composer/validator";
 
 const state: ConversationState = { phase: "idle", pendingStepId: null, completedStepIds: [] };
 const context: CapabilityContext<DentalPolicy> = {
@@ -35,7 +39,10 @@ function understanding(overrides: Partial<Understanding<DentalRequest>> = {}): U
 }
 
 function catalog(resolution: ServiceResolution): DentalCatalogReadPort {
-  return { resolveService: async () => resolution };
+  return {
+    resolveService: async () => resolution,
+    resolveServices: async () => [resolution, resolution],
+  };
 }
 
 const described: ServiceResolution = {
@@ -51,6 +58,84 @@ const described: ServiceResolution = {
 };
 
 describe("capability de explicação dental", () => {
+  it("compara exatamente dois tratamentos cadastrados com evidência independente", async () => {
+    const first: ServiceResolution = described;
+    const second: ServiceResolution = {
+      kind: "exact",
+      service: {
+        id: "service-2",
+        name: "Clareamento",
+        priceCents: 80_000,
+        priceDisclosable: true,
+        description: "Procedimento que reduz pigmentos e clareia a tonalidade dos dentes.",
+      },
+      evidenceRef: "treatment:service-2",
+    };
+    const resolveServices = vi.fn().mockResolvedValue([first, second]);
+    const capability = createDentalExplanationCapability({
+      resolveService: vi.fn(),
+      resolveServices,
+    });
+    const comparison = understanding({
+      request: "compare-services",
+      entities: { serviceCandidates: ["Lentes de resina", "Clareamento"] },
+    });
+
+    const claim = capability.claim(comparison, state)!;
+    const result = await capability.execute(await capability.decide(claim, context), context);
+
+    expect(resolveServices).toHaveBeenCalledWith(["Lentes de resina", "Clareamento"]);
+    expect(result).toMatchObject({
+      type: "services_compared",
+      subject: null,
+      facts: [
+        { key: "service_description", subject: { id: "service-1" } },
+        { key: "service_description", subject: { id: "service-2" } },
+      ],
+      evidence: [
+        { source: "read", reference: "treatment:service-1" },
+        { source: "read", reference: "treatment:service-2" },
+      ],
+    });
+    const plan = buildV2AuthorizedResponsePlan(DENTAL_OUTCOME_SCHEMA, [result]);
+    const validation = validateDraft(plan, buildDeterministicDraft(plan));
+    expect(validation.valid).toBe(true);
+    if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
+    const text = renderDeterministicResponse({ draft: validation.draft }).text;
+    expect(text).toContain("Lentes de resina");
+    expect(text).toContain("Clareamento");
+  });
+
+  it.each([
+    [["Clareamento"]],
+    [["Clareamento", "clareamento"]],
+    [["Clareamento", "Facetas", "Implante"]],
+  ])("não reivindica comparação inválida %j", (serviceCandidates) => {
+    const capability = createDentalExplanationCapability(catalog(described));
+    expect(capability.claim(understanding({
+      request: "compare-services",
+      entities: { serviceCandidates },
+    }), state)).toBeNull();
+  });
+
+  it.each([
+    ["um tratamento ausente", [{ kind: "unknown", evidenceRef: "catalog:tenant" }, described]],
+    ["um tratamento ambíguo", [{ kind: "ambiguous", candidates: [{ id: "x", name: "Lente" }], evidenceRef: "catalog:tenant" }, described]],
+    ["uma descrição ausente", [{ ...described, service: { ...described.service, description: null } }, described]],
+    ["uma descrição insegura", [{ ...described, service: { ...described.service, description: "texto\u0000inseguro" } }, described]],
+  ] as const)("pede esclarecimento quando %s", async (_label, resolutions) => {
+    const capability = createDentalExplanationCapability({
+      resolveService: vi.fn(),
+      resolveServices: vi.fn().mockResolvedValue(resolutions),
+    });
+    const claim = capability.claim(understanding({
+      request: "compare-services",
+      entities: { serviceCandidates: ["Lentes", "Clareamento"] },
+    }), state)!;
+
+    expect(await capability.decide(claim, context)).toMatchObject({ kind: "ask" });
+  });
+
   it("reivindica o turno em que o lead pergunta o que é o procedimento", () => {
     const capability = createDentalExplanationCapability(catalog(described));
 
@@ -134,6 +219,7 @@ describe("capability de explicação dental", () => {
       period: null,
       time: null,
       serviceCandidates: null,
+      faqQuestion: null,
       quantity: null,
       ordinal: null,
     };

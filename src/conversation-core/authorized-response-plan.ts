@@ -279,6 +279,7 @@ function assertGeneratedPlanGraph<OutcomeType extends string>(
       }
       if (
         fact.disclosure === "allowed" &&
+        outcome.subjectRef !== null &&
         fact.subjectRef !== outcome.subjectRef
       ) {
         throw new Error(`authorized plan outcome/fact subject mismatch: ${outcome.ref}`);

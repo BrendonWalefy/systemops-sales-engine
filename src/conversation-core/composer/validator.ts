@@ -255,7 +255,11 @@ export function validateDraft<OutcomeType extends string>(
         violations,
         actIndex,
       });
-      if (outcome && outcome.subjectRef !== act.subjectRef) {
+      if (
+        outcome
+        && outcome.subjectRef !== null
+        && outcome.subjectRef !== act.subjectRef
+      ) {
         push(violations, actIndex, "subject_mismatch");
       }
       return;

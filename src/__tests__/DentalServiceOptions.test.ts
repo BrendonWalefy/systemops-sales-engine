@@ -38,7 +38,10 @@ const ambiguous: ServiceResolution = {
 };
 
 function catalogPort(resolution: ServiceResolution): DentalCatalogReadPort {
-  return { resolveService: async () => resolution };
+  return {
+    resolveService: async () => resolution,
+    resolveServices: async () => [resolution, resolution],
+  };
 }
 
 function understanding(overrides: Partial<Understanding<DentalRequest>> = {}): Understanding<DentalRequest> {

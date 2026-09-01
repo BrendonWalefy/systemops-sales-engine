@@ -27,15 +27,33 @@ export type DentalPolicy = {
   schedulingRequiresEvaluationFirst: boolean;
 };
 
-export type DentalExplanationClaimPayload = {
-  kind: "explanation";
-  serviceQuery: string;
-};
+export type DentalExplanationClaimPayload =
+  | {
+      kind: "explanation";
+      request: "explain-service";
+      serviceQuery: string;
+    }
+  | {
+      kind: "explanation";
+      request: "compare-services";
+      serviceQueries: readonly [string, string];
+    };
 
 export type DentalKnowledgeClaimPayload = {
   kind: "business-information";
   topic: DentalBusinessInformationTopic;
 };
+
+export type DentalPlaybookKnowledgeClaimPayload =
+  | {
+      kind: "playbook-knowledge";
+      request: "business-differentials";
+    }
+  | {
+      kind: "playbook-knowledge";
+      request: "frequently-asked-question";
+      faqQuestion: string;
+    };
 
 export type DentalCatalogClaimPayload = {
   kind: "catalog";
@@ -81,6 +99,7 @@ export type DentalEscalationClaimPayload = {
 
 export type DentalClaimPayload =
   | DentalKnowledgeClaimPayload
+  | DentalPlaybookKnowledgeClaimPayload
   | DentalExplanationClaimPayload
   | DentalCatalogClaimPayload
   | DentalSchedulingClaimPayload
@@ -100,12 +119,22 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
     subjectRequirement: "required",
     evidenceRequirement: "required",
   },
+  services_compared: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "required",
+  },
   business_information_answered: {
     semanticClass: "information_authorized",
     subjectRequirement: "required",
     evidenceRequirement: "required",
   },
   business_information_unavailable: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "required",
+    evidenceRequirement: "required",
+  },
+  playbook_knowledge_answered: {
     semanticClass: "information_authorized",
     subjectRequirement: "required",
     evidenceRequirement: "required",

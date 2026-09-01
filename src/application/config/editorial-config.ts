@@ -4,6 +4,11 @@ import { db } from "@/infrastructure/db/client";
 import { playbookVersions, treatments } from "@/infrastructure/db/schema";
 import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
 import { getActivePriceCampaignsByTreatment, resolveEffectivePrice } from "./price-campaigns";
+import {
+  parseFrequentlyAskedQuestions,
+  frequentlyAskedQuestionsSchema,
+  type FrequentlyAskedQuestion,
+} from "./faq-config";
 export { lintPlaybookNotes, blockingPlaybookNotesIssues, lintCommercialPolicy, blockingCommercialPolicyIssues, blockingTreatmentDescriptionIssues, lintPersonaCoherence } from "./playbook-lint";
 
 const mediaAssetRepo = new DrizzleMediaAssetRepository();
@@ -256,6 +261,7 @@ export type EditorialConfig = {
   receptionistName: string;
   differentials: string[];
   objections: { objection: string; response: string }[];
+  faqs: FrequentlyAskedQuestion[];
   warrantyPolicy: WarrantyPolicy | null;
   mediaLibrary: MediaLibraryItem[];
   /** Texto pronto para o prompt, composto a partir dos campos estruturados. */
@@ -281,6 +287,7 @@ export const publishablePlaybookSchema = z.object({
   objections: z
     .array(z.object({ objection: z.string(), response: z.string() }))
     .default([]),
+  faqs: frequentlyAskedQuestionsSchema.default([]),
   greetingMessage: z.string().optional(),
 });
 
@@ -417,6 +424,7 @@ export async function resolveActiveEditorialConfig(
   const differentials = (activeVersion.differentials as string[] | null) ?? [];
   const objections =
     (activeVersion.objections as { objection: string; response: string }[] | null) ?? [];
+  const faqs = parseFrequentlyAskedQuestions(activeVersion.faqs);
   const parsedWarranty = warrantyPolicySchema.safeParse(activeVersion.warrantyPolicy);
   const warrantyPolicy = parsedWarranty.success ? parsedWarranty.data : null;
   const mediaLibrary = await resolveMediaLibraryForVersion(clinicId, activeVersion);
@@ -430,6 +438,7 @@ export async function resolveActiveEditorialConfig(
     procedures,
     differentials,
     objections,
+    faqs,
     warrantyPolicy,
     mediaLibrary,
     playbookText: composePlaybookText({
