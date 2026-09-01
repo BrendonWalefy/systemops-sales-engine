@@ -10,9 +10,11 @@ import {
 } from "@/domain-packs/dental/capabilities";
 import { createDentalExplanationCapability } from "@/domain-packs/dental/explanation-capability";
 import { createDentalKnowledgeCapability } from "@/domain-packs/dental/knowledge-capability";
+import { createDentalPlaybookKnowledgeCapability } from "@/domain-packs/dental/playbook-knowledge-capability";
 import type {
   DentalCatalogReadPort,
   DentalKnowledgeReadPort,
+  DentalPlaybookKnowledgeReadPort,
   DentalSchedulingReadPort,
   DentalSchedulingWritePort,
 } from "@/domain-packs/dental/ports";
@@ -48,6 +50,7 @@ export type { DentalRequest } from "@/domain-packs/dental/vocabulary";
 
 export function createDentalPack(ports: {
   knowledgeRead: DentalKnowledgeReadPort;
+  playbookKnowledgeRead: DentalPlaybookKnowledgeReadPort;
   catalogRead: DentalCatalogReadPort;
   schedulingRead: DentalSchedulingReadPort;
   schedulingWrite: DentalSchedulingWritePort;
@@ -62,6 +65,7 @@ export function createDentalPack(ports: {
     outcomeSchema: DENTAL_OUTCOME_SCHEMA,
     capabilities: [
       createDentalKnowledgeCapability(ports.knowledgeRead),
+      createDentalPlaybookKnowledgeCapability(ports.playbookKnowledgeRead),
       createDentalExplanationCapability(ports.catalogRead),
       createDentalCatalogCapability(ports.catalogRead),
       createDentalSchedulingCapability(
@@ -73,6 +77,7 @@ export function createDentalPack(ports: {
     ],
     journeys: [
       { id: "knowledge", capabilityIds: ["dental-knowledge", "dental-escalation"] },
+      { id: "playbook-knowledge", capabilityIds: ["dental-playbook-knowledge", "dental-escalation"] },
       { id: "explanation", capabilityIds: ["dental-explanation", "dental-escalation"] },
       { id: "price", capabilityIds: ["dental-catalog", "dental-escalation"] },
       {
@@ -93,6 +98,10 @@ const unavailable = async (): Promise<never> => {
 
 export const dentalPack = createDentalPack({
   knowledgeRead: { resolveBusinessInformation: unavailable },
+  playbookKnowledgeRead: {
+    resolveDifferentials: unavailable,
+    resolveFaq: unavailable,
+  },
   catalogRead: { resolveService: unavailable, resolveServices: unavailable },
   schedulingRead: {
     listSlots: unavailable,

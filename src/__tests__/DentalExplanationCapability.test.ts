@@ -7,6 +7,10 @@ import { createDentalExplanationCapability } from "@/domain-packs/dental/explana
 import type { DentalCatalogReadPort, ServiceResolution } from "@/domain-packs/dental/ports";
 import { parseDentalUnderstanding } from "@/domain-packs/dental/understanding";
 import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
+import { buildV2AuthorizedResponsePlan } from "@/conversation-core/authorized-response-plan";
+import { buildDeterministicDraft } from "@/conversation-core/composer/deterministic-composer";
+import { renderDeterministicResponse } from "@/conversation-core/composer/deterministic-renderer";
+import { validateDraft } from "@/conversation-core/composer/validator";
 
 const state: ConversationState = { phase: "idle", pendingStepId: null, completedStepIds: [] };
 const context: CapabilityContext<DentalPolicy> = {
@@ -93,6 +97,13 @@ describe("capability de explicação dental", () => {
         { source: "read", reference: "treatment:service-2" },
       ],
     });
+    const plan = buildV2AuthorizedResponsePlan(DENTAL_OUTCOME_SCHEMA, [result]);
+    const validation = validateDraft(plan, buildDeterministicDraft(plan));
+    expect(validation.valid).toBe(true);
+    if (!validation.valid) throw new Error(JSON.stringify(validation.violations));
+    const text = renderDeterministicResponse({ draft: validation.draft }).text;
+    expect(text).toContain("Lentes de resina");
+    expect(text).toContain("Clareamento");
   });
 
   it.each([

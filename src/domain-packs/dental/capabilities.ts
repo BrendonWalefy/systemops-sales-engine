@@ -44,6 +44,17 @@ export type DentalKnowledgeClaimPayload = {
   topic: DentalBusinessInformationTopic;
 };
 
+export type DentalPlaybookKnowledgeClaimPayload =
+  | {
+      kind: "playbook-knowledge";
+      request: "business-differentials";
+    }
+  | {
+      kind: "playbook-knowledge";
+      request: "frequently-asked-question";
+      faqQuestion: string;
+    };
+
 export type DentalCatalogClaimPayload = {
   kind: "catalog";
   request: "price-of-service" | "service-availability";
@@ -88,6 +99,7 @@ export type DentalEscalationClaimPayload = {
 
 export type DentalClaimPayload =
   | DentalKnowledgeClaimPayload
+  | DentalPlaybookKnowledgeClaimPayload
   | DentalExplanationClaimPayload
   | DentalCatalogClaimPayload
   | DentalSchedulingClaimPayload
@@ -118,6 +130,11 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
     evidenceRequirement: "required",
   },
   business_information_unavailable: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "required",
+    evidenceRequirement: "required",
+  },
+  playbook_knowledge_answered: {
     semanticClass: "information_authorized",
     subjectRequirement: "required",
     evidenceRequirement: "required",

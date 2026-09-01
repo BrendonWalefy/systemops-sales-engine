@@ -18,6 +18,10 @@ const gateInput = {
   humanControlled: false,
   optedOut: false,
 };
+const unavailablePlaybookKnowledge = {
+  resolveDifferentials: vi.fn(),
+  resolveFaq: vi.fn(),
+};
 
 describe("pipeline operacional dental", () => {
   it("routes institutional knowledge without invoking a write port", async () => {
@@ -32,6 +36,7 @@ describe("pipeline operacional dental", () => {
           evidenceRef: "organization:clinic-1:address",
         }),
       },
+      playbookKnowledgeRead: unavailablePlaybookKnowledge,
       catalogRead: { resolveService: vi.fn(), resolveServices: vi.fn() },
       schedulingRead: {
         listSlots: vi.fn(),
@@ -80,6 +85,7 @@ describe("pipeline operacional dental", () => {
     const bookSlot = vi.fn();
     const pack = createDentalPack({
       knowledgeRead: { resolveBusinessInformation: vi.fn() },
+      playbookKnowledgeRead: unavailablePlaybookKnowledge,
       catalogRead: { resolveService, resolveServices: vi.fn() },
       schedulingRead: {
         listSlots: vi.fn(),
@@ -126,6 +132,7 @@ describe("pipeline operacional dental", () => {
     });
     const pack = createDentalPack({
       knowledgeRead: { resolveBusinessInformation: vi.fn() },
+      playbookKnowledgeRead: unavailablePlaybookKnowledge,
       catalogRead: { resolveService: vi.fn(), resolveServices: vi.fn() },
       schedulingRead: {
         listSlots: vi.fn().mockResolvedValue({
@@ -193,6 +200,7 @@ describe("pipeline operacional dental", () => {
     });
     const pack = createDentalPack({
       knowledgeRead: { resolveBusinessInformation: vi.fn() },
+      playbookKnowledgeRead: unavailablePlaybookKnowledge,
       catalogRead: { resolveService: vi.fn(), resolveServices: vi.fn() },
       schedulingRead: {
         listSlots,

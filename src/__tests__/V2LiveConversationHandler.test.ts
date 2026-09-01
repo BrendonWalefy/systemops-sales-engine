@@ -114,6 +114,7 @@ function makeHarness(options: {
   businessInformationMissing?: boolean;
   businessInformationTopic?: "address" | "parking" | "social";
   editorialFaq?: boolean;
+  playbookKnowledgeTurn?: "differentials" | "faq";
 } = {}) {
   const entities = (overrides: Record<string, unknown> = {}) => ({
     service: null,
@@ -164,8 +165,11 @@ function makeHarness(options: {
     conversation,
     inboundMessage: inbound,
     outboundAddress: lead.phone!,
-    editorial: options.editorialFaq
-      ? ({ faqs: [
+    editorial: options.editorialFaq || options.playbookKnowledgeTurn
+      ? ({
+          versionId: "version-active-7",
+          differentials: ["Atendimento individualizado.", "Planejamento digital."],
+          faqs: [
           { question: "Preciso de encaminhamento?", answer: "Não." },
           { question: "Aceita convênio?", answer: "Consulte a recepção." },
         ] } as never)
@@ -250,6 +254,24 @@ function makeHarness(options: {
         request: "business-information" as const,
         dialogueMove: "new_topic" as const,
         entities: entities({ businessInformationTopic: options.businessInformationTopic ?? "address" }),
+        signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
+      };
+    }
+    if (options.playbookKnowledgeTurn === "differentials") {
+      return {
+        version: UNDERSTANDING_VERSION,
+        request: "business-differentials" as const,
+        dialogueMove: "new_topic" as const,
+        entities: entities(),
+        signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
+      };
+    }
+    if (options.playbookKnowledgeTurn === "faq") {
+      return {
+        version: UNDERSTANDING_VERSION,
+        request: "frequently-asked-question" as const,
+        dialogueMove: "new_topic" as const,
+        entities: entities({ faqQuestion: "Preciso de encaminhamento?" }),
         signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
       };
     }
@@ -468,6 +490,34 @@ function makeHarness(options: {
 }
 
 describe("V2LiveConversationHandler", () => {
+  it.each([
+    ["differentials", "Atendimento individualizado"],
+    ["faq", "Não."],
+  ] as const)("answers active playbook %s without business effects", async (turn, expected) => {
+    const harness = makeHarness({ playbookKnowledgeTurn: turn });
+
+    await expect(harness.handler.handle(handleInput("Pergunta de conhecimento")))
+      .resolves.toEqual({ replied: true });
+
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({ replyText: expect.stringContaining(expected) }),
+      }),
+      { turnId },
+    );
+    expect(harness.booking.book).not.toHaveBeenCalled();
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "v2.decision",
+        metadata: expect.objectContaining({
+          capabilityIds: "dental-playbook-knowledge",
+          intendedEffects: "none",
+        }),
+      }),
+    ]));
+    expect(JSON.stringify(harness.trace.getEvents(turnId))).not.toContain(expected);
+  });
+
   it("supplies only bounded canonical FAQ questions to Understanding", async () => {
     const harness = makeHarness({ editorialFaq: true });
 

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { isSafeAuthorizedDisplayText } from "@/conversation-core/authorized-response-plan";
 import { parseInstitutionalDetails } from "@/application/config/institutional-details";
+import type { EditorialConfig } from "@/application/config/editorial-config";
 import type { CalendarGateway } from "@/application/ports/calendar-gateway";
 import type {
   ConversationStateMachine,
@@ -25,6 +26,7 @@ import type {
   DentalBusinessInformationFact,
   DentalCatalogReadPort,
   DentalKnowledgeReadPort,
+  DentalPlaybookKnowledgeReadPort,
   DentalSchedulingReadPort,
   DentalSchedulingWriteOutcome,
   DentalSchedulingWritePort,
@@ -51,6 +53,7 @@ export type DentalLiveAdapterDependencies = {
   reservations: Pick<SlotReservationService, "findActiveByPeriod">;
   booking: Pick<BookingService, "book" | "confirmAppointment">;
   clinic: Organization;
+  editorial: EditorialConfig | null;
   lead: Lead;
   leadId: string;
   conversation: Conversation;
@@ -290,6 +293,7 @@ export function createDentalLiveAdapters(
   deps: DentalLiveAdapterDependencies,
 ): {
   knowledgeRead: DentalKnowledgeReadPort;
+  playbookKnowledgeRead: DentalPlaybookKnowledgeReadPort;
   catalogRead: DentalCatalogReadPort;
   schedulingRead: DentalSchedulingReadPort;
   schedulingWrite: DentalSchedulingWritePort;
@@ -302,6 +306,7 @@ export function createDentalLiveAdapters(
     conversation,
     conversationId,
     effectLifecycle,
+    editorial,
     lead,
     leadId,
     now: turnNow,
@@ -612,6 +617,52 @@ export function createDentalLiveAdapters(
         null,
         `organization:${clinic.id}:${topic}`,
       );
+    },
+  };
+
+  const missingPlaybookKnowledge = (
+    request: "business-differentials" | "frequently-asked-question",
+  ) => ({ kind: "missing" as const, request });
+
+  const playbookKnowledgeRead: DentalPlaybookKnowledgeReadPort = {
+    async resolveDifferentials() {
+      if (!editorial) return missingPlaybookKnowledge("business-differentials");
+      const configured = editorial.differentials.slice(0, 8);
+      if (
+        configured.length === 0
+        || configured.some((value) => !isSafeAuthorizedDisplayText(value))
+      ) return missingPlaybookKnowledge("business-differentials");
+      return {
+        kind: "resolved",
+        request: "business-differentials",
+        organization: { id: clinic.id, displayName: clinic.name },
+        facts: configured.map((value, index) => ({
+          key: "business_differential" as const,
+          value,
+          evidenceRef: `playbook:${editorial.versionId}:differential:${index}`,
+        })),
+      };
+    },
+    async resolveFaq(question) {
+      if (!editorial) return missingPlaybookKnowledge("frequently-asked-question");
+      const normalizedQuestion = normalize(question);
+      const index = editorial.faqs.findIndex((faq) =>
+        normalize(faq.question) === normalizedQuestion
+      );
+      const faq = index >= 0 ? editorial.faqs[index] : undefined;
+      if (!faq || !isSafeAuthorizedDisplayText(faq.answer)) {
+        return missingPlaybookKnowledge("frequently-asked-question");
+      }
+      return {
+        kind: "resolved",
+        request: "frequently-asked-question",
+        organization: { id: clinic.id, displayName: clinic.name },
+        facts: [{
+          key: "faq_answer",
+          value: faq.answer,
+          evidenceRef: `playbook:${editorial.versionId}:faq:${index}`,
+        }],
+      };
     },
   };
 
@@ -955,5 +1006,11 @@ export function createDentalLiveAdapters(
     },
   };
 
-  return { knowledgeRead, catalogRead, schedulingRead, schedulingWrite };
+  return {
+    knowledgeRead,
+    playbookKnowledgeRead,
+    catalogRead,
+    schedulingRead,
+    schedulingWrite,
+  };
 }

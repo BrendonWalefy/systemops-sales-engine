@@ -79,6 +79,7 @@ export type V2LiveTurnConfiguration = Readonly<{
 
 type DynamicDentalDependencies =
   | "clinic"
+  | "editorial"
   | "lead"
   | "leadId"
   | "conversation"
@@ -292,6 +293,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
         ...this.deps.dental,
         ...scheduling,
         clinic: context.clinic,
+        editorial: context.editorial,
         lead: context.lead,
         leadId: context.leadId,
         conversation: context.conversation,

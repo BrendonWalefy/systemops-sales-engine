@@ -2,6 +2,7 @@ import type { CapturedV2TurnReads } from "@/application/conversation-v2/captured
 import type {
   DentalCatalogReadPort,
   DentalKnowledgeReadPort,
+  DentalPlaybookKnowledgeReadPort,
   DentalSchedulingReadPort,
 } from "@/domain-packs/dental/ports";
 
@@ -18,12 +19,21 @@ function unavailable(): never {
 
 export function createDentalCapturedReadAdapters(reads: CapturedV2TurnReads): {
   knowledgeRead: DentalKnowledgeReadPort;
+  playbookKnowledgeRead: DentalPlaybookKnowledgeReadPort;
   catalogRead: DentalCatalogReadPort;
   schedulingRead: DentalSchedulingReadPort;
 } {
   return {
     knowledgeRead: {
       async resolveBusinessInformation() {
+        return unavailable();
+      },
+    },
+    playbookKnowledgeRead: {
+      async resolveDifferentials() {
+        return unavailable();
+      },
+      async resolveFaq() {
         return unavailable();
       },
     },
