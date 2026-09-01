@@ -9,6 +9,7 @@ import {
   outboundMessages,
   outboundMessageStatusEnum,
   conversationStates,
+  organizations,
 } from "@/infrastructure/db/schema";
 
 describe("event-driven modernization schema contract", () => {
@@ -65,5 +66,12 @@ describe("event-driven modernization schema contract", () => {
     expect(outboundMessages.sequence.name).toBe("sequence");
     expect(outboundMessages.providerMessageId.name).toBe("provider_message_id");
     expect(conversationStates.supersedesStateId.name).toBe("supersedes_state_id");
+  });
+
+  it("exposes nullable structured institutional details on the organization", () => {
+    expect(organizations.parkingInformation.name).toBe("parking_information");
+    expect(organizations.parkingInformation.notNull).toBe(false);
+    expect(organizations.socialChannels.name).toBe("social_channels");
+    expect(organizations.socialChannels.notNull).toBe(false);
   });
 });
