@@ -1,3 +1,5 @@
+import type { PaymentMethod } from "./payment-method";
+
 export type MenuItemIntent =
   | "procedures"
   | "book_appointment"
@@ -65,6 +67,7 @@ export type Organization = {
   postAppointmentBufferMinutes: number;
   defaultAppointmentDurationMinutes: number;
   installmentRates?: { n: number; rate: number; active: boolean }[] | null;
+  paymentMethods?: PaymentMethod[];
   rateLimitPerHour: number;
   unclearThreshold: number;
   // TTL do pipeline de tratamento (em horas; usado como valor * 60 minutos).

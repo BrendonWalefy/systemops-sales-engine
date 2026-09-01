@@ -74,4 +74,10 @@ describe("event-driven modernization schema contract", () => {
     expect(organizations.socialChannels.name).toBe("social_channels");
     expect(organizations.socialChannels.notNull).toBe(false);
   });
+
+  it("exposes structured payment methods with an empty fail-closed default", () => {
+    expect(organizations.paymentMethods.name).toBe("payment_methods");
+    expect(organizations.paymentMethods.notNull).toBe(true);
+    expect(organizations.paymentMethods.hasDefault).toBe(true);
+  });
 });

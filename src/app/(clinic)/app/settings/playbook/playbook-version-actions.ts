@@ -13,6 +13,7 @@ import type { VoiceMode } from "@/domain/entities/voice-mode";
 import { activateExistingPlaybookVersion } from "@/application/config/playbook-publication";
 import { parseInstitutionalDetails } from "@/application/config/institutional-details";
 import { parseFrequentlyAskedQuestions } from "@/application/config/faq-config";
+import { parsePaymentMethods, type PaymentMethod } from "@/application/config/payment-methods";
 
 
 type PlaybookVersionData = {
@@ -185,6 +186,16 @@ export async function updateInstitutionalDetails(input: {
   await db
     .update(organizations)
     .set({ ...details, updatedAt: new Date() })
+    .where(eq(organizations.id, CLINIC_ID));
+  revalidatePath("/app/settings/playbook");
+}
+
+export async function updatePaymentMethods(input: readonly string[]) {
+  const CLINIC_ID = await requireSessionClinicId();
+  const paymentMethods = parsePaymentMethods(input);
+  await db
+    .update(organizations)
+    .set({ paymentMethods: paymentMethods as PaymentMethod[], updatedAt: new Date() })
     .where(eq(organizations.id, CLINIC_ID));
   revalidatePath("/app/settings/playbook");
 }

@@ -757,6 +757,13 @@
       "when": 1788298531763,
       "tag": "0107_brief_medusa",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1788300930126,
+      "tag": "0108_known_shinobi_shaw",
+      "breakpoints": true
     }
   ]
 }

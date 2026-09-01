@@ -2,6 +2,7 @@
 import { useState, useCallback } from "react";
 import { Zap, Mic, CalendarDays, BookOpen, Workflow, CreditCard, Timer, CalendarClock, Clock } from "lucide-react";
 import type { MenuItem, SocialChannel } from "@/domain/entities/clinic";
+import type { PaymentMethod } from "@/domain/entities/payment-method";
 import type { Treatment } from "@/domain/entities/treatment";
 import type { ActiveModule } from "@/application/modules/module-gate";
 import type { PriceCampaign } from "../tratamentos/CampaignRow";
@@ -34,6 +35,7 @@ type ClinicData = {
   slotLookaheadDays: number | null;
   mediaTakeoverTtlHours: number | null;
   installmentRates: { n: number; rate: number; active: boolean }[] | null;
+  paymentMethods: PaymentMethod[];
   parkingInformation: string | null;
   socialChannels: SocialChannel[] | null;
   activeModules: ActiveModule[];
