@@ -11,8 +11,10 @@ import {
 import { createDentalExplanationCapability } from "@/domain-packs/dental/explanation-capability";
 import { createDentalKnowledgeCapability } from "@/domain-packs/dental/knowledge-capability";
 import { createDentalPlaybookKnowledgeCapability } from "@/domain-packs/dental/playbook-knowledge-capability";
+import { createDentalCommercialCapability } from "@/domain-packs/dental/commercial-capability";
 import type {
   DentalCatalogReadPort,
+  DentalCommercialReadPort,
   DentalKnowledgeReadPort,
   DentalPlaybookKnowledgeReadPort,
   DentalSchedulingReadPort,
@@ -52,6 +54,7 @@ export function createDentalPack(ports: {
   knowledgeRead: DentalKnowledgeReadPort;
   playbookKnowledgeRead: DentalPlaybookKnowledgeReadPort;
   catalogRead: DentalCatalogReadPort;
+  commercialRead: DentalCommercialReadPort;
   schedulingRead: DentalSchedulingReadPort;
   schedulingWrite: DentalSchedulingWritePort;
 }): DomainPack<
@@ -67,6 +70,7 @@ export function createDentalPack(ports: {
       createDentalKnowledgeCapability(ports.knowledgeRead),
       createDentalPlaybookKnowledgeCapability(ports.playbookKnowledgeRead),
       createDentalExplanationCapability(ports.catalogRead),
+      createDentalCommercialCapability(ports.commercialRead),
       createDentalCatalogCapability(ports.catalogRead),
       createDentalSchedulingCapability(
         ports.schedulingRead,
@@ -79,7 +83,7 @@ export function createDentalPack(ports: {
       { id: "knowledge", capabilityIds: ["dental-knowledge", "dental-escalation"] },
       { id: "playbook-knowledge", capabilityIds: ["dental-playbook-knowledge", "dental-escalation"] },
       { id: "explanation", capabilityIds: ["dental-explanation", "dental-escalation"] },
-      { id: "price", capabilityIds: ["dental-catalog", "dental-escalation"] },
+      { id: "price", capabilityIds: ["dental-commercial", "dental-escalation"] },
       {
         id: "availability",
         capabilityIds: ["dental-catalog", "dental-escalation"],
@@ -103,6 +107,11 @@ export const dentalPack = createDentalPack({
     resolveFaq: unavailable,
   },
   catalogRead: { resolveService: unavailable, resolveServices: unavailable },
+  commercialRead: {
+    resolveService: unavailable,
+    resolvePaymentConfiguration: unavailable,
+    resolveRegisteredObjection: unavailable,
+  },
   schedulingRead: {
     listSlots: unavailable,
     resolveOfferedSlot: unavailable,

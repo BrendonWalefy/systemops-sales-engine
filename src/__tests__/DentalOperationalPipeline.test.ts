@@ -22,6 +22,11 @@ const unavailablePlaybookKnowledge = {
   resolveDifferentials: vi.fn(),
   resolveFaq: vi.fn(),
 };
+const unavailableCommercial = {
+  resolveService: vi.fn(),
+  resolvePaymentConfiguration: vi.fn(),
+  resolveRegisteredObjection: vi.fn(),
+};
 
 describe("pipeline operacional dental", () => {
   it("routes institutional knowledge without invoking a write port", async () => {
@@ -37,6 +42,7 @@ describe("pipeline operacional dental", () => {
         }),
       },
       playbookKnowledgeRead: unavailablePlaybookKnowledge,
+      commercialRead: unavailableCommercial,
       catalogRead: { resolveService: vi.fn(), resolveServices: vi.fn() },
       schedulingRead: {
         listSlots: vi.fn(),
@@ -86,6 +92,7 @@ describe("pipeline operacional dental", () => {
     const pack = createDentalPack({
       knowledgeRead: { resolveBusinessInformation: vi.fn() },
       playbookKnowledgeRead: unavailablePlaybookKnowledge,
+      commercialRead: unavailableCommercial,
       catalogRead: { resolveService, resolveServices: vi.fn() },
       schedulingRead: {
         listSlots: vi.fn(),
@@ -133,6 +140,7 @@ describe("pipeline operacional dental", () => {
     const pack = createDentalPack({
       knowledgeRead: { resolveBusinessInformation: vi.fn() },
       playbookKnowledgeRead: unavailablePlaybookKnowledge,
+      commercialRead: unavailableCommercial,
       catalogRead: { resolveService: vi.fn(), resolveServices: vi.fn() },
       schedulingRead: {
         listSlots: vi.fn().mockResolvedValue({
@@ -201,6 +209,7 @@ describe("pipeline operacional dental", () => {
     const pack = createDentalPack({
       knowledgeRead: { resolveBusinessInformation: vi.fn() },
       playbookKnowledgeRead: unavailablePlaybookKnowledge,
+      commercialRead: unavailableCommercial,
       catalogRead: { resolveService: vi.fn(), resolveServices: vi.fn() },
       schedulingRead: {
         listSlots,

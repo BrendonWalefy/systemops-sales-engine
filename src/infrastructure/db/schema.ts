@@ -17,6 +17,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import type { MenuItem } from "@/domain/entities/clinic";
+import type { PaymentMethod } from "@/domain/entities/payment-method";
 import type { ModuleKey } from "@/application/modules/module-catalog";
 import type { CommercialDiagnosticSnapshot } from "@/application/onboarding/commercial-diagnostic";
 import type { ProfessionalWorkSchedule } from "@/domain/entities/professional";
@@ -459,6 +460,12 @@ export const organizations = pgTable("organizations", {
     jsonb("installment_rates").$type<
       { n: number; rate: number; active: boolean }[]
     >(),
+  // Formas de pagamento aceitas. Lista fechada e tenant-scoped; texto livre de
+  // playbook nunca autoriza uma condição comercial.
+  paymentMethods: jsonb("payment_methods")
+    .$type<PaymentMethod[]>()
+    .notNull()
+    .default([]),
   rateLimitPerHour: integer("rate_limit_per_hour").notNull().default(60),
   // Caps de saída do Channel Safety Engine (gates no sender worker, PR 2).
   // Distinto de rateLimitPerHour, que limita INBOUND por conversa (anti-flood

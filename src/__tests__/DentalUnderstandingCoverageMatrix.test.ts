@@ -14,7 +14,7 @@ function reply(request: string, service: string | null) {
     version: "understanding.v1",
     request,
     dialogueMove: "new_topic",
-    entities: { service, businessInformationTopic: null, date: null, period: null, time: null, serviceCandidates: null, faqQuestion: null, quantity: null, ordinal: null },
+    entities: { service, businessInformationTopic: null, date: null, period: null, time: null, serviceCandidates: null, faqQuestion: null, quantity: null, quantityScope: null, objectionQuestion: null, ordinal: null },
     signals: { purchaseIntent: null, priceSensitivity: null, sentiment: null, objection: null },
     safety: { optOut: false, requestsHuman: false, emergency: false },
     confidence: 0.9,
@@ -44,6 +44,9 @@ describe("dental understanding coverage matrix", () => {
     expect(DENTAL_UNDERSTANDING_PROMPT).toContain("other");
     expect(DENTAL_UNDERSTANDING_PROMPT).toContain("Never force a transactional concept");
     expect(DENTAL_UNDERSTANDING_PROMPT).toContain("business-information/business-hours");
+    expect(DENTAL_UNDERSTANDING_PROMPT).toContain("payment-options");
+    expect(DENTAL_UNDERSTANDING_PROMPT).toContain("registered-objection");
+    expect(DENTAL_UNDERSTANDING_PROMPT).toContain("old or inconsistent price");
   });
 
   it("offers a concept for a turn that names no service at all", () => {

@@ -12,8 +12,8 @@ V1; a roadmap detalhada abaixo apenas decompõe a evolução interna de cada fro
 | --- | --- | --- |
 | `opening_reception` | `v2_capability` | Dental reception/catalog capability produces an authorized response plan. |
 | `catalog` | `v2_capability` | Dental catalog capability reads only the claimed tenant catalog. |
-| `authorized_price` | `v2_capability` | Catalog facts disclose only explicitly quotable prices. |
-| `objections` | `safe_handoff` | No deterministic V2 objection capability exists yet; unsupported cases end in explicit human attention. |
+| `authorized_price` | `v2_capability` | `dental-commercial` resolves current treatment/campaign authority and discloses only explicitly quotable prices. |
+| `objections` | `v2_capability` | Exact active-playbook objections are answered with versioned evidence; unresolved free objections end in explicit human attention. |
 | `multi_turn_pipeline` | `shared_service` | Deterministic guided-pipeline state and operator-selected content remain shared; interpretation-dependent continuation durably pauses for human attention without V1 replay. |
 | `media` | `shared_service` | Canonical ingress/history persists media independently of runtime selection; unsupported interpretation creates no inferred effect or V1 call. |
 | `qualification` | `obsolete` | V2 does not infer and persist lead qualification as a side effect of model text; deterministic capabilities own explicit business effects. |
@@ -46,12 +46,12 @@ V1; a roadmap detalhada abaixo apenas decompõe a evolução interna de cada fro
 | Conhecimento | Endereço, horário e localização | `green` | Perfil | `dental-knowledge` |
 | Conhecimento | Estacionamento e redes | `green` | Conhecimento/Organização | `dental-knowledge` estruturado |
 | Conhecimento | Dúvidas gerais cadastradas | `green` | Playbook/Conhecimento | FAQ estruturada com evidência |
-| Comercial | Preço explicitamente divulgável | `green` | Tratamentos | `dental-catalog` |
-| Comercial | Campanha de preço vigente | `shared` | Tratamentos/Campanhas | resolver campanha antes do plano |
-| Comercial | Pagamento e parcelamento | `slice` | Playbook/Financeiro | política comercial estruturada |
-| Comercial | Quantidade/escopo antes de preço | `slice` | Tratamentos + pipeline | esclarecimento determinístico |
-| Comercial | Objeção de preço/condição | `handoff` | Playbook/Financeiro | capability de objeções |
-| Comercial | Preço antigo ou informação inconsistente | `slice` | Campanhas + política comercial | correção com provenance |
+| Comercial | Preço explicitamente divulgável | `green` | Tratamentos | `dental-commercial` |
+| Comercial | Campanha de preço vigente | `green` | Tratamentos/Campanhas | preço efetivo com evidência da campanha |
+| Comercial | Pagamento e parcelamento | `green` | Playbook/Financeiro | métodos estruturados e cálculo determinístico |
+| Comercial | Quantidade/escopo antes de preço | `green` | Tratamentos | somente pacotes exatos cadastrados |
+| Comercial | Objeção de preço/condição | `green` | Playbook/Financeiro | resposta exata cadastrada ou handoff |
+| Comercial | Preço antigo ou informação inconsistente | `green` | Campanhas + Tratamentos | valor atual com provenance, sem confiar no valor citado |
 | Jornada | Iniciar e avançar `pipelineSteps` | `shared` | Pipeline | capability de jornada |
 | Jornada | Pergunta estruturada de um passo | `shared` | Pipeline | decisão de próximo passo |
 | Jornada | Conteúdo, foto e vídeo cadastrados | `shared` | Pipeline + Biblioteca | mídia allowlisted |
@@ -126,12 +126,32 @@ mas nunca recebe respostas. A execução mantém uma chamada de Understanding, n
 verbalização, zero efeitos de negócio, zero query adicional para playbook e uma única
 resposta/outbox.
 
+### Evidência da fatia comercial
+
+`dental-commercial` é o único dono de preço, campanha, pacote por quantidade, pagamento,
+parcelamento e objeção cadastrada. O preço de lista e os pacotes continuam em `treatments`; uma
+campanha ativa em `price_campaigns` é o único override; métodos e taxas vêm da aba Financeiro da
+organização; respostas de objeção vêm da versão ativa do playbook. `commercialPolicy` permanece
+editorial e nunca é minerada para autorizar número, método ou condição.
+
+Understanding copia somente serviço, quantidade/escopo e a pergunta canônica da objeção. Ele não
+recebe preço, taxa, método nem resposta. A capability resolve o tenant já reivindicado e autoriza
+cada valor na superfície: campanha vencida não substitui preço; quantidade não cadastrada nunca é
+extrapolada; parcela usa a taxa flat registrada; objeção sem correspondência exata vai para humano.
+Um valor antigo citado pelo lead não é uma autoridade e a resposta contém apenas o valor efetivo
+persistido.
+
+O gate PostgreSQL atravessa ingress, claim, handler, outbox, claim de envio e sender para campanha,
+pacote, pagamento, parcela e objeção. Cada caso mantém cardinalidade `1/1/1/1/1`, uma chamada de
+Understanding, no máximo uma verbalização, zero mutações de agenda/reserva/estado e no máximo uma
+query indexada adicional para campanha. Nenhum tenant é ativado ou preenchido por essa entrega.
+
 ## Ordem de implementação
 
 1. conhecimento institucional básico concluído;
 2. estacionamento, redes, recepção social, comparação, diferenciais e FAQ concluídos;
-3. comercial, campanhas e objeções são a próxima fatia;
-4. ciclo completo da agenda;
+3. comercial, campanhas e objeções concluídos;
+4. ciclo completo da agenda é a próxima fatia;
 5. jornada, mídia e sinal;
 6. operação clínica, handoff e automações;
 7. diagnóstico read-only do trace no Inbox e corpus final de paridade;

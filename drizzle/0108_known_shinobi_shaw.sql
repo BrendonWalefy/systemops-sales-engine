@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ADD COLUMN "payment_methods" jsonb DEFAULT '[]'::jsonb NOT NULL;

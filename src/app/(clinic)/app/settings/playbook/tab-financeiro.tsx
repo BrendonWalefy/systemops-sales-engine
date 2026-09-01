@@ -1,12 +1,19 @@
 "use client";
 import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { updateClinicOperationalSettings } from "./playbook-version-actions";
+import {
+  updateClinicOperationalSettings,
+  updatePaymentMethods,
+} from "./playbook-version-actions";
 import type { Treatment } from "@/domain/entities/treatment";
 import { TreatmentRow } from "../tratamentos/TreatmentRow";
 import { CampaignRow, type PriceCampaign } from "../tratamentos/CampaignRow";
 import { S, SettingsCard, SettingsSection, SettingsBadge, SaveStatus } from "./settings-primitives";
 import { useReliableAutosave } from "./use-reliable-autosave";
+import {
+  PAYMENT_METHOD_OPTIONS,
+  type PaymentMethod,
+} from "@/domain/entities/payment-method";
 
 type InstallmentRow = { n: number; rate: number; active: boolean };
 
@@ -37,6 +44,7 @@ function calcPreview(principal: number, rate: number, n: number): string {
 
 type ClinicData = {
   installmentRates: { n: number; rate: number; active: boolean }[] | null;
+  paymentMethods: PaymentMethod[];
 };
 
 export function TabFinanceiro({
@@ -64,6 +72,13 @@ export function TabFinanceiro({
   });
   const [previewValue, setPreviewValue] = useState(2500);
   const [previewInput, setPreviewInput] = useState("2.500");
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(
+    () => [...clinic.paymentMethods],
+  );
+  const paymentSave = useReliableAutosave<readonly string[]>({
+    delayMs: 400,
+    save: updatePaymentMethods,
+  });
   const { scheduleSave, saving, saved, pending, error } = useReliableAutosave<{
     installmentRates: InstallmentRow[];
   }>({
@@ -83,6 +98,16 @@ export function TabFinanceiro({
     const next = rows.map((r) => (r.n === n ? { ...r, ...patch } : r));
     setRows(next);
     triggerSave(next);
+  }
+
+  function togglePaymentMethod(method: PaymentMethod) {
+    const next = paymentMethods.includes(method)
+      ? paymentMethods.filter((candidate) => candidate !== method)
+      : PAYMENT_METHOD_OPTIONS
+          .map(({ code }) => code)
+          .filter((candidate) => candidate === method || paymentMethods.includes(candidate));
+    setPaymentMethods(next);
+    paymentSave.scheduleSave(next);
   }
 
   const current12 = rows.slice(0, 12);
@@ -141,6 +166,47 @@ export function TabFinanceiro({
           </SettingsCard>
         </SettingsSection>
       )}
+
+      <SettingsSection
+        title="Formas de pagamento"
+        description="Selecione somente as formas realmente aceitas. A IA não infere opções pelo texto do playbook."
+      >
+        <SettingsCard style={{ display: "grid", gap: "8px" }}>
+          {PAYMENT_METHOD_OPTIONS.map(({ code, label }) => {
+            const selected = paymentMethods.includes(code);
+            return (
+              <button
+                key={code}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => togglePaymentMethod(code)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "10px 12px",
+                  borderRadius: "9px",
+                  border: `1px solid ${selected ? S.borderActive : S.border}`,
+                  background: selected ? "rgba(0,224,178,0.05)" : S.card,
+                  color: selected ? S.text : S.textSec,
+                  cursor: "pointer",
+                }}
+              >
+                <span>{label}</span>
+                <span style={{ color: selected ? S.teal : S.textMuted }}>
+                  {selected ? "Ativo" : "Inativo"}
+                </span>
+              </button>
+            );
+          })}
+          <SaveStatus
+            saving={paymentSave.saving}
+            saved={paymentSave.saved}
+            pending={paymentSave.pending}
+            error={paymentSave.error}
+          />
+        </SettingsCard>
+      </SettingsSection>
 
       {/* Parcelamento */}
       <SettingsSection

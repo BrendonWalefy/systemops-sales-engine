@@ -35,6 +35,7 @@ export class OpenAIDentalUnderstandingModel implements DentalUnderstandingModel 
           state: input.state,
           catalog: input.catalog,
           faqCatalog: input.faqCatalog,
+          objectionCatalog: input.objectionCatalog,
         }) },
       ],
       response_format: zodResponseFormat(

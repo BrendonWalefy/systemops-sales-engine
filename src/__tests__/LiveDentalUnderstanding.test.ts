@@ -18,6 +18,8 @@ const rawUnderstanding = {
     serviceCandidates: null,
     faqQuestion: null,
     quantity: null,
+    quantityScope: null,
+    objectionQuestion: null,
     ordinal: null,
   },
   signals: {
@@ -37,6 +39,7 @@ const input = {
   state: null,
   catalog: [],
   faqCatalog: [],
+  objectionCatalog: [],
 } as const;
 
 async function invokeAfterRegistration(value: LiveDentalUnderstanding): Promise<void> {

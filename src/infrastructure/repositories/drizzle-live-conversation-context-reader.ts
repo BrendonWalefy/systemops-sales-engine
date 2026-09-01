@@ -40,6 +40,7 @@ export function buildOrganization(row: OrganizationRow): Organization {
       rate: number;
       active: boolean;
     }[] | null) ?? null,
+    paymentMethods: [...row.paymentMethods],
     rateLimitPerHour: row.rateLimitPerHour,
     unclearThreshold: row.unclearThreshold,
     staleConversationHours: row.staleConversationHours,

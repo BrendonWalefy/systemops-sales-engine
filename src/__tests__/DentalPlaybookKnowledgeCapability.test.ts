@@ -46,6 +46,8 @@ function understanding(
       serviceCandidates: null,
       faqQuestion,
       quantity: null,
+      quantityScope: null,
+      objectionQuestion: null,
       ordinal: null,
     },
     signals: { purchaseIntent: null, priceSensitivity: null, sentiment: null, objection: null },

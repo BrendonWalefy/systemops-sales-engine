@@ -29,7 +29,9 @@ export const dentalUnderstandingStructureSchema = z.object({
     time: z.string().nullable(),
     serviceCandidates: z.array(z.string()).nullable(),
     faqQuestion: z.string().nullable(),
-    quantity: z.number().nullable(),
+    quantity: z.number().int().positive().nullable(),
+    quantityScope: z.enum(["total", "superior", "inferior"]).nullable(),
+    objectionQuestion: z.string().nullable(),
     ordinal: z.number().nullable(),
   }).strict(),
   signals: z.object({
@@ -63,7 +65,12 @@ export type DentalUnderstandingSemanticIssue = Readonly<{
     | "comparison_services_required"
     | "comparison_services_forbidden"
     | "faq_question_required"
-    | "faq_question_forbidden";
+    | "faq_question_forbidden"
+    | "quantity_forbidden"
+    | "quantity_scope_forbidden"
+    | "quantity_scope_requires_quantity"
+    | "objection_question_required"
+    | "objection_question_forbidden";
 }>;
 
 export type DentalUnderstandingSemanticValidation =
@@ -180,6 +187,57 @@ export function validateDentalUnderstandingSemantics(
       issues: Object.freeze([{
         path: Object.freeze(["entities", "faqQuestion"]),
         code: "faq_question_forbidden" as const,
+      }]),
+    };
+  }
+  const quantity = value.entities.quantity;
+  const quantityScope = value.entities.quantityScope;
+  if (value.request !== "price-of-service" && quantity !== null) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "quantity"]),
+        code: "quantity_forbidden" as const,
+      }]),
+    };
+  }
+  if (value.request !== "price-of-service" && quantityScope !== null) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "quantityScope"]),
+        code: "quantity_scope_forbidden" as const,
+      }]),
+    };
+  }
+  if (quantityScope !== null && quantity === null) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "quantityScope"]),
+        code: "quantity_scope_requires_quantity" as const,
+      }]),
+    };
+  }
+  const objectionQuestion = value.entities.objectionQuestion;
+  if (
+    value.request === "registered-objection"
+    && (typeof objectionQuestion !== "string" || objectionQuestion.trim().length === 0)
+  ) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "objectionQuestion"]),
+        code: "objection_question_required" as const,
+      }]),
+    };
+  }
+  if (value.request !== "registered-objection" && objectionQuestion !== null) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "objectionQuestion"]),
+        code: "objection_question_forbidden" as const,
       }]),
     };
   }

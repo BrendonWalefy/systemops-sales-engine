@@ -38,6 +38,7 @@ export class LiveDentalUnderstanding {
     state: ConversationState | null;
     catalog: readonly DentalCatalogEntry[];
     faqCatalog: readonly string[];
+    objectionCatalog: readonly string[];
   }, options?: DentalUnderstandingOptions): Promise<Understanding<DentalRequest>> {
     return this.provider.understand(input, options);
   }
