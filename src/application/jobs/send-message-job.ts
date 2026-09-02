@@ -4,6 +4,7 @@ import {
   evaluateOutboundSafetyGate,
   getOutboundCapWindows,
   isOutboundSafetyGatedCategory,
+  isProactiveOutboundCategory,
 } from "@/application/channel-safety/outbound-safety-gate";
 import type { OutboundMessage, OutboundMessageStore } from "@/application/ports/outbound-message-store";
 import type {
@@ -268,7 +269,7 @@ export class SendMessageJobHandler {
       conversationId: outbound.conversationId,
       payload: outbound.payload,
     };
-    let senderOwnedConversationMessage: Message | null = null;
+    let senderOwnedAgentMessage: Message | null = null;
     if (isConversationOutboundPayload(outbound.payload)) {
       const placeholder = {
         id: outbound.payload.agentMessageId,
@@ -286,7 +287,7 @@ export class SendMessageJobHandler {
         outbound.authorization.kind === "live_stream_reply"
         || outbound.payload.agentMessagePersistence === "sender"
       ) {
-        senderOwnedConversationMessage = placeholder;
+        senderOwnedAgentMessage = placeholder;
       } else {
         const existing = await this.conversationRepository.findMessageById(placeholder.id);
         const existedBeforeOutbox = existing != null &&
@@ -310,6 +311,24 @@ export class SendMessageJobHandler {
           return "ignored";
         }
       }
+    }
+
+    if (
+      isAutomationOutboundPayload(outbound.payload)
+      && outbound.payload.agentMessagePersistence === "sender"
+    ) {
+      senderOwnedAgentMessage = {
+        id: outbound.payload.agentMessageId,
+        conversationId: outbound.conversationId,
+        author: "agent",
+        body: outbound.payload.text,
+        mediaUrl: null,
+        mediaType: null,
+        sentAt: this.now(),
+        externalId: null,
+        intent: outbound.payload.intent ?? null,
+        deliveryFormat: null,
+      };
     }
 
     let safetyContext: OutboundSafetyContext | null = null;
@@ -338,7 +357,10 @@ export class SendMessageJobHandler {
         agentMessageId: outbound.payload.agentMessageId,
       });
 
-      if (!isCompleteAutomationContext(safetyContext)) {
+      if (!isCompleteAutomationContext(
+        safetyContext,
+        outbound.payload.agentMessagePersistence === "sender",
+      )) {
         await this.deps.outboundMessageStore.markOutboundCancelled(
           outbound.id,
           "invalid_automation_context",
@@ -373,7 +395,10 @@ export class SendMessageJobHandler {
       }
     }
 
-    if (isOutboundSafetyGatedCategory(outbound.category)) {
+    if (
+      isAutomationOutboundPayload(outbound.payload)
+      && isProactiveOutboundCategory(outbound.category)
+    ) {
       if (!isAutomationOutboundPayload(outbound.payload)) {
         await this.deps.outboundMessageStore.markOutboundCancelled(
           outbound.id,
@@ -419,17 +444,20 @@ export class SendMessageJobHandler {
         return "ignored";
       }
 
+      const requiresCaps = isOutboundSafetyGatedCategory(outbound.category);
       const windows = getOutboundCapWindows({ clinic: context.clinic, now });
-      const [sentLastHour, sentToday] = await Promise.all([
-        this.deps.outboundMessageStore.countSentSince({
-          clinicId: outbound.clinicId,
-          since: windows.hourlySince,
-        }),
-        this.deps.outboundMessageStore.countSentSince({
-          clinicId: outbound.clinicId,
-          since: windows.dailySince,
-        }),
-      ]);
+      const [sentLastHour, sentToday] = requiresCaps
+        ? await Promise.all([
+            this.deps.outboundMessageStore.countSentSince({
+              clinicId: outbound.clinicId,
+              since: windows.hourlySince,
+            }),
+            this.deps.outboundMessageStore.countSentSince({
+              clinicId: outbound.clinicId,
+              since: windows.dailySince,
+            }),
+          ])
+        : [0, 0];
       const gate = evaluateOutboundSafetyGate({
         category: outbound.category,
         clinic: context.clinic,
@@ -503,15 +531,15 @@ export class SendMessageJobHandler {
     // No canonical agent history is created until the definitive sender
     // authorization has passed. Rejected work therefore cannot leave a reply
     // placeholder that was never eligible for provider delivery.
-    if (senderOwnedConversationMessage) {
+    if (senderOwnedAgentMessage) {
       const inserted = await this.conversationRepository.appendMessage(
-        senderOwnedConversationMessage,
+        senderOwnedAgentMessage,
       );
       if (!inserted) {
         const existing = await this.conversationRepository.findMessageById(
-          senderOwnedConversationMessage.id,
+          senderOwnedAgentMessage.id,
         );
-        if (!isExactConversationAgentMessage(existing, senderOwnedConversationMessage)) {
+        if (!isExactConversationAgentMessage(existing, senderOwnedAgentMessage)) {
           throw new Error("sender-owned agent message is missing or mismatched");
         }
       }
@@ -779,8 +807,14 @@ export function getObsoleteAutomationReason(
 
 function isCompleteAutomationContext(
   context: OutboundSafetyContext | null,
+  allowSenderOwnedMessage: boolean,
 ): context is OutboundSafetyContext {
-  return Boolean(context?.clinic && context.lead && context.conversation && context.agentMessage);
+  return Boolean(
+    context?.clinic
+    && context.lead
+    && context.conversation
+    && (allowSenderOwnedMessage || context.agentMessage),
+  );
 }
 
 function isExactConversationAgentMessage(

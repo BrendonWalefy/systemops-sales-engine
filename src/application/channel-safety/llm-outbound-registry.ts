@@ -71,6 +71,28 @@ export const LLM_OUTBOUND_REGISTRY: Record<string, LlmOutboundDeclaration> = {
     boundary: "turn_pipeline",
   },
 
+  "app/api/whatsapp/zapi/route": {
+    classification: "no_llm_text",
+    reason:
+      "O webhook apenas persiste o inbound para o runtime V2 e responde fluxos operacionais com templates determinísticos.",
+  },
+  "app/api/conversations/[conversationId]/send/route": {
+    classification: "no_llm_text",
+    reason: "Entrega somente o texto ou anexo escrito e confirmado pelo operador autenticado.",
+  },
+  "app/api/cron/deposit-expiry-sweep/route": {
+    classification: "no_llm_text",
+    reason: "Expiração de sinal usa template determinístico e envelope proativo V2.",
+  },
+  "application/conversations/confirm-deposit-decision": {
+    classification: "no_llm_text",
+    reason: "Confirmação humana de sinal usa template determinístico da clínica.",
+  },
+  "application/conversations/enqueue-no-show-recovery": {
+    classification: "no_llm_text",
+    reason: "Recuperação de falta usa texto determinístico e envelope proativo V2.",
+  },
+
   "app/(clinic)/app/inbox/recovery-actions": {
     classification: "human_approved_external",
     reason:
@@ -80,12 +102,15 @@ export const LLM_OUTBOUND_REGISTRY: Record<string, LlmOutboundDeclaration> = {
     classification: "human_approved_external",
     reason:
       "Rascunho gerado por LLM é gravado no banco e só sai com aprovação da campanha (`approvedAt`) e do alvo (`status='approved'`), ambas por ação humana no painel. Nenhum cron chama `dispatchCampaign`.",
-    manualOnly: true,
   },
 
   "application/jobs/send-message-job": {
     classification: "transport_only",
     reason: "Entrega ao provider o payload que a outbox já carregava.",
+  },
+  "application/jobs/enqueue-outbound-message": {
+    classification: "transport_only",
+    reason: "Persiste e acorda a entrega do payload já produzido e autorizado pelo chamador.",
   },
   "lib/tts-send": {
     classification: "transport_only",

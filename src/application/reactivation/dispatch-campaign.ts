@@ -30,7 +30,6 @@ import { db } from "@/infrastructure/db/client";
 import {
   conversations,
   leads,
-  messages,
   organizations,
   reactivationCampaigns,
   reactivationCampaignTargets,
@@ -39,10 +38,12 @@ import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-mess
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
-import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
+import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
 import { isReengagementPaused } from "@/application/channel-safety/reengagement-policy";
 import { randomUUID } from "crypto";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
+import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
+import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 
 /**
  * Teto de mensagens por ensaio. O número de teste receberia a campanha inteira
@@ -128,12 +129,14 @@ export async function dispatchCampaign(input: {
   if (!clinic) return { ...base, rehearsal, blockedReason: "clínica não encontrada" };
 
   // Freio 4: kill switches já existentes da clínica.
-  if (!shouldSendAutomatedClinicOutbound(clinic)) {
-    return { ...base, rehearsal, blockedReason: "automação da clínica pausada" };
+  const automation = await requireLiveV2ProactiveAutomation(input.clinicId);
+  if (!automation.allowed) {
+    return { ...base, rehearsal, blockedReason: `automacao_v2_${automation.reason}` };
   }
   if (isReengagementPaused(clinic)) {
     return { ...base, rehearsal, blockedReason: "reengajamento pausado" };
   }
+  const traceSink = createRuntimeDecisionTraceSink();
 
   // Destino do ensaio: precisa de lead E conversa, porque é a conversa dele que
   // vai receber (ver cabeçalho deste arquivo).
@@ -246,20 +249,6 @@ export async function dispatchCampaign(input: {
 
       const agentMessageId = randomUUID();
 
-      await db
-        .insert(messages)
-        .values({
-          id: agentMessageId,
-          conversationId: destination.conversationId,
-          author: "agent",
-          body: text,
-          sentAt: now,
-          externalId: null,
-          intent: "reengagement" as const,
-          deliveryFormat: null,
-        })
-        .onConflictDoNothing();
-
       const { outboundMessageId } = await enqueueOutboundMessage(
         {
           clinicId: input.clinicId,
@@ -269,17 +258,18 @@ export async function dispatchCampaign(input: {
           category: "campaign",
           authorization: { kind: "campaign" },
           dedupeKey,
-          payload: {
-            version: 1 as const,
-            kind: "automation" as const,
+          payload: buildProactiveOutboundPayload({
+            authorizationKind: "campaign",
+            turnId: proactiveTurnId(dedupeKey),
             to: destination.address,
             text,
             leadId: destination.leadId,
             conversationId: destination.conversationId,
             agentMessageId,
-          },
+            intent: "reengagement",
+          }),
         },
-        { outboundMessageStore: store, jobQueue: queue },
+        { outboundMessageStore: store, jobQueue: queue, decisionTraceSink: traceSink },
       );
 
       // No ensaio o alvo NÃO muda de estado — ver cabeçalho deste arquivo.

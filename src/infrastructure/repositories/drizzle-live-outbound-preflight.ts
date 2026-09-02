@@ -155,11 +155,49 @@ export class DrizzleLiveOutboundPreflight implements LiveOutboundPreflight {
               then 'global_kill_switch'
             else null
           end
-          when authorization_kind = 'follow_up' and non_live_shape_valid and category = 'follow_up' then null
-          when authorization_kind = 'reminder' and non_live_shape_valid and category = 'reminder' then null
-          when authorization_kind = 'campaign' and non_live_shape_valid and category = 'campaign' then null
-          when authorization_kind = 'recovery' and non_live_shape_valid and category = 'recovery' then null
-          when authorization_kind = 'operational' and non_live_shape_valid and category = 'operational' then null
+          when authorization_kind in (
+            'follow_up', 'reminder', 'campaign', 'recovery', 'operational'
+          ) then case
+            when non_live_shape_valid is distinct from true
+              then 'outbound_not_sendable'
+            when coalesce(current_authority_version, 0) < 2
+              or coalesce(authorization_version, 0) < 2
+              then 'authority_below_v2'
+            when authorization_version <> current_authority_version
+              or bound_conversation_id is null
+              or bound_lead_id is null
+              or payload_turn_id is null
+              or payload->>'kind' is distinct from 'automation'
+              or payload->>'authorizationKind' is distinct from authorization_kind::text
+              or payload->>'agentMessagePersistence' is distinct from 'sender'
+              or payload->>'conversationId' is distinct from bound_conversation_id::text
+              or payload->>'leadId' is distinct from bound_lead_id::text
+              or not (
+                (authorization_kind = 'follow_up' and category = 'follow_up')
+                or (authorization_kind = 'reminder' and category = 'reminder')
+                or (authorization_kind = 'campaign' and category = 'campaign')
+                or (authorization_kind = 'recovery' and category = 'recovery')
+                or (authorization_kind = 'operational' and category = 'operational')
+              ) then 'claim_mismatch'
+            when operational_status is distinct from 'active'
+              then 'clinic_not_active'
+            when auto_reply_enabled is distinct from true
+              then 'auto_reply_disabled'
+            when live_automation_enabled is distinct from true
+              then 'tenant_live_disabled'
+            when shadow_mode_enabled is distinct from false or is_demo is distinct from false
+              then 'shadow_observe'
+            when ai_paused is distinct from false
+              or (takeover_expires_at is not null and takeover_expires_at > now())
+              then 'human_takeover'
+            when contact_consent_revoked_at is not null
+              then 'consent_revoked'
+            when channel_safety_mode = 'frozen'
+              then 'safety_blocked'
+            when live_outbound_enabled is distinct from true
+              then 'global_kill_switch'
+            else null
+          end
           when authorization_kind in ('human_manual', 'system') and non_live_shape_valid and category = 'reply' then null
           when authorization_kind = 'legacy' and non_live_shape_valid
             and coalesce(current_authority_version, 0) < 2 and category = 'reply' then null

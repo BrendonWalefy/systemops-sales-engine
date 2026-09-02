@@ -5,6 +5,11 @@ import { drizzle as drizzleNodePostgres } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { digestInboundClaimToken } from "@/application/jobs/inbound-claim-token";
+import {
+  buildProactiveOutboundPayload,
+  proactiveTurnId,
+  PROACTIVE_AUTHORIZATION_KINDS,
+} from "@/application/automation/proactive-outbound";
 import { drainMessageProcessQueue } from "@/application/jobs/drain-message-process-queue";
 import type {
   CreateOutboundMessageInput,
@@ -324,6 +329,83 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
     return { fixture, outboundMessageId: created.outboundMessageId, store };
   }
 
+  async function seedProactiveAuthority(input: {
+    authorityVersion?: 1 | 2;
+    liveOutboundEnabled?: boolean;
+  } = {}) {
+    const clinicId = randomUUID();
+    const leadId = randomUUID();
+    const conversationId = randomUUID();
+    await database.execute(sql`
+      insert into organizations (
+        id, name, slug, specialty, operational_status, auto_reply_enabled,
+        live_automation_enabled, shadow_mode_enabled, is_demo
+      ) values (
+        ${clinicId}::uuid, 'V2 proactive tenant', ${`v2-proactive-${clinicId}`},
+        'dental', 'active', true, true, false, false
+      )
+    `);
+    await database.execute(sql`
+      insert into leads (id, organization_id, channel, phone)
+      values (${leadId}::uuid, ${clinicId}::uuid, 'whatsapp', ${`5511${leadId.replaceAll("-", "").slice(0, 8)}`})
+    `);
+    await database.execute(sql`
+      insert into conversations (id, organization_id, lead_id, channel)
+      values (${conversationId}::uuid, ${clinicId}::uuid, ${leadId}::uuid, 'whatsapp')
+    `);
+    await database.execute(sql`
+      insert into conversation_authority (organization_id, version)
+      values (${clinicId}::uuid, ${input.authorityVersion ?? 2})
+    `);
+    await database.execute(sql`
+      insert into conversation_runtime_control (key, live_outbound_enabled, version, updated_by)
+      values ('global', ${input.liveOutboundEnabled ?? true}, 1, 'v2-proactive-test')
+      on conflict (key) do update set
+        live_outbound_enabled = excluded.live_outbound_enabled,
+        version = conversation_runtime_control.version + 1,
+        updated_by = excluded.updated_by
+    `);
+    return { clinicId, leadId, conversationId };
+  }
+
+  function proactiveOutboundInput(
+    fixture: Awaited<ReturnType<typeof seedProactiveAuthority>>,
+    kind: (typeof PROACTIVE_AUTHORIZATION_KINDS)[number],
+  ): CreateOutboundMessageInput {
+    const dedupeKey = `v2-proactive:${kind}:${randomUUID()}`;
+    return {
+      clinicId: fixture.clinicId,
+      conversationId: fixture.conversationId,
+      channel: "whatsapp",
+      deliveryKind: "text",
+      category: kind,
+      dedupeKey,
+      authorization: { kind },
+      payload: buildProactiveOutboundPayload({
+        authorizationKind: kind,
+        turnId: proactiveTurnId(dedupeKey),
+        to: "synthetic-destination",
+        text: "synthetic-reply",
+        leadId: fixture.leadId,
+        conversationId: fixture.conversationId,
+        agentMessageId: randomUUID(),
+      }),
+    };
+  }
+
+  async function cleanupProactiveFixture(clinicId: string): Promise<void> {
+    await database.execute(sql`
+      delete from jobs
+      where queue = 'message.send'
+        and payload->>'outboundMessageId' in (
+          select id::text from outbound_messages where organization_id = ${clinicId}::uuid
+        )
+    `);
+    await database.execute(sql`
+      delete from outbound_messages where organization_id = ${clinicId}::uuid
+    `);
+  }
+
   async function retireClaimedStreamAfterConvergence(
     streamId: string,
     reason: "alias_convergence" | "conversation_convergence" = "alias_convergence",
@@ -376,6 +458,97 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
       await cleanupEmbeddedAuthorityDatabase(runtime ?? {});
     } finally {
       databaseMock.set(undefined);
+    }
+  });
+
+  it.each(PROACTIVE_AUTHORIZATION_KINDS)(
+    "requires the complete V2 authority for %s creation and delivery",
+    async (kind) => {
+      const fixture = await seedProactiveAuthority();
+      try {
+        const store = await loadOutboundMessageStore();
+        const created = await store.createOutboundMessageAndEnqueue(
+          proactiveOutboundInput(fixture, kind),
+        );
+        await expect(store.authorizeOutboundMessageForSend(created.outboundMessageId))
+          .resolves.toEqual({ authorized: true });
+      } finally {
+        await cleanupProactiveFixture(fixture.clinicId);
+      }
+    },
+  );
+
+  it("rejects proactive creation below authority V2", async () => {
+    const fixture = await seedProactiveAuthority({ authorityVersion: 1 });
+    try {
+      const store = await loadOutboundMessageStore();
+      await expect(store.createOutboundMessageAndEnqueue(
+        proactiveOutboundInput(fixture, "follow_up"),
+      )).rejects.toThrow("Outbound authorization rejected");
+    } finally {
+      await cleanupProactiveFixture(fixture.clinicId);
+    }
+  });
+
+  it("rejects proactive creation while the global switch is closed", async () => {
+    const fixture = await seedProactiveAuthority({ liveOutboundEnabled: false });
+    try {
+      const store = await loadOutboundMessageStore();
+      await expect(store.createOutboundMessageAndEnqueue(
+        proactiveOutboundInput(fixture, "reminder"),
+      )).rejects.toThrow("Outbound authorization rejected");
+    } finally {
+      await cleanupProactiveFixture(fixture.clinicId);
+    }
+  });
+
+  it("rejects proactive creation with a foreign lead binding", async () => {
+    const fixture = await seedProactiveAuthority();
+    const foreign = await seedProactiveAuthority();
+    try {
+      const store = await loadOutboundMessageStore();
+      const input = proactiveOutboundInput(fixture, "campaign");
+      input.payload = { ...(input.payload as object), leadId: foreign.leadId };
+      await expect(store.createOutboundMessageAndEnqueue(input))
+        .rejects.toThrow("Outbound authorization rejected");
+    } finally {
+      await cleanupProactiveFixture(fixture.clinicId);
+      await cleanupProactiveFixture(foreign.clinicId);
+    }
+  });
+
+  it.each([
+    ["authority_below_v2", async (fixture: Awaited<ReturnType<typeof seedProactiveAuthority>>) => database.execute(sql`
+      update conversation_authority set version = 1 where organization_id = ${fixture.clinicId}::uuid
+    `)],
+    ["global_kill_switch", async () => database.execute(sql`
+      update conversation_runtime_control set live_outbound_enabled = false where key = 'global'
+    `)],
+    ["auto_reply_disabled", async (fixture: Awaited<ReturnType<typeof seedProactiveAuthority>>) => database.execute(sql`
+      update organizations set auto_reply_enabled = false where id = ${fixture.clinicId}::uuid
+    `)],
+    ["consent_revoked", async (fixture: Awaited<ReturnType<typeof seedProactiveAuthority>>) => database.execute(sql`
+      update leads set contact_consent_revoked_at = now(), contact_consent_source = 'operator'
+      where id = ${fixture.leadId}::uuid
+    `)],
+    ["safety_blocked", async (fixture: Awaited<ReturnType<typeof seedProactiveAuthority>>) => database.execute(sql`
+      update organizations set channel_safety_mode = 'frozen' where id = ${fixture.clinicId}::uuid
+    `)],
+    ["human_takeover", async (fixture: Awaited<ReturnType<typeof seedProactiveAuthority>>) => database.execute(sql`
+      update conversations set ai_paused = true where id = ${fixture.conversationId}::uuid
+    `)],
+  ] as const)("revalidates proactive %s immediately before delivery", async (reason, mutate) => {
+    const fixture = await seedProactiveAuthority();
+    try {
+      const store = await loadOutboundMessageStore();
+      const created = await store.createOutboundMessageAndEnqueue(
+        proactiveOutboundInput(fixture, "reminder"),
+      );
+      await mutate(fixture);
+      await expect(store.authorizeOutboundMessageForSend(created.outboundMessageId))
+        .resolves.toEqual({ authorized: false, reason });
+    } finally {
+      await cleanupProactiveFixture(fixture.clinicId);
     }
   });
 

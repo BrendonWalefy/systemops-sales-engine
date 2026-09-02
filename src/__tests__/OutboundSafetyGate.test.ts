@@ -27,8 +27,8 @@ function lead(contactConsentRevokedAt: Date | null) {
 }
 
 describe("evaluateOutboundSafetyGate", () => {
-  it.each<OutboundMessageCategory>(["reply", "reminder", "operational"])(
-    "sempre libera categoria %s",
+  it.each<OutboundMessageCategory>(["reply"])(
+    "sempre libera categoria manual %s",
     (category) => {
       const decision = evaluateOutboundSafetyGate({
         category,
@@ -44,7 +44,7 @@ describe("evaluateOutboundSafetyGate", () => {
     },
   );
 
-  it.each<OutboundMessageCategory>(["follow_up", "recovery", "campaign"])(
+  it.each<OutboundMessageCategory>(["follow_up", "recovery", "campaign", "reminder", "operational"])(
     "bloqueia consentimento revogado em %s",
     (category) => {
       const decision = evaluateOutboundSafetyGate({
@@ -58,6 +58,21 @@ describe("evaluateOutboundSafetyGate", () => {
       });
 
       expect(decision).toEqual({ action: "cancel", reason: "consent_revoked" });
+    },
+  );
+
+  it.each<OutboundMessageCategory>(["reminder", "operational"])(
+    "mantém %s isento de caps e quiet hours quando há consentimento",
+    (category) => {
+      expect(evaluateOutboundSafetyGate({
+        category,
+        clinic,
+        lead: lead(null),
+        sentLastHour: 999,
+        sentToday: 999,
+        now: quietTime,
+        capJitterMs: 0,
+      })).toEqual({ action: "allow" });
     },
   );
 
@@ -183,8 +198,8 @@ describe("evaluateOutboundSafetyGate", () => {
       channelSafetyMode: "frozen",
     };
 
-    // gated + reminder bloqueados
-    for (const category of ["follow_up", "recovery", "campaign", "reminder"] as OutboundMessageCategory[]) {
+    // Toda automação proativa é bloqueada.
+    for (const category of ["follow_up", "recovery", "campaign", "reminder", "operational"] as OutboundMessageCategory[]) {
       const decision = evaluateOutboundSafetyGate({
         category,
         clinic: frozenClinic,
@@ -196,8 +211,8 @@ describe("evaluateOutboundSafetyGate", () => {
       expect(decision).toEqual({ action: "cancel", reason: "channel_frozen" });
     }
 
-    // reply e operational continuam permitidos
-    for (const category of ["reply", "operational"] as OutboundMessageCategory[]) {
+    // Resposta manual continua fora da política proativa.
+    for (const category of ["reply"] as OutboundMessageCategory[]) {
       const decision = evaluateOutboundSafetyGate({
         category,
         clinic: frozenClinic,

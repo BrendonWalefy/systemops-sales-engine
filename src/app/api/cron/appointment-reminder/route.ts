@@ -26,10 +26,11 @@ import {
   normalizeManualWhatsAppPhone,
   resolveWhatsAppChannelAddress,
 } from "@/core/whatsapp/WhatsAppContactIdentity";
-import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
+import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { resolveClinicVoiceConfig } from "@/lib/tts-send";
 import { extractFirstName } from "@/core/intelligence/lead-display-name";
+import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
 
 export const dynamic = "force-dynamic";
 
@@ -66,17 +67,18 @@ export function buildReminderOutboxInput(input: {
       category: "reminder" as const,
       authorization: { kind: "reminder" as const },
       dedupeKey,
-      payload: {
-        version: 1 as const,
-        kind: "automation" as const,
+      payload: buildProactiveOutboundPayload({
+        authorizationKind: "reminder",
+        turnId: proactiveTurnId(dedupeKey),
         to: input.to,
         text: input.text,
         leadId: input.leadId,
         conversationId: input.conversationId,
         agentMessageId,
+        intent: "appointment_reminder",
         useVoice: input.useVoice,
         ttsConfig: input.ttsConfig,
-      },
+      }),
     },
   };
 }
@@ -92,8 +94,9 @@ function deterministicUuid(input: string): string {
 async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   const clinic = await db.query.organizations.findFirst({ where: eq(organizations.id, clinicId) });
   if (!clinic) return null;
-  if (!shouldSendAutomatedClinicOutbound(clinic)) {
-    console.log(`[AppointmentReminder] outbound automatizado pausado para clinic=${clinicId}`);
+  const automation = await requireLiveV2ProactiveAutomation(clinicId);
+  if (!automation.allowed) {
+    console.log(`[AppointmentReminder] outbound automatizado pausado para clinic=${clinicId} reason=${automation.reason}`);
     return { clinicId, sent: 0, failed: 0, total: 0 };
   }
 
@@ -185,14 +188,14 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
         }),
       });
       await recordAutomationResponseTrace(traceSink, {
-        turnId: `reminder:${appointment.id}`,
+        turnId: proactiveTurnId(`reminder:${appointment.id}`),
         clinicId,
         conversationId: conversation.id,
         planned,
       });
       const composed = planned.response;
 
-      const { agentMessageId, outbound } = buildReminderOutboxInput({
+      const { outbound } = buildReminderOutboxInput({
         clinicId,
         conversationId: conversation.id,
         appointmentId: appointment.id,
@@ -203,24 +206,10 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
         ttsConfig,
       });
 
-      // Pré-registra a mensagem (id determinístico) para o Inbox; o sender
-      // preenche externalId/deliveryFormat na entrega real.
-      await conversationRepository.appendMessage({
-        id: agentMessageId,
-        conversationId: conversation.id,
-        author: "agent",
-        body: composed.text,
-        mediaUrl: null,
-        mediaType: null,
-        sentAt: now,
-        externalId: null,
-        intent: "appointment_reminder",
-        deliveryFormat: null,
-      });
-
       await enqueueOutboundMessage(outbound, {
         outboundMessageStore: new DrizzleOutboundMessageStore(),
         jobQueue: new DrizzleJobQueue(),
+        decisionTraceSink: traceSink,
       });
 
       // reminderSentAt no enqueue impede reenvio (findDueReminders filtra).
