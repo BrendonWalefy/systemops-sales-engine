@@ -93,7 +93,12 @@ describe("verbalizador vivo de resposta", () => {
 
     const payload = JSON.parse(create.mock.calls[0]![0].messages[1].content) as Record<string, unknown>;
     expect(payload).toMatchObject({
-      statements: [{ meaning: "inform_fact", subject: "Item A", values: ["R$ 290,00"] }],
+      statements: [{
+        outcome: "quote_ready",
+        meaning: "inform_fact",
+        subject: "Item A",
+        values: ["R$ 290,00"],
+      }],
       allowedValues: ["R$ 290,00"],
       moneyValues: ["R$ 290,00"],
       maxQuestions: 0,

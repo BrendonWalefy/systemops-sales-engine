@@ -1273,7 +1273,7 @@ describe("V2LiveConversationHandler", () => {
       turnId: inboundEventId,
       stage: "response_verbalization",
       modelId: "gpt-4o-mini",
-      promptVersion: "response-verbalization.v9",
+      promptVersion: "response-verbalization.v10",
       contractVersion: "response-verbalization.v1",
       attempt: 1,
       rawOutput: rejectedText,

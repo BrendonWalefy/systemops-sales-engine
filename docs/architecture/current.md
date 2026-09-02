@@ -168,6 +168,14 @@ determinística e devolve fatos com evidence refs; o modelo não recebe resposta
 autoriza preço, taxa, método, quantidade ou condição. Dado ausente, ambíguo ou malformado pede
 esclarecimento ou handoff, sem consultar V1 e sem inferir regra de `commercialPolicy`.
 
+Agenda conversacional pertence a duas fronteiras V2: `dental-scheduling` busca disponibilidade,
+persiste ofertas e confirma slots; `dental-appointment-lifecycle` lista, seleciona, cancela e inicia
+reagendamentos. Profissionais e compromissos são sempre resolvidos dentro do tenant e do lead.
+`BookingService` continua sendo o único dono dos efeitos: cancelamento é idempotente e
+reagendamento atualiza o mesmo compromisso com reserva, revalidação e compensação explícita. O
+compromisso anterior não é removido antes do novo intervalo ficar seguro, e uma compensação
+indeterminada termina em handoff humano.
+
 ### Resposta autorizada e fallback seguro
 
 Nos caminhos que compõem uma resposta a partir de uma ação, o resultado
@@ -184,8 +192,8 @@ ActionResult
 
 `AuthorizedResponsePlan` deriva uma allowlist das fontes já resolvidas: preços
 explícitos, labels de agenda, mídia permitida, estado esperado, limite de
-caracteres e no máximo uma pergunta. O verbalizador apenas verbaliza o
-`ActionResult`; ele não autoriza fatos novos. Antes de a resposta planejada
+caracteres e no máximo uma pergunta. O verbalizador recebe o outcome fechado e apenas verbaliza o
+`ActionResult`; ele não autoriza fatos novos nem pode trocar listar, cancelar ou reagendar. Antes de a resposta planejada
 entrar na outbox, o `ResponseValidator` bloqueia conteúdo vazio, tamanho ou
 quantidade de perguntas excedidos, mídia não autorizada, preço ou fato de
 agenda fora do plano e promessa sem suporte.

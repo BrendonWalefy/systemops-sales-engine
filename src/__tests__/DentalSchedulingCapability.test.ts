@@ -104,6 +104,46 @@ describe("Dental Scheduling capability", () => {
     expect(rescheduleSlot).toHaveBeenCalledWith(slot.id);
   });
 
+  it("terminates a failed reschedule compensation as explicit human action", async () => {
+    const slot = {
+      id: "replacement-slot-1",
+      label: "sexta às 14h",
+      evidenceRef: "replacement-offer-1",
+      bookingKind: "reschedule" as const,
+    };
+    const capability = createDentalSchedulingCapability(
+      {
+        listSlots: vi.fn(),
+        resolveOfferedSlot: vi.fn().mockResolvedValue(slot),
+        resolvePendingAppointment: vi.fn(),
+      },
+      {
+        persistSlotOffer: vi.fn(async (offer) => offer),
+        bookSlot: vi.fn(),
+        confirmAppointment: vi.fn(),
+        rescheduleSlot: vi.fn().mockResolvedValue({
+          success: false,
+          reason: "compensation_failed",
+          evidenceRef: "reschedule:compensation_failed",
+        }),
+      },
+    );
+    const state = {
+      phase: "awaiting_slot",
+      pendingStepId: "replacement-offer-1",
+      completedStepIds: [],
+    };
+    const claim = capability.claim(understanding("confirm-slot", { ordinal: 1 }), state)!;
+    const decision = await capability.decide(claim, { state, policy, now: new Date(0) });
+
+    await expect(capability.execute(decision, { state, policy, now: new Date(0) }))
+      .resolves.toMatchObject({
+        type: "appointment_reschedule_compensation_failed",
+        semanticClass: "human_action_required",
+        evidence: [{ source: "write", reference: "reschedule:compensation_failed" }],
+      });
+  });
+
   it("sem pending state não lê nem escreve", async () => {
     const resolveOfferedSlot = vi.fn(); const bookSlot = vi.fn();
     const capability = createDentalSchedulingCapability(

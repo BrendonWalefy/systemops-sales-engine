@@ -23,6 +23,8 @@ export type SpeakerProfile = Readonly<{
  * Sem isto o modelo so tem uma frase de maquina para imitar.
  */
 export type AuthorizedStatement = Readonly<{
+  /** Closed business outcome already decided by the owning capability. */
+  outcome: string;
   meaning:
     | "inform_fact"
     | "offer_options"

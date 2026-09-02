@@ -43,6 +43,7 @@ export class LiveResponseVerbalizer implements ResponseVerbalizerPort {
     // ao modelo faz ele copiar o vocabulário da máquina em vez de dizer o sentido.
     const payload = {
       statements: request.statements.map((statement) => ({
+        outcome: statement.outcome,
         meaning: statement.meaning,
         subject: statement.subject,
         values: [...statement.values],

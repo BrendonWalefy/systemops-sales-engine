@@ -97,16 +97,23 @@ export function authorizedStatementsFor<OutcomeType extends string>(
   const facts = new Map(plan.facts.map((fact) => [fact.ref, fact]));
   const options = new Map(plan.options.map((option) => [option.ref, option]));
   const subjects = new Map(plan.subjects.map((subject) => [subject.ref, subject]));
+  const outcomes = new Map(plan.outcomes.map((outcome) => [outcome.ref, outcome]));
   const display = (factRef: string): string | null => {
     const fact = facts.get(factRef);
     return fact && fact.disclosure === "allowed" ? formatFactValue(fact.value) : null;
   };
   const named = (subjectRef: string | null): string | null =>
     subjectRef === null ? null : subjects.get(subjectRef)?.displayName ?? null;
+  const outcome = (outcomeRef: string): string => {
+    const resolved = outcomes.get(outcomeRef)?.outcomeType;
+    if (!resolved) throw new Error(`missing outcome ${outcomeRef}`);
+    return resolved;
+  };
 
   return Object.freeze(draft.acts.map((act): AuthorizedStatement => {
     if (act.kind === "inform_fact") {
       return Object.freeze({
+        outcome: outcome(act.outcomeRef),
         meaning: act.kind,
         subject: named(act.subjectRef),
         values: Object.freeze([display(act.factRef)].filter((value): value is string => value !== null)),
@@ -114,6 +121,7 @@ export function authorizedStatementsFor<OutcomeType extends string>(
     }
     if (act.kind === "confirm_effect") {
       return Object.freeze({
+        outcome: outcome(act.outcomeRef),
         meaning: act.kind,
         subject: named(act.subjectRef),
         values: Object.freeze(act.factRefs
@@ -123,6 +131,7 @@ export function authorizedStatementsFor<OutcomeType extends string>(
     }
     if (act.kind === "offer_options") {
       return Object.freeze({
+        outcome: outcome(act.outcomeRef),
         meaning: act.kind,
         subject: named(act.subjectRef),
         values: Object.freeze(act.optionRefs.map((optionRef) => (options.get(optionRef)?.factRefs ?? [])
@@ -132,6 +141,7 @@ export function authorizedStatementsFor<OutcomeType extends string>(
       });
     }
     return Object.freeze({
+      outcome: outcome(act.outcomeRef),
       meaning: act.kind,
       subject: named(act.subjectRef),
       values: Object.freeze([]),

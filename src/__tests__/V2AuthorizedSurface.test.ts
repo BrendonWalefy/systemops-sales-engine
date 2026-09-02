@@ -238,6 +238,7 @@ describe("superfície autorizada de um plano", () => {
     }]));
 
     expect(statements).toEqual([{
+      outcome: "quote_ready",
       meaning: "inform_fact",
       subject: "Item A",
       values: ["R$ 290,00"],
@@ -256,6 +257,7 @@ describe("superfície autorizada de um plano", () => {
     }]));
 
     expect(statements).toEqual([{
+      outcome: "options_ready",
       meaning: "offer_options",
       subject: "Item A",
       values: ["quarta às 15h", "quinta às 9h"],
@@ -272,7 +274,12 @@ describe("superfície autorizada de um plano", () => {
       facts: [],
     }]));
 
-    expect(statements).toEqual([{ meaning: "invite_engagement", subject: null, values: [] }]);
+    expect(statements).toEqual([{
+      outcome: "engagement",
+      meaning: "invite_engagement",
+      subject: null,
+      values: [],
+    }]);
   });
 });
 
