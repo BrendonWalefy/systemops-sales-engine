@@ -100,6 +100,10 @@ type StaticDentalDependencies = Omit<
     DentalLiveAdapterDependencies,
     "calendar" | "booking"
   >;
+  journeyResources?: Omit<
+    NonNullable<DentalLiveAdapterDependencies["journey"]>,
+    "inboundMessage" | "history"
+  >;
 }>;
 
 export type V2LiveConversationHandlerDependencies = Readonly<{
@@ -330,6 +334,16 @@ export class V2LiveConversationHandler implements ConversationHandler {
           attempted() { effectAttempted = true; },
           completed() { effectCompleted = true; },
         },
+        journey: this.deps.dental.journeyResources
+          ? {
+              ...this.deps.dental.journeyResources,
+              inboundMessage: {
+                id: context.inboundMessage.id,
+                mediaType: context.inboundMessage.mediaType,
+              },
+              history: snapshot.history,
+            }
+          : undefined,
       });
       const pack = createDentalPack(adapters);
 

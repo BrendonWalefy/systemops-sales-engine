@@ -25,6 +25,8 @@ import type { Professional } from "@/domain/entities/professional";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
 import type { ProfessionalRepository } from "@/domain/repositories/professional-repository";
 import type { TreatmentRepository } from "@/domain/repositories/treatment-repository";
+import type { MediaAssetRepository } from "@/domain/repositories/media-asset-repository";
+import type { Message } from "@/domain/entities/conversation";
 import type {
   DentalBusinessInformationFact,
   DentalAppointmentLifecycleReadPort,
@@ -38,12 +40,18 @@ import type {
   DentalSchedulingWritePort,
   DentalService,
   DentalSlot,
+  DentalJourneyReadPort,
+  DentalJourneyWritePort,
   ServiceResolution,
 } from "@/domain-packs/dental/ports";
 import {
   resolveEffectivePrice,
   type PriceCampaignRow,
 } from "@/application/config/price-campaigns";
+import {
+  createDentalJourneyLiveAdapter,
+  type DentalJourneyLiveAdapterDependencies,
+} from "@/application/conversation-v2/dental-journey-live-adapter";
 
 type LiveState = Pick<
   ConversationStateMachine,
@@ -83,6 +91,13 @@ export type DentalLiveAdapterDependencies = {
   effectLifecycle?: Readonly<{
     attempted(): void;
     completed(): void;
+  }>;
+  journey?: Readonly<{
+    mediaAssets: Pick<MediaAssetRepository, "findByIds">;
+    state: DentalJourneyLiveAdapterDependencies["state"];
+    reservations: DentalJourneyLiveAdapterDependencies["reservations"];
+    inboundMessage: Pick<Message, "id" | "mediaType">;
+    history: readonly Message[];
   }>;
 };
 
@@ -322,6 +337,8 @@ export function createDentalLiveAdapters(
   schedulingWrite: DentalSchedulingWritePort;
   appointmentLifecycleRead: DentalAppointmentLifecycleReadPort;
   appointmentLifecycleWrite: DentalAppointmentLifecycleWritePort;
+  journeyRead: DentalJourneyReadPort;
+  journeyWrite: DentalJourneyWritePort;
 } {
   const {
     appointments,
@@ -365,6 +382,33 @@ export function createDentalLiveAdapters(
     replacesAppointmentId: string | null;
     exposed: Readonly<{ service: { id: string; name: string; requiresEvaluationFirst: boolean }; slots: readonly DentalSlot[] }>;
   }> | null = null;
+  const journey = deps.journey
+    ? createDentalJourneyLiveAdapter({
+        clinicId: clinic.id,
+        conversationId,
+        turnId,
+        now: new Date(turnNow.getTime()),
+        inboundMessage: deps.journey.inboundMessage,
+        history: deps.journey.history,
+        treatments,
+        mediaAssets: deps.journey.mediaAssets,
+        state: deps.journey.state,
+        reservations: deps.journey.reservations,
+        effectLifecycle,
+      })
+    : {
+        journeyRead: {
+          resolveStart: async () => ({ kind: "unavailable" as const, reason: "journey_adapter_unavailable" }),
+          resolveCurrentStep: async () => ({ kind: "unavailable" as const, reason: "journey_adapter_unavailable" }),
+          resolveInboundMedia: async () => ({ kind: "unavailable" as const, reason: "journey_adapter_unavailable" }),
+        },
+        journeyWrite: {
+          prepareStep: async () => ({ success: false as const, reason: "journey_adapter_unavailable", evidenceRef: "journey:adapter_unavailable" }),
+          receiveMedia: async () => ({ success: false as const, reason: "journey_adapter_unavailable", evidenceRef: "journey:adapter_unavailable" }),
+          releasePendingDeposit: async () => ({ success: false as const, reason: "journey_adapter_unavailable", evidenceRef: "journey:adapter_unavailable" }),
+          takeDeliveryPlan: () => null,
+        },
+      };
 
   async function listTenantTreatments(): Promise<Treatment[]> {
     return (await treatments.listByClinic(clinic.id)).filter(
@@ -1386,5 +1430,7 @@ export function createDentalLiveAdapters(
     schedulingWrite,
     appointmentLifecycleRead,
     appointmentLifecycleWrite,
+    journeyRead: journey.journeyRead,
+    journeyWrite: journey.journeyWrite,
   };
 }

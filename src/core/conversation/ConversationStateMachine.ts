@@ -1,6 +1,7 @@
 // Substitui os marcadores __calendar_slots__: nos corpos de mensagem.
 // O estado da conversa fica em uma tabela dedicada — auditável, recuperável, sem parsing de texto.
 
+import { createHash } from "node:crypto";
 import { db } from "@/infrastructure/db/client";
 import { conversationStates } from "@/infrastructure/db/schema";
 import { and, eq, desc, lte, sql } from "drizzle-orm";
@@ -109,6 +110,33 @@ export type PipelineAdvanceExpectation = {
   treatmentId?: string;
   stepIndex?: number;
 };
+
+export type StartTreatmentPipelineForTurnInput = Readonly<{
+  conversationId: string;
+  turnId: string;
+  treatmentId: string;
+  treatmentName: string;
+  ttlMinutes: number;
+  stepIndex: number;
+  selectedTreatment: Readonly<{ id: string; name: string }> | null;
+  expectedCurrentStateId: string | null;
+}>;
+
+export type ExactStateTransitionResult = Readonly<{
+  applied: boolean;
+  state: ConversationStateRow | null;
+}>;
+
+function deterministicStateId(input: string): string {
+  const bytes = Buffer.from(
+    createHash("sha256").update(input).digest("hex").slice(0, 32),
+    "hex",
+  );
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 export function matchesPipelineAdvanceExpectation(
   current: TreatmentPipelinePayload,
@@ -502,6 +530,89 @@ export class ConversationStateMachine {
       payload,
       expiresAt: new Date(runtimeNow().getTime() + ttlMinutes * 60_000),
     });
+  }
+
+  /**
+   * Starts one exact journey revision for a claimed V2 turn. The durable turn ID
+   * makes replay idempotent; `supersedes_state_id` arbitrates a known predecessor.
+   * Conversation-turn leasing remains the authority that serializes two distinct
+   * first turns when no predecessor exists.
+   */
+  async startTreatmentPipelineForTurn(
+    input: StartTreatmentPipelineForTurnInput,
+  ): Promise<ExactStateTransitionResult> {
+    const id = deterministicStateId(`treatment-pipeline:${input.turnId}`);
+    const now = runtimeNow();
+    const payload: TreatmentPipelinePayload = {
+      treatmentId: input.treatmentId,
+      treatmentName: input.treatmentName,
+      ...(input.selectedTreatment && input.selectedTreatment.id !== input.treatmentId
+        ? {
+            selectedTreatmentId: input.selectedTreatment.id,
+            selectedTreatmentName: input.selectedTreatment.name,
+          }
+        : {}),
+      stepIndex: input.stepIndex,
+      qaTurns: 0,
+      photoReceived: false,
+    };
+    const inserted = await db.execute<ConversationStateRow>(sql`
+      INSERT INTO ${conversationStates}
+        (id, conversation_id, state, payload, supersedes_state_id, created_at, expires_at)
+      SELECT
+        ${id}::uuid,
+        ${input.conversationId}::uuid,
+        'treatment_pipeline_active',
+        ${JSON.stringify(payload)}::jsonb,
+        ${input.expectedCurrentStateId}::uuid,
+        now(),
+        ${new Date(now.getTime() + input.ttlMinutes * 60_000)}
+      WHERE (
+        ${input.expectedCurrentStateId}::uuid IS NOT NULL
+        AND ${input.expectedCurrentStateId}::uuid = (
+          SELECT ${conversationStates.id}
+          FROM ${conversationStates}
+          WHERE ${conversationStates.conversationId} = ${input.conversationId}::uuid
+          ORDER BY ${conversationStates.createdAt} DESC, ${conversationStates.id} DESC
+          LIMIT 1
+        )
+      ) OR (
+        ${input.expectedCurrentStateId}::uuid IS NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ${conversationStates}
+          WHERE ${conversationStates.conversationId} = ${input.conversationId}::uuid
+            AND (${conversationStates.expiresAt} IS NULL OR ${conversationStates.expiresAt} >= ${now})
+        )
+      )
+      ON CONFLICT DO NOTHING
+      RETURNING
+        id,
+        conversation_id AS "conversationId",
+        state,
+        payload,
+        supersedes_state_id AS "supersedesStateId",
+        created_at AS "createdAt",
+        expires_at AS "expiresAt"
+    `);
+    const row = inserted.rows[0]
+      ?? (await db.select().from(conversationStates).where(eq(conversationStates.id, id)).limit(1))[0]
+      ?? null;
+    if (!row) {
+      return { applied: false, state: await this.getCurrentState(input.conversationId) };
+    }
+    return {
+      applied: inserted.rows.length === 1,
+      state: {
+        id: row.id,
+        conversationId: row.conversationId,
+        state: row.state as ConversationStateType,
+        payload: row.payload as StatePayload | null,
+        supersedesStateId: row.supersedesStateId,
+        createdAt: row.createdAt,
+        expiresAt: row.expiresAt,
+      },
+    };
   }
 
   // Retorna o estado atual do pipeline, ou null se não houver pipeline ativo.

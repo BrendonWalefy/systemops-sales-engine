@@ -42,6 +42,7 @@ import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleLiveConversationContextReader } from "@/infrastructure/repositories/drizzle-live-conversation-context-reader";
+import { DrizzleMediaAssetRepository } from "@/infrastructure/repositories/drizzle-media-asset-repository";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleProfessionalRepository } from "@/infrastructure/repositories/drizzle-professional-repository";
 import { DrizzleTreatmentRepository } from "@/infrastructure/repositories/drizzle-treatment-repository";
@@ -227,6 +228,11 @@ function createLiveHandler(input: {
       state,
       appointments: appointmentRepository,
       reservations,
+      journeyResources: {
+        mediaAssets: new DrizzleMediaAssetRepository(),
+        state,
+        reservations,
+      },
       resolveTenantScheduling,
     },
     resolveTurnConfiguration: (configurationInput) =>
