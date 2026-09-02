@@ -88,9 +88,9 @@ export function createDentalPack(ports: {
     resolveInboundMedia: async () => ({ kind: "unavailable" as const, reason: "journey_media_not_expected" }),
   };
   const journeyWrite = ports.journeyWrite ?? {
-    start: unavailable,
+    prepareStep: unavailable,
     receiveMedia: unavailable,
-    changePendingDeposit: unavailable,
+    releasePendingDeposit: unavailable,
     takeDeliveryPlan: () => null,
   };
   return {

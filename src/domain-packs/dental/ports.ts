@@ -245,15 +245,26 @@ export type DentalJourneyDeliveryPlan = Readonly<{
   deterministic: boolean;
 }>;
 
-export type DentalJourneyResolution = Readonly<{
-  kind: "unavailable";
-  reason: string;
-}>;
+export type DentalJourneyResolution =
+  | Readonly<{
+      kind: "ready";
+      resolutionId: string;
+      subjectId: string;
+      subjectLabel: string;
+      evidenceRef: string;
+    }>
+  | Readonly<{ kind: "unavailable"; reason: string }>;
 
-export type DentalJourneyMediaResolution = Readonly<{
-  kind: "unavailable";
-  reason: string;
-}>;
+export type DentalJourneyMediaResolution =
+  | Readonly<{
+      kind: "ready";
+      mediaKind: "journey_media" | "deposit_proof";
+      resolutionId: string;
+      subjectId: string;
+      subjectLabel: string;
+      evidenceRef: string;
+    }>
+  | Readonly<{ kind: "unavailable"; reason: string }>;
 
 export type DentalJourneyWriteOutcome =
   | Readonly<{
@@ -268,15 +279,12 @@ export type DentalJourneyWriteOutcome =
 export type DentalJourneyReadPort = Readonly<{
   resolveStart(serviceQuery: string): Promise<DentalJourneyResolution>;
   resolveCurrentStep(): Promise<DentalJourneyResolution>;
-  resolveInboundMedia(input: Readonly<{
-    messageId: string;
-    mediaType: "image" | "video" | "document";
-  }>): Promise<DentalJourneyMediaResolution>;
+  resolveInboundMedia(): Promise<DentalJourneyMediaResolution>;
 }>;
 
 export type DentalJourneyWritePort = Readonly<{
-  start(resolution: DentalJourneyResolution): Promise<DentalJourneyWriteOutcome>;
-  receiveMedia(resolution: DentalJourneyMediaResolution): Promise<DentalJourneyWriteOutcome>;
-  changePendingDeposit(): Promise<DentalJourneyWriteOutcome>;
+  prepareStep(resolutionId: string): Promise<DentalJourneyWriteOutcome>;
+  receiveMedia(resolutionId: string): Promise<DentalJourneyWriteOutcome>;
+  releasePendingDeposit(): Promise<DentalJourneyWriteOutcome>;
   takeDeliveryPlan(): DentalJourneyDeliveryPlan | null;
 }>;

@@ -20,7 +20,11 @@ export type DentalExecuteAction =
   | "book_slot"
   | "confirm_appointment"
   | "reschedule_slot"
-  | "cancel_appointment";
+  | "cancel_appointment"
+  | "prepare_journey_step"
+  | "receive_journey_media"
+  | "receive_deposit_proof"
+  | "release_pending_deposit";
 
 type DentalOutcomeDefinition<Type extends DentalOutcomeType = DentalOutcomeType> =
   Readonly<{
@@ -225,6 +229,34 @@ const provenanceRules = [
     capabilityId: "dental-journey",
     decisionKind: "ask",
     outcomes: [outcome("clarification_required")],
+  },
+  {
+    capabilityId: "dental-journey",
+    decisionKind: "execute",
+    decisionActionType: "prepare-journey-step",
+    action: "prepare_journey_step",
+    outcomes: [outcome("journey_step_ready"), outcome("journey_failed")],
+  },
+  {
+    capabilityId: "dental-journey",
+    decisionKind: "execute",
+    decisionActionType: "receive-journey-media",
+    action: "receive_journey_media",
+    outcomes: [outcome("journey_media_received"), outcome("journey_failed")],
+  },
+  {
+    capabilityId: "dental-journey",
+    decisionKind: "execute",
+    decisionActionType: "receive-deposit-proof",
+    action: "receive_deposit_proof",
+    outcomes: [outcome("deposit_proof_received"), outcome("journey_failed")],
+  },
+  {
+    capabilityId: "dental-journey",
+    decisionKind: "execute",
+    decisionActionType: "release-pending-deposit",
+    action: "release_pending_deposit",
+    outcomes: [outcome("deposit_change_released"), outcome("journey_failed")],
   },
   {
     capabilityId: "dental-journey",
