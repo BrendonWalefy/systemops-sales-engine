@@ -75,10 +75,10 @@ V1; a roadmap detalhada abaixo apenas decompõe a evolução interna de cada fro
 | Operação | Problema em trabalho existente | `green` | Inbox | `dental-operations` + handoff fechado |
 | Operação | Paciente chegou ou está atrasado | `green` | Agenda + Inbox | resolução read-only + handoff idempotente |
 | Consentimento | Opt-out e confirmação única | `shared` | Inbox/configuração | policy + sender safety existentes |
-| Relacionamento | Follow-up e recuperação | `shared` | Inbox/configuração | produtor V2 de plano/outbox |
-| Relacionamento | Lembrete e confirmação de consulta | `shared` | Agenda | produtor V2 de plano/outbox |
-| Relacionamento | Pós-atendimento | `shared` | Agenda/configuração | regras existentes + V2 outbound |
-| Relacionamento | Campanhas | `shared` | Campanhas | audiência/oferta existentes + V2 outbound |
+| Relacionamento | Follow-up e recuperação | `green` | Inbox/configuração | produtor existente + policy/outbox/sender V2 |
+| Relacionamento | Lembrete e confirmação de consulta | `green` | Agenda | produtor existente + policy/outbox/sender V2 |
+| Relacionamento | Pós-atendimento | `green` | Agenda/configuração | regras existentes + policy/outbox/sender V2 |
+| Relacionamento | Campanhas | `green` | Campanhas | audiência/oferta existentes + policy/outbox/sender V2 |
 | Canal | Voz | `shared` | Playbook/Voz | sender mantém formato de entrega |
 | Legado | Qualificação inferida por texto do modelo | `obsolete` | — | somente efeitos explícitos e determinísticos |
 
@@ -208,6 +208,24 @@ O caminho mantém uma chamada de Understanding, no máximo uma verbalização, u
 mutação de agenda. Retry reutiliza a authority e o dedupe já existentes; outro tenant, compromisso
 ambíguo ou estado divergente falha fechado. Não foi criado schema, polling, worker ou fallback V1.
 
+### Evidência da fatia de automações proativas
+
+Follow-up, lembrete, recuperação, pós-atendimento e campanha preservam seus produtores e donos de
+conteúdo. Antes de compor ou persistir, todos consultam a mesma policy V2, que exige tenant ativo,
+auto reply, live permit, não-shadow/não-demo, kill switch aberto e authority version 2. A criação
+repete esses fatos no statement atômico, valida lead/conversa/categoria e mantém lifetime dedupe.
+
+O envelope fechado carrega `authorizationKind`, `turnId` opaco e persistência `sender`. Nenhum
+produtor pré-registra a resposta no Inbox: a mensagem canônica surge somente depois do preflight
+final e é reutilizada em retry. Imediatamente antes do provider, o sender revalida authority,
+tenant, kill switch, takeover, consentimento e safety. Opt-out e canal frozen bloqueiam toda
+automação; lembretes continuam isentos somente de caps e quiet hours.
+
+Um único `turnId` liga plano, validação, outbox e entrega sem telefone ou conteúdo. Os gates
+PostgreSQL cobrem os cinco authorization kinds, mudanças entre enqueue/send, cross-tenant e
+concorrência. Não há chamada de modelo adicional, migration, polling, worker novo ou atividade de
+banco em idle; cada ação lógica mantém um outbox, um job e uma mensagem canônica.
+
 ## Ordem de implementação
 
 1. conhecimento institucional básico concluído;
@@ -216,7 +234,7 @@ ambíguo ou estado divergente falha fechado. Não foi criado schema, polling, wo
 4. ciclo completo da agenda concluído;
 5. jornada, mídia e sinal concluídos;
 6. operação clínica e handoff concluídos;
-7. automações proativas são a próxima fatia;
+7. automações proativas concluídas;
 8. diagnóstico read-only do trace no Inbox e corpus final de paridade;
 9. auditoria final e remoção futura dos roots históricos V1.
 
