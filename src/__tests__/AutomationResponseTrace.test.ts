@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { recordAutomationResponseTrace } from "@/core/conversation/automation-response-trace";
 import type { PlannedResponse } from "@/core/conversation/ConversationResponsePlanner";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
+import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
+import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
 
 const LEAD_TEXT = "Oi, João! Sua consulta é quinta-feira às 09:00.";
 
@@ -36,6 +38,78 @@ function planned(overrides: Partial<PlannedResponse> = {}): PlannedResponse {
 }
 
 describe("trace dos caminhos de outbound automatizado", () => {
+  it("liga o mesmo turnId ao outbox sem registrar conteúdo ou destino", async () => {
+    const sink = new InMemoryDecisionTraceSink();
+    const turnId = proactiveTurnId("reminder:appointment-9");
+    await enqueueOutboundMessage({
+      clinicId: "clinic-1",
+      conversationId: "conversation-1",
+      channel: "whatsapp",
+      deliveryKind: "text",
+      category: "reminder",
+      authorization: { kind: "reminder" },
+      dedupeKey: "reminder:appointment-9",
+      payload: buildProactiveOutboundPayload({
+        authorizationKind: "reminder",
+        turnId,
+        to: "private-destination",
+        text: "private-message",
+        leadId: "lead-1",
+        conversationId: "conversation-1",
+        agentMessageId: "agent-1",
+      }),
+    }, {
+      outboundMessageStore: {
+        createOutboundMessageAndEnqueue: async () => ({
+          outboundMessageId: "outbound-1",
+          messageWasNew: true,
+          jobWasNew: false,
+        }),
+      } as never,
+      jobQueue: {} as never,
+      decisionTraceSink: sink,
+    });
+
+    expect(sink.getEvents(turnId)).toEqual([
+      expect.objectContaining({
+        turnId,
+        stage: "outbound.enqueued",
+        metadata: {
+          authorizationKind: "reminder",
+          category: "reminder",
+          jobWasNew: false,
+          messageWasNew: true,
+          outboundMessageId: "outbound-1",
+        },
+      }),
+    ]);
+    const serialized = JSON.stringify(sink.getEvents(turnId));
+    expect(serialized).not.toContain("private-destination");
+    expect(serialized).not.toContain("private-message");
+  });
+
+  it("mantém uma identidade opaca em todos os estágios", async () => {
+    const sink = new InMemoryDecisionTraceSink();
+    const response = planned({
+      source: "deterministic_fallback",
+      fallbackReason: "response_plan_violation",
+    });
+
+    await recordAutomationResponseTrace(sink, {
+      turnId: "proactive-turn-42",
+      clinicId: "clinic-1",
+      conversationId: "conversation-1",
+      planned: response,
+    });
+
+    const events = sink.getEvents("proactive-turn-42");
+    expect(events).toHaveLength(3);
+    expect(new Set(events.map((event) => event.turnId))).toEqual(
+      new Set(["proactive-turn-42"]),
+    );
+    expect(JSON.stringify(events)).not.toContain(response.response.text);
+  });
+
   it("registra plano, validação e telemetria do turno", async () => {
     const sink = new InMemoryDecisionTraceSink();
 

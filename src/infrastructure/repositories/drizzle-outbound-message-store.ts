@@ -17,6 +17,9 @@ import { digestInboundClaimToken } from "@/application/jobs/inbound-claim-token"
 import { db } from "@/infrastructure/db/client";
 import { outboundMessages } from "@/infrastructure/db/schema";
 import { DrizzleLiveOutboundPreflight } from "@/infrastructure/repositories/drizzle-live-outbound-preflight";
+import {
+  isV2ProactiveAutomationOutboundPayload,
+} from "@/application/jobs/conversation-outbound-payload";
 
 export class DrizzleOutboundMessageStore implements OutboundMessageStore {
   constructor(
@@ -35,6 +38,14 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
     };
     const authorization = input.authorization;
     const isLiveReply = authorization.kind === "live_stream_reply";
+    const isProactive = [
+      "follow_up", "reminder", "campaign", "recovery", "operational",
+    ].includes(authorization.kind);
+    const proactivePayload = isV2ProactiveAutomationOutboundPayload(input.payload)
+      ? input.payload
+      : null;
+    const payloadLeadId = parseUuid(proactivePayload?.leadId ?? null);
+    const payloadConversationId = parseUuid(proactivePayload?.conversationId ?? null);
     const claimTokenDigest = isLiveReply
       ? digestInboundClaimToken(authorization.claimToken)
       : null;
@@ -49,7 +60,7 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
         select control.live_outbound_enabled
         from conversation_runtime_control control
         where control.key = 'global'
-          and ${isLiveReply}
+          and ${isLiveReply || isProactive}
         for share
       ), creation_context as materialized (
         select
@@ -60,11 +71,21 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
           organization.shadow_mode_enabled,
           organization.is_demo,
           coalesce(authority.version, 0)::integer as authority_version,
-          locked_runtime_control.live_outbound_enabled
+          locked_runtime_control.live_outbound_enabled,
+          bound_conversation.id as bound_conversation_id,
+          bound_lead.id as bound_lead_id
         from (select ${input.clinicId}::uuid as organization_id) requested
         left join organizations organization on organization.id = requested.organization_id
         left join conversation_authority authority
           on authority.organization_id = requested.organization_id
+        left join conversations bound_conversation
+          on bound_conversation.id = ${input.conversationId}::uuid
+         and bound_conversation.id = ${payloadConversationId}::uuid
+         and bound_conversation.organization_id = requested.organization_id
+        left join leads bound_lead
+          on bound_lead.id = ${payloadLeadId}::uuid
+         and bound_lead.organization_id = requested.organization_id
+         and bound_lead.id = bound_conversation.lead_id
         left join locked_runtime_control on true
       ), creation_decision as materialized (
         select
@@ -130,6 +151,35 @@ export class DrizzleOutboundMessageStore implements OutboundMessageStore {
             end
             when ${authorization.kind} = 'legacy' and creation_context.authority_version >= 2
               then 'outbound_not_sendable'
+            when ${isProactive} then case
+              when ${proactivePayload !== null} is distinct from true
+                or ${proactivePayload?.authorizationKind ?? null} is distinct from ${authorization.kind}
+                then 'outbound_not_sendable'
+              when creation_context.authority_version < 2 then 'authority_below_v2'
+              when not (
+                (${authorization.kind} = 'follow_up' and ${input.category ?? "reply"} = 'follow_up')
+                or (${authorization.kind} = 'reminder' and ${input.category ?? "reply"} = 'reminder')
+                or (${authorization.kind} = 'campaign' and ${input.category ?? "reply"} = 'campaign')
+                or (${authorization.kind} = 'recovery' and ${input.category ?? "reply"} = 'recovery')
+                or (${authorization.kind} = 'operational' and ${input.category ?? "reply"} = 'operational')
+              ) then 'claim_mismatch'
+              when creation_context.bound_conversation_id is null
+                or creation_context.bound_lead_id is null
+                then 'claim_mismatch'
+              when creation_context.organization_exists is not true
+                or creation_context.operational_status is distinct from 'active'
+                then 'clinic_not_active'
+              when creation_context.auto_reply_enabled is distinct from true
+                then 'auto_reply_disabled'
+              when creation_context.live_automation_enabled is distinct from true
+                then 'tenant_live_disabled'
+              when creation_context.shadow_mode_enabled is distinct from false
+                or creation_context.is_demo is distinct from false
+                then 'shadow_observe'
+              when creation_context.live_outbound_enabled is distinct from true
+                then 'global_kill_switch'
+              else null
+            end
             when (
             (${authorization.kind} = 'follow_up' and ${input.category ?? "reply"} = 'follow_up')
             or (${authorization.kind} = 'reminder' and ${input.category ?? "reply"} = 'reminder')

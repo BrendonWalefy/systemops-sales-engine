@@ -4,6 +4,7 @@ import { SendMessageJobHandler, SHADOW_DELIVERY_SUPPRESSED } from "@/application
 import type { OutboundMessage } from "@/application/ports/outbound-message-store";
 import { InMemoryDecisionTraceSink } from "@/core/observability/DecisionTrace";
 import { isConversationOutboundPayload } from "@/application/jobs/conversation-outbound-payload";
+import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
 import { buildInitialAgentMessage } from "@/core/pipeline/outbound-message-persistence";
 import { V2TerminalHandoffRequiredError } from "@/application/conversation-v2/v2-terminal-failure-policy";
 
@@ -95,11 +96,37 @@ function automationOutbound(patch: Partial<OutboundMessage> = {}): OutboundMessa
   };
 }
 
+function senderOwnedAutomationOutbound(patch: Partial<OutboundMessage> = {}): OutboundMessage {
+  return automationOutbound({
+    authorization: {
+      kind: "follow_up",
+      streamId: null,
+      streamGeneration: null,
+      sourceInboundEventId: null,
+      claimJobId: null,
+      claimTokenDigest: null,
+      authorityVersion: 2,
+    },
+    payload: buildProactiveOutboundPayload({
+      authorizationKind: "follow_up",
+      turnId: proactiveTurnId("followup:follow-up-1"),
+      to: "5511999999999",
+      text: "Ainda posso te ajudar?",
+      leadId: "lead-1",
+      conversationId: "conversation-1",
+      agentMessageId: "agent-message-automation-1",
+      useVoice: false,
+    }),
+    ...patch,
+  });
+}
+
 function makeSafetyContextReader(patch: {
   contactConsentRevokedAt?: Date | null;
   outboundHourlyCap?: number;
   outboundDailyCap?: number;
   businessHours?: string | null;
+  agentMessage?: { id: string; conversationId: string } | null;
 } = {}) {
   return {
     getContext: vi.fn().mockResolvedValue({
@@ -120,10 +147,10 @@ function makeSafetyContextReader(patch: {
         id: "conversation-1",
         leadId: "lead-1",
       },
-      agentMessage: {
+      agentMessage: patch.agentMessage === undefined ? {
         id: "agent-message-automation-1",
         conversationId: "conversation-1",
-      },
+      } : patch.agentMessage,
     }),
   };
 }
@@ -136,6 +163,62 @@ function makeAutomationDispatchLifecycle() {
 }
 
 describe("SendMessageJobHandler", () => {
+  it("persists proactive canonical history only after final authorization", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue(senderOwnedAutomationOutbound());
+    const conversationRepository = {
+      appendMessage: vi.fn().mockResolvedValue(true),
+      findMessageById: vi.fn().mockResolvedValue(null),
+    };
+    const delivery = vi.fn().mockResolvedValue("provider-1");
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository,
+      safetyContextReader: makeSafetyContextReader({ agentMessage: null }),
+      automationDispatchLifecycle: makeAutomationDispatchLifecycle(),
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+      capJitterMs: () => 0,
+      now: () => new Date("2026-07-06T15:00:00.000Z"),
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: "outbound-automation-1" } }))
+      .resolves.toBe("sent");
+    expect(store.authorizeOutboundMessageForSend).toHaveBeenCalledOnce();
+    expect(conversationRepository.appendMessage).toHaveBeenCalledOnce();
+    expect(delivery).toHaveBeenCalledOnce();
+  });
+
+  it("leaves no proactive history when final authorization denies delivery", async () => {
+    const store = makeStore();
+    store.findOutboundMessage.mockResolvedValue(senderOwnedAutomationOutbound());
+    store.authorizeOutboundMessageForSend.mockResolvedValue({
+      authorized: false,
+      reason: "global_kill_switch",
+    });
+    const conversationRepository = {
+      appendMessage: vi.fn(),
+      findMessageById: vi.fn().mockResolvedValue(null),
+    };
+    const delivery = vi.fn();
+    const handler = new SendMessageJobHandler({
+      outboundMessageStore: store as never,
+      conversationRepository,
+      safetyContextReader: makeSafetyContextReader({ agentMessage: null }),
+      automationDispatchLifecycle: makeAutomationDispatchLifecycle(),
+      delivery,
+      conversationStateReader: { getCurrentState: vi.fn().mockResolvedValue(null) },
+      capJitterMs: () => 0,
+      now: () => new Date("2026-07-06T15:00:00.000Z"),
+    });
+
+    await expect(handler.processJob({ payload: { outboundMessageId: "outbound-automation-1" } }))
+      .resolves.toBe("ignored");
+    expect(store.authorizeOutboundMessageForSend).toHaveBeenCalledOnce();
+    expect(conversationRepository.appendMessage).not.toHaveBeenCalled();
+    expect(delivery).not.toHaveBeenCalled();
+  });
+
   it("accepts sender-owned persistence without a build approval binding", () => {
     expect(isConversationOutboundPayload({
       ...(outbound.payload as Record<string, unknown>),
