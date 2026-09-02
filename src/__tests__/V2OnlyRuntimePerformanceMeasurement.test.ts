@@ -373,6 +373,7 @@ function understandingFor(fixture: CorpusCase): Record<string, unknown> {
       date: entities.date ?? null,
       period: entities.period ?? null,
       time: entities.time ?? null,
+      professional: (entities as typeof entities & { professional?: string }).professional ?? null,
       serviceCandidates: entities.serviceCandidates ?? null,
       faqQuestion: faqQuestionsByCase.get(fixture.caseId) ?? null,
       quantity: entities.quantity ?? null,
@@ -978,6 +979,50 @@ describe("V2-only runtime performance measurement worker", () => {
         conversation.id,
         new Date(FIXED_NOW.getTime() - 60_000),
       );
+    } else if (
+      fixtureInput.actionContext.kind === "active_appointment" ||
+      fixtureInput.actionContext.kind === "replacement_offer"
+    ) {
+      const actionContext = fixtureInput.actionContext;
+      const treatment = (await new DrizzleTreatmentRepository().listByClinic(clinicId))
+        .find((candidate) => candidate.name === actionContext.treatmentName);
+      if (!treatment) throw new Error(`missing lifecycle treatment for ${fixture.caseId}`);
+      const appointmentId = randomUUID();
+      seededAppointmentId = appointmentId;
+      await appointmentRepository.save({
+        id: appointmentId,
+        clinicId,
+        leadId: lead.id,
+        professionalId: null,
+        roomId: null,
+        calendarEventId: randomUUID(),
+        calendarEventUrl: null,
+        startsAt: new Date(actionContext.startsAt),
+        endsAt: new Date(actionContext.endsAt),
+        status: "scheduled",
+        source: "app",
+        origin: null,
+        reminderSentAt: null,
+        treatmentId: treatment.id,
+        valueCents: null,
+        description: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      if (actionContext.kind === "replacement_offer") {
+        await state.transition(conversation.id, "slots_offered", {
+          slots: actionContext.slots,
+          expiresAt: actionContext.expiresAt,
+          treatmentId: treatment.id,
+          treatmentName: treatment.name,
+          durationMinutes: 60,
+          replacesAppointmentId: appointmentId,
+        }, 1_920);
+        await alignLatestFixtureStateWithFixedClock(
+          conversation.id,
+          new Date(FIXED_NOW.getTime() - 60_000),
+        );
+      }
     }
     return Object.freeze({
       conversationId: conversation.id,
@@ -1519,6 +1564,70 @@ describe("V2-only runtime performance measurement worker", () => {
       "registered-objection",
       {},
     );
+    const lifecycleFixture = (
+      caseId: string,
+      leadMessage: string,
+      request: DentalRequest,
+      entities: CorpusCase["labels"]["understanding"]["entities"],
+      actionContext: RuntimeFixtureInputs["actionContext"],
+    ): CorpusCase => {
+      const fixture = commercialFixture(caseId, "scheduling", leadMessage, request, entities);
+      clinicIdsByCase.set(caseId, referenceClinicId);
+      fixtureInputsByCase.set(caseId, {
+        ...referenceInput,
+        caseId,
+        history: [],
+        requestedState: null,
+        actionContext,
+      });
+      return fixture;
+    };
+    const listAppointmentsFixture = lifecycleFixture(
+      "scheduling-9015",
+      "Quais consultas tenho marcadas?",
+      "list-appointments",
+      {},
+      {
+        kind: "active_appointment",
+        appointmentLabel: "sexta às 10h",
+        startsAt: "2026-08-28T13:00:00.000Z",
+        endsAt: "2026-08-28T14:00:00.000Z",
+        treatmentName: comparedTreatments[0]!.name,
+      },
+    );
+    const cancelAppointmentFixture = lifecycleFixture(
+      "scheduling-9016",
+      "Quero cancelar minha consulta.",
+      "cancel-appointment",
+      {},
+      {
+        kind: "active_appointment",
+        appointmentLabel: "sábado às 10h",
+        startsAt: "2026-08-29T13:00:00.000Z",
+        endsAt: "2026-08-29T14:00:00.000Z",
+        treatmentName: comparedTreatments[0]!.name,
+      },
+    );
+    const rescheduleAppointmentFixture = lifecycleFixture(
+      "scheduling-9017",
+      "Pode confirmar o novo horário?",
+      "confirm-slot",
+      { ordinal: 1 },
+      {
+        kind: "replacement_offer",
+        appointmentLabel: "domingo às 10h",
+        startsAt: "2026-08-30T13:00:00.000Z",
+        endsAt: "2026-08-30T14:00:00.000Z",
+        treatmentName: comparedTreatments[0]!.name,
+        slots: [{
+          index: 1,
+          startsAt: "2026-08-31T15:00:00.000Z",
+          endsAt: "2026-08-31T16:00:00.000Z",
+          label: "segunda às 12h",
+        }],
+        expiresAt: "2026-09-01T12:00:00.000Z",
+      },
+    );
     faqQuestionsByCase.set(faqFixture.caseId, "Preciso de encaminhamento?");
     objectionQuestionsByCase.set(objectionFixture.caseId, "Está caro para mim");
     institutionalTopicsByCase.set(addressFixture.caseId, "address");
@@ -1570,6 +1679,9 @@ describe("V2-only runtime performance measurement worker", () => {
     ]) {
       expectedV2OutcomesByCase.set(fixture.caseId, "commercial_answered");
     }
+    expectedV2OutcomesByCase.set(listAppointmentsFixture.caseId, "appointments_listed");
+    expectedV2OutcomesByCase.set(cancelAppointmentFixture.caseId, "appointment_cancelled");
+    expectedV2OutcomesByCase.set(rescheduleAppointmentFixture.caseId, "appointment_rescheduled");
 
     const businessStateBefore = await runtime!.pool.query<{
       appointments: string;
@@ -1658,6 +1770,42 @@ describe("V2-only runtime performance measurement worker", () => {
       );
     }
     expect(businessStateAfter.rows[0]).toEqual(businessStateBefore.rows[0]);
+
+    const bookingReference = fixtures.find(
+      (fixture) => fixture.labels.expectedActionResult.type === "appointment_confirmed",
+    );
+    if (!bookingReference) throw new Error("missing booking performance reference");
+    const bookingLifecycleBaseline = await runTurn("v2_only", bookingReference, 36, false);
+    const listedAppointments = await runTurn("v2_only", listAppointmentsFixture, 33, false);
+    const cancelledAppointment = await runTurn("v2_only", cancelAppointmentFixture, 34, false);
+    const rescheduledAppointment = await runTurn("v2_only", rescheduleAppointmentFixture, 35, false);
+    for (const [label, sample] of [
+      ["appointment list", listedAppointments],
+      ["appointment cancellation", cancelledAppointment],
+      ["appointment reschedule", rescheduledAppointment],
+    ] as const) {
+      expect(sample.modelCalls, `${label} model calls`).toBe(2);
+      expect(sample.cardinality, `${label} durable cardinality`).toEqual({
+        events: 1,
+        processJobs: 1,
+        liveReplies: 1,
+        sendJobs: 1,
+        sentReplies: 1,
+      });
+      const schedulingBaseline = label === "appointment list"
+        ? normalReply
+        : bookingLifecycleBaseline;
+      expect(sample.sql.statements, `${label} bounded SQL statements`)
+        .toBeLessThanOrEqual(schedulingBaseline.sql.statements + 2);
+      expect(sample.sql.sequentialRoundTrips, `${label} bounded sequential round trips`)
+        .toBeLessThanOrEqual(
+          schedulingBaseline.sql.sequentialRoundTrips + SEQUENTIAL_ROUND_TRIP_JITTER_WAVES + 2,
+        );
+      expect(sample.sql.lockHoldMs, `${label} lock duration`)
+        .toBeLessThanOrEqual(
+          normalReply.sql.lockHoldMs * LOCK_HOLD_TOLERANCE_RATIO + LOCK_HOLD_TOLERANCE_MS,
+        );
+    }
 
     if (process.env.V2_RUNTIME_PERFORMANCE_OUTPUT) {
       writeFileSync(process.env.V2_RUNTIME_PERFORMANCE_OUTPUT, JSON.stringify(report));
