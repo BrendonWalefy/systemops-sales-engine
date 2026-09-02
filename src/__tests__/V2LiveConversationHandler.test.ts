@@ -116,6 +116,7 @@ function makeHarness(options: {
   editorialFaq?: boolean;
   playbookKnowledgeTurn?: "differentials" | "faq";
   structuredMediaTurn?: "deposit" | "journey";
+  journeyStartTurn?: boolean;
 } = {}) {
   const entities = (overrides: Record<string, unknown> = {}) => ({
     service: null,
@@ -290,6 +291,15 @@ function makeHarness(options: {
         signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
       };
     }
+    if (options.journeyStartTurn) {
+      return {
+        version: UNDERSTANDING_VERSION,
+        request: "start-treatment-journey" as const,
+        dialogueMove: "new_topic" as const,
+        entities: entities({ service: "Clareamento" }),
+        signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
+      };
+    }
     if (options.businessInformationTurn) {
       return {
         version: UNDERSTANDING_VERSION,
@@ -419,13 +429,58 @@ function makeHarness(options: {
       ? { status: "persistence_failed" as const }
       : { status: "stored" as const, evidenceRef: "opaque-evidence-ref" },
   );
+  const journeyTreatment: Treatment = options.journeyStartTurn
+    ? {
+        ...treatment,
+        pipelineSteps: [{
+          type: "content",
+          label: "Como funciona",
+          blocks: [
+            { kind: "text", content: "Primeiro texto." },
+            { kind: "media", mediaId: "media-1", caption: "Veja o exemplo." },
+            { kind: "text", content: "Depois do vídeo." },
+          ],
+        }, {
+          type: "photo",
+          label: "Sua foto",
+          message: "Envie uma foto.",
+          required: true,
+        }],
+        pipelineSourceTreatmentId: null,
+        pipelineEntryBehavior: "immediate",
+      }
+    : treatment;
   const listTreatments = options.decisionFailure
     ? vi.fn().mockRejectedValue(new Error("catalog unavailable"))
     : vi.fn().mockResolvedValue([
         options.crossTenantTreatment
-          ? { ...treatment, clinicId: "clinic-other" }
-          : treatment,
+          ? { ...journeyTreatment, clinicId: "clinic-other" }
+          : journeyTreatment,
       ]);
+  let journeyCurrentState: LiveTurnSnapshot["currentState"] = null;
+  const startTreatmentPipelineForTurn = vi.fn(async (stateInput: {
+    conversationId: string;
+    treatmentId: string;
+    treatmentName: string;
+    stepIndex: number;
+  }) => {
+    journeyCurrentState = {
+      id: "state-journey-new",
+      conversationId: stateInput.conversationId,
+      state: "treatment_pipeline_active",
+      payload: {
+        treatmentId: stateInput.treatmentId,
+        treatmentName: stateInput.treatmentName,
+        stepIndex: stateInput.stepIndex,
+        qaTurns: 0,
+        photoReceived: false,
+      },
+      supersedesStateId: null,
+      createdAt: now,
+      expiresAt: new Date("2026-08-17T16:00:00.000Z"),
+    };
+    return { applied: true, state: journeyCurrentState };
+  });
   const handler = new V2LiveConversationHandler({
     lifecycle,
     understanding: understandingBoundary,
@@ -471,6 +526,34 @@ function makeHarness(options: {
         findAllActiveByLeadId: vi.fn().mockResolvedValue([]),
       },
       reservations: { findActiveByPeriod: vi.fn().mockResolvedValue([]) },
+      ...(options.journeyStartTurn
+        ? {
+            journeyResources: {
+              mediaAssets: {
+                findByIds: vi.fn().mockResolvedValue([{
+                  id: "media-1",
+                  clinicId: clinic.id,
+                  treatmentId: treatment.id,
+                  title: "Vídeo",
+                  url: "https://media.invalid/video.mp4",
+                  type: "video",
+                }]),
+              },
+              state: {
+                getCurrentState: vi.fn(async () => journeyCurrentState),
+                startTreatmentPipelineForTurn,
+                markPipelinePhotoReceived: vi.fn(),
+                getDepositState: vi.fn().mockResolvedValue(null),
+                markDepositProofReceived: vi.fn(),
+                invalidate: vi.fn(),
+              },
+              reservations: {
+                release: vi.fn(),
+                extend: vi.fn(),
+              },
+            },
+          }
+        : {}),
     },
     resolveTurnConfiguration: vi.fn().mockImplementation((resolutionInput) => ({
       gateInput: {
@@ -534,10 +617,54 @@ function makeHarness(options: {
     verbalizerCreate,
     rejectionCapture,
     listTreatments,
+    startTreatmentPipelineForTurn,
   };
 }
 
 describe("V2LiveConversationHandler", () => {
+  it("enqueues one exact configured journey plan without verbalization", async () => {
+    const harness = makeHarness({
+      journeyStartTurn: true,
+      verbalizedText: "Texto do modelo que não pode substituir conteúdo cadastrado.",
+    });
+
+    await expect(harness.handler.handle(handleInput("Como funciona o clareamento?")))
+      .resolves.toEqual({ replied: true });
+
+    expect(harness.understandingCreate).toHaveBeenCalledOnce();
+    expect(harness.verbalizerCreate).not.toHaveBeenCalled();
+    expect(harness.startTreatmentPipelineForTurn).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dedupeKey: `conversation-reply:${turnId}`,
+        payload: expect.objectContaining({
+          replyText: "Primeiro texto.\n\nDepois do vídeo.",
+          useVoice: false,
+          interleavedParts: [
+            { type: "text", content: "Primeiro texto." },
+            {
+              type: "media",
+              mediaId: "media-1",
+              url: "https://media.invalid/video.mp4",
+              mediaType: "video",
+              title: "Vídeo",
+              caption: "Veja o exemplo.",
+            },
+            { type: "text", content: "Depois do vídeo." },
+          ],
+          pipelineAdvance: {
+            action: "advance",
+            nextStepIndex: 1,
+            expectedTreatmentId: treatment.id,
+            expectedStepIndex: 0,
+          },
+        }),
+      }),
+      { turnId },
+    );
+  });
+
   it("does not call the model to classify trusted journey media metadata", async () => {
     const harness = makeHarness({ structuredMediaTurn: "deposit" });
 

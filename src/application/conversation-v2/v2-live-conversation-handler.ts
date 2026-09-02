@@ -49,6 +49,7 @@ import { buildDentalResponseConversationBrief } from "@/domain-packs/dental/resp
 import { dentalEffectDecisionIdentity } from "@/application/conversation-v2/dental-intended-effects";
 import { classifyUnderstandingFailure } from "@/application/conversation-v2/understanding-failure-code";
 import { resolveDentalStructuredMediaUnderstanding } from "@/application/conversation-v2/dental-structured-media-understanding";
+import type { DentalJourneyDeliveryPlan } from "@/domain-packs/dental/ports";
 import {
   V2_SAFE_FAILURE_REPLY_TEXT,
   shouldEnqueueSafeFailureReply,
@@ -231,6 +232,26 @@ function failureReason(phase: FailurePhase): V2SafeFailureReason {
     case "response": return "response_validation_failed";
     case "outbox": return "outbox_failed";
   }
+}
+
+export function resolveJourneyOutboundContent(
+  plan: DentalJourneyDeliveryPlan | null,
+  fallback: Readonly<{ text: string; useVoice: boolean }>,
+) {
+  if (!plan) {
+    return Object.freeze({
+      replyText: fallback.text,
+      useVoice: fallback.useVoice,
+      interleavedParts: [],
+      pipelineAdvance: null,
+    });
+  }
+  return Object.freeze({
+    replyText: plan.replyText,
+    useVoice: false,
+    interleavedParts: [...plan.interleavedParts],
+    pipelineAdvance: plan.pipelineAdvance,
+  });
 }
 
 export class V2LiveConversationHandler implements ConversationHandler {
@@ -547,6 +568,11 @@ export class V2LiveConversationHandler implements ConversationHandler {
         return { replied, reason };
       }
 
+      const exactJourneyDeliveryExpected = preparation.prepared.decisions.some(
+        ({ capabilityId, decision }) =>
+          capabilityId === "dental-journey" && decision.kind === "execute",
+      );
+
       phase = "action";
       const actionStartedAt = performance.now();
       const completed = await completeTurnPipeline({
@@ -651,7 +677,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
         response: {
           style: configuration.style,
           composer: new DeterministicResponseComposer(),
-          verbalization: this.deps.verbalizer && responseConversationBrief
+          verbalization: this.deps.verbalizer && responseConversationBrief && !exactJourneyDeliveryExpected
             ? {
                 verbalizer: this.deps.verbalizer,
                 speaker: configuration.speaker,
@@ -697,6 +723,12 @@ export class V2LiveConversationHandler implements ConversationHandler {
         return { replied: false, reason: "response_validation_failed" };
       }
 
+      const journeyPlan = adapters.journeyWrite.takeDeliveryPlan();
+      const outboundContent = resolveJourneyOutboundContent(journeyPlan, {
+        text: completed.response.text,
+        useVoice: configuration.useVoice,
+      });
+
       phase = "outbox";
       const outboxStartedAt = performance.now();
       const enqueueResult = await enqueueOutboundMessage({
@@ -713,14 +745,14 @@ export class V2LiveConversationHandler implements ConversationHandler {
           turnId: context.turnId,
           to: context.outboundAddress,
           agentMessageId: deterministicUuid(`conversation-v2-agent:${context.turnId}`),
-          replyText: completed.response.text,
+          replyText: outboundContent.replyText,
           intent: null,
-          useVoice: configuration.useVoice,
+          useVoice: outboundContent.useVoice,
           ttsConfig: configuration.ttsConfig,
-          interleavedParts: [],
+          interleavedParts: outboundContent.interleavedParts,
           mediaParts: [],
           leadId: context.leadId,
-          pipelineAdvance: null,
+          pipelineAdvance: outboundContent.pipelineAdvance,
         },
       }, this.deps.outbound);
       await trace("v2.outbox", {

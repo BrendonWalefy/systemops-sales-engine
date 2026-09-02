@@ -29,6 +29,7 @@ import {
   OutboundDeliveryService,
   type OutboundPart,
   type OutboundMediaPart,
+  type OutboundDeliveryReport,
 } from "@/infrastructure/adapters/channels/whatsapp/outbound-delivery-service";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
@@ -108,6 +109,12 @@ function isReservedReplayDestination(value: string): boolean {
 }
 
 export const SHADOW_DELIVERY_SUPPRESSED = "__shadow_delivery_suppressed__";
+
+export function canCommitPipelineAdvance(
+  reports: readonly OutboundDeliveryReport[],
+): boolean {
+  return reports.every(({ mediaFailed }) => mediaFailed === 0);
+}
 
 export type AutomationDispatchLifecycle = {
   markDelivered(outbound: OutboundMessageForAutomationLifecycle, deliveredAt: Date): Promise<void>;
@@ -967,6 +974,7 @@ async function deliverConversationOutbound(input: {
     conversationId: input.conversationId,
   });
   let firstProviderMessageId: string | null = null;
+  const deliveryReports: OutboundDeliveryReport[] = [];
 
   const persistMedia = async ({
     part,
@@ -1015,7 +1023,7 @@ async function deliverConversationOutbound(input: {
   };
 
   if (input.payload.interleavedParts.length > 0) {
-    await delivery.deliver({
+    deliveryReports.push(await delivery.deliver({
       to: input.payload.to,
       parts: input.payload.interleavedParts as OutboundPart[],
       config,
@@ -1060,7 +1068,7 @@ async function deliverConversationOutbound(input: {
       },
       onMediaSent: persistMedia,
       onProviderBoundaryEntered,
-    });
+    }));
   } else {
     const result = await boundary.sendVoiceOrText(
       input.payload.to,
@@ -1083,7 +1091,7 @@ async function deliverConversationOutbound(input: {
   }
 
   if (input.payload.mediaParts.length > 0) {
-    await delivery.deliver({
+    deliveryReports.push(await delivery.deliver({
       to: input.payload.to,
       parts: input.payload.mediaParts as OutboundPart[],
       config,
@@ -1092,10 +1100,11 @@ async function deliverConversationOutbound(input: {
       onTextSent: async () => {},
       onMediaSent: persistMedia,
       onProviderBoundaryEntered,
-    });
+    }));
   }
 
-  if (input.payload.pipelineAdvance) {
+  const completeJourneyDelivery = canCommitPipelineAdvance(deliveryReports);
+  if (input.payload.pipelineAdvance && completeJourneyDelivery) {
     const stateMachine = new ConversationStateMachine();
     if (input.payload.pipelineAdvance.action === "advance") {
       await stateMachine.advancePipelineStep(
