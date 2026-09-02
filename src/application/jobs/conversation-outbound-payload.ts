@@ -66,9 +66,22 @@ function hasOnlyKeys(value: Record<string, unknown>, allowed: ReadonlySet<string
   return Object.keys(value).every((key) => allowed.has(key));
 }
 
+export type ProactiveOutboundAuthorizationKind =
+  | "follow_up"
+  | "reminder"
+  | "campaign"
+  | "recovery"
+  | "operational";
+
 export type AutomationOutboundPayload = {
   version: 1;
   kind: "automation";
+  /** Present on every V2-produced automation; absent only on legacy queued payloads. */
+  authorizationKind?: ProactiveOutboundAuthorizationKind;
+  /** Correlates producer, outbox, preflight and delivery without carrying message content. */
+  turnId?: string;
+  /** V2 producers delegate canonical history persistence to the authorized sender. */
+  agentMessagePersistence?: "sender";
   to: string;
   text: string;
   leadId: string;
@@ -81,6 +94,12 @@ export type AutomationOutboundPayload = {
   // Usado pela régua de pós-atendimento (cuidados = texto + imagens + vídeo).
   mediaParts?: OutboundDeliveryPart[];
 };
+
+export type V2ProactiveAutomationOutboundPayload = AutomationOutboundPayload & Readonly<{
+  authorizationKind: ProactiveOutboundAuthorizationKind;
+  turnId: string;
+  agentMessagePersistence: "sender";
+}>;
 
 export type OperatorOutboundPayload = {
   version: 1;
@@ -154,6 +173,20 @@ export function isAutomationOutboundPayload(
     typeof value.leadId === "string" &&
     typeof value.conversationId === "string" &&
     typeof value.agentMessageId === "string"
+  );
+}
+
+export function isV2ProactiveAutomationOutboundPayload(
+  payload: unknown,
+): payload is V2ProactiveAutomationOutboundPayload {
+  if (!isAutomationOutboundPayload(payload)) return false;
+  return (
+    typeof payload.turnId === "string" &&
+    payload.turnId.length > 0 &&
+    payload.agentMessagePersistence === "sender" &&
+    ["follow_up", "reminder", "campaign", "recovery", "operational"].includes(
+      String(payload.authorizationKind),
+    )
   );
 }
 

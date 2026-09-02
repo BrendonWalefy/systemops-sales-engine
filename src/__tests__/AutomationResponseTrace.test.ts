@@ -36,6 +36,28 @@ function planned(overrides: Partial<PlannedResponse> = {}): PlannedResponse {
 }
 
 describe("trace dos caminhos de outbound automatizado", () => {
+  it("mantém uma identidade opaca em todos os estágios", async () => {
+    const sink = new InMemoryDecisionTraceSink();
+    const response = planned({
+      source: "deterministic_fallback",
+      fallbackReason: "response_plan_violation",
+    });
+
+    await recordAutomationResponseTrace(sink, {
+      turnId: "proactive-turn-42",
+      clinicId: "clinic-1",
+      conversationId: "conversation-1",
+      planned: response,
+    });
+
+    const events = sink.getEvents("proactive-turn-42");
+    expect(events).toHaveLength(3);
+    expect(new Set(events.map((event) => event.turnId))).toEqual(
+      new Set(["proactive-turn-42"]),
+    );
+    expect(JSON.stringify(events)).not.toContain(response.response.text);
+  });
+
   it("registra plano, validação e telemetria do turno", async () => {
     const sink = new InMemoryDecisionTraceSink();
 
