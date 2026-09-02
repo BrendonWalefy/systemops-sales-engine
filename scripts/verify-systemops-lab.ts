@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { WhatsAppProvider } from "@/application/ports/channel-config-snapshot";
 import { fileURLToPath } from "node:url";
 
 import { and, eq } from "drizzle-orm";
@@ -34,7 +35,7 @@ type SystemOpsLabReadinessSnapshot = {
   autoReplyEnabled: boolean;
   liveAutomationEnabled: boolean;
   shadowModeEnabled: boolean;
-  channelProvider: "z_api" | "meta_cloud_api" | null;
+  channelProvider: WhatsAppProvider | null;
   zapiInstanceId: string | null;
   zapiToken: string | null;
   zapiClientToken: string | null;

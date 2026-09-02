@@ -192,6 +192,7 @@ describe("resolveChannelConfig", () => {
       provider: "meta_cloud_api",
       zapi: null,
       meta: null,
+      waha: null,
     });
   });
 
@@ -210,6 +211,7 @@ describe("resolveChannelConfig", () => {
         clientToken: "clinic-client-token",
       },
       meta: null,
+      waha: null,
     });
   });
 });
@@ -226,6 +228,7 @@ describe("sendTextMessage", () => {
         provider: "z_api",
         zapi: null,
         meta: null,
+        waha: null,
       }, onProviderBoundaryEntered),
     ).resolves.toBeNull();
 
@@ -245,6 +248,7 @@ describe("sendTextMessage", () => {
       provider: "z_api",
       zapi: { instanceId: "instance-1", token: "token-1" },
       meta: null,
+      waha: null,
     }, onProviderBoundaryEntered)).resolves.toBe("provider-1");
 
     expect(fetchMock).toHaveBeenCalledOnce();

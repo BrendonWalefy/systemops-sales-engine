@@ -35,7 +35,7 @@ export function normalizeWhatsAppLid(raw: string): string | null {
 }
 
 export function buildWhatsAppStreamAliases(input: Readonly<{
-  provider: "meta_cloud_api" | "z_api";
+  provider: "meta_cloud_api" | "z_api" | "waha";
   providerInstanceId: string;
   providerThreadId: string;
   phone?: string | null;

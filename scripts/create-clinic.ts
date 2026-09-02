@@ -14,6 +14,7 @@
  * mesmo slug ATUALIZA a clínica e republica o playbook (não duplica).
  */
 import "dotenv/config";
+import type { WhatsAppProvider } from "@/application/ports/channel-config-snapshot";
 import { readFileSync } from "node:fs";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -49,7 +50,7 @@ type NewClinicConfig = {
   monthlyRevenueBrl?: number;
   billingStartedAt?: string;
   channel: {
-    provider: "z_api" | "meta_cloud_api";
+    provider: WhatsAppProvider;
     zapi?: { instanceId: string; token: string; clientToken?: string };
     meta?: { phoneNumberId: string; accessToken: string; appSecret: string };
   };

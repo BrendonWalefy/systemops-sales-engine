@@ -30,6 +30,24 @@ export async function resolveClinicByZapiInstance(
   return row?.id ?? null;
 }
 
+/**
+ * Inbound WAHA: a sessão que recebeu a mensagem identifica a clínica — o mesmo
+ * papel do instanceId na Z-API. O nome da sessão é único no schema justamente
+ * porque o webhook do WAHA não diz de qual servidor veio.
+ */
+export async function resolveClinicByWahaSession(
+  session: string | null | undefined,
+): Promise<string | null> {
+  if (!session) return null;
+  const row = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.wahaSession, session))
+    .limit(1)
+    .then((r) => r[0] ?? null);
+  return row?.id ?? null;
+}
+
 export type MetaWebhookTenant = {
   clinicId: string;
   encryptedAppSecret: string | null;

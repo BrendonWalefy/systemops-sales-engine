@@ -1,4 +1,4 @@
-export type InboundEventProvider = "meta_cloud_api" | "z_api";
+export type InboundEventProvider = "meta_cloud_api" | "z_api" | "waha";
 export type StreamGeneration = number;
 
 export type InboundEventProcessingStatus =

@@ -105,6 +105,9 @@ export const aiOperationEnum = pgEnum("ai_operation", [
 export const whatsappProviderEnum = pgEnum("whatsapp_provider", [
   "meta_cloud_api",
   "z_api",
+  // WAHA self-hosted (ADR-010). Escopo: lab, demo, piloto e números
+  // descartáveis — nunca o número de um cliente pagante.
+  "waha",
 ]);
 
 export const messageDirectionEnum = pgEnum("message_direction", [
@@ -573,6 +576,12 @@ export const organizations = pgTable("organizations", {
   // App Secret usado para autenticar x-hub-signature-256 no webhook inbound.
   // Segredo criptografado pelo credential vault, assim como o access token.
   metaAppSecret: text("meta_app_secret"),
+  // ── WAHA self-hosted (ADR-010) ──
+  // A sessão faz o papel do instanceId da Z-API: é ela que resolve o tenant no
+  // webhook. A apiKey é criptografada pelo credential vault.
+  wahaBaseUrl: text("waha_base_url"),
+  wahaApiKey: text("waha_api_key"),
+  wahaSession: text("waha_session"),
   // Momento em que a instância Z-API foi conectada com sucesso pela primeira vez
   // via o fluxo de pareamento dentro do nosso portal (P0.5). Nullable: clínicas
   // existentes e as que conectaram pelo painel Z-API têm null.
@@ -604,6 +613,13 @@ export const organizations = pgTable("organizations", {
   uniqueIndex("organizations_meta_phone_number_unique")
     .on(table.metaPhoneNumberId)
     .where(sql`${table.metaPhoneNumberId} is not null and btrim(${table.metaPhoneNumberId}) <> ''`),
+  // O webhook do WAHA só carrega o nome da sessão — não a URL do servidor. Se
+  // duas organizações usassem a sessão "default" em servidores diferentes, a
+  // resolução de tenant ficaria ambígua e a mensagem de uma cairia na outra.
+  // A unicidade global do nome da sessão é o que impede isso.
+  uniqueIndex("organizations_waha_session_unique")
+    .on(table.wahaSession)
+    .where(sql`${table.wahaSession} is not null and btrim(${table.wahaSession}) <> ''`),
 ]);
 
 export const treatments = pgTable(
