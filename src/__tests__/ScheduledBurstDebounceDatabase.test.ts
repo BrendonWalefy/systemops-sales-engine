@@ -29,6 +29,11 @@ import {
   startEmbeddedAuthorityDatabase,
   type EmbeddedAuthorityDatabase,
 } from "@/__tests__/helpers/embedded-authority-database";
+import {
+  buildProactiveOutboundPayload,
+  proactiveTurnId,
+  PROACTIVE_AUTHORIZATION_KINDS,
+} from "@/application/automation/proactive-outbound";
 
 const databaseMock = vi.hoisted(() => {
   let activeDb: unknown;
@@ -1616,17 +1621,12 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
       await testDb().insert(conversationAuthority).values({ clinicId: clinicId!, version: 1 })
         .onConflictDoUpdate({ target: conversationAuthority.clinicId, set: { version: 1 } });
       const store = new DrizzleOutboundMessageStore();
-      const cases = [
-        ["follow_up", "follow_up"],
-        ["reminder", "reminder"],
-        ["campaign", "campaign"],
+      const legacyCases = [
         ["human_manual", "reply"],
-        ["operational", "operational"],
         ["system", "reply"],
-        ["recovery", "recovery"],
         ["legacy", "reply"],
       ] as const;
-      for (const [kind, category] of cases) {
+      for (const [kind, category] of legacyCases) {
         const created = await store.createOutboundMessageAndEnqueue({
           clinicId: clinicId!,
           conversationId: conversation.id,
@@ -1648,8 +1648,65 @@ describe("scheduled burst debounce — PostgreSQL authority concurrency", () => 
           authorityVersion: 1,
         });
       }
+      for (const kind of PROACTIVE_AUTHORIZATION_KINDS) {
+        await expect(store.createOutboundMessageAndEnqueue({
+          clinicId: clinicId!,
+          conversationId: conversation.id,
+          channel: "whatsapp",
+          payload: buildProactiveOutboundPayload({
+            authorizationKind: kind,
+            turnId: proactiveTurnId(`authority-v1:${kind}`),
+            to: lead.phone!,
+            text: kind,
+            leadId: lead.id,
+            conversationId: conversation.id,
+            agentMessageId: randomUUID(),
+          }),
+          deliveryKind: "text",
+          category: kind,
+          dedupeKey: `authority-v1:${kind}`,
+          authorization: { kind },
+        })).rejects.toThrow("Outbound authorization rejected");
+      }
       await testDb().update(conversationAuthority).set({ version: 2 })
         .where(eq(conversationAuthority.clinicId, clinicId!));
+      await testDb().execute(sql`
+        update organizations
+        set operational_status = 'active', live_automation_enabled = true,
+            shadow_mode_enabled = false, is_demo = false
+        where id = ${clinicId!}::uuid
+      `);
+      await testDb().execute(sql`
+        insert into conversation_runtime_control (
+          key, live_outbound_enabled, version, updated_by
+        ) values ('global', true, 1, 'non-live-kind-test')
+        on conflict (key) do update set live_outbound_enabled = true,
+          version = conversation_runtime_control.version + 1,
+          updated_by = excluded.updated_by
+      `);
+      for (const kind of PROACTIVE_AUTHORIZATION_KINDS) {
+        const dedupeKey = `authority-v2:${kind}`;
+        const created = await store.createOutboundMessageAndEnqueue({
+          clinicId: clinicId!,
+          conversationId: conversation.id,
+          channel: "whatsapp",
+          payload: buildProactiveOutboundPayload({
+            authorizationKind: kind,
+            turnId: proactiveTurnId(dedupeKey),
+            to: lead.phone!,
+            text: kind,
+            leadId: lead.id,
+            conversationId: conversation.id,
+            agentMessageId: randomUUID(),
+          }),
+          deliveryKind: "text",
+          category: kind,
+          dedupeKey,
+          authorization: { kind },
+        });
+        const persisted = await store.findOutboundMessage(created.outboundMessageId);
+        expect(persisted?.authorization).toMatchObject({ kind, authorityVersion: 2 });
+      }
       const legacy = await testDb().execute<{ id: string }>(sql`
         select id::text from outbound_messages
         where conversation_id = ${conversation.id}::uuid
