@@ -247,12 +247,20 @@ describe("BookingService — modo interno", () => {
     const appts = apptRepo([]);
 
     const service = new BookingService(gateway, appts.repo, leads.repo, svc);
-    const result = await service.book({ clinic, lead, startsAt, endsAt , origin: "ai_conversation" });
+    const result = await service.book({
+      clinic,
+      lead,
+      startsAt,
+      endsAt,
+      professionalId: "professional-1",
+      origin: "ai_conversation",
+    });
 
     expect(result.success).toBe(true);
     expect(appts.saved).toHaveLength(1);
     expect(appts.saved[0].calendarEventId).toBeNull();
     expect(appts.saved[0].source).toBe("app");
+    expect(appts.saved[0].professionalId).toBe("professional-1");
     expect(leads.saved[0].status).toBe("appointment_scheduled");
     expect(leads.saved[0].nextActionAt).toBeNull();
   });

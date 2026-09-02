@@ -27,6 +27,7 @@ export const dentalUnderstandingStructureSchema = z.object({
     date: z.string().nullable(),
     period: z.string().nullable(),
     time: z.string().nullable(),
+    professional: z.string().nullable(),
     serviceCandidates: z.array(z.string()).nullable(),
     faqQuestion: z.string().nullable(),
     quantity: z.number().int().positive().nullable(),
@@ -70,7 +71,8 @@ export type DentalUnderstandingSemanticIssue = Readonly<{
     | "quantity_scope_forbidden"
     | "quantity_scope_requires_quantity"
     | "objection_question_required"
-    | "objection_question_forbidden";
+    | "objection_question_forbidden"
+    | "professional_forbidden";
 }>;
 
 export type DentalUnderstandingSemanticValidation =
@@ -84,6 +86,11 @@ const SERVICE_REQUIRED_REQUESTS = new Set<DentalRequest>([
   "price-of-service",
   "service-availability",
   "explain-service",
+]);
+
+const PROFESSIONAL_ALLOWED_REQUESTS = new Set<DentalRequest>([
+  "book-appointment",
+  "reschedule-appointment",
 ]);
 
 export class DentalUnderstandingSemanticError extends Error {
@@ -238,6 +245,19 @@ export function validateDentalUnderstandingSemantics(
       issues: Object.freeze([{
         path: Object.freeze(["entities", "objectionQuestion"]),
         code: "objection_question_forbidden" as const,
+      }]),
+    };
+  }
+  if (
+    value.entities.professional !== null
+    && value.request !== null
+    && !PROFESSIONAL_ALLOWED_REQUESTS.has(value.request)
+  ) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "professional"]),
+        code: "professional_forbidden" as const,
       }]),
     };
   }

@@ -39,6 +39,7 @@ export class LiveDentalUnderstanding {
     catalog: readonly DentalCatalogEntry[];
     faqCatalog: readonly string[];
     objectionCatalog: readonly string[];
+    professionalCatalog: readonly string[];
   }, options?: DentalUnderstandingOptions): Promise<Understanding<DentalRequest>> {
     return this.provider.understand(input, options);
   }

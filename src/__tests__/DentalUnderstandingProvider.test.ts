@@ -14,6 +14,7 @@ function validUnderstanding(overrides: Record<string, unknown> = {}) {
       date: null,
       period: null,
       time: null,
+      professional: null,
       serviceCandidates: null,
       faqQuestion: null,
       quantity: null,
@@ -41,6 +42,7 @@ const understandingInput = {
   catalog: [{ id: "svc-1", displayName: "Clareamento", aliases: [] }],
   faqCatalog: ["Preciso de encaminhamento?"],
   objectionCatalog: ["Está caro para mim"],
+  professionalCatalog: ["Dra. Marina"],
 };
 
 async function captureThrown(run: () => Promise<unknown>): Promise<unknown> {
@@ -58,7 +60,7 @@ describe("provider dental de Understanding", () => {
       version: "understanding.v1",
       request: "price-of-service",
       dialogueMove: "new_topic",
-      entities: { service: "clareamento", businessInformationTopic: null, date: null, period: null, time: null, serviceCandidates: null, faqQuestion: null, quantity: null, quantityScope: null, objectionQuestion: null, ordinal: null },
+      entities: { service: "clareamento", businessInformationTopic: null, date: null, period: null, time: null, professional: null, serviceCandidates: null, faqQuestion: null, quantity: null, quantityScope: null, objectionQuestion: null, ordinal: null },
       signals: { purchaseIntent: null, priceSensitivity: null, sentiment: null, objection: null },
       safety: { optOut: false, requestsHuman: false, emergency: false },
       confidence: 0.8,
@@ -76,31 +78,33 @@ describe("provider dental de Understanding", () => {
       catalog: [{ id: "svc-1", displayName: "Clareamento", aliases: [] }],
       faqCatalog: ["Preciso de encaminhamento?"],
       objectionCatalog: ["Está caro para mim"],
+      professionalCatalog: ["Dra. Marina"],
     });
 
     expect(output.request).toBe("price-of-service");
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({
       modelId: "fake-dental-model",
-      promptVersion: "dental-understanding.v4",
+      promptVersion: "dental-understanding.v5",
       schemaVersion: "understanding.v1",
       faqCatalog: ["Preciso de encaminhamento?"],
       objectionCatalog: ["Está caro para mim"],
+      professionalCatalog: ["Dra. Marina"],
     }));
   });
 
   it("envia json_schema estrito no boundary específico do provider", async () => {
     const rawOutput = JSON.stringify({
       version: "understanding.v1", request: "book-appointment", dialogueMove: "new_topic",
-      entities: { service: null, businessInformationTopic: null, date: null, period: null, time: null, serviceCandidates: null, faqQuestion: null, quantity: null, quantityScope: null, objectionQuestion: null, ordinal: null },
+      entities: { service: null, businessInformationTopic: null, date: null, period: null, time: null, professional: "Dra. Marina", serviceCandidates: null, faqQuestion: null, quantity: null, quantityScope: null, objectionQuestion: null, ordinal: null },
       signals: { purchaseIntent: null, priceSensitivity: null, sentiment: null, objection: null },
       safety: { optOut: false, requestsHuman: false, emergency: false }, confidence: 0.8, ambiguity: null,
     });
     const create = vi.fn().mockResolvedValue({ choices: [{ message: { content: rawOutput } }] });
     const model = new OpenAIDentalUnderstandingModel({ chat: { completions: { create } } }, "gpt-test");
     const result = await model.generate({
-      modelId: "gpt-test", promptVersion: "dental-understanding.v4",
+      modelId: "gpt-test", promptVersion: "dental-understanding.v5",
       schemaVersion: "understanding.v1", systemPrompt: "system", leadMessage: "quero marcar",
-      history: [], state: null, catalog: [], faqCatalog: ["Aceita convênio?"], objectionCatalog: ["Está caro para mim"],
+      history: [], state: null, catalog: [], faqCatalog: ["Aceita convênio?"], objectionCatalog: ["Está caro para mim"], professionalCatalog: ["Dra. Marina"],
     });
 
     expect(result).toBe(rawOutput);
@@ -115,6 +119,7 @@ describe("provider dental de Understanding", () => {
     const userInput = JSON.parse(request.messages[1].content);
     expect(userInput.faqCatalog).toEqual(["Aceita convênio?"]);
     expect(userInput.objectionCatalog).toEqual(["Está caro para mim"]);
+    expect(userInput.professionalCatalog).toEqual(["Dra. Marina"]);
     expect(userInput).not.toHaveProperty("faqAnswers");
     expect(JSON.stringify(userInput)).not.toContain("Podemos parcelar");
   });
@@ -122,7 +127,7 @@ describe("provider dental de Understanding", () => {
   it("encaminha o AbortSignal ao client OpenAI", async () => {
     const create = vi.fn().mockResolvedValue({ choices: [{ message: { content: JSON.stringify({
       version: "understanding.v1", request: "book-appointment", dialogueMove: "new_topic",
-      entities: { service: null, businessInformationTopic: null, date: null, period: null, time: null, serviceCandidates: null, faqQuestion: null, quantity: null, quantityScope: null, objectionQuestion: null, ordinal: null },
+      entities: { service: null, businessInformationTopic: null, date: null, period: null, time: null, professional: null, serviceCandidates: null, faqQuestion: null, quantity: null, quantityScope: null, objectionQuestion: null, ordinal: null },
       signals: { purchaseIntent: null, priceSensitivity: null, sentiment: null, objection: null },
       safety: { optOut: false, requestsHuman: false, emergency: false }, confidence: 0.8, ambiguity: null,
     }) } }] });
@@ -133,9 +138,9 @@ describe("provider dental de Understanding", () => {
     );
 
     await model.generate({
-      modelId: "gpt-test", promptVersion: "dental-understanding.v4",
+      modelId: "gpt-test", promptVersion: "dental-understanding.v5",
       schemaVersion: "understanding.v1", systemPrompt: "system", leadMessage: "quero marcar",
-      history: [], state: null, catalog: [], faqCatalog: [], objectionCatalog: [],
+      history: [], state: null, catalog: [], faqCatalog: [], objectionCatalog: [], professionalCatalog: [],
     }, { signal: controller.signal });
 
     expect(create).toHaveBeenCalledWith(
@@ -155,9 +160,9 @@ describe("provider dental de Understanding", () => {
     );
 
     const run = model.generate({
-      modelId: "gpt-test", promptVersion: "dental-understanding.v4",
+      modelId: "gpt-test", promptVersion: "dental-understanding.v5",
       schemaVersion: "understanding.v1", systemPrompt: "system", leadMessage: "quero marcar",
-      history: [], state: null, catalog: [], faqCatalog: [], objectionCatalog: [],
+      history: [], state: null, catalog: [], faqCatalog: [], objectionCatalog: [], professionalCatalog: [],
     }, { signal: controller.signal });
 
     await expect(run).rejects.toBe(reason);
@@ -178,7 +183,7 @@ describe("provider dental de Understanding", () => {
     expect(onContractRejection).toHaveBeenCalledWith({
       stage: "understanding_structural",
       modelId: "fake-dental-model",
-      promptVersion: "dental-understanding.v4",
+      promptVersion: "dental-understanding.v5",
       contractVersion: "understanding.v1",
       rawOutput: null,
       issues: [{ path: [], code: "missing_output" }],

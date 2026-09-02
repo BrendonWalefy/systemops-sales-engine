@@ -71,6 +71,52 @@ export class InMemoryDemoStore
     return confirmed;
   }
 
+  async cancelActiveForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+    updatedAt: Date,
+  ): Promise<Appointment | null> {
+    const appointment = await this.findByIdForClinicAndLead(
+      clinicId,
+      leadId,
+      appointmentId,
+    );
+    if (!appointment || (appointment.status !== "scheduled" && appointment.status !== "confirmed")) {
+      return null;
+    }
+    const cancelled = { ...appointment, status: "cancelled" as const, updatedAt };
+    this.appointments.set(appointmentId, cancelled);
+    return cancelled;
+  }
+
+  async rescheduleActiveForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+    expectedStartsAt: Date,
+    expectedEndsAt: Date,
+    startsAt: Date,
+    endsAt: Date,
+    professionalId: string | null,
+    updatedAt: Date,
+  ): Promise<Appointment | null> {
+    const appointment = await this.findByIdForClinicAndLead(
+      clinicId,
+      leadId,
+      appointmentId,
+    );
+    if (
+      !appointment ||
+      appointment.startsAt.getTime() !== expectedStartsAt.getTime() ||
+      appointment.endsAt.getTime() !== expectedEndsAt.getTime() ||
+      (appointment.status !== "scheduled" && appointment.status !== "confirmed")
+    ) return null;
+    const moved = { ...appointment, startsAt, endsAt, professionalId, updatedAt };
+    this.appointments.set(appointmentId, moved);
+    return moved;
+  }
+
   async findByPhone(clinicId: string, phone: string): Promise<Lead | null> {
     return (
       Array.from(this.leads.values()).find(

@@ -135,18 +135,40 @@ export type DentalCommercialReadPort = Readonly<{
   ): Promise<DentalRegisteredObjectionResolution>;
 }>;
 
-export type DentalSlot = { id: string; label: string; evidenceRef: string };
+export type DentalSlot = {
+  id: string;
+  label: string;
+  evidenceRef: string;
+  bookingKind?: "book" | "reschedule";
+};
 export type DentalSlotSearchResult = {
   service: { id: string; name: string; requiresEvaluationFirst?: boolean };
   slots: readonly DentalSlot[];
 };
 export type PendingDentalAppointment = { id: string; label: string; evidenceRef: string };
+export type DentalAppointmentReference = PendingDentalAppointment;
+export type DentalAppointmentSelection = Readonly<{
+  ordinal: number | null;
+  date: string | null;
+  time: string | null;
+}>;
+export type DentalAppointmentResolution =
+  | Readonly<{ kind: "resolved"; appointment: DentalAppointmentReference }>
+  | Readonly<{ kind: "missing" }>
+  | Readonly<{
+      kind: "ambiguous";
+      appointments: readonly DentalAppointmentReference[];
+    }>;
+export type DentalReplacementSlotSearchResult = DentalSlotSearchResult & Readonly<{
+  replacesAppointmentId: string;
+}>;
 
 export type DentalSchedulingReadPort = {
   listSlots(input: {
     service: string | null;
     date: string | null;
     period: string | null;
+    professional?: string | null;
     minimumLeadTimeHours: number;
     now: Date;
   }): Promise<DentalSlotSearchResult>;
@@ -167,4 +189,27 @@ export type DentalSchedulingWritePort = {
   persistSlotOffer(offer: DentalSlotSearchResult): Promise<DentalSlotSearchResult>;
   bookSlot(slotId: string): Promise<DentalSchedulingWriteOutcome>;
   confirmAppointment(appointmentId: string): Promise<DentalSchedulingWriteOutcome>;
+  rescheduleSlot(slotId: string): Promise<DentalSchedulingWriteOutcome>;
 };
+
+export type DentalAppointmentLifecycleReadPort = Readonly<{
+  listActiveAppointments(): Promise<readonly DentalAppointmentReference[]>;
+  resolveActiveAppointment(
+    input: DentalAppointmentSelection,
+  ): Promise<DentalAppointmentResolution>;
+  listReplacementSlots(input: Readonly<{
+    appointmentId: string;
+    date: string | null;
+    period: string | null;
+    professional: string | null;
+    minimumLeadTimeHours: number;
+    now: Date;
+  }>): Promise<DentalReplacementSlotSearchResult>;
+}>;
+
+export type DentalAppointmentLifecycleWritePort = Readonly<{
+  persistReplacementOffer(
+    offer: DentalReplacementSlotSearchResult,
+  ): Promise<DentalReplacementSlotSearchResult>;
+  cancelAppointment(appointmentId: string): Promise<DentalSchedulingWriteOutcome>;
+}>;
