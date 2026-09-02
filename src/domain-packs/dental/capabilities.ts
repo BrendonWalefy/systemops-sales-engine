@@ -139,6 +139,24 @@ export type DentalJourneyClaimPayload =
         | "change-pending-deposit";
     };
 
+export type DentalOperationalRequest =
+  | "clinical-urgency"
+  | "existing-treatment-problem"
+  | "patient-arrival"
+  | "patient-delay";
+
+export type DentalOperationalHandoffReason =
+  | "clinical_urgency_requires_human"
+  | "existing_treatment_problem_requires_human"
+  | "patient_arrival_requires_human"
+  | "patient_delay_requires_human";
+
+export type DentalOperationsClaimPayload = {
+  kind: "operations";
+  request: DentalOperationalRequest;
+  reason: DentalOperationalHandoffReason;
+};
+
 export type DentalReceptionClaimPayload = {
   kind: "reception";
   request: "greeting" | "other";
@@ -162,6 +180,7 @@ export type DentalClaimPayload =
   | DentalSchedulingClaimPayload
   | DentalAppointmentLifecycleClaimPayload
   | DentalJourneyClaimPayload
+  | DentalOperationsClaimPayload
   | DentalEscalationClaimPayload
   | DentalReceptionClaimPayload;
 
@@ -310,6 +329,16 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
   },
   journey_failed: {
     semanticClass: "effect_failed",
+    subjectRequirement: "optional",
+    evidenceRequirement: "optional",
+  },
+  clinical_operation_handoff: {
+    semanticClass: "human_action_required",
+    subjectRequirement: "optional",
+    evidenceRequirement: "optional",
+  },
+  patient_presence_handoff: {
+    semanticClass: "human_action_required",
     subjectRequirement: "optional",
     evidenceRequirement: "optional",
   },
@@ -869,8 +898,7 @@ export function createDentalEscalationCapability(): Capability<
       const objection = understanding.request !== "registered-objection" &&
         typeof understanding.signals.objection === "string" &&
         understanding.signals.objection.trim().length > 0;
-      return understanding.safety.emergency ||
-        understanding.safety.requestsHuman || objection
+      return understanding.safety.requestsHuman || objection
         ? {
             ...ownedClaim("dental-escalation", understanding.confidence, {
               kind: "escalation",

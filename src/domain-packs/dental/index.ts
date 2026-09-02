@@ -14,6 +14,7 @@ import { createDentalPlaybookKnowledgeCapability } from "@/domain-packs/dental/p
 import { createDentalCommercialCapability } from "@/domain-packs/dental/commercial-capability";
 import { createDentalAppointmentLifecycleCapability } from "@/domain-packs/dental/appointment-lifecycle-capability";
 import { createDentalJourneyCapability } from "@/domain-packs/dental/journey-capability";
+import { createDentalOperationsCapability } from "@/domain-packs/dental/operations-capability";
 import type {
   DentalAppointmentLifecycleReadPort,
   DentalAppointmentLifecycleWritePort,
@@ -25,6 +26,7 @@ import type {
   DentalSchedulingWritePort,
   DentalJourneyReadPort,
   DentalJourneyWritePort,
+  DentalOperationsReadPort,
 } from "@/domain-packs/dental/ports";
 import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
 
@@ -67,6 +69,7 @@ export function createDentalPack(ports: {
   appointmentLifecycleWrite?: DentalAppointmentLifecycleWritePort;
   journeyRead?: DentalJourneyReadPort;
   journeyWrite?: DentalJourneyWritePort;
+  operationsRead?: DentalOperationsReadPort;
 }): DomainPack<
   DentalRequest,
   DentalPolicy,
@@ -93,6 +96,9 @@ export function createDentalPack(ports: {
     releasePendingDeposit: unavailable,
     takeDeliveryPlan: () => null,
   };
+  const operationsRead = ports.operationsRead ?? {
+    resolveTodayAppointment: async () => ({ kind: "none" as const }),
+  };
   return {
     id: "dental",
     outcomeSchema: DENTAL_OUTCOME_SCHEMA,
@@ -111,6 +117,7 @@ export function createDentalPack(ports: {
         appointmentLifecycleWrite,
       ),
       createDentalJourneyCapability(journeyRead, journeyWrite),
+      createDentalOperationsCapability(operationsRead),
       createDentalEscalationCapability(),
       createDentalReceptionCapability(),
     ],
@@ -134,6 +141,10 @@ export function createDentalPack(ports: {
       {
         id: "journey",
         capabilityIds: ["dental-journey", "dental-escalation"],
+      },
+      {
+        id: "operations",
+        capabilityIds: ["dental-operations", "dental-escalation"],
       },
     ],
   };

@@ -13,6 +13,7 @@ export type DentalCapabilityId =
   | "dental-scheduling"
   | "dental-appointment-lifecycle"
   | "dental-journey"
+  | "dental-operations"
   | "dental-escalation"
   | "dental-reception";
 
@@ -24,7 +25,8 @@ export type DentalExecuteAction =
   | "prepare_journey_step"
   | "receive_journey_media"
   | "receive_deposit_proof"
-  | "release_pending_deposit";
+  | "release_pending_deposit"
+  | "require_operational_handoff";
 
 type DentalOutcomeDefinition<Type extends DentalOutcomeType = DentalOutcomeType> =
   Readonly<{
@@ -225,6 +227,16 @@ const provenanceRules = [
     capabilityId: "dental-escalation",
     decisionKind: "escalate",
     outcomes: [outcome("escalation_required")],
+  },
+  {
+    capabilityId: "dental-operations",
+    decisionKind: "execute",
+    decisionActionType: "require-operational-handoff",
+    action: "require_operational_handoff",
+    outcomes: [
+      outcome("clinical_operation_handoff"),
+      outcome("patient_presence_handoff"),
+    ],
   },
   {
     capabilityId: "dental-journey",
