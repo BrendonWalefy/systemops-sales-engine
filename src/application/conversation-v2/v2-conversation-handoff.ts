@@ -11,7 +11,6 @@ export type V2ConversationHandoffReason =
   | "v2_existing_treatment_problem_requires_human"
   | "v2_patient_arrival_requires_human"
   | "v2_patient_delay_requires_human"
-  | "v2_clinical_judgment_requires_human"
   | "v2_clinical_evaluation_requires_human";
 
 export type V2ConversationHandoffStore = Readonly<{

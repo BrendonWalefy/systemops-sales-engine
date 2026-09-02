@@ -645,6 +645,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
             failedEffectCount,
             outcomeTypes: actionResults.map(({ type }) => type).join(","),
             semanticClasses: actionResults.map(({ semanticClass }) => semanticClass).join(","),
+            ...(handoffReason ? { handoffReason } : {}),
           });
           phase = "response";
         },

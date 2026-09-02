@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   APPROVED_EVAL_VERSION,
+  COMPARISON_CAPABILITY_IDS,
   LIVE_COMPARISON_VERSION,
   keyedRef,
   pairApprovedEvalRecords,
@@ -89,6 +90,22 @@ const slotOfferIntendedEffect = {
 } as const;
 
 describe("Cycle I comparison records", () => {
+  it("keeps every productive dental capability in the closed comparison registry", () => {
+    expect(COMPARISON_CAPABILITY_IDS).toEqual([
+      "dental-knowledge",
+      "dental-playbook-knowledge",
+      "dental-explanation",
+      "dental-commercial",
+      "dental-catalog",
+      "dental-scheduling",
+      "dental-appointment-lifecycle",
+      "dental-journey",
+      "dental-operations",
+      "dental-escalation",
+      "dental-reception",
+    ]);
+  });
+
   it("only accepts strict HMAC-only live summaries and freezes them", () => {
     const parsed = parseLiveComparisonRecord(live(), new Set(["gpt-5.4-mini"]));
     expect(parsed.turnRef).toMatch(/^hmac:[a-f0-9]{64}$/);

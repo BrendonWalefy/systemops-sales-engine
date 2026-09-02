@@ -94,7 +94,7 @@ describe("dental operations capability", () => {
       semanticClass: "human_action_required",
       origin: { capabilityId: "dental-operations" },
       subject: null,
-      evidence: [],
+      evidence: [{ source: "derived", reference: `operation:${reason}` }],
       facts: [expect.objectContaining({
         key: "operational_handoff_reason",
         value: { kind: "display_text", value: reason },
@@ -125,7 +125,10 @@ describe("dental operations capability", () => {
       type: "patient_presence_handoff",
       semanticClass: "human_action_required",
       subject: { type: "appointment", id: "appointment-1", displayName: "Hoje às 10h" },
-      evidence: [{ source: "read", reference: "appointment:appointment-1" }],
+      evidence: [
+        { source: "derived", reference: `operation:${reason}` },
+        { source: "read", reference: "appointment:appointment-1" },
+      ],
       facts: expect.arrayContaining([expect.objectContaining({
         key: "operational_handoff_reason",
         value: { kind: "display_text", value: reason },
@@ -151,7 +154,10 @@ describe("dental operations capability", () => {
       expect(result).toMatchObject({
         type: "patient_presence_handoff",
         subject: null,
-        evidence: [],
+        evidence: [{
+          source: "derived",
+          reference: "operation:patient_arrival_requires_human",
+        }],
       });
     },
   );

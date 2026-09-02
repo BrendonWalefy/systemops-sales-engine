@@ -174,6 +174,10 @@ export function createDentalOperationsCapability(
             evidence: { source: "read" as const, reference: evidenceRef },
           }
         : null;
+      const handoffEvidence = {
+        source: "derived" as const,
+        reference: `operation:${reason}`,
+      };
       const facts: Fact[] = appointment
         ? [{
             key: "appointment_label",
@@ -187,7 +191,7 @@ export function createDentalOperationsCapability(
         key: "operational_handoff_reason",
         value: { kind: "display_text", value: reason },
         subject: null,
-        evidence: { source: "derived", reference: `operation:${reason}` },
+        evidence: handoffEvidence,
         disclosure: "internal",
       });
       return {
@@ -197,7 +201,9 @@ export function createDentalOperationsCapability(
         semanticClass: "human_action_required",
         origin: { capabilityId: "dental-operations" },
         subject: appointment?.subject ?? null,
-        evidence: appointment ? [appointment.evidence] : [],
+        evidence: appointment
+          ? [handoffEvidence, appointment.evidence]
+          : [handoffEvidence],
         facts,
       };
     },

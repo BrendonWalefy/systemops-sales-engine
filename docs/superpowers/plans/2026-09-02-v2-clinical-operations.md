@@ -99,7 +99,7 @@ export type DentalOperationsReadPort = Readonly<{
 
 - [ ] **Step 1: Write failing capability tests**
 
-Cover each request, a safety-only clinical judgment, priority/conflicts, exact appointment evidence, no/ambiguous appointment, and ensure no write port exists.
+Cover each request, emergency-signal coercion, priority/conflicts, exact appointment evidence, no/ambiguous appointment, and ensure no write port exists.
 
 ```ts
 expect(result).toMatchObject({
@@ -177,7 +177,7 @@ Commit: `feat(v2): resolve patient presence within tenant`
 - Test: `src/__tests__/DentalSchedulingCapability.test.ts`
 
 **Interfaces:**
-- Produces closed handoff reasons `v2_clinical_urgency_requires_human`, `v2_existing_treatment_problem_requires_human`, `v2_patient_arrival_requires_human`, `v2_patient_delay_requires_human`, `v2_clinical_judgment_requires_human`, and `v2_clinical_evaluation_requires_human`.
+- Produces closed handoff reasons `v2_clinical_urgency_requires_human`, `v2_existing_treatment_problem_requires_human`, `v2_patient_arrival_requires_human`, `v2_patient_delay_requires_human`, and `v2_clinical_evaluation_requires_human`.
 - Extends `DentalSlotSearchResult.service` with `evidenceRef` so evaluation-required is tied to catalog authority.
 
 - [ ] **Step 1: Write failing handler and scheduling tests**
@@ -299,4 +299,3 @@ Push normally, open a focused PR to `develop`, wait for GitHub/Vercel checks, me
 - [ ] **Step 5: Verify production**
 
 Require Vercel `READY` at the exact main SHA, unchanged migrations, no automatic tenant activation, and no synthetic WhatsApp send. Preserve the worktree for review corrections.
-

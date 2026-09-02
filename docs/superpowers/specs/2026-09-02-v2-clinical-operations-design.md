@@ -39,9 +39,10 @@ O schema de Understanding passa a aceitar quatro pedidos operacionais:
 - `patient-delay`: o paciente informa que chegará atrasado.
 
 Pedidos de diagnóstico, prognóstico, indicação ou julgamento clínico não recebem uma conclusão do
-modelo. Eles usam o sinal de segurança existente e são reivindicados por `dental-operations` como
-handoff clínico. O modelo não recebe permissão para prescrever, diagnosticar, prometer encaixe ou
-afirmar que a equipe viu o aviso.
+modelo. O prompt proíbe esse conteúdo e pedidos explícitos de atendimento humano continuam sob
+`dental-escalation`; `dental-operations` reivindica somente os quatro pedidos operacionais fechados.
+O modelo não recebe permissão para prescrever, diagnosticar, prometer encaixe ou afirmar que a
+equipe viu o aviso.
 
 Os pedidos operacionais proíbem `serviceCandidates`, quantidade, objeção comercial e profissional.
 `service` é opcional somente para `existing-treatment-problem`; data e horário são apenas pistas de
@@ -56,8 +57,7 @@ com uma razão fechada:
 - `clinical_urgency_requires_human`;
 - `existing_treatment_problem_requires_human`;
 - `patient_arrival_requires_human`;
-- `patient_delay_requires_human`;
-- `clinical_judgment_requires_human`.
+- `patient_delay_requires_human`.
 
 O handler traduz essa razão para um `V2ConversationHandoffReason` específico e chama o store
 tenant-scoped antes de criar o outbox. A gravação é idempotente: a conversa exata fica com
@@ -112,11 +112,10 @@ nenhum aumento de lock hold além de 20 ms.
 ## Critérios de aceitação
 
 - Os quatro pedidos fechados são interpretados sem texto clínico virar regra de negócio.
-- Urgência, julgamento clínico e trabalho existente nunca recebem diagnóstico ou recomendação.
+- Urgência e trabalho existente nunca recebem diagnóstico ou recomendação.
 - Chegada e atraso geram exatamente um handoff e no máximo uma resposta por evento.
 - Um compromisso só é citado quando a resolução tenant/lead/dia é única.
 - Tratamento com avaliação obrigatória não oferece slot nem reserva.
 - Cross-tenant, ambiguidade, retry e falha de outbox permanecem fail-closed e auditáveis.
 - Corpus histórico sanitizado, testes PostgreSQL, performance, `npm run verify`, build e CI ficam
   verdes antes de promoção.
-

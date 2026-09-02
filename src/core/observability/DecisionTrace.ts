@@ -144,6 +144,7 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     "failedEffectCount",
     "outcomeTypes",
     "semanticClasses",
+    "handoffReason",
   ],
   "v2.outbox": [
     "status",
