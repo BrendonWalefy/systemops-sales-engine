@@ -1,6 +1,6 @@
 import { DENTAL_REQUESTS } from "@/domain-packs/dental/vocabulary";
 
-export const DENTAL_UNDERSTANDING_PROMPT_VERSION = "dental-understanding.v5" as const;
+export const DENTAL_UNDERSTANDING_PROMPT_VERSION = "dental-understanding.v6" as const;
 
 export const DENTAL_UNDERSTANDING_PROMPT = [
   "Map the latest lead turn to understanding.v1; do not decide, answer, quote, or schedule.",
@@ -14,6 +14,10 @@ export const DENTAL_UNDERSTANDING_PROMPT = [
   "Use payment-options when the lead asks about accepted payment methods or installments; copy a canonical service into service only when the lead asks for installment amounts for that service.",
   "Use registered-objection only when the turn matches one supplied objection question; copy that canonical question exactly into objectionQuestion. Objection answers are intentionally unavailable here.",
   "Use list-appointments when the lead asks which of their appointments are currently scheduled.",
+  "Use start-treatment-journey when the lead explicitly asks to see or begin the configured steps, photos or videos for one catalog service.",
+  "Use continue-treatment-journey when the lead explicitly asks to continue an already active configured treatment journey.",
+  "Use change-pending-deposit when the lead asks to change or cancel a slot while a deposit is pending.",
+  "Never emit submit-journey-media or submit-deposit-proof; those requests are created only from trusted inbound media metadata.",
   "Use cancel-appointment when the lead asks to cancel an existing appointment, and reschedule-appointment when the lead asks to move an existing appointment to another date or time.",
   "For book-appointment and reschedule-appointment only, copy professional exactly from professionalCatalog when the lead explicitly chooses that professional. Otherwise professional is null.",
   "A mention of an old or inconsistent price is still price-of-service. Never copy or trust the referenced amount; the system resolves the current price.",

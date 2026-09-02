@@ -12,6 +12,7 @@ export type DentalCapabilityId =
   | "dental-catalog"
   | "dental-scheduling"
   | "dental-appointment-lifecycle"
+  | "dental-journey"
   | "dental-escalation"
   | "dental-reception";
 
@@ -217,6 +218,21 @@ const provenanceRules = [
   },
   {
     capabilityId: "dental-escalation",
+    decisionKind: "escalate",
+    outcomes: [outcome("escalation_required")],
+  },
+  {
+    capabilityId: "dental-journey",
+    decisionKind: "ask",
+    outcomes: [outcome("clarification_required")],
+  },
+  {
+    capabilityId: "dental-journey",
+    decisionKind: "answer",
+    outcomes: [outcome("journey_step_ready")],
+  },
+  {
+    capabilityId: "dental-journey",
     decisionKind: "escalate",
     outcomes: [outcome("escalation_required")],
   },

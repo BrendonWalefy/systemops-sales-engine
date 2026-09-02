@@ -22,6 +22,11 @@ export const DENTAL_REQUESTS = [
   "confirm-appointment",
   "cancel-appointment",
   "reschedule-appointment",
+  "start-treatment-journey",
+  "continue-treatment-journey",
+  "submit-journey-media",
+  "submit-deposit-proof",
+  "change-pending-deposit",
 ] as const;
 
 export type DentalRequest = (typeof DENTAL_REQUESTS)[number];

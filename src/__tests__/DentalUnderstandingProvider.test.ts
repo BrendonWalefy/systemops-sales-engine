@@ -84,7 +84,7 @@ describe("provider dental de Understanding", () => {
     expect(output.request).toBe("price-of-service");
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({
       modelId: "fake-dental-model",
-      promptVersion: "dental-understanding.v5",
+      promptVersion: "dental-understanding.v6",
       schemaVersion: "understanding.v1",
       faqCatalog: ["Preciso de encaminhamento?"],
       objectionCatalog: ["Está caro para mim"],
@@ -102,7 +102,7 @@ describe("provider dental de Understanding", () => {
     const create = vi.fn().mockResolvedValue({ choices: [{ message: { content: rawOutput } }] });
     const model = new OpenAIDentalUnderstandingModel({ chat: { completions: { create } } }, "gpt-test");
     const result = await model.generate({
-      modelId: "gpt-test", promptVersion: "dental-understanding.v5",
+      modelId: "gpt-test", promptVersion: "dental-understanding.v6",
       schemaVersion: "understanding.v1", systemPrompt: "system", leadMessage: "quero marcar",
       history: [], state: null, catalog: [], faqCatalog: ["Aceita convênio?"], objectionCatalog: ["Está caro para mim"], professionalCatalog: ["Dra. Marina"],
     });
@@ -138,7 +138,7 @@ describe("provider dental de Understanding", () => {
     );
 
     await model.generate({
-      modelId: "gpt-test", promptVersion: "dental-understanding.v5",
+      modelId: "gpt-test", promptVersion: "dental-understanding.v6",
       schemaVersion: "understanding.v1", systemPrompt: "system", leadMessage: "quero marcar",
       history: [], state: null, catalog: [], faqCatalog: [], objectionCatalog: [], professionalCatalog: [],
     }, { signal: controller.signal });
@@ -160,7 +160,7 @@ describe("provider dental de Understanding", () => {
     );
 
     const run = model.generate({
-      modelId: "gpt-test", promptVersion: "dental-understanding.v5",
+      modelId: "gpt-test", promptVersion: "dental-understanding.v6",
       schemaVersion: "understanding.v1", systemPrompt: "system", leadMessage: "quero marcar",
       history: [], state: null, catalog: [], faqCatalog: [], objectionCatalog: [], professionalCatalog: [],
     }, { signal: controller.signal });
@@ -183,7 +183,7 @@ describe("provider dental de Understanding", () => {
     expect(onContractRejection).toHaveBeenCalledWith({
       stage: "understanding_structural",
       modelId: "fake-dental-model",
-      promptVersion: "dental-understanding.v5",
+      promptVersion: "dental-understanding.v6",
       contractVersion: "understanding.v1",
       rawOutput: null,
       issues: [{ path: [], code: "missing_output" }],

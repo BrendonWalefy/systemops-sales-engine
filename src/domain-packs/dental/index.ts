@@ -13,6 +13,7 @@ import { createDentalKnowledgeCapability } from "@/domain-packs/dental/knowledge
 import { createDentalPlaybookKnowledgeCapability } from "@/domain-packs/dental/playbook-knowledge-capability";
 import { createDentalCommercialCapability } from "@/domain-packs/dental/commercial-capability";
 import { createDentalAppointmentLifecycleCapability } from "@/domain-packs/dental/appointment-lifecycle-capability";
+import { createDentalJourneyCapability } from "@/domain-packs/dental/journey-capability";
 import type {
   DentalAppointmentLifecycleReadPort,
   DentalAppointmentLifecycleWritePort,
@@ -22,6 +23,8 @@ import type {
   DentalPlaybookKnowledgeReadPort,
   DentalSchedulingReadPort,
   DentalSchedulingWritePort,
+  DentalJourneyReadPort,
+  DentalJourneyWritePort,
 } from "@/domain-packs/dental/ports";
 import type { DentalRequest } from "@/domain-packs/dental/vocabulary";
 
@@ -62,6 +65,8 @@ export function createDentalPack(ports: {
   schedulingWrite: DentalSchedulingWritePort;
   appointmentLifecycleRead?: DentalAppointmentLifecycleReadPort;
   appointmentLifecycleWrite?: DentalAppointmentLifecycleWritePort;
+  journeyRead?: DentalJourneyReadPort;
+  journeyWrite?: DentalJourneyWritePort;
 }): DomainPack<
   DentalRequest,
   DentalPolicy,
@@ -76,6 +81,17 @@ export function createDentalPack(ports: {
   const appointmentLifecycleWrite = ports.appointmentLifecycleWrite ?? {
     persistReplacementOffer: unavailable,
     cancelAppointment: unavailable,
+  };
+  const journeyRead = ports.journeyRead ?? {
+    resolveStart: async () => ({ kind: "unavailable" as const, reason: "journey_not_configured" }),
+    resolveCurrentStep: async () => ({ kind: "unavailable" as const, reason: "journey_not_active" }),
+    resolveInboundMedia: async () => ({ kind: "unavailable" as const, reason: "journey_media_not_expected" }),
+  };
+  const journeyWrite = ports.journeyWrite ?? {
+    start: unavailable,
+    receiveMedia: unavailable,
+    changePendingDeposit: unavailable,
+    takeDeliveryPlan: () => null,
   };
   return {
     id: "dental",
@@ -94,6 +110,7 @@ export function createDentalPack(ports: {
         appointmentLifecycleRead,
         appointmentLifecycleWrite,
       ),
+      createDentalJourneyCapability(journeyRead, journeyWrite),
       createDentalEscalationCapability(),
       createDentalReceptionCapability(),
     ],
@@ -113,6 +130,10 @@ export function createDentalPack(ports: {
           "dental-appointment-lifecycle",
           "dental-escalation",
         ],
+      },
+      {
+        id: "journey",
+        capabilityIds: ["dental-journey", "dental-escalation"],
       },
     ],
   };

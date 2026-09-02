@@ -124,6 +124,21 @@ export type DentalAppointmentLifecycleClaimPayload =
       requestedProfessional: string | null;
     };
 
+export type DentalJourneyClaimPayload =
+  | {
+      kind: "journey";
+      request: "start-treatment-journey";
+      serviceQuery: string | null;
+    }
+  | {
+      kind: "journey";
+      request:
+        | "continue-treatment-journey"
+        | "submit-journey-media"
+        | "submit-deposit-proof"
+        | "change-pending-deposit";
+    };
+
 export type DentalReceptionClaimPayload = {
   kind: "reception";
   request: "greeting" | "other";
@@ -146,6 +161,7 @@ export type DentalClaimPayload =
   | DentalCommercialClaimPayload
   | DentalSchedulingClaimPayload
   | DentalAppointmentLifecycleClaimPayload
+  | DentalJourneyClaimPayload
   | DentalEscalationClaimPayload
   | DentalReceptionClaimPayload;
 
@@ -266,6 +282,36 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
     semanticClass: "human_action_required",
     subjectRequirement: "forbidden",
     evidenceRequirement: "write_required",
+  },
+  journey_step_ready: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "required",
+    evidenceRequirement: "required",
+  },
+  journey_media_received: {
+    semanticClass: "effect_completed",
+    subjectRequirement: "required",
+    evidenceRequirement: "write_required",
+  },
+  deposit_requested: {
+    semanticClass: "effect_completed",
+    subjectRequirement: "required",
+    evidenceRequirement: "write_required",
+  },
+  deposit_proof_received: {
+    semanticClass: "effect_completed",
+    subjectRequirement: "required",
+    evidenceRequirement: "write_required",
+  },
+  deposit_change_released: {
+    semanticClass: "effect_completed",
+    subjectRequirement: "required",
+    evidenceRequirement: "write_required",
+  },
+  journey_failed: {
+    semanticClass: "effect_failed",
+    subjectRequirement: "optional",
+    evidenceRequirement: "optional",
   },
   scheduling_failed: {
     semanticClass: "effect_failed",

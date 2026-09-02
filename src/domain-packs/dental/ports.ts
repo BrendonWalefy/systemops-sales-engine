@@ -213,3 +213,70 @@ export type DentalAppointmentLifecycleWritePort = Readonly<{
   ): Promise<DentalReplacementSlotSearchResult>;
   cancelAppointment(appointmentId: string): Promise<DentalSchedulingWriteOutcome>;
 }>;
+
+export type DentalJourneyDeliveryPart =
+  | Readonly<{ type: "text"; content: string }>
+  | Readonly<{
+      type: "media";
+      mediaId: string;
+      url: string;
+      mediaType: "image" | "video";
+      title: string;
+      caption?: string;
+    }>;
+
+export type DentalJourneyAdvance =
+  | Readonly<{
+      action: "advance";
+      nextStepIndex: number;
+      expectedTreatmentId: string;
+      expectedStepIndex: number;
+    }>
+  | Readonly<{
+      action: "exit";
+      expectedTreatmentId: string;
+      expectedStepIndex: number;
+    }>;
+
+export type DentalJourneyDeliveryPlan = Readonly<{
+  replyText: string;
+  interleavedParts: readonly DentalJourneyDeliveryPart[];
+  pipelineAdvance: DentalJourneyAdvance | null;
+  deterministic: boolean;
+}>;
+
+export type DentalJourneyResolution = Readonly<{
+  kind: "unavailable";
+  reason: string;
+}>;
+
+export type DentalJourneyMediaResolution = Readonly<{
+  kind: "unavailable";
+  reason: string;
+}>;
+
+export type DentalJourneyWriteOutcome =
+  | Readonly<{
+      success: true;
+      kind: "journey_step_ready" | "journey_media_received" | "deposit_proof_received" | "deposit_change_released";
+      subjectId: string;
+      subjectLabel: string;
+      evidenceRef: string;
+    }>
+  | Readonly<{ success: false; reason: string; evidenceRef: string }>;
+
+export type DentalJourneyReadPort = Readonly<{
+  resolveStart(serviceQuery: string): Promise<DentalJourneyResolution>;
+  resolveCurrentStep(): Promise<DentalJourneyResolution>;
+  resolveInboundMedia(input: Readonly<{
+    messageId: string;
+    mediaType: "image" | "video" | "document";
+  }>): Promise<DentalJourneyMediaResolution>;
+}>;
+
+export type DentalJourneyWritePort = Readonly<{
+  start(resolution: DentalJourneyResolution): Promise<DentalJourneyWriteOutcome>;
+  receiveMedia(resolution: DentalJourneyMediaResolution): Promise<DentalJourneyWriteOutcome>;
+  changePendingDeposit(): Promise<DentalJourneyWriteOutcome>;
+  takeDeliveryPlan(): DentalJourneyDeliveryPlan | null;
+}>;
