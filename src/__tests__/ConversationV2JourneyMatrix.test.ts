@@ -496,6 +496,7 @@ describe("V2-only capability parity contract", () => {
     "reservation",
     "deposit",
     "cancel_reschedule",
+    "clinical_operations",
     "opt_out",
     "handoff",
     "takeover",

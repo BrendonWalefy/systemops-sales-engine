@@ -48,6 +48,49 @@ describe("Dental Scheduling capability", () => {
     expect(result.semanticClass === "options_found" && result.options[0]?.facts[0]).toEqual(expect.objectContaining({ subject: { type: "slot", id: "slot-1", displayName: "quarta às 15h" }, disclosure: "allowed" }));
   });
 
+  it("redirects an evaluation-required treatment without slots or writes", async () => {
+    const persistSlotOffer = vi.fn();
+    const bookSlot = vi.fn();
+    const capability = createDentalSchedulingCapability(
+      {
+        listSlots: vi.fn().mockResolvedValue({
+          service: {
+            id: "svc-evaluation",
+            name: "Implante",
+            requiresEvaluationFirst: true,
+            evidenceRef: "treatment:svc-evaluation",
+          },
+          slots: [],
+        }),
+        resolveOfferedSlot: vi.fn(),
+        resolvePendingAppointment: vi.fn(),
+      },
+      {
+        persistSlotOffer,
+        bookSlot,
+        confirmAppointment: vi.fn(),
+        rescheduleSlot: vi.fn(),
+      },
+    );
+    const state = { phase: "active", pendingStepId: null, completedStepIds: [] };
+    const claim = capability.claim(
+      understanding("book-appointment", { service: "Implante" }),
+      state,
+    )!;
+    const decision = await capability.decide(claim, { state, policy, now: new Date(0) });
+    const result = await capability.execute(decision, { state, policy, now: new Date(0) });
+
+    expect(decision).toMatchObject({ kind: "answer" });
+    expect(result).toMatchObject({
+      type: "clinical_evaluation_required",
+      semanticClass: "human_action_required",
+      subject: { type: "service", id: "svc-evaluation", displayName: "Implante" },
+      evidence: [{ source: "read", reference: "treatment:svc-evaluation" }],
+    });
+    expect(persistSlotOffer).not.toHaveBeenCalled();
+    expect(bookSlot).not.toHaveBeenCalled();
+  });
+
   it("confirma slot resolvido e só afirma sucesso com evidence do write", async () => {
     const slot = { id: "slot-2", label: "quarta às 15h", evidenceRef: "offer-1" };
     const bookSlot = vi.fn().mockResolvedValue({ success: true, kind: "appointment", appointmentId: "appt-1", label: slot.label, evidenceRef: "booking-1" });

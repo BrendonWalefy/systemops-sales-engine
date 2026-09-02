@@ -118,6 +118,7 @@ function makeHarness(options: {
   structuredMediaTurn?: "deposit" | "journey";
   journeyStartTurn?: boolean;
   depositBookingTurn?: boolean;
+  clinicalOperationTurn?: boolean;
 } = {}) {
   const entities = (overrides: Record<string, unknown> = {}) => ({
     service: null,
@@ -328,6 +329,15 @@ function makeHarness(options: {
         request: "business-information" as const,
         dialogueMove: "new_topic" as const,
         entities: entities({ businessInformationTopic: options.businessInformationTopic ?? "address" }),
+        signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
+      };
+    }
+    if (options.clinicalOperationTurn) {
+      return {
+        version: UNDERSTANDING_VERSION,
+        request: "clinical-urgency" as const,
+        dialogueMove: "new_topic" as const,
+        entities: entities(),
         signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
       };
     }
@@ -741,6 +751,32 @@ function makeHarness(options: {
 }
 
 describe("V2LiveConversationHandler", () => {
+  it("traces the exact closed clinical handoff reason without clinical prose", async () => {
+    const privateClinicalText = "private clinical description";
+    const harness = makeHarness({ clinicalOperationTurn: true });
+
+    await expect(harness.handler.handle(handleInput(privateClinicalText)))
+      .resolves.toEqual({ replied: true });
+
+    expect(harness.persistHandoff).toHaveBeenCalledWith({
+      clinicId: clinic.id,
+      conversationId: conversation.id,
+      reason: "v2_clinical_urgency_requires_human",
+      now,
+    });
+    expect(harness.trace.getEvents(turnId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        stage: "v2.action_result",
+        metadata: expect.objectContaining({
+          outcomeTypes: "clinical_operation_handoff",
+          semanticClasses: "human_action_required",
+          handoffReason: "v2_clinical_urgency_requires_human",
+        }),
+      }),
+    ]));
+    expect(JSON.stringify(harness.trace.getEvents(turnId))).not.toContain(privateClinicalText);
+  });
+
   it("enqueues one exact deposit request without booking or verbalization", async () => {
     const harness = makeHarness({
       bookingTurn: true,
@@ -1182,7 +1218,7 @@ describe("V2LiveConversationHandler", () => {
       turnId: inboundEventId,
       stage: "understanding_structural",
       modelId: "gpt-4o-mini",
-      promptVersion: "dental-understanding.v6",
+      promptVersion: "dental-understanding.v7",
       contractVersion: "understanding.v1",
       attempt: 1,
       rawOutput: privateOutput,
