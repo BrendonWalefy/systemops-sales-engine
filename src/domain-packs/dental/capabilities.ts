@@ -139,6 +139,24 @@ export type DentalJourneyClaimPayload =
         | "change-pending-deposit";
     };
 
+export type DentalOperationalRequest =
+  | "clinical-urgency"
+  | "existing-treatment-problem"
+  | "patient-arrival"
+  | "patient-delay";
+
+export type DentalOperationalHandoffReason =
+  | "clinical_urgency_requires_human"
+  | "existing_treatment_problem_requires_human"
+  | "patient_arrival_requires_human"
+  | "patient_delay_requires_human";
+
+export type DentalOperationsClaimPayload = {
+  kind: "operations";
+  request: DentalOperationalRequest;
+  reason: DentalOperationalHandoffReason;
+};
+
 export type DentalReceptionClaimPayload = {
   kind: "reception";
   request: "greeting" | "other";
@@ -162,6 +180,7 @@ export type DentalClaimPayload =
   | DentalSchedulingClaimPayload
   | DentalAppointmentLifecycleClaimPayload
   | DentalJourneyClaimPayload
+  | DentalOperationsClaimPayload
   | DentalEscalationClaimPayload
   | DentalReceptionClaimPayload;
 
@@ -312,6 +331,21 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
     semanticClass: "effect_failed",
     subjectRequirement: "optional",
     evidenceRequirement: "optional",
+  },
+  clinical_operation_handoff: {
+    semanticClass: "human_action_required",
+    subjectRequirement: "optional",
+    evidenceRequirement: "optional",
+  },
+  patient_presence_handoff: {
+    semanticClass: "human_action_required",
+    subjectRequirement: "optional",
+    evidenceRequirement: "optional",
+  },
+  clinical_evaluation_required: {
+    semanticClass: "human_action_required",
+    subjectRequirement: "required",
+    evidenceRequirement: "required",
   },
   scheduling_failed: {
     semanticClass: "effect_failed",
@@ -590,7 +624,32 @@ export function createDentalSchedulingCapability(
         if (
           context.policy.schedulingRequiresEvaluationFirst
           || availability.service.requiresEvaluationFirst
-        ) return { kind: "ask", questionId: "evaluation-required" };
+        ) {
+          const evidence = context.policy.schedulingRequiresEvaluationFirst
+            ? {
+                source: "policy" as const,
+                reference: "policy:scheduling-requires-evaluation-first",
+              }
+            : availability.service.evidenceRef
+              ? { source: "read" as const, reference: availability.service.evidenceRef }
+              : null;
+          if (!evidence) return { kind: "ask", questionId: "evaluation-authority-missing" };
+          return {
+            kind: "answer",
+            facts: [{
+              key: "requires_evaluation",
+              value: { kind: "boolean", value: true },
+              subject: {
+                type: "service",
+                id: availability.service.id,
+                displayName: availability.service.name,
+              },
+              evidence,
+              disclosure: "allowed",
+            }],
+            nextBestStep: null,
+          };
+        }
         if (availability.slots.length === 0)
           return { kind: "ask", questionId: "no-slots-available" };
         return {
@@ -645,6 +704,23 @@ export function createDentalSchedulingCapability(
         : { kind: "ask", questionId: "appointment-not-found" };
     },
     async execute(decision): Promise<ActionResult<typeof DENTAL_OUTCOME_SCHEMA>> {
+      if (decision.kind === "answer") {
+        const fact = decision.facts.find(({ key }) => key === "requires_evaluation");
+        if (
+          fact?.value.kind === "boolean"
+          && fact.value.value === true
+          && fact.subject?.type === "service"
+        ) {
+          return {
+            type: "clinical_evaluation_required",
+            semanticClass: "human_action_required",
+            origin: { capabilityId: "dental-scheduling" },
+            subject: fact.subject,
+            evidence: [fact.evidence],
+            facts: [fact],
+          };
+        }
+      }
       if (decision.kind === "offer") {
         if (decision.options.length === 0) {
           return {
@@ -869,8 +945,7 @@ export function createDentalEscalationCapability(): Capability<
       const objection = understanding.request !== "registered-objection" &&
         typeof understanding.signals.objection === "string" &&
         understanding.signals.objection.trim().length > 0;
-      return understanding.safety.emergency ||
-        understanding.safety.requestsHuman || objection
+      return understanding.safety.requestsHuman || objection
         ? {
             ...ownedClaim("dental-escalation", understanding.confidence, {
               kind: "escalation",

@@ -1,6 +1,6 @@
 import { DENTAL_REQUESTS } from "@/domain-packs/dental/vocabulary";
 
-export const DENTAL_UNDERSTANDING_PROMPT_VERSION = "dental-understanding.v6" as const;
+export const DENTAL_UNDERSTANDING_PROMPT_VERSION = "dental-understanding.v7" as const;
 
 export const DENTAL_UNDERSTANDING_PROMPT = [
   "Map the latest lead turn to understanding.v1; do not decide, answer, quote, or schedule.",
@@ -19,6 +19,11 @@ export const DENTAL_UNDERSTANDING_PROMPT = [
   "Use change-pending-deposit when the lead asks to change or cancel a slot while a deposit is pending.",
   "Never emit submit-journey-media or submit-deposit-proof; those requests are created only from trusted inbound media metadata.",
   "Use cancel-appointment when the lead asks to cancel an existing appointment, and reschedule-appointment when the lead asks to move an existing appointment to another date or time.",
+  "Use clinical-urgency for reported strong pain, bleeding, trauma or another urgent clinical condition; set safety.emergency=true.",
+  "Use existing-treatment-problem when the lead reports breakage, loosening or discomfort involving work already performed; copy a canonical service only when explicitly identified.",
+  "Use patient-arrival when the lead says they have arrived at the organization and patient-delay when they say they will arrive late. Date and time are only resolution hints, never permission to change an appointment.",
+  "Never diagnose, prescribe, recommend clinical conduct, promise an emergency slot, or claim the team has already seen an operational notice.",
+  "For clinical-urgency, patient-arrival and patient-delay, service must be null. For every operational request, period, professional, serviceCandidates, quantity, quantityScope, objectionQuestion and ordinal must be null.",
   "For book-appointment and reschedule-appointment only, copy professional exactly from professionalCatalog when the lead explicitly chooses that professional. Otherwise professional is null.",
   "A mention of an old or inconsistent price is still price-of-service. Never copy or trust the referenced amount; the system resolves the current price.",
   "For a package quantity price, copy a positive whole quantity into quantity and use quantityScope only for total, superior or inferior. Otherwise both are null.",

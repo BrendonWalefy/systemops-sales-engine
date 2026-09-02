@@ -1053,6 +1053,7 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
     const tenantIds = [randomUUID(), randomUUID()];
     const leadIds = [randomUUID(), randomUUID()];
     const conversationIds = [randomUUID(), randomUUID()];
+    const appointmentIds = [randomUUID(), randomUUID()];
     await database.execute(sql`
       insert into organizations (id, name, slug, specialty)
       values
@@ -1071,10 +1072,25 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
         (${conversationIds[0]}::uuid, ${tenantIds[0]}::uuid, ${leadIds[0]}::uuid, 'whatsapp'),
         (${conversationIds[1]}::uuid, ${tenantIds[1]}::uuid, ${leadIds[1]}::uuid, 'whatsapp')
     `);
+    await database.execute(sql`
+      insert into appointments (
+        id, organization_id, lead_id, starts_at, ends_at, status, source
+      ) values
+        (
+          ${appointmentIds[0]}::uuid, ${tenantIds[0]}::uuid, ${leadIds[0]}::uuid,
+          '2026-08-25T20:30:00.000Z'::timestamptz,
+          '2026-08-25T21:30:00.000Z'::timestamptz, 'scheduled', 'app'
+        ),
+        (
+          ${appointmentIds[1]}::uuid, ${tenantIds[1]}::uuid, ${leadIds[1]}::uuid,
+          '2026-08-25T20:30:00.000Z'::timestamptz,
+          '2026-08-25T21:30:00.000Z'::timestamptz, 'scheduled', 'app'
+        )
+    `);
     const input = {
       clinicId: tenantIds[0]!,
       conversationId: conversationIds[0]!,
-      reason: "v2_objection_requires_human",
+      reason: "v2_patient_arrival_requires_human",
       now: new Date("2026-08-25T20:00:00.000Z"),
     };
 
@@ -1101,6 +1117,17 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
       needs_attention: false,
       attention_reason: null,
     });
+    const appointmentRows = await database.execute<{
+      id: string;
+      status: string;
+    }>(sql`
+      select id, status
+      from appointments
+      where id in (${appointmentIds[0]}::uuid, ${appointmentIds[1]}::uuid)
+      order by id
+    `);
+    expect(appointmentRows.rows).toHaveLength(2);
+    expect(appointmentRows.rows.every(({ status }) => status === "scheduled")).toBe(true);
   });
 
   it("resolves terminal process and delivery handoff through exact durable tenant bindings", async () => {

@@ -49,6 +49,11 @@ describe("dental understanding coverage matrix", () => {
     expect(DENTAL_UNDERSTANDING_PROMPT).toContain("old or inconsistent price");
     expect(DENTAL_UNDERSTANDING_PROMPT).toContain("list-appointments");
     expect(DENTAL_UNDERSTANDING_PROMPT).toContain("professionalCatalog");
+    expect(DENTAL_UNDERSTANDING_PROMPT).toContain("clinical-urgency");
+    expect(DENTAL_UNDERSTANDING_PROMPT).toContain("existing-treatment-problem");
+    expect(DENTAL_UNDERSTANDING_PROMPT).toContain("patient-arrival");
+    expect(DENTAL_UNDERSTANDING_PROMPT).toContain("patient-delay");
+    expect(DENTAL_UNDERSTANDING_PROMPT).toContain("Never diagnose");
   });
 
   it("offers a concept for a turn that names no service at all", () => {
@@ -56,5 +61,18 @@ describe("dental understanding coverage matrix", () => {
       request !== "price-of-service" && request !== "service-availability");
     expect(withoutService).toContain("greeting");
     expect(withoutService).toContain("other");
+  });
+
+  it("represents every operational turn in the closed request vocabulary", () => {
+    for (const request of [
+      "clinical-urgency",
+      "patient-arrival",
+      "patient-delay",
+    ]) {
+      expect(() => parseDentalUnderstanding(reply(request, null))).not.toThrow();
+    }
+    expect(() => parseDentalUnderstanding(
+      reply("existing-treatment-problem", "Lente"),
+    )).not.toThrow();
   });
 });

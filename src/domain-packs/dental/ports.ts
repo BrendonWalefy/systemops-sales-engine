@@ -142,11 +142,25 @@ export type DentalSlot = {
   bookingKind?: "book" | "reschedule";
 };
 export type DentalSlotSearchResult = {
-  service: { id: string; name: string; requiresEvaluationFirst?: boolean };
+  service: {
+    id: string;
+    name: string;
+    requiresEvaluationFirst?: boolean;
+    evidenceRef?: string;
+  };
   slots: readonly DentalSlot[];
 };
 export type PendingDentalAppointment = { id: string; label: string; evidenceRef: string };
 export type DentalAppointmentReference = PendingDentalAppointment;
+
+export type DentalTodayAppointmentResolution =
+  | Readonly<{ kind: "exact"; appointment: DentalAppointmentReference }>
+  | Readonly<{ kind: "none" }>
+  | Readonly<{ kind: "ambiguous" }>;
+
+export type DentalOperationsReadPort = Readonly<{
+  resolveTodayAppointment(): Promise<DentalTodayAppointmentResolution>;
+}>;
 export type DentalAppointmentSelection = Readonly<{
   ordinal: number | null;
   date: string | null;

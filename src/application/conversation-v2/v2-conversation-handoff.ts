@@ -6,7 +6,12 @@ export type V2ConversationHandoffReason =
   | "v2_manual_recovery_requires_human"
   | "v2_guided_pipeline_requires_human"
   | "v2_effect_outbox_failure_requires_human"
-  | "v2_reschedule_compensation_requires_human";
+  | "v2_reschedule_compensation_requires_human"
+  | "v2_clinical_urgency_requires_human"
+  | "v2_existing_treatment_problem_requires_human"
+  | "v2_patient_arrival_requires_human"
+  | "v2_patient_delay_requires_human"
+  | "v2_clinical_evaluation_requires_human";
 
 export type V2ConversationHandoffStore = Readonly<{
   markRequired(input: Readonly<{

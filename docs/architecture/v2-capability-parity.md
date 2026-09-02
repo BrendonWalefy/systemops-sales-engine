@@ -21,6 +21,7 @@ V1; a roadmap detalhada abaixo apenas decompõe a evolução interna de cada fro
 | `reservation` | `shared_service` | SlotReservationService and BookingService own reservation and double-booking safety. |
 | `deposit` | `v2_capability` | `dental-scheduling` creates the exact hold and `dental-journey` receives proof; existing deterministic review and booking services retain final authority. |
 | `cancel_reschedule` | `v2_capability` | `dental-appointment-lifecycle` selects the exact tenant-bound appointment; `BookingService` owns cancellation and compensated rescheduling. |
+| `clinical_operations` | `v2_capability` | `dental-operations` classifies urgency, existing-work problems and patient presence; only the tenant-scoped handoff store may persist the operational effect. |
 | `opt_out` | `shared_service` | Deterministic stop-contact policy persists consent and creates at most one confirmation. |
 | `handoff` | `v2_capability` | Dental escalation capability returns a human-action-required result. |
 | `takeover` | `shared_service` | Live turn configuration suppresses active takeover and resumes only an expired lease. |
@@ -67,12 +68,12 @@ V1; a roadmap detalhada abaixo apenas decompõe a evolução interna de cada fro
 | Agenda | Listar consultas | `green` | Agenda | `dental-appointment-lifecycle` tenant-scoped |
 | Agenda | Cancelar consulta | `green` | Agenda | cancelamento idempotente do compromisso exato |
 | Agenda | Reagendar consulta | `green` | Agenda | atualização do mesmo compromisso com compensação |
-| Agenda | Tratamento exige avaliação | `slice` | Tratamentos + Agenda | redirecionamento autorizado |
+| Agenda | Tratamento exige avaliação | `green` | Tratamentos + Agenda | `dental-scheduling` + handoff com evidência do tratamento |
 | Operação | Pedido explícito de humano | `green` | Inbox | `dental-escalation` |
 | Operação | Takeover/pausa da IA | `shared` | Inbox | live turn gate existente |
-| Operação | Urgência clínica sem diagnóstico | `handoff` | Inbox | classificação fechada + handoff |
-| Operação | Problema em trabalho existente | `handoff` | Inbox | rota operacional fechada |
-| Operação | Paciente chegou ou está atrasado | `slice` | Agenda + Inbox | evento operacional idempotente |
+| Operação | Urgência clínica sem diagnóstico | `green` | Inbox | `dental-operations` + handoff fechado |
+| Operação | Problema em trabalho existente | `green` | Inbox | `dental-operations` + handoff fechado |
+| Operação | Paciente chegou ou está atrasado | `green` | Agenda + Inbox | resolução read-only + handoff idempotente |
 | Consentimento | Opt-out e confirmação única | `shared` | Inbox/configuração | policy + sender safety existentes |
 | Relacionamento | Follow-up e recuperação | `shared` | Inbox/configuração | produtor V2 de plano/outbox |
 | Relacionamento | Lembrete e confirmação de consulta | `shared` | Agenda | produtor V2 de plano/outbox |
@@ -190,6 +191,23 @@ estruturada, no máximo uma chamada para texto, zero verbalização para conteú
 determinísticos, transições PostgreSQL idempotentes e ausência de V1, polling ou ativação de
 tenant.
 
+### Evidência da fatia de operação clínica
+
+`dental-operations` reivindica somente urgência, problema em trabalho existente, chegada e atraso.
+Cada resultado carrega uma razão fechada e evidência derivada; o handler persiste o handoff exato
+antes do outbox e o Decision Trace mantém apenas outcome, classe semântica, razão fechada e refs
+opacas. Descrição clínica, mensagem, telefone e payload do provedor não entram no trace.
+
+Chegada e atraso fazem no máximo uma leitura de compromissos ativos por tenant/lead e aceitam um
+vínculo somente quando existe exatamente um compromisso no dia local da clínica. Zero ou múltiplos
+compromissos ainda produzem handoff, sem escolher nem alterar agenda. Urgência e problema em trabalho
+existente não leem calendário. Tratamento com `requiresEvaluationFirst` produz handoff vinculado ao
+tratamento e não oferece, reserva ou confirma slot.
+
+O caminho mantém uma chamada de Understanding, no máximo uma verbalização, um outbox/job e nenhuma
+mutação de agenda. Retry reutiliza a authority e o dedupe já existentes; outro tenant, compromisso
+ambíguo ou estado divergente falha fechado. Não foi criado schema, polling, worker ou fallback V1.
+
 ## Ordem de implementação
 
 1. conhecimento institucional básico concluído;
@@ -197,9 +215,10 @@ tenant.
 3. comercial, campanhas e objeções concluídos;
 4. ciclo completo da agenda concluído;
 5. jornada, mídia e sinal concluídos;
-6. operação clínica, handoff e automações são a próxima fatia;
-7. diagnóstico read-only do trace no Inbox e corpus final de paridade;
-8. auditoria final e remoção futura dos roots históricos V1.
+6. operação clínica e handoff concluídos;
+7. automações proativas são a próxima fatia;
+8. diagnóstico read-only do trace no Inbox e corpus final de paridade;
+9. auditoria final e remoção futura dos roots históricos V1.
 
 A ordem prioriza respostas frequentes e prova primeiro o caminho de baixo risco. O pipeline já
 existente fornece os contratos comuns; não haverá uma fase de criação de aliases, roteador ou

@@ -27,6 +27,10 @@ export const DENTAL_REQUESTS = [
   "submit-journey-media",
   "submit-deposit-proof",
   "change-pending-deposit",
+  "clinical-urgency",
+  "existing-treatment-problem",
+  "patient-arrival",
+  "patient-delay",
 ] as const;
 
 export type DentalRequest = (typeof DENTAL_REQUESTS)[number];

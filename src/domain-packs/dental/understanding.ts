@@ -72,7 +72,12 @@ export type DentalUnderstandingSemanticIssue = Readonly<{
     | "quantity_scope_requires_quantity"
     | "objection_question_required"
     | "objection_question_forbidden"
-    | "professional_forbidden";
+    | "professional_forbidden"
+    | "service_forbidden_for_request"
+    | "date_forbidden_for_request"
+    | "period_forbidden_for_request"
+    | "time_forbidden_for_request"
+    | "ordinal_forbidden_for_request";
 }>;
 
 export type DentalUnderstandingSemanticValidation =
@@ -91,6 +96,18 @@ const SERVICE_REQUIRED_REQUESTS = new Set<DentalRequest>([
 const PROFESSIONAL_ALLOWED_REQUESTS = new Set<DentalRequest>([
   "book-appointment",
   "reschedule-appointment",
+]);
+
+const OPERATIONAL_REQUESTS = new Set<DentalRequest>([
+  "clinical-urgency",
+  "existing-treatment-problem",
+  "patient-arrival",
+  "patient-delay",
+]);
+
+const PRESENCE_REQUESTS = new Set<DentalRequest>([
+  "patient-arrival",
+  "patient-delay",
 ]);
 
 export class DentalUnderstandingSemanticError extends Error {
@@ -258,6 +275,74 @@ export function validateDentalUnderstandingSemantics(
       issues: Object.freeze([{
         path: Object.freeze(["entities", "professional"]),
         code: "professional_forbidden" as const,
+      }]),
+    };
+  }
+  if (
+    value.request !== null
+    && OPERATIONAL_REQUESTS.has(value.request)
+    && value.request !== "existing-treatment-problem"
+    && value.entities.service !== null
+  ) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "service"]),
+        code: "service_forbidden_for_request" as const,
+      }]),
+    };
+  }
+  if (
+    value.request !== null
+    && OPERATIONAL_REQUESTS.has(value.request)
+    && !PRESENCE_REQUESTS.has(value.request)
+    && value.entities.date !== null
+  ) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "date"]),
+        code: "date_forbidden_for_request" as const,
+      }]),
+    };
+  }
+  if (
+    value.request !== null
+    && OPERATIONAL_REQUESTS.has(value.request)
+    && value.entities.period !== null
+  ) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "period"]),
+        code: "period_forbidden_for_request" as const,
+      }]),
+    };
+  }
+  if (
+    value.request !== null
+    && OPERATIONAL_REQUESTS.has(value.request)
+    && !PRESENCE_REQUESTS.has(value.request)
+    && value.entities.time !== null
+  ) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "time"]),
+        code: "time_forbidden_for_request" as const,
+      }]),
+    };
+  }
+  if (
+    value.request !== null
+    && OPERATIONAL_REQUESTS.has(value.request)
+    && value.entities.ordinal !== null
+  ) {
+    return {
+      valid: false,
+      issues: Object.freeze([{
+        path: Object.freeze(["entities", "ordinal"]),
+        code: "ordinal_forbidden_for_request" as const,
       }]),
     };
   }

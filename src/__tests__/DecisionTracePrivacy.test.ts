@@ -85,4 +85,39 @@ describe("AI contract rejection Decision Trace privacy", () => {
     });
     expect(JSON.stringify(sanitized)).not.toContain(privateOutput);
   });
+
+  it("retains only the closed operational handoff reason", () => {
+    const privateClinicalText = "private clinical description";
+    const sanitized = sanitizeResponseDecisionTraceRecord({
+      turnId: "turn-operation-1",
+      clinicId: "clinic-1",
+      conversationId: "conversation-1",
+      stage: "v2.action_result",
+      occurredAt: "2026-09-02T03:00:00.000Z",
+      metadata: {
+        status: "completed",
+        durationMs: 8,
+        resultCount: 1,
+        completedEffectCount: 0,
+        failedEffectCount: 0,
+        outcomeTypes: "clinical_operation_handoff",
+        semanticClasses: "human_action_required",
+        handoffReason: "v2_clinical_urgency_requires_human",
+        operationalFactValue: privateClinicalText,
+        leadMessage: privateClinicalText,
+      },
+    } as unknown as DecisionTraceRecord);
+
+    expect(sanitized.metadata).toEqual({
+      status: "completed",
+      durationMs: 8,
+      resultCount: 1,
+      completedEffectCount: 0,
+      failedEffectCount: 0,
+      outcomeTypes: "clinical_operation_handoff",
+      semanticClasses: "human_action_required",
+      handoffReason: "v2_clinical_urgency_requires_human",
+    });
+    expect(JSON.stringify(sanitized)).not.toContain(privateClinicalText);
+  });
 });
