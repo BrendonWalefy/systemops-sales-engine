@@ -21,10 +21,14 @@ import type { Organization } from "@/domain/entities/clinic";
 import type { Conversation } from "@/domain/entities/conversation";
 import type { Lead } from "@/domain/entities/lead";
 import type { Treatment } from "@/domain/entities/treatment";
+import type { Professional } from "@/domain/entities/professional";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
+import type { ProfessionalRepository } from "@/domain/repositories/professional-repository";
 import type { TreatmentRepository } from "@/domain/repositories/treatment-repository";
 import type {
   DentalBusinessInformationFact,
+  DentalAppointmentLifecycleReadPort,
+  DentalAppointmentLifecycleWritePort,
   DentalCatalogReadPort,
   DentalCommercialReadPort,
   DentalKnowledgeReadPort,
@@ -50,6 +54,7 @@ type LiveState = Pick<
 
 export type DentalLiveAdapterDependencies = {
   treatments: Pick<TreatmentRepository, "listByClinic">;
+  professionals: Pick<ProfessionalRepository, "listByClinic">;
   priceCampaigns?: Readonly<{
     listActiveByTreatment(
       clinicId: string,
@@ -60,10 +65,13 @@ export type DentalLiveAdapterDependencies = {
   state: LiveState;
   appointments: Pick<
     AppointmentRepository,
-    "findByPeriod" | "findByIdForClinicAndLead"
+    "findByPeriod" | "findByIdForClinicAndLead" | "findAllActiveByLeadId"
   >;
   reservations: Pick<SlotReservationService, "findActiveByPeriod">;
-  booking: Pick<BookingService, "book" | "confirmAppointment">;
+  booking: Pick<
+    BookingService,
+    "book" | "confirmAppointment" | "cancelAppointment" | "reschedule"
+  >;
   clinic: Organization;
   editorial: EditorialConfig | null;
   lead: Lead;
@@ -271,11 +279,13 @@ function toDentalSlot(
   stateId: string,
   slot: FormattedSlot,
   treatmentId: string,
+  bookingKind: "book" | "reschedule" = "book",
 ): DentalSlot {
   return {
     id: slotId(stateId, slot.index, treatmentId),
     label: slot.label,
     evidenceRef: slotEvidence(stateId, slot.index),
+    bookingKind,
   };
 }
 
@@ -310,6 +320,8 @@ export function createDentalLiveAdapters(
   commercialRead: DentalCommercialReadPort;
   schedulingRead: DentalSchedulingReadPort;
   schedulingWrite: DentalSchedulingWritePort;
+  appointmentLifecycleRead: DentalAppointmentLifecycleReadPort;
+  appointmentLifecycleWrite: DentalAppointmentLifecycleWritePort;
 } {
   const {
     appointments,
@@ -326,6 +338,7 @@ export function createDentalLiveAdapters(
     reservations,
     state,
     treatments,
+    professionals,
     turnId,
   } = deps;
   if (lead.clinicId !== clinic.id || lead.id !== leadId) {
@@ -347,7 +360,9 @@ export function createDentalLiveAdapters(
   let preparedSlotOffer: Readonly<{
     stateId: string;
     treatment: Treatment;
-    slots: readonly { startsAt: Date; endsAt: Date }[];
+    slots: readonly { startsAt: Date; endsAt: Date; professionalId?: string }[];
+    professionalId: string | null;
+    replacesAppointmentId: string | null;
     exposed: Readonly<{ service: { id: string; name: string; requiresEvaluationFirst: boolean }; slots: readonly DentalSlot[] }>;
   }> | null = null;
 
@@ -355,6 +370,44 @@ export function createDentalLiveAdapters(
     return (await treatments.listByClinic(clinic.id)).filter(
       (treatment) => treatment.clinicId === clinic.id,
     );
+  }
+
+  async function listTenantActiveProfessionals(): Promise<Professional[]> {
+    const rows = await professionals.listByClinic(clinic.id);
+    if (rows.some((professional) => professional.clinicId !== clinic.id)) {
+      throw new DentalLiveAdapterError("professional tenant binding mismatch");
+    }
+    return rows.filter((professional) => professional.isActive);
+  }
+
+  async function resolveRequestedProfessional(
+    query: string | null | undefined,
+  ): Promise<Professional | null> {
+    if (!query || !normalize(query)) return null;
+    const normalized = normalize(query);
+    const matches = (await listTenantActiveProfessionals()).filter(
+      (professional) => normalize(professional.name) === normalized,
+    );
+    if (matches.length !== 1) {
+      throw new DentalLiveAdapterError("professional resolution required");
+    }
+    return matches[0]!;
+  }
+
+  function withinProfessionalSchedule(
+    professional: Professional | null,
+    startsAt: Date,
+    endsAt: Date,
+  ): boolean {
+    if (!professional?.workSchedule) return true;
+    const start = timezone.toLocalParts(startsAt);
+    const end = timezone.toLocalParts(endsAt);
+    const window = professional.workSchedule[start.weekday as keyof typeof professional.workSchedule];
+    if (!window || start.weekday !== end.weekday) return false;
+    const startMinutes = start.hour * 60 + start.minute;
+    const endMinutes = end.hour * 60 + end.minute;
+    return startMinutes >= window.startHour * 60 + window.startMinute
+      && endMinutes <= window.endHour * 60 + window.endMinute;
   }
 
   async function exactTreatmentForScheduling(
@@ -385,6 +438,7 @@ export function createDentalLiveAdapters(
     treatment: Treatment;
     startsAt: Date;
     endsAt: Date;
+    replacesAppointmentId: string | null;
   } | null> {
     const parsed = parseSlotId(id);
     if (!parsed) return null;
@@ -419,7 +473,13 @@ export function createDentalLiveAdapters(
     ) return null;
     const parsedSlot = validOfferedSlot(offered, treatment);
     return parsedSlot
-      ? { state: current, slot: offered, treatment, ...parsedSlot }
+      ? {
+          state: current,
+          slot: offered,
+          treatment,
+          replacesAppointmentId: payload.replacesAppointmentId ?? null,
+          ...parsedSlot,
+        }
       : null;
   }
 
@@ -774,6 +834,7 @@ export function createDentalLiveAdapters(
   const schedulingRead: DentalSchedulingReadPort = {
     async listSlots(input) {
       const treatment = await exactTreatmentForScheduling(input.service);
+      const requestedProfessional = await resolveRequestedProfessional(input.professional);
       const service = {
         id: treatment.id,
         name: treatment.name,
@@ -805,6 +866,7 @@ export function createDentalLiveAdapters(
         from,
         to,
         slotDurationMinutes: treatment.durationMinutes,
+        ...(requestedProfessional ? { professionalId: requestedProfessional.id } : {}),
         allowedStartWindows: treatment.bookingWindows ?? null,
       }))
         .filter((slot) => slot.clinicId === clinic.id)
@@ -824,6 +886,16 @@ export function createDentalLiveAdapters(
             actual.day === requestedParts.day;
         })
         .filter((slot) => periodMatches(timezone, slot.startsAt, input.period))
+        .filter((slot) => {
+          if (requestedProfessional) {
+            return withinProfessionalSchedule(
+              requestedProfessional,
+              slot.startsAt,
+              slot.endsAt,
+            );
+          }
+          return true;
+        })
         .filter((slot) => !activeAppointments.some((appointment) =>
           appointment.clinicId === clinic.id &&
           isActiveAppointment(appointment) &&
@@ -857,9 +929,14 @@ export function createDentalLiveAdapters(
       preparedSlotOffer = Object.freeze({
         stateId,
         treatment,
+        professionalId: requestedProfessional?.id ?? null,
+        replacesAppointmentId: null,
         slots: Object.freeze(slots.map((slot) => Object.freeze({
           startsAt: new Date(slot.startsAt.getTime()),
           endsAt: new Date(slot.endsAt.getTime()),
+          ...((requestedProfessional?.id ?? slot.professionalId)
+            ? { professionalId: requestedProfessional?.id ?? slot.professionalId! }
+            : {}),
         }))),
         exposed,
       });
@@ -897,7 +974,12 @@ export function createDentalLiveAdapters(
         return true;
       });
       if (matches.length !== 1) return null;
-      return toDentalSlot(current.id, matches[0]!, treatment.id);
+      return toDentalSlot(
+        current.id,
+        matches[0]!,
+        treatment.id,
+        payload.replacesAppointmentId ? "reschedule" : "book",
+      );
     },
 
     async resolvePendingAppointment(pendingStepId) {
@@ -909,6 +991,96 @@ export function createDentalLiveAdapters(
             evidenceRef: appointmentEvidence(pending.appointment.id),
           }
         : null;
+    },
+  };
+
+  async function activeAppointmentsForLead(): Promise<Appointment[]> {
+    const rows = await appointments.findAllActiveByLeadId(leadId);
+    if (rows.some((appointment) =>
+      appointment.clinicId !== clinic.id ||
+      appointment.leadId !== leadId
+    )) {
+      throw new DentalLiveAdapterError("appointment tenant binding mismatch");
+    }
+    return rows
+      .filter(isActiveAppointment)
+      .sort((left, right) =>
+        left.startsAt.getTime() - right.startsAt.getTime() ||
+        left.id.localeCompare(right.id)
+      );
+  }
+
+  function appointmentReference(appointment: Appointment) {
+    return {
+      id: appointment.id,
+      label: timezone.formatForConfirmation(appointment.startsAt),
+      evidenceRef: appointmentEvidence(appointment.id),
+    };
+  }
+
+  const appointmentLifecycleRead: DentalAppointmentLifecycleReadPort = {
+    async listActiveAppointments() {
+      return (await activeAppointmentsForLead()).map(appointmentReference);
+    },
+    async resolveActiveAppointment(input) {
+      const rows = await activeAppointmentsForLead();
+      const matches = rows.filter((appointment, index) => {
+        if (input.ordinal !== null && input.ordinal !== index + 1) return false;
+        const slot: FormattedSlot = {
+          index: index + 1,
+          startsAt: appointment.startsAt.toISOString(),
+          endsAt: appointment.endsAt.toISOString(),
+          label: timezone.formatForConfirmation(appointment.startsAt),
+        };
+        if (input.date && !datesMatch(timezone, slot, input.date, turnNow, businessHours)) {
+          return false;
+        }
+        if (input.time && !timesMatch(timezone, slot, input.time)) return false;
+        return true;
+      });
+      if (matches.length === 0) return { kind: "missing" };
+      if (matches.length > 1) {
+        return {
+          kind: "ambiguous",
+          appointments: matches.map(appointmentReference),
+        };
+      }
+      return { kind: "resolved", appointment: appointmentReference(matches[0]!) };
+    },
+    async listReplacementSlots(input) {
+      const appointment = await appointments.findByIdForClinicAndLead(
+        clinic.id,
+        leadId,
+        input.appointmentId,
+      );
+      if (
+        !appointment ||
+        appointment.clinicId !== clinic.id ||
+        appointment.leadId !== leadId ||
+        !isActiveAppointment(appointment)
+      ) {
+        throw new DentalLiveAdapterError("replacement appointment binding mismatch");
+      }
+      const tenantTreatments = await listTenantTreatments();
+      const boundTreatment = appointment.treatmentId
+        ? tenantTreatments.find(({ id }) => id === appointment.treatmentId) ?? null
+        : null;
+      const treatment = boundTreatment ?? await exactTreatmentForScheduling(null);
+      const offer = await schedulingRead.listSlots({
+        service: treatment.name,
+        date: input.date,
+        period: input.period,
+        professional: input.professional,
+        minimumLeadTimeHours: input.minimumLeadTimeHours,
+        now: input.now,
+      });
+      if (preparedSlotOffer) {
+        preparedSlotOffer = Object.freeze({
+          ...preparedSlotOffer,
+          replacesAppointmentId: appointment.id,
+        });
+      }
+      return { ...offer, replacesAppointmentId: appointment.id };
     },
   };
 
@@ -956,9 +1128,10 @@ export function createDentalLiveAdapters(
       const formatted = await state.offerSlotsForTurn(
         prepared.stateId,
         conversationId,
-        prepared.slots.map(({ startsAt, endsAt }) => ({
+        prepared.slots.map(({ startsAt, endsAt, professionalId }) => ({
           startsAt: new Date(startsAt.getTime()),
           endsAt: new Date(endsAt.getTime()),
+          ...(professionalId ? { professionalId } : {}),
         })),
         timezone,
         prepared.treatment.name,
@@ -966,6 +1139,8 @@ export function createDentalLiveAdapters(
         clinic.slotOfferTtlMinutes,
         false,
         prepared.treatment.id,
+        prepared.professionalId ?? undefined,
+        prepared.replacesAppointmentId ?? undefined,
       );
       effectLifecycle?.completed();
       if (
@@ -986,7 +1161,12 @@ export function createDentalLiveAdapters(
           name: prepared.treatment.name,
         },
         slots: formatted.map((slot) =>
-          toDentalSlot(prepared.stateId, slot, prepared.treatment.id),
+          toDentalSlot(
+            prepared.stateId,
+            slot,
+            prepared.treatment.id,
+            prepared.replacesAppointmentId ? "reschedule" : "book",
+          ),
         ),
       };
     },
@@ -1033,6 +1213,7 @@ export function createDentalLiveAdapters(
         treatmentName: offered.treatment.name,
         treatmentId: offered.treatment.id,
         valueCents: offered.treatment.priceCents,
+        professionalId: offered.slot.professionalId ?? null,
         origin: "ai_conversation",
       });
       if (!result.success) {
@@ -1068,6 +1249,49 @@ export function createDentalLiveAdapters(
           evidenceRef: `booking:${turnId}:invalid_binding`,
         };
       }
+      await invalidateConsumedStateBestEffort(offered.state.id);
+      return successfulOutcome(result.appointment, offered.slot.label);
+    },
+
+    async rescheduleSlot(id) {
+      const offered = await currentOfferedSlot(id);
+      if (!offered?.replacesAppointmentId) {
+        return {
+          success: false,
+          reason: "stale_replacement_offer",
+          evidenceRef: `reschedule:${turnId}:stale_offer`,
+        };
+      }
+      effectLifecycle?.attempted();
+      const result = await booking.reschedule({
+        clinic,
+        lead,
+        appointmentId: offered.replacesAppointmentId,
+        startsAt: offered.startsAt,
+        endsAt: offered.endsAt,
+        professionalId: offered.slot.professionalId ?? null,
+      });
+      if (!result.success) {
+        return {
+          success: false,
+          reason: result.reason,
+          evidenceRef: `reschedule:${turnId}:${result.reason}`,
+        };
+      }
+      if (
+        result.appointment.id !== offered.replacesAppointmentId ||
+        result.appointment.clinicId !== clinic.id ||
+        result.appointment.leadId !== leadId ||
+        result.appointment.startsAt.getTime() !== offered.startsAt.getTime() ||
+        result.appointment.endsAt.getTime() !== offered.endsAt.getTime()
+      ) {
+        return {
+          success: false,
+          reason: "invalid_reschedule_binding",
+          evidenceRef: `reschedule:${turnId}:invalid_binding`,
+        };
+      }
+      effectLifecycle?.completed();
       await invalidateConsumedStateBestEffort(offered.state.id);
       return successfulOutcome(result.appointment, offered.slot.label);
     },
@@ -1111,6 +1335,48 @@ export function createDentalLiveAdapters(
     },
   };
 
+  const appointmentLifecycleWrite: DentalAppointmentLifecycleWritePort = {
+    async persistReplacementOffer(offer) {
+      const prepared = preparedSlotOffer;
+      if (!prepared || prepared.replacesAppointmentId !== offer.replacesAppointmentId) {
+        throw new DentalLiveAdapterError("prepared replacement offer unavailable");
+      }
+      const persisted = await schedulingWrite.persistSlotOffer({
+        service: offer.service,
+        slots: offer.slots,
+      });
+      return { ...persisted, replacesAppointmentId: offer.replacesAppointmentId };
+    },
+    async cancelAppointment(appointmentId) {
+      effectLifecycle?.attempted();
+      const result = await booking.cancelAppointment({ clinic, lead, appointmentId });
+      if (!result.success) {
+        return {
+          success: false,
+          reason: result.reason,
+          evidenceRef: `appointment-cancellation:${turnId}:${result.reason}`,
+        };
+      }
+      if (
+        result.appointment.id !== appointmentId ||
+        result.appointment.clinicId !== clinic.id ||
+        result.appointment.leadId !== leadId ||
+        result.appointment.status !== "cancelled"
+      ) {
+        return {
+          success: false,
+          reason: "invalid_cancellation_binding",
+          evidenceRef: `appointment-cancellation:${turnId}:invalid_binding`,
+        };
+      }
+      effectLifecycle?.completed();
+      return successfulOutcome(
+        result.appointment,
+        timezone.formatForConfirmation(result.appointment.startsAt),
+      );
+    },
+  };
+
   return {
     knowledgeRead,
     playbookKnowledgeRead,
@@ -1118,5 +1384,7 @@ export function createDentalLiveAdapters(
     commercialRead,
     schedulingRead,
     schedulingWrite,
+    appointmentLifecycleRead,
+    appointmentLifecycleWrite,
   };
 }

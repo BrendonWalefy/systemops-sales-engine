@@ -87,6 +87,7 @@ export type DentalSchedulingClaimPayload =
       serviceQuery: string | null;
       requestedDate: string | null;
       requestedPeriod: string | null;
+      requestedProfessional: string | null;
     }
   | {
       kind: "scheduling";
@@ -100,6 +101,27 @@ export type DentalSchedulingClaimPayload =
       kind: "scheduling";
       request: "confirm-appointment";
       pendingStepId: string | null;
+    };
+
+export type DentalAppointmentLifecycleClaimPayload =
+  | {
+      kind: "appointment-lifecycle";
+      request: "list-appointments";
+    }
+  | {
+      kind: "appointment-lifecycle";
+      request: "cancel-appointment";
+      ordinal: number | null;
+      date: string | null;
+      time: string | null;
+    }
+  | {
+      kind: "appointment-lifecycle";
+      request: "reschedule-appointment";
+      ordinal: number | null;
+      requestedDate: string | null;
+      requestedPeriod: string | null;
+      requestedProfessional: string | null;
     };
 
 export type DentalReceptionClaimPayload = {
@@ -123,6 +145,7 @@ export type DentalClaimPayload =
   | DentalCatalogClaimPayload
   | DentalCommercialClaimPayload
   | DentalSchedulingClaimPayload
+  | DentalAppointmentLifecycleClaimPayload
   | DentalEscalationClaimPayload
   | DentalReceptionClaimPayload;
 
@@ -199,6 +222,51 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
     subjectRequirement: "optional",
     evidenceRequirement: "write_required",
   },
+  appointments_listed: {
+    semanticClass: "options_found",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "required",
+  },
+  appointment_selection_required: {
+    semanticClass: "options_found",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "required",
+  },
+  no_active_appointment: {
+    semanticClass: "information_authorized",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "optional",
+  },
+  appointment_cancelled: {
+    semanticClass: "effect_completed",
+    subjectRequirement: "required",
+    evidenceRequirement: "write_required",
+  },
+  appointment_cancel_failed: {
+    semanticClass: "effect_failed",
+    subjectRequirement: "optional",
+    evidenceRequirement: "write_required",
+  },
+  appointment_reschedule_offered: {
+    semanticClass: "options_found",
+    subjectRequirement: "required",
+    evidenceRequirement: "write_required",
+  },
+  appointment_reschedule_failed: {
+    semanticClass: "effect_failed",
+    subjectRequirement: "optional",
+    evidenceRequirement: "optional",
+  },
+  appointment_rescheduled: {
+    semanticClass: "effect_completed",
+    subjectRequirement: "required",
+    evidenceRequirement: "write_required",
+  },
+  appointment_reschedule_compensation_failed: {
+    semanticClass: "human_action_required",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "write_required",
+  },
   scheduling_failed: {
     semanticClass: "effect_failed",
     subjectRequirement: "optional",
@@ -235,7 +303,7 @@ export type DentalOutcomeType = OutcomeTypeOf<typeof DENTAL_OUTCOME_SCHEMA>;
 
 function stringEntity(
   understanding: Understanding<DentalRequest>,
-  key: "service" | "date" | "period" | "time",
+  key: "service" | "date" | "period" | "time" | "professional",
 ): string | null {
   const value = understanding.entities[key];
   return typeof value === "string" ? value : null;
@@ -440,6 +508,7 @@ export function createDentalSchedulingCapability(
           serviceQuery: stringEntity(understanding, "service"),
           requestedDate: stringEntity(understanding, "date"),
           requestedPeriod: stringEntity(understanding, "period"),
+          requestedProfessional: stringEntity(understanding, "professional"),
         });
       }
       if (understanding.request === "confirm-slot") {
@@ -468,6 +537,7 @@ export function createDentalSchedulingCapability(
           service: claim.payload.serviceQuery,
           date: claim.payload.requestedDate,
           period: claim.payload.requestedPeriod,
+          professional: claim.payload.requestedProfessional,
           minimumLeadTimeHours: context.policy.schedulingMinimumLeadTimeHours,
           now: context.now,
         });
@@ -507,7 +577,10 @@ export function createDentalSchedulingCapability(
         return slot
           ? {
               kind: "execute",
-              action: { type: "book-slot", parameters: { slotId: slot.id } },
+              action: {
+                type: slot.bookingKind === "reschedule" ? "reschedule-slot" : "book-slot",
+                parameters: { slotId: slot.id },
+              },
               nextBestStep: null,
             }
           : { kind: "ask", questionId: "slot-not-in-offer" };
@@ -601,6 +674,7 @@ export function createDentalSchedulingCapability(
       }
       if (
         decision.action.type !== "book-slot" &&
+        decision.action.type !== "reschedule-slot" &&
         decision.action.type !== "confirm-appointment"
       ) {
         return {
@@ -613,7 +687,7 @@ export function createDentalSchedulingCapability(
         };
       }
       const parameter =
-        decision.action.type === "book-slot" ? "slotId" : "appointmentId";
+        decision.action.type === "confirm-appointment" ? "appointmentId" : "slotId";
       const id = decision.action.parameters[parameter];
       if (typeof id !== "string") {
         return {
@@ -628,13 +702,30 @@ export function createDentalSchedulingCapability(
       const outcome =
         decision.action.type === "book-slot"
           ? await writePort.bookSlot(id)
-          : await writePort.confirmAppointment(id);
+          : decision.action.type === "reschedule-slot"
+            ? await writePort.rescheduleSlot(id)
+            : await writePort.confirmAppointment(id);
       if (!outcome.success) {
+        if (
+          decision.action.type === "reschedule-slot" &&
+          outcome.reason === "compensation_failed"
+        ) {
+          return {
+            type: "appointment_reschedule_compensation_failed",
+            semanticClass: "human_action_required",
+            origin: { capabilityId: "dental-scheduling" },
+            subject: null,
+            evidence: [{ source: "write", reference: outcome.evidenceRef }],
+            facts: [],
+          };
+        }
         return {
           type:
             decision.action.type === "book-slot"
               ? "appointment_create_failed"
-              : "appointment_confirmation_failed",
+              : decision.action.type === "reschedule-slot"
+                ? "appointment_reschedule_failed"
+                : "appointment_confirmation_failed",
           semanticClass: "effect_failed",
           origin: { capabilityId: "dental-scheduling" },
           subject: null,
@@ -651,7 +742,9 @@ export function createDentalSchedulingCapability(
         type:
           decision.action.type === "book-slot"
             ? "appointment_created"
-            : "appointment_confirmed",
+            : decision.action.type === "reschedule-slot"
+              ? "appointment_rescheduled"
+              : "appointment_confirmed",
         semanticClass: "effect_completed",
         origin: { capabilityId: "dental-scheduling" },
         subject: fact.subject,
@@ -706,20 +799,14 @@ export function createDentalEscalationCapability(): Capability<
       const objection = understanding.request !== "registered-objection" &&
         typeof understanding.signals.objection === "string" &&
         understanding.signals.objection.trim().length > 0;
-      const cancelReschedule = understanding.request === "cancel-appointment" ||
-        understanding.request === "reschedule-appointment";
       return understanding.safety.emergency ||
-        understanding.safety.requestsHuman || objection || cancelReschedule
+        understanding.safety.requestsHuman || objection
         ? {
             ...ownedClaim("dental-escalation", understanding.confidence, {
               kind: "escalation",
               emergency: understanding.safety.emergency ?? false,
               requestsHuman: understanding.safety.requestsHuman ?? false,
-              reason: cancelReschedule
-                ? "cancel_reschedule"
-                : objection
-                  ? "objection"
-                  : "structured_safety_signal",
+              reason: objection ? "objection" : "structured_safety_signal",
             }),
             conflictsWith: ["dental-commercial", "dental-catalog", "dental-scheduling"],
           }

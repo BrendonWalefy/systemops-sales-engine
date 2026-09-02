@@ -304,7 +304,12 @@ describe("verbalização com modelo dentro do pipeline V2", () => {
 
     expect(spy.verbalize).toHaveBeenCalledWith(
       expect.objectContaining({
-        statements: [{ meaning: "inform_fact", subject: "Item A", values: ["1200"] }],
+        statements: [{
+          outcome: "quote_ready",
+          meaning: "inform_fact",
+          subject: "Item A",
+          values: ["1200"],
+        }],
         surface: expect.objectContaining({ values: ["1200"], currencyAllowed: false }),
         style,
         speaker,

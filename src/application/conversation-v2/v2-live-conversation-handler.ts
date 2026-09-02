@@ -36,6 +36,8 @@ import {
 } from "@/core/observability/DecisionTrace";
 import type { TtsConfig } from "@/domain/entities/tts-config";
 import type { Treatment } from "@/domain/entities/treatment";
+import type { Professional } from "@/domain/entities/professional";
+import type { ProfessionalRepository } from "@/domain/repositories/professional-repository";
 import type { V2ConversationHandoffReason } from "@/application/conversation-v2/v2-conversation-handoff";
 import { V2TerminalHandoffRequiredError } from "@/application/conversation-v2/v2-terminal-failure-policy";
 import {
@@ -92,6 +94,7 @@ type StaticDentalDependencies = Omit<
   DentalLiveAdapterDependencies,
   DynamicDentalDependencies | "calendar" | "booking"
 > & Readonly<{
+  professionals: Pick<ProfessionalRepository, "listByClinic">;
   resolveTenantScheduling(claimedClinicId: string): Pick<
     DentalLiveAdapterDependencies,
     "calendar" | "booking"
@@ -173,6 +176,16 @@ function scopedTreatments(
     throw new V2TreatmentTenantScopeError();
   }
   return Object.freeze([...treatments]);
+}
+
+function scopedActiveProfessionals(
+  professionals: readonly Professional[],
+  clinicId: string,
+): readonly Professional[] {
+  if (professionals.some((professional) => professional.clinicId !== clinicId)) {
+    throw new V2TreatmentTenantScopeError();
+  }
+  return Object.freeze(professionals.filter((professional) => professional.isActive));
 }
 
 function historyForUnderstanding(
@@ -288,10 +301,22 @@ export class V2LiveConversationHandler implements ConversationHandler {
         await this.deps.dental.treatments.listByClinic(context.clinicId),
         context.clinicId,
       );
+      const professionals = scopedActiveProfessionals(
+        await this.deps.dental.professionals.listByClinic(context.clinicId),
+        context.clinicId,
+      );
       const scheduling = this.deps.dental.resolveTenantScheduling(context.clinicId);
       const adapters = createDentalLiveAdapters({
         ...this.deps.dental,
         ...scheduling,
+        professionals: {
+          async listByClinic(claimedClinicId: string) {
+            if (claimedClinicId !== context.clinicId) {
+              throw new V2TreatmentTenantScopeError();
+            }
+            return [...professionals];
+          },
+        },
         clinic: context.clinic,
         editorial: context.editorial,
         lead: context.lead,
@@ -333,6 +358,9 @@ export class V2LiveConversationHandler implements ConversationHandler {
               objectionCatalog: Object.freeze(
                 (context.editorial?.objections ?? []).slice(0, 20).map(({ objection }) => objection),
               ),
+              professionalCatalog: Object.freeze(
+                professionals.slice(0, 20).map((professional) => professional.name),
+              ),
             }, {
               onContractRejection: async (rejection) => {
                 const authoritativeTurnId = context.inboundAuthority?.inboundEventId;
@@ -366,9 +394,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
             });
             understandingResolved = true;
             responseConversationBrief = buildDentalResponseConversationBrief(result);
-            if (result.request === "cancel-appointment" || result.request === "reschedule-appointment") {
-              handoffReason = "v2_cancel_reschedule_requires_human";
-            } else if (typeof result.signals.objection === "string" && result.signals.objection.trim()) {
+            if (typeof result.signals.objection === "string" && result.signals.objection.trim()) {
               handoffReason = "v2_objection_requires_human";
             } else if (result.safety.emergency === true || result.safety.requestsHuman === true) {
               handoffReason = "v2_explicit_human_request";
@@ -506,11 +532,17 @@ export class V2LiveConversationHandler implements ConversationHandler {
         onActionResults: async (
           actionResults: readonly ActionResult<typeof DENTAL_OUTCOME_SCHEMA>[],
         ) => {
+          if (actionResults.some(
+            ({ type }) => type === "appointment_reschedule_compensation_failed",
+          )) {
+            handoffReason = "v2_reschedule_compensation_requires_human";
+          }
           const completedEffectCount = actionResults.filter(
             ({ semanticClass }) => semanticClass === "effect_completed",
           ).length;
           const persistedOfferCount = actionResults.filter(
-            ({ type }) => type === "slots_found",
+            ({ type }) =>
+              type === "slots_found" || type === "appointment_reschedule_offered",
           ).length;
           effectCompleted ||= completedEffectCount + persistedOfferCount > 0;
           const failedEffectCount = actionResults.filter(

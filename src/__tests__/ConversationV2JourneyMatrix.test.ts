@@ -319,7 +319,7 @@ describe("Cycle I supported journey matrix", () => {
         }),
         resolvePendingAppointment: vi.fn(),
       },
-      { persistSlotOffer: vi.fn(async (offer) => offer), bookSlot, confirmAppointment: vi.fn() },
+      { persistSlotOffer: vi.fn(async (offer) => offer), bookSlot, confirmAppointment: vi.fn(), rescheduleSlot: vi.fn() },
     );
     const state = {
       phase: "awaiting_slot",
@@ -527,6 +527,6 @@ describe("V2-only capability parity contract", () => {
       .map((line) => /^\|\s*`([^`]+)`\s*\|\s*`safe_handoff`\s*\|/.exec(line)?.[1] ?? null)
       .filter((behavior): behavior is string => behavior !== null);
 
-    expect(safeHandoffs).toEqual(["cancel_reschedule"]);
+    expect(safeHandoffs).toEqual([]);
   });
 });

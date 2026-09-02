@@ -20,7 +20,7 @@ V1; a roadmap detalhada abaixo apenas decompõe a evolução interna de cada fro
 | `scheduling_revalidation` | `v2_capability` | Dental scheduling capability uses BookingService and tenant-scoped calendar reads. |
 | `reservation` | `shared_service` | SlotReservationService and BookingService own reservation and double-booking safety. |
 | `deposit` | `shared_service` | Existing deterministic reservation, proof review and operator decision services own deposit effects; no V1 runtime selection is involved. |
-| `cancel_reschedule` | `safe_handoff` | Unscoped calendar mutations are rejected; a tenant-scoped V2 capability is required. |
+| `cancel_reschedule` | `v2_capability` | `dental-appointment-lifecycle` selects the exact tenant-bound appointment; `BookingService` owns cancellation and compensated rescheduling. |
 | `opt_out` | `shared_service` | Deterministic stop-contact policy persists consent and creates at most one confirmation. |
 | `handoff` | `v2_capability` | Dental escalation capability returns a human-action-required result. |
 | `takeover` | `shared_service` | Live turn configuration suppresses active takeover and resumes only an expired lease. |
@@ -61,12 +61,12 @@ V1; a roadmap detalhada abaixo apenas decompõe a evolução interna de cada fro
 | Sinal | Receber comprovante | `shared` | Inbox/DepositBanner | estado + revisão humana |
 | Sinal | Aprovar/rejeitar/expirar sinal | `shared` | Inbox/DepositBanner | serviço determinístico existente |
 | Agenda | Buscar e oferecer horários | `green` | Agenda + Profissionais | `dental-scheduling` |
-| Agenda | Rejeitar oferta e buscar alternativas | `slice` | Agenda | scheduling lifecycle |
-| Agenda | Slot expirado/tomado e nova oferta | `slice` | Agenda | revalidação + reoferta |
+| Agenda | Rejeitar oferta e buscar alternativas | `green` | Agenda | nova busca tenant-scoped e oferta persistida |
+| Agenda | Slot expirado/tomado e nova oferta | `green` | Agenda | revalidação antes do efeito e nova oferta segura |
 | Agenda | Criar e confirmar consulta | `green` | Agenda | `BookingService` |
-| Agenda | Listar consultas | `slice` | Agenda | read port tenant-scoped |
-| Agenda | Cancelar consulta | `handoff` | Agenda | write port tenant-scoped |
-| Agenda | Reagendar consulta | `handoff` | Agenda | cancel/rebook coordenado |
+| Agenda | Listar consultas | `green` | Agenda | `dental-appointment-lifecycle` tenant-scoped |
+| Agenda | Cancelar consulta | `green` | Agenda | cancelamento idempotente do compromisso exato |
+| Agenda | Reagendar consulta | `green` | Agenda | atualização do mesmo compromisso com compensação |
 | Agenda | Tratamento exige avaliação | `slice` | Tratamentos + Agenda | redirecionamento autorizado |
 | Operação | Pedido explícito de humano | `green` | Inbox | `dental-escalation` |
 | Operação | Takeover/pausa da IA | `shared` | Inbox | live turn gate existente |
@@ -146,13 +146,28 @@ pacote, pagamento, parcela e objeção. Cada caso mantém cardinalidade `1/1/1/1
 Understanding, no máximo uma verbalização, zero mutações de agenda/reserva/estado e no máximo uma
 query indexada adicional para campanha. Nenhum tenant é ativado ou preenchido por essa entrega.
 
+### Evidência da fatia de agenda
+
+`dental-appointment-lifecycle` lista e seleciona somente compromissos ativos do lead dentro do
+tenant reivindicado, em ordem determinística. Cancelamento usa compare-and-set no compromisso
+exato. Reagendamento persiste a autoridade da oferta substituta e atualiza o mesmo compromisso:
+reserva e revalida o alvo, atualiza o calendário, grava o novo intervalo e compensa o calendário
+se a gravação local falhar. Falha de compensação termina em handoff explícito, nunca em sucesso.
+
+Preferência profissional resolve somente profissionais ativos do tenant e fica persistida na
+oferta e no compromisso. O modelo recebe rótulos canônicos, nunca IDs ou disponibilidade. Cada
+statement enviado ao verbalizador preserva o outcome fechado (`appointments_listed`,
+`appointment_cancelled`, `appointment_rescheduled` ou falha), evitando que listar, cancelar e
+reagendar percam sua semântica na fronteira de linguagem. Retry exato não cria outro compromisso,
+efeito ou resposta.
+
 ## Ordem de implementação
 
 1. conhecimento institucional básico concluído;
 2. estacionamento, redes, recepção social, comparação, diferenciais e FAQ concluídos;
 3. comercial, campanhas e objeções concluídos;
-4. ciclo completo da agenda é a próxima fatia;
-5. jornada, mídia e sinal;
+4. ciclo completo da agenda concluído;
+5. jornada, mídia e sinal são a próxima fatia;
 6. operação clínica, handoff e automações;
 7. diagnóstico read-only do trace no Inbox e corpus final de paridade;
 8. auditoria final e remoção futura dos roots históricos V1.

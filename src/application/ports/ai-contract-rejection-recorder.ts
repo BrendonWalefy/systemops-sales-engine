@@ -29,6 +29,7 @@ export type AiContractRejectionIssueCode =
   | "quantity_scope_requires_quantity"
   | "objection_question_required"
   | "objection_question_forbidden"
+  | "professional_forbidden"
   | VerbalizationViolationCode;
 
 export type AiContractRejectionIssue = Readonly<{
@@ -46,6 +47,7 @@ const AI_CONTRACT_REJECTION_SAFE_PATH_SEGMENTS = new Set([
   "date",
   "period",
   "time",
+  "professional",
   "serviceCandidates",
   "faqQuestion",
   "quantity",

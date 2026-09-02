@@ -70,6 +70,22 @@ export type RuntimeFixtureInputs = Readonly<{
         appointmentLabel: string;
         startsAt: string;
         endsAt: string;
+      }>
+    | Readonly<{
+        kind: "active_appointment";
+        appointmentLabel: string;
+        startsAt: string;
+        endsAt: string;
+        treatmentName: string;
+      }>
+    | Readonly<{
+        kind: "replacement_offer";
+        appointmentLabel: string;
+        startsAt: string;
+        endsAt: string;
+        treatmentName: string;
+        slots: readonly Readonly<{ index: number; startsAt: string; endsAt: string; label: string }>[];
+        expiresAt: string;
       }>;
   expectedV2Outcome: string;
   turnConfiguration: Readonly<{
