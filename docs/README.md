@@ -17,6 +17,7 @@ Este diretório contém somente documentação que orienta o produto, a arquitet
 - [Fontes de verdade](architecture/sources-of-truth.md): dono de cada categoria de dado e regra.
 - [Replay e Decision Trace](architecture/replay-and-decision-trace.md): validação E2E, privacidade e observabilidade de decisões.
 - [Contrato de fidelidade do replay](architecture/replay-fidelity-contract.md): critérios para uma execução representar produção.
+- [ADR-011 — limites de capacidade e ativação V2](architecture/adr/adr-011-limites-de-capacidade-e-ativacao-v2.md): auditoria aceita, dívida adiada e gates para retomada.
 - [Change control](operations/change-control.md): branches, testes, deploy e rollback.
 - [Migrations](operations/migrations-baseline.md): baseline e fluxo seguro de schema.
 - [Staging CI](operations/staging-ci-setup.md): teste de migrations em branch Neon descartável.
