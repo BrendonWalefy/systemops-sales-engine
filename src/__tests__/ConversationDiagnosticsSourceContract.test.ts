@@ -26,6 +26,8 @@ describe("ConversationDiagnostics source contract", () => {
     const text = source(COMPONENT);
 
     expect(text).toContain("body.summary");
+    expect(text).toContain("turn.validationViolations");
+    expect(text).toContain("turn.rejectionCodes");
     expect(text).not.toMatch(/body\.events|aiContractRejections/);
     expect(text).not.toMatch(/event\.metadata|rawOutput|encryptedOutput/);
   });

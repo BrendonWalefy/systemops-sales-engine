@@ -101,6 +101,8 @@ export function ConversationDiagnostics({ conversationId }: { conversationId: st
             const duration = formatDuration(turn.durationMs);
             const capability = compact(turn.capabilityIds);
             const outcome = compact(turn.outcomeTypes);
+            const validationViolations = compact(turn.validationViolations);
+            const rejectionCodes = compact(turn.rejectionCodes);
             return (
               <details className="conversation-diagnostics-turn" key={turn.turnId}>
                 <summary>
@@ -114,6 +116,12 @@ export function ConversationDiagnostics({ conversationId }: { conversationId: st
                   {duration && <><dt>Duração</dt><dd>{duration}</dd></>}
                   {turn.responseStrategy && (
                     <><dt>Estratégia</dt><dd>{turn.responseStrategy}</dd></>
+                  )}
+                  {validationViolations && (
+                    <><dt>Travas</dt><dd>{validationViolations}</dd></>
+                  )}
+                  {rejectionCodes && (
+                    <><dt>Rejeições</dt><dd>{rejectionCodes}</dd></>
                   )}
                   {turn.terminalReason && (
                     <><dt>Conclusão</dt><dd>{turn.terminalReason}</dd></>

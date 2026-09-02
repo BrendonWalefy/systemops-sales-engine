@@ -126,6 +126,7 @@ describe("conversation trace summary", () => {
       event("newer", "response.validated", "2026-09-02T12:00:02.000Z", 2, {
         valid: false,
         violations: "unsupported_fact,unauthorized_link",
+        verbalizationViolations: "unsupported_outcome,extra_question",
         rejectionCodes: "schema_mismatch",
         evidenceCaptureStatus: "stored",
         secret: privateSentinel,
@@ -135,7 +136,12 @@ describe("conversation trace summary", () => {
 
     expect(summary.turns.map(({ turnId }) => turnId)).toEqual(["newer", "older"]);
     expect(summary.turns[0]).toMatchObject({
-      validationViolations: ["unsupported_fact", "unauthorized_link"],
+      validationViolations: [
+        "unsupported_fact",
+        "unauthorized_link",
+        "unsupported_outcome",
+        "extra_question",
+      ],
       rejectionCodes: ["schema_mismatch"],
       evidenceCaptureStatus: "stored",
     });

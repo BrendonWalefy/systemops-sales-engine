@@ -156,7 +156,12 @@ function summarizeTurn(
     outcomeTypes: latestMetadataList(events, "v2.action_result", "outcomeTypes"),
     semanticClasses: latestMetadataList(events, "v2.action_result", "semanticClasses"),
     responseStrategy: latestMetadataString(events, "response.validated", "responseStrategy"),
-    validationViolations: latestMetadataList(events, "response.validated", "violations"),
+    validationViolations: Object.freeze([
+      ...new Set([
+        ...latestMetadataList(events, "response.validated", "violations"),
+        ...latestMetadataList(events, "response.validated", "verbalizationViolations"),
+      ]),
+    ]),
     rejectionCodes: Object.freeze([
       ...new Set([
         ...latestMetadataList(events, "v2.understanding", "rejectionCodes"),
