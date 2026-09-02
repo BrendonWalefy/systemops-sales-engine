@@ -89,6 +89,9 @@ export type DepositFlowPayload = {
   proofMessageId?: string;
   proofReceivedAt?: string;
   proofReviewCode?: number;
+  /** Exact V2 offer/turn binding used for idempotent retry and audit. */
+  sourceOfferStateId?: string;
+  sourceTurnId?: string;
 };
 
 type StatePayload = SlotsOfferedPayload | ProcedureListPayload | TreatmentPipelinePayload | AppointmentConfirmationPayload | DepositFlowPayload | Record<string, unknown>;
@@ -125,6 +128,14 @@ export type StartTreatmentPipelineForTurnInput = Readonly<{
 export type ExactStateTransitionResult = Readonly<{
   applied: boolean;
   state: ConversationStateRow | null;
+}>;
+
+export type StartDepositWaitForTurnInput = Readonly<{
+  conversationId: string;
+  turnId: string;
+  expectedCurrentStateId: string;
+  payload: DepositFlowPayload;
+  ttlMinutes: number;
 }>;
 
 function deterministicStateId(input: string): string {
@@ -737,6 +748,59 @@ export class ConversationStateMachine {
       payload,
       expiresAt: new Date(runtimeNow().getTime() + ttlMinutes * 60_000),
     });
+  }
+
+  async startDepositWaitForTurn(
+    input: StartDepositWaitForTurnInput,
+  ): Promise<ExactStateTransitionResult> {
+    const id = deterministicStateId(`deposit-wait:${input.turnId}`);
+    const now = runtimeNow();
+    const inserted = await db.execute<ConversationStateRow>(sql`
+      INSERT INTO ${conversationStates}
+        (id, conversation_id, state, payload, supersedes_state_id, created_at, expires_at)
+      SELECT
+        ${id}::uuid,
+        ${input.conversationId}::uuid,
+        'awaiting_deposit_proof',
+        ${JSON.stringify(input.payload)}::jsonb,
+        ${input.expectedCurrentStateId}::uuid,
+        now(),
+        ${new Date(now.getTime() + input.ttlMinutes * 60_000)}
+      WHERE ${input.expectedCurrentStateId}::uuid = (
+        SELECT ${conversationStates.id}
+        FROM ${conversationStates}
+        WHERE ${conversationStates.conversationId} = ${input.conversationId}::uuid
+        ORDER BY ${conversationStates.createdAt} DESC, ${conversationStates.id} DESC
+        LIMIT 1
+      )
+      ON CONFLICT DO NOTHING
+      RETURNING
+        id,
+        conversation_id AS "conversationId",
+        state,
+        payload,
+        supersedes_state_id AS "supersedesStateId",
+        created_at AS "createdAt",
+        expires_at AS "expiresAt"
+    `);
+    const row = inserted.rows[0]
+      ?? (await db.select().from(conversationStates).where(eq(conversationStates.id, id)).limit(1))[0]
+      ?? null;
+    if (!row) {
+      return { applied: false, state: await this.getCurrentState(input.conversationId) };
+    }
+    return {
+      applied: inserted.rows.length === 1,
+      state: {
+        id: row.id,
+        conversationId: row.conversationId,
+        state: row.state as ConversationStateType,
+        payload: row.payload as StatePayload | null,
+        supersedesStateId: row.supersedesStateId,
+        createdAt: row.createdAt,
+        expiresAt: row.expiresAt,
+      },
+    };
   }
 
   // Marca que o comprovante chegou (qualquer imagem/PDF neste estado). TTL generoso

@@ -194,6 +194,7 @@ const provenanceRules = [
     action: "book_slot",
     outcomes: [
       outcome("appointment_created"),
+      outcome("deposit_requested"),
       outcome("appointment_create_failed"),
       outcome("scheduling_failed"),
     ],

@@ -117,6 +117,7 @@ function makeHarness(options: {
   playbookKnowledgeTurn?: "differentials" | "faq";
   structuredMediaTurn?: "deposit" | "journey";
   journeyStartTurn?: boolean;
+  depositBookingTurn?: boolean;
 } = {}) {
   const entities = (overrides: Record<string, unknown> = {}) => ({
     service: null,
@@ -147,7 +148,7 @@ function makeHarness(options: {
     ...overrides,
   });
   const releaseLease = vi.fn().mockResolvedValue(undefined);
-  const turnClinic = options.businessInformationTurn
+  const informationalClinic = options.businessInformationTurn
     ? {
         ...clinic,
         address: options.businessInformationMissing ? null : "Avenida Aurora, 321",
@@ -159,6 +160,17 @@ function makeHarness(options: {
           : [{ label: "Instagram", url: "https://instagram.com/systemops" }],
       }
     : clinic;
+  const turnClinic = options.depositBookingTurn
+    ? {
+        ...informationalClinic,
+        depositEnabled: true,
+        depositAmountCents: 20_000,
+        depositPixKey: "pix-key-test",
+        depositPixKeyType: "random" as const,
+        depositRecipientName: "SystemOps Lab",
+        depositTtlHours: 24,
+      }
+    : informationalClinic;
   const turnInbound: Message = options.structuredMediaTurn
     ? {
         ...inbound,
@@ -375,7 +387,8 @@ function makeHarness(options: {
     cancelAppointment: vi.fn(),
     reschedule: vi.fn(),
   };
-  const currentState = vi.fn().mockResolvedValue(offeredState);
+  let liveCurrentState: LiveTurnSnapshot["currentState"] = offeredState;
+  const currentState = vi.fn(async () => liveCurrentState);
   const createOutboundMessageAndEnqueue = options.outboxFailure
     ? vi.fn().mockRejectedValue(new Error("outbox unavailable"))
     : vi.fn().mockResolvedValue({
@@ -519,13 +532,49 @@ function makeHarness(options: {
         invalidateIfCurrent: options.cleanupFailure
           ? vi.fn().mockRejectedValue(new Error("cleanup unavailable"))
           : vi.fn().mockResolvedValue(true),
+        ...(options.depositBookingTurn
+          ? {
+              startDepositWaitForTurn: vi.fn(async (stateInput: {
+                expectedCurrentStateId: string;
+                payload: Record<string, unknown>;
+              }) => {
+                liveCurrentState = {
+                  id: "deposit-state-1",
+                  conversationId: conversation.id,
+                  state: "awaiting_deposit_proof",
+                  payload: stateInput.payload,
+                  supersedesStateId: stateInput.expectedCurrentStateId,
+                  createdAt: now,
+                  expiresAt: new Date("2026-08-18T12:00:00.000Z"),
+                };
+                return { applied: true, state: liveCurrentState };
+              }),
+            }
+          : {}),
       },
       appointments: {
         findByPeriod: vi.fn().mockResolvedValue([]),
         findByIdForClinicAndLead: vi.fn(),
         findAllActiveByLeadId: vi.fn().mockResolvedValue([]),
       },
-      reservations: { findActiveByPeriod: vi.fn().mockResolvedValue([]) },
+      reservations: {
+        findActiveByPeriod: vi.fn().mockResolvedValue([]),
+        ...(options.depositBookingTurn
+          ? {
+              reserve: vi.fn().mockResolvedValue({
+                id: "reservation-1",
+                clinicId: clinic.id,
+                leadId: lead.id,
+                startsAt: new Date("2026-08-18T18:00:00.000Z"),
+                endsAt: new Date("2026-08-18T19:00:00.000Z"),
+                status: "pending",
+                calendarEventId: null,
+                expiresAt: new Date("2026-08-18T12:00:00.000Z"),
+              }),
+              release: vi.fn(),
+            }
+          : {}),
+      },
       ...(options.journeyStartTurn
         ? {
             journeyResources: {
@@ -622,6 +671,35 @@ function makeHarness(options: {
 }
 
 describe("V2LiveConversationHandler", () => {
+  it("enqueues one exact deposit request without booking or verbalization", async () => {
+    const harness = makeHarness({
+      bookingTurn: true,
+      depositBookingTurn: true,
+      verbalizedText: "Texto do modelo que não pode tocar dados Pix.",
+    });
+
+    await expect(harness.handler.handle(handleInput("Quero o primeiro horário")))
+      .resolves.toEqual({ replied: true });
+
+    expect(harness.booking.book).not.toHaveBeenCalled();
+    expect(harness.verbalizerCreate).not.toHaveBeenCalled();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          replyText: expect.stringContaining("pix-key-test"),
+          useVoice: false,
+          interleavedParts: [expect.objectContaining({
+            type: "text",
+            content: expect.stringContaining("pix-key-test"),
+          })],
+          pipelineAdvance: null,
+        }),
+      }),
+      { turnId },
+    );
+  });
+
   it("enqueues one exact configured journey plan without verbalization", async () => {
     const harness = makeHarness({
       journeyStartTurn: true,

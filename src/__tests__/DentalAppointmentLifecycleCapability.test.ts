@@ -89,6 +89,7 @@ describe("Dental appointment lifecycle capability", () => {
   it("requires an exact appointment before cancellation and never broad-cancels", async () => {
     const cancelAppointment = vi.fn().mockResolvedValue({
       success: true,
+      kind: "appointment",
       appointmentId: firstAppointment.id,
       label: firstAppointment.label,
       evidenceRef: "cancel:appointment-1",

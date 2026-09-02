@@ -182,7 +182,21 @@ export type DentalSchedulingReadPort = {
 };
 
 export type DentalSchedulingWriteOutcome =
-  | { success: true; appointmentId: string; label: string; evidenceRef: string }
+  | {
+      success: true;
+      kind: "appointment";
+      appointmentId: string;
+      label: string;
+      evidenceRef: string;
+    }
+  | {
+      success: true;
+      kind: "deposit_requested";
+      reservationId: string;
+      label: string;
+      requestText: string;
+      evidenceRef: string;
+    }
   | { success: false; reason: string; evidenceRef: string };
 
 export type DentalSchedulingWritePort = {
@@ -190,6 +204,7 @@ export type DentalSchedulingWritePort = {
   bookSlot(slotId: string): Promise<DentalSchedulingWriteOutcome>;
   confirmAppointment(appointmentId: string): Promise<DentalSchedulingWriteOutcome>;
   rescheduleSlot(slotId: string): Promise<DentalSchedulingWriteOutcome>;
+  takeDeliveryPlan?(): DentalJourneyDeliveryPlan | null;
 };
 
 export type DentalAppointmentLifecycleReadPort = Readonly<{

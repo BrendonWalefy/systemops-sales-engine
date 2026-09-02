@@ -779,6 +779,30 @@ export function createDentalSchedulingCapability(
           facts: [],
         };
       }
+      if (outcome.kind === "deposit_requested") {
+        const fact: Fact & {
+          subject: NonNullable<Fact["subject"]>;
+          evidence: Fact["evidence"] & { source: "write" };
+        } = {
+          key: "deposit_slot_label",
+          value: { kind: "display_text", value: outcome.label },
+          subject: {
+            type: "deposit",
+            id: outcome.reservationId,
+            displayName: outcome.label,
+          },
+          evidence: { source: "write", reference: outcome.evidenceRef },
+          disclosure: "allowed",
+        };
+        return {
+          type: "deposit_requested",
+          semanticClass: "effect_completed",
+          origin: { capabilityId: "dental-scheduling" },
+          subject: fact.subject,
+          evidence: [fact.evidence],
+          facts: [fact],
+        };
+      }
       const fact = appointmentFact(
         outcome.appointmentId,
         outcome.label,

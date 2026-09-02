@@ -568,9 +568,14 @@ export class V2LiveConversationHandler implements ConversationHandler {
         return { replied, reason };
       }
 
-      const exactJourneyDeliveryExpected = preparation.prepared.decisions.some(
-        ({ capabilityId, decision }) =>
-          capabilityId === "dental-journey" && decision.kind === "execute",
+      const exactDeterministicDeliveryExpected = preparation.prepared.decisions.some(
+        ({ capabilityId, decision }) => {
+          if (capabilityId === "dental-journey" && decision.kind === "execute") return true;
+          return capabilityId === "dental-scheduling"
+            && decision.kind === "execute"
+            && decision.action.type === "book-slot"
+            && context.clinic.depositEnabled === true;
+        },
       );
 
       phase = "action";
@@ -677,7 +682,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
         response: {
           style: configuration.style,
           composer: new DeterministicResponseComposer(),
-          verbalization: this.deps.verbalizer && responseConversationBrief && !exactJourneyDeliveryExpected
+          verbalization: this.deps.verbalizer && responseConversationBrief && !exactDeterministicDeliveryExpected
             ? {
                 verbalizer: this.deps.verbalizer,
                 speaker: configuration.speaker,
@@ -723,8 +728,10 @@ export class V2LiveConversationHandler implements ConversationHandler {
         return { replied: false, reason: "response_validation_failed" };
       }
 
-      const journeyPlan = adapters.journeyWrite.takeDeliveryPlan();
-      const outboundContent = resolveJourneyOutboundContent(journeyPlan, {
+      const deterministicPlan = adapters.journeyWrite.takeDeliveryPlan()
+        ?? adapters.schedulingWrite.takeDeliveryPlan?.()
+        ?? null;
+      const outboundContent = resolveJourneyOutboundContent(deterministicPlan, {
         text: completed.response.text,
         useVoice: configuration.useVoice,
       });

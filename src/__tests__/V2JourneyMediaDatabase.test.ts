@@ -130,4 +130,57 @@ describe("V2 journey state — PostgreSQL exact transitions", () => {
       payload: { treatmentId, stepIndex: 0 },
     });
   });
+
+  it("binds one deposit wait to the exact offer and reuses it on retry", async () => {
+    const [offer] = await db.insert(conversationStates).values({
+      conversationId,
+      state: "slots_offered",
+      payload: { slots: [], expiresAt: "2026-09-03T00:00:00.000Z" },
+      expiresAt: new Date("2099-09-03T00:00:00.000Z"),
+    }).returning({ id: conversationStates.id });
+    const machine = new ConversationStateMachine();
+    const turnId = randomUUID();
+    const payload = {
+      slotStartsAt: "2026-09-03T12:00:00.000Z",
+      slotEndsAt: "2026-09-03T13:00:00.000Z",
+      slotLabel: "quinta às 09h",
+      reservationId: randomUUID(),
+      treatmentId: randomUUID(),
+      treatmentName: "Jornada",
+      valueCents: 90_000,
+      depositAmountCents: 20_000,
+      holdExpiresAt: "2026-09-03T00:00:00.000Z",
+      sourceOfferStateId: offer.id,
+      sourceTurnId: turnId,
+    };
+
+    const first = await machine.startDepositWaitForTurn({
+      conversationId,
+      turnId,
+      expectedCurrentStateId: offer.id,
+      payload,
+      ttlMinutes: 1440,
+    });
+    const retry = await machine.startDepositWaitForTurn({
+      conversationId,
+      turnId,
+      expectedCurrentStateId: offer.id,
+      payload,
+      ttlMinutes: 1440,
+    });
+    const competing = await machine.startDepositWaitForTurn({
+      conversationId,
+      turnId: randomUUID(),
+      expectedCurrentStateId: offer.id,
+      payload: { ...payload, sourceTurnId: randomUUID() },
+      ttlMinutes: 1440,
+    });
+
+    expect(first).toMatchObject({
+      applied: true,
+      state: { state: "awaiting_deposit_proof", supersedesStateId: offer.id, payload },
+    });
+    expect(retry).toMatchObject({ applied: false, state: { id: first.state!.id } });
+    expect(competing).toMatchObject({ applied: false, state: { id: first.state!.id } });
+  });
 });
