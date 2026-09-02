@@ -14,12 +14,12 @@ V1; a roadmap detalhada abaixo apenas decompõe a evolução interna de cada fro
 | `catalog` | `v2_capability` | Dental catalog capability reads only the claimed tenant catalog. |
 | `authorized_price` | `v2_capability` | `dental-commercial` resolves current treatment/campaign authority and discloses only explicitly quotable prices. |
 | `objections` | `v2_capability` | Exact active-playbook objections are answered with versioned evidence; unresolved free objections end in explicit human attention. |
-| `multi_turn_pipeline` | `shared_service` | Deterministic guided-pipeline state and operator-selected content remain shared; interpretation-dependent continuation durably pauses for human attention without V1 replay. |
-| `media` | `shared_service` | Canonical ingress/history persists media independently of runtime selection; unsupported interpretation creates no inferred effect or V1 call. |
+| `multi_turn_pipeline` | `v2_capability` | `dental-journey` resolves configured steps; the state machine and sender commit the exact revision only after delivery. |
+| `media` | `v2_capability` | Trusted media metadata routes expected journey photos and deposit proofs without model inference; configured media remains tenant-scoped and allowlisted. |
 | `qualification` | `obsolete` | V2 does not infer and persist lead qualification as a side effect of model text; deterministic capabilities own explicit business effects. |
 | `scheduling_revalidation` | `v2_capability` | Dental scheduling capability uses BookingService and tenant-scoped calendar reads. |
 | `reservation` | `shared_service` | SlotReservationService and BookingService own reservation and double-booking safety. |
-| `deposit` | `shared_service` | Existing deterministic reservation, proof review and operator decision services own deposit effects; no V1 runtime selection is involved. |
+| `deposit` | `v2_capability` | `dental-scheduling` creates the exact hold and `dental-journey` receives proof; existing deterministic review and booking services retain final authority. |
 | `cancel_reschedule` | `v2_capability` | `dental-appointment-lifecycle` selects the exact tenant-bound appointment; `BookingService` owns cancellation and compensated rescheduling. |
 | `opt_out` | `shared_service` | Deterministic stop-contact policy persists consent and creates at most one confirmation. |
 | `handoff` | `v2_capability` | Dental escalation capability returns a human-action-required result. |
@@ -52,14 +52,14 @@ V1; a roadmap detalhada abaixo apenas decompõe a evolução interna de cada fro
 | Comercial | Quantidade/escopo antes de preço | `green` | Tratamentos | somente pacotes exatos cadastrados |
 | Comercial | Objeção de preço/condição | `green` | Playbook/Financeiro | resposta exata cadastrada ou handoff |
 | Comercial | Preço antigo ou informação inconsistente | `green` | Campanhas + Tratamentos | valor atual com provenance, sem confiar no valor citado |
-| Jornada | Iniciar e avançar `pipelineSteps` | `shared` | Pipeline | capability de jornada |
-| Jornada | Pergunta estruturada de um passo | `shared` | Pipeline | decisão de próximo passo |
-| Jornada | Conteúdo, foto e vídeo cadastrados | `shared` | Pipeline + Biblioteca | mídia allowlisted |
-| Jornada | Receber foto/áudio/documento | `shared` | Inbox + estado | roteamento por tipo e etapa |
-| Jornada | Continuação após vídeo | `shared` | Pipeline | automação deduplicada |
-| Sinal | Criar reserva e instruções Pix | `shared` | Financeiro + Agenda | capability de sinal |
-| Sinal | Receber comprovante | `shared` | Inbox/DepositBanner | estado + revisão humana |
-| Sinal | Aprovar/rejeitar/expirar sinal | `shared` | Inbox/DepositBanner | serviço determinístico existente |
+| Jornada | Iniciar e avançar `pipelineSteps` | `green` | Pipeline | `dental-journey` + CAS pós-entrega |
+| Jornada | Pergunta estruturada de um passo | `green` | Pipeline | decisão fechada pelo passo atual |
+| Jornada | Conteúdo, foto e vídeo cadastrados | `green` | Pipeline + Biblioteca | ordem configurada e mídia allowlisted |
+| Jornada | Receber foto/áudio/documento | `green` | Inbox + estado | imagem/vídeo esperado ou comprovante imagem/documento; demais tipos falham fechados |
+| Jornada | Continuação após vídeo | `green` | Pipeline | avanço exato e idempotente após entrega completa |
+| Sinal | Criar reserva e instruções Pix | `green` | Financeiro + Agenda | reserva exata e template determinístico |
+| Sinal | Receber comprovante | `green` | Inbox/DepositBanner | estado exato + revisão humana + atenção pós-entrega |
+| Sinal | Aprovar/rejeitar/expirar sinal | `green` | Inbox/DepositBanner | serviços determinísticos existentes preservados |
 | Agenda | Buscar e oferecer horários | `green` | Agenda + Profissionais | `dental-scheduling` |
 | Agenda | Rejeitar oferta e buscar alternativas | `green` | Agenda | nova busca tenant-scoped e oferta persistida |
 | Agenda | Slot expirado/tomado e nova oferta | `green` | Agenda | revalidação antes do efeito e nova oferta segura |
@@ -161,14 +161,43 @@ statement enviado ao verbalizador preserva o outcome fechado (`appointments_list
 reagendar percam sua semântica na fronteira de linguagem. Retry exato não cria outro compromisso,
 efeito ou resposta.
 
+### Evidência da fatia de jornada, mídia e sinal
+
+`dental-journey` resolve somente o tratamento canônico do tenant e consome
+`treatments.pipelineSteps` na ordem cadastrada. Texto vem do bloco de conteúdo; imagem e vídeo vêm
+de `media_assets` carregados em uma única leitura tenant-scoped. O plano do turno é persistido em
+uma única outbox `live_stream_reply`; o sender avança a revisão exata do pipeline somente depois
+que todas as partes foram entregues. Retry do sender não recompõe conteúdo e o compare-and-set
+impede avanço duplo.
+
+Imagem ou vídeo só vira foto de jornada quando o estado atual exige exatamente esse passo. A foto
+cria ou reutiliza a revisão humana vinculada à conversa, lead e tratamento; somente após a
+confirmação enviada ao lead o Inbox entra em handoff. Imagem ou documento só vira comprovante
+quando o estado é `awaiting_deposit_proof` e a reserva ainda corresponde ao tenant, lead e
+intervalo persistidos. O recebimento grava o ID da mensagem canônica, mantém a decisão financeira
+exclusivamente humana, estende o hold pelo `depositTtlHours` do tenant e marca atenção somente após
+a confirmação ser entregue.
+
+Ao selecionar um slot com sinal habilitado, `dental-scheduling` reserva o intervalo exato, persiste
+o snapshot imutável de tratamento/valor e usa o template Pix determinístico; nenhuma chave ou
+valor passa pelo verbalizador. Sinal desabilitado preserva o booking direto. Configuração
+incompleta, reserva divergente, state race ou tenant divergente falha fechada, sem agendamento ou
+outbound parcial. Um pedido de troca antes do comprovante libera o hold exato; depois do
+comprovante exige decisão humana.
+
+Os gates cobrem uma única resposta/job por turno, zero chamada de Understanding para mídia
+estruturada, no máximo uma chamada para texto, zero verbalização para conteúdo/Pix/comprovante
+determinísticos, transições PostgreSQL idempotentes e ausência de V1, polling ou ativação de
+tenant.
+
 ## Ordem de implementação
 
 1. conhecimento institucional básico concluído;
 2. estacionamento, redes, recepção social, comparação, diferenciais e FAQ concluídos;
 3. comercial, campanhas e objeções concluídos;
 4. ciclo completo da agenda concluído;
-5. jornada, mídia e sinal são a próxima fatia;
-6. operação clínica, handoff e automações;
+5. jornada, mídia e sinal concluídos;
+6. operação clínica, handoff e automações são a próxima fatia;
 7. diagnóstico read-only do trace no Inbox e corpus final de paridade;
 8. auditoria final e remoção futura dos roots históricos V1.
 

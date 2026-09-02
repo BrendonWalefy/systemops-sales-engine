@@ -176,6 +176,19 @@ reagendamento atualiza o mesmo compromisso com reserva, revalidação e compensa
 compromisso anterior não é removido antes do novo intervalo ficar seguro, e uma compensação
 indeterminada termina em handoff humano.
 
+Jornadas configuradas pertencem a `dental-journey`. A capability resolve o tratamento e o passo
+exatos; `ConversationStateMachine` é o único dono do estado; `MediaAssetRepository` autoriza mídia
+somente dentro do tenant; e o sender é o único dono do avanço pós-entrega. Conteúdo configurado,
+instruções Pix e confirmações de comprovante são determinísticos e não são reescritos pelo modelo.
+Fotos esperadas criam revisão humana vinculada e pausam a automação após a confirmação ser
+entregue. Comprovantes esperados geram atenção no Inbox, mas jamais aprovação automática.
+
+Quando o sinal está habilitado, a confirmação do slot cria primeiro a reserva exata e depois o
+estado `awaiting_deposit_proof`, com snapshot de tratamento, valor e oferta. O hold respeita
+`organizations.depositTtlHours`; retry reutiliza o mesmo estado/reserva. Aprovação, rejeição e
+expiração continuam nos serviços determinísticos e ações existentes da UI. Nenhum caminho consulta
+V1 ou cria outro workflow, fila ou configuração paralela.
+
 ### Resposta autorizada e fallback seguro
 
 Nos caminhos que compõem uma resposta a partir de uma ação, o resultado

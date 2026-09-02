@@ -161,10 +161,11 @@ An inbound proof is accepted only when:
 - no proof has already consumed the state.
 
 The transition is compare-and-set/idempotent. It records the canonical inbound message ID,
-extends the existing hold using the configured TTL, and marks the conversation for the current
-Inbox review. The lead receives the deterministic proof-received acknowledgement. No appointment
-or payment confirmation is created. A duplicate provider delivery is absorbed by inbound and
-reply dedupe and cannot produce another state transition.
+extends the existing hold using the tenant's `depositTtlHours`, and marks the conversation for the
+current Inbox review only after the acknowledgement is delivered. The lead receives the
+deterministic proof-received acknowledgement. No appointment or payment confirmation is created.
+A duplicate provider delivery is absorbed by inbound and reply dedupe and cannot produce another
+state transition.
 
 ## Response And Delivery
 
@@ -184,6 +185,12 @@ Sender preflight remains unchanged and revalidates authority V2, exact claim, te
 takeover, consent, safety and the global kill switch. Pipeline commit happens only after provider
 delivery. Partial media delivery retains the same outbox/job and retry cursor behavior already
 owned by the sender; it never creates a new conversational response.
+
+The persisted reply payload may carry one closed `postDeliveryControl`: proof acknowledgement
+requests Inbox attention, while a journey-photo acknowledgement requests handoff. The sender
+applies it only after the provider result and terminal outbox state are durable, using the exact
+clinic, conversation and lead tuple. Unknown control kinds, reasons or fields fail payload
+validation; retry only reconciles the same terminal delivery and never resends it.
 
 ## Failure And Retry Policy
 
@@ -246,4 +253,3 @@ The release changes no tenant configuration and activates no tenant. It follows 
 PR to `develop`, release PR to `main`, production `READY` verification and metadata-only health
 check. Rollback closes the global live-outbound switch if live delivery is unsafe, then reverts or
 corrects forward; it never routes a turn to V1.
-
