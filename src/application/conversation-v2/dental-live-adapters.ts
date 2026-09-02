@@ -434,7 +434,7 @@ export function createDentalLiveAdapters(
     slots: readonly { startsAt: Date; endsAt: Date; professionalId?: string }[];
     professionalId: string | null;
     replacesAppointmentId: string | null;
-    exposed: Readonly<{ service: { id: string; name: string; requiresEvaluationFirst: boolean }; slots: readonly DentalSlot[] }>;
+    exposed: Readonly<{ service: { id: string; name: string; requiresEvaluationFirst: boolean; evidenceRef: string }; slots: readonly DentalSlot[] }>;
   }> | null = null;
   const journey = deps.journey
     ? createDentalJourneyLiveAdapter({
@@ -941,6 +941,7 @@ export function createDentalLiveAdapters(
         id: treatment.id,
         name: treatment.name,
         requiresEvaluationFirst: treatment.requiresEvaluationFirst,
+        evidenceRef: catalogEvidence(treatment),
       };
       if (treatment.requiresEvaluationFirst) return { service, slots: [] };
       const minimumLeadTimeMs = Math.max(0, input.minimumLeadTimeHours) * 60 * 60_000;

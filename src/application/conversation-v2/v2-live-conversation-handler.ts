@@ -234,6 +234,37 @@ function failureReason(phase: FailurePhase): V2SafeFailureReason {
   }
 }
 
+const OPERATIONAL_HANDOFF_REASONS = Object.freeze({
+  clinical_urgency_requires_human: "v2_clinical_urgency_requires_human",
+  existing_treatment_problem_requires_human: "v2_existing_treatment_problem_requires_human",
+  patient_arrival_requires_human: "v2_patient_arrival_requires_human",
+  patient_delay_requires_human: "v2_patient_delay_requires_human",
+} as const satisfies Readonly<Record<string, V2ConversationHandoffReason>>);
+
+export function resolveV2HandoffReason(
+  actionResults: readonly ActionResult<typeof DENTAL_OUTCOME_SCHEMA>[],
+): V2ConversationHandoffReason | null {
+  for (const result of actionResults) {
+    if (result.type === "clinical_evaluation_required") {
+      return "v2_clinical_evaluation_requires_human";
+    }
+    if (result.origin.capabilityId !== "dental-operations") continue;
+    const reasonFact = result.facts.find(
+      ({ key }) => key === "operational_handoff_reason",
+    );
+    const reason = reasonFact?.value.kind === "display_text"
+      ? reasonFact.value.value
+      : null;
+    if (!reason || !(reason in OPERATIONAL_HANDOFF_REASONS)) {
+      throw new Error("unknown V2 operational handoff reason");
+    }
+    return OPERATIONAL_HANDOFF_REASONS[
+      reason as keyof typeof OPERATIONAL_HANDOFF_REASONS
+    ];
+  }
+  return null;
+}
+
 export function resolveJourneyOutboundContent(
   plan: DentalJourneyDeliveryPlan | null,
   fallback: Readonly<{ text: string; useVoice: boolean }>,
@@ -589,6 +620,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
         onActionResults: async (
           actionResults: readonly ActionResult<typeof DENTAL_OUTCOME_SCHEMA>[],
         ) => {
+          handoffReason = resolveV2HandoffReason(actionResults) ?? handoffReason;
           if (actionResults.some(
             ({ type }) => type === "appointment_reschedule_compensation_failed",
           )) {

@@ -142,7 +142,12 @@ export type DentalSlot = {
   bookingKind?: "book" | "reschedule";
 };
 export type DentalSlotSearchResult = {
-  service: { id: string; name: string; requiresEvaluationFirst?: boolean };
+  service: {
+    id: string;
+    name: string;
+    requiresEvaluationFirst?: boolean;
+    evidenceRef?: string;
+  };
   slots: readonly DentalSlot[];
 };
 export type PendingDentalAppointment = { id: string; label: string; evidenceRef: string };

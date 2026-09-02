@@ -183,6 +183,13 @@ export function createDentalOperationsCapability(
             disclosure: "allowed",
           }]
         : [];
+      facts.unshift({
+        key: "operational_handoff_reason",
+        value: { kind: "display_text", value: reason },
+        subject: null,
+        evidence: { source: "derived", reference: `operation:${reason}` },
+        disclosure: "internal",
+      });
       return {
         type: isPresenceRequest(request as DentalOperationalRequest)
           ? "patient_presence_handoff"

@@ -160,6 +160,11 @@ const provenanceRules = [
   },
   {
     capabilityId: "dental-scheduling",
+    decisionKind: "answer",
+    outcomes: [outcome("clinical_evaluation_required")],
+  },
+  {
+    capabilityId: "dental-scheduling",
     decisionKind: "ask",
     outcomes: [outcome("clarification_required")],
   },

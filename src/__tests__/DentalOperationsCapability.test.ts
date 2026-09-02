@@ -95,6 +95,11 @@ describe("dental operations capability", () => {
       origin: { capabilityId: "dental-operations" },
       subject: null,
       evidence: [],
+      facts: [expect.objectContaining({
+        key: "operational_handoff_reason",
+        value: { kind: "display_text", value: reason },
+        disclosure: "internal",
+      })],
     });
     expect(read.resolveTodayAppointment).not.toHaveBeenCalled();
   });
@@ -121,6 +126,11 @@ describe("dental operations capability", () => {
       semanticClass: "human_action_required",
       subject: { type: "appointment", id: "appointment-1", displayName: "Hoje às 10h" },
       evidence: [{ source: "read", reference: "appointment:appointment-1" }],
+      facts: expect.arrayContaining([expect.objectContaining({
+        key: "operational_handoff_reason",
+        value: { kind: "display_text", value: reason },
+        disclosure: "internal",
+      })]),
     });
     expect(decision).toMatchObject({
       kind: "execute",

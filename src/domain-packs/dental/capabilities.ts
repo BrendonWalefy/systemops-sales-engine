@@ -342,6 +342,11 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
     subjectRequirement: "optional",
     evidenceRequirement: "optional",
   },
+  clinical_evaluation_required: {
+    semanticClass: "human_action_required",
+    subjectRequirement: "required",
+    evidenceRequirement: "required",
+  },
   scheduling_failed: {
     semanticClass: "effect_failed",
     subjectRequirement: "optional",
@@ -619,7 +624,32 @@ export function createDentalSchedulingCapability(
         if (
           context.policy.schedulingRequiresEvaluationFirst
           || availability.service.requiresEvaluationFirst
-        ) return { kind: "ask", questionId: "evaluation-required" };
+        ) {
+          const evidence = context.policy.schedulingRequiresEvaluationFirst
+            ? {
+                source: "policy" as const,
+                reference: "policy:scheduling-requires-evaluation-first",
+              }
+            : availability.service.evidenceRef
+              ? { source: "read" as const, reference: availability.service.evidenceRef }
+              : null;
+          if (!evidence) return { kind: "ask", questionId: "evaluation-authority-missing" };
+          return {
+            kind: "answer",
+            facts: [{
+              key: "requires_evaluation",
+              value: { kind: "boolean", value: true },
+              subject: {
+                type: "service",
+                id: availability.service.id,
+                displayName: availability.service.name,
+              },
+              evidence,
+              disclosure: "allowed",
+            }],
+            nextBestStep: null,
+          };
+        }
         if (availability.slots.length === 0)
           return { kind: "ask", questionId: "no-slots-available" };
         return {
@@ -674,6 +704,23 @@ export function createDentalSchedulingCapability(
         : { kind: "ask", questionId: "appointment-not-found" };
     },
     async execute(decision): Promise<ActionResult<typeof DENTAL_OUTCOME_SCHEMA>> {
+      if (decision.kind === "answer") {
+        const fact = decision.facts.find(({ key }) => key === "requires_evaluation");
+        if (
+          fact?.value.kind === "boolean"
+          && fact.value.value === true
+          && fact.subject?.type === "service"
+        ) {
+          return {
+            type: "clinical_evaluation_required",
+            semanticClass: "human_action_required",
+            origin: { capabilityId: "dental-scheduling" },
+            subject: fact.subject,
+            evidence: [fact.evidence],
+            facts: [fact],
+          };
+        }
+      }
       if (decision.kind === "offer") {
         if (decision.options.length === 0) {
           return {
