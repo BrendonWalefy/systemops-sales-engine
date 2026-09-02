@@ -5,7 +5,10 @@
  * dela — e não pelo de outra clínica.
  */
 import { decryptCredentialNullable } from "@/infrastructure/crypto/credential-vault";
-import type { ChannelConfigSnapshot } from "@/application/ports/channel-config-snapshot";
+import type {
+  ChannelConfigSnapshot,
+  WhatsAppProvider,
+} from "@/application/ports/channel-config-snapshot";
 
 export type ZapiCreds = {
   instanceId: string;
@@ -18,30 +21,43 @@ export type MetaCreds = {
   accessToken: string;
 };
 
+export type WahaCreds = {
+  baseUrl: string;
+  apiKey: string;
+  session: string;
+};
+
+/** Sessão default do WAHA quando a clínica não nomeia a sua. */
+export const DEFAULT_WAHA_SESSION = "default";
+
 export type ClinicChannelConfig = ChannelConfigSnapshot;
 
 type ClinicChannelFields = {
-  channelProvider?: "z_api" | "meta_cloud_api" | null;
+  channelProvider?: WhatsAppProvider | null;
   zapiInstanceId?: string | null;
   zapiToken?: string | null;
   zapiClientToken?: string | null;
   metaPhoneNumberId?: string | null;
   metaAccessToken?: string | null;
+  wahaBaseUrl?: string | null;
+  wahaApiKey?: string | null;
+  wahaSession?: string | null;
 };
 
 export function resolveChannelConfig(clinic: ClinicChannelFields): ClinicChannelConfig {
-  const provider =
-    clinic.channelProvider ??
-    (clinic.zapiInstanceId && clinic.zapiToken ? "z_api" : "meta_cloud_api");
+  const hasZapi = Boolean(clinic.zapiInstanceId && clinic.zapiToken);
+  const hasWaha = Boolean(clinic.wahaBaseUrl && clinic.wahaApiKey);
 
-  const zapi: ZapiCreds | null =
-    clinic.zapiInstanceId && clinic.zapiToken
-      ? {
-          instanceId: clinic.zapiInstanceId,
-          token: decryptCredentialNullable(clinic.zapiToken) ?? "",
-          clientToken: decryptCredentialNullable(clinic.zapiClientToken) ?? undefined,
-        }
-      : null;
+  const provider: WhatsAppProvider =
+    clinic.channelProvider ?? (hasZapi ? "z_api" : hasWaha ? "waha" : "meta_cloud_api");
+
+  const zapi: ZapiCreds | null = hasZapi
+    ? {
+        instanceId: clinic.zapiInstanceId!,
+        token: decryptCredentialNullable(clinic.zapiToken) ?? "",
+        clientToken: decryptCredentialNullable(clinic.zapiClientToken) ?? undefined,
+      }
+    : null;
 
   const meta: MetaCreds | null =
     clinic.metaPhoneNumberId && clinic.metaAccessToken
@@ -51,5 +67,14 @@ export function resolveChannelConfig(clinic: ClinicChannelFields): ClinicChannel
         }
       : null;
 
-  return { provider, zapi, meta };
+  const waha: WahaCreds | null = hasWaha
+    ? {
+        // A barra final duplicaria a barra do path e o WAHA devolve 404.
+        baseUrl: clinic.wahaBaseUrl!.trim().replace(/\/+$/, ""),
+        apiKey: decryptCredentialNullable(clinic.wahaApiKey) ?? "",
+        session: clinic.wahaSession?.trim() || DEFAULT_WAHA_SESSION,
+      }
+    : null;
+
+  return { provider, zapi, meta, waha };
 }

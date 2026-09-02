@@ -63,6 +63,7 @@ function verifierDependencies(write: (line: string) => void) {
       provider: "z_api" as const,
       zapi: { instanceId: "instance-1", token: "decrypted-only-in-memory" },
       meta: null,
+      waha: null,
     }),
     getRemoteStatus: async () => ({ connected: true, smartphoneConnected: true }),
     write,

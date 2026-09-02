@@ -1,5 +1,7 @@
 "use client";
 
+import type { WhatsAppProvider } from "@/application/ports/channel-config-snapshot";
+
 import { useState, useTransition, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -96,7 +98,7 @@ type WizardInitial = {
     takeoverTtlHours: number;
   };
   channel: {
-    provider: "z_api" | "meta_cloud_api";
+    provider: WhatsAppProvider;
     zapiInstanceId: string;
     zapiToken: string;
     zapiClientToken: string;

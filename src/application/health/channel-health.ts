@@ -2,17 +2,22 @@ import {
   getZApiInstanceStatus,
   type ZApiInstanceStatus,
 } from "@/infrastructure/adapters/channels/whatsapp/zapi-channel-adapter";
+import { getWahaSessionStatus } from "@/infrastructure/adapters/channels/whatsapp/waha-channel-adapter";
 import { resolveChannelConfig } from "@/infrastructure/adapters/channels/whatsapp/channel-config";
+import type { WhatsAppProvider } from "@/application/ports/channel-config-snapshot";
 
 export type ChannelHealthInput = {
   clinicId: string;
   clinicName: string;
-  channelProvider?: "z_api" | "meta_cloud_api" | null;
+  channelProvider?: WhatsAppProvider | null;
   zapiInstanceId?: string | null;
   zapiToken?: string | null;
   zapiClientToken?: string | null;
   metaPhoneNumberId?: string | null;
   metaAccessToken?: string | null;
+  wahaBaseUrl?: string | null;
+  wahaApiKey?: string | null;
+  wahaSession?: string | null;
 };
 
 export type ChannelHealthStatus = {
@@ -60,6 +65,36 @@ export async function probeClinicChannelHealth(
     }
 
     return evaluateZApiStatus(await getZApiInstanceStatus(config.zapi));
+  }
+
+  // WAHA não tem fornecedor reconectando a sessão por nós: se ela cair, fica
+  // caída. O probe ativo é a única coisa que avisa.
+  if (config.provider === "waha") {
+    if (!config.waha) {
+      return {
+        status: "degraded",
+        detail: "credenciais WAHA ausentes",
+        checkedAt: new Date(),
+      };
+    }
+
+    try {
+      const session = await getWahaSessionStatus(config.waha);
+      if (session.connected) {
+        return { status: "healthy", detail: null, checkedAt: new Date() };
+      }
+      return {
+        status: "degraded",
+        detail: `sessão WAHA em ${session.status}`,
+        checkedAt: new Date(),
+      };
+    } catch (error) {
+      return {
+        status: "degraded",
+        detail: error instanceof Error ? error.message : "servidor WAHA inacessível",
+        checkedAt: new Date(),
+      };
+    }
   }
 
   if (config.provider === "meta_cloud_api") {

@@ -1,3 +1,5 @@
+import type { WhatsAppProvider } from "@/application/ports/channel-config-snapshot";
+
 type BlueprintStatus = "complete" | "attention" | "pending";
 
 export type ClinicBlueprintInput = {
@@ -18,7 +20,7 @@ export type ClinicBlueprintInput = {
     defaultAppointmentDurationMinutes?: number | null;
     postAppointmentBufferMinutes?: number | null;
     takeoverTtlHours?: number | null;
-    channelProvider?: "z_api" | "meta_cloud_api" | null;
+    channelProvider?: WhatsAppProvider | null;
     zapiInstanceId?: string | null;
     zapiToken?: string | null;
     metaPhoneNumberId?: string | null;

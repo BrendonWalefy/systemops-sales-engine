@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+import type { WhatsAppProvider } from "@/application/ports/channel-config-snapshot";
 
 import Link from "next/link";
 import { Suspense } from "react";
@@ -71,7 +72,7 @@ type ClinicRow = {
   hasActivityIn24h: boolean;
   isTest: boolean;
   isDemo: boolean;
-  channelProvider: "z_api" | "meta_cloud_api" | null;
+  channelProvider: WhatsAppProvider | null;
   zapiInstanceId: string | null;
   zapiToken: string | null;
   zapiClientToken: string | null;

@@ -1,5 +1,7 @@
 "use server";
 
+import type { WhatsAppProvider } from "@/application/ports/channel-config-snapshot";
+
 import { and, eq, inArray } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { db } from "@/infrastructure/db/client";
@@ -48,7 +50,7 @@ export async function saveWizardIdentity(
     mapsUrl: string;
     locationMessage: string;
     greetingMessage: string;
-    channelProvider: "z_api" | "meta_cloud_api";
+    channelProvider: WhatsAppProvider;
     zapiInstanceId: string;
     zapiToken: string;
     zapiClientToken: string;

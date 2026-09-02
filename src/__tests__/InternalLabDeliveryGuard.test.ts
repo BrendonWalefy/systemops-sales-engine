@@ -21,11 +21,13 @@ describe("Internal Lab delivery authorization", () => {
       provider: "z_api" as const,
       zapi: Object.freeze({ instanceId: "approved", token: "approved-token" }),
       meta: null,
+      waha: null,
     });
     const changedConfig = Object.freeze({
       provider: "z_api" as const,
       zapi: Object.freeze({ instanceId: "changed", token: "changed-token" }),
       meta: null,
+      waha: null,
     });
     let currentConfig: ChannelConfigSnapshot = approvedConfig;
     const resolveDeliverySnapshot = vi.fn(async () => ({

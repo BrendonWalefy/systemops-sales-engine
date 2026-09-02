@@ -1,4 +1,5 @@
 import type { ClinicOperationalStatus } from "@/application/clinics/clinic-operational-status";
+import type { WhatsAppProvider } from "@/application/ports/channel-config-snapshot";
 
 export type ClinicHealthInput = {
   clinicId: string;
@@ -7,12 +8,15 @@ export type ClinicHealthInput = {
   // Clínica de demonstração/vitrine (dados fictícios). Excluída de toda a
   // avaliação de saúde e alertas operacionais — não gera incidentes reais.
   isDemo?: boolean | null;
-  channelProvider?: "z_api" | "meta_cloud_api" | null;
+  channelProvider?: WhatsAppProvider | null;
   zapiInstanceId?: string | null;
   zapiToken?: string | null;
   metaPhoneNumberId?: string | null;
   metaAccessToken?: string | null;
   metaAppSecret?: string | null;
+  wahaBaseUrl?: string | null;
+  wahaApiKey?: string | null;
+  wahaSession?: string | null;
   hasActivePlaybook: boolean;
   latestMetricAt?: Date | null;
   channelStatus?: {
@@ -62,6 +66,16 @@ export function hasCompleteChannelConfig(clinic: ClinicHealthInput): boolean {
       normalize(clinic.metaPhoneNumberId) &&
         normalize(clinic.metaAccessToken) &&
         normalize(clinic.metaAppSecret),
+    );
+  }
+
+  // A sessão é obrigatória: sem ela o webhook do WAHA não resolve o tenant e
+  // a mensagem do lead não chega a lugar nenhum.
+  if (clinic.channelProvider === "waha") {
+    return Boolean(
+      normalize(clinic.wahaBaseUrl) &&
+        normalize(clinic.wahaApiKey) &&
+        normalize(clinic.wahaSession),
     );
   }
 

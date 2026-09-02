@@ -1,5 +1,7 @@
+export type WhatsAppProvider = "z_api" | "meta_cloud_api" | "waha";
+
 export type ChannelConfigSnapshot = Readonly<{
-  provider: "z_api" | "meta_cloud_api";
+  provider: WhatsAppProvider;
   zapi: Readonly<{
     instanceId: string;
     token: string;
@@ -8,5 +10,10 @@ export type ChannelConfigSnapshot = Readonly<{
   meta: Readonly<{
     phoneNumberId: string;
     accessToken: string;
+  }> | null;
+  waha: Readonly<{
+    baseUrl: string;
+    apiKey: string;
+    session: string;
   }> | null;
 }>;

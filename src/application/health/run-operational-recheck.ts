@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import type { WhatsAppProvider } from "@/application/ports/channel-config-snapshot";
 import { probeClinicChannelHealth } from "@/application/health/channel-health";
 import { detectDailyMetricAlerts } from "@/application/health/daily-metric-alerts";
 import { MetricsAggregator } from "@/core/intelligence/MetricsAggregator";
@@ -9,7 +10,7 @@ type RecheckClinicRow = {
   clinicId: string;
   clinicName: string;
   operationalStatus: "prospect" | "test" | "active" | "paused" | "cancelled";
-  channelProvider: "z_api" | "meta_cloud_api" | null;
+  channelProvider: WhatsAppProvider | null;
   zapiInstanceId: string | null;
   zapiToken: string | null;
   zapiClientToken: string | null;

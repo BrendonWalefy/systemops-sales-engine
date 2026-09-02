@@ -6,6 +6,7 @@ const channelConfig = {
   provider: "z_api" as const,
   zapi: null,
   meta: null,
+  waha: null,
 };
 
 describe("ReplayOutboundCapture", () => {
