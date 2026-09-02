@@ -1,6 +1,6 @@
 # Matriz executável de paridade de capacidades V2
 
-Status: roadmap do produto em 2026-09-01. A V1 é referência histórica, nunca runtime ou fallback.
+Status: capacidades produtivas e corpus final em 2026-09-02. A V1 é referência histórica, nunca runtime ou fallback.
 Arquitetura: [Expansão das capacidades de negócio no runtime V2](v2-business-capability-architecture.md).
 
 ## Contrato executável do runtime live
@@ -226,6 +226,22 @@ PostgreSQL cobrem os cinco authorization kinds, mudanças entre enqueue/send, cr
 concorrência. Não há chamada de modelo adicional, migration, polling, worker novo ou atividade de
 banco em idle; cada ação lógica mantém um outbox, um job e uma mensagem canônica.
 
+### Diagnóstico e corpus final de paridade
+
+O Inbox oferece `Diagnóstico da IA` no painel lateral da conversa. A leitura só acontece após ação
+explícita do operador e reutiliza o endpoint tenant-scoped do Decision Trace; abrir a conversa não
+adiciona query nem request. O resumo agrupa eventos pelo `turnId`, ordena a timeline e mostra apenas
+status, horários, duração, demanda fechada, capabilities, Decisions, outcomes, estratégia, códigos
+fechados e estágios. Mensagem, prompt, resposta do modelo, telefone, nome, email, URL, payload de
+provider, token e texto livre de erro não pertencem a esse contrato.
+
+`evals/v2-only/capability-parity-corpus.json` é o índice sintético executável da paridade entregue.
+Seu parser exige exatamente uma entrada para cada valor de `DENTAL_REQUESTS` e para cada
+authorization kind proativo, IDs únicos, capability/outcome/trace válidos, um estágio terminal,
+evidência de teste existente e ausência de PII óbvia. O corpus não executa V1, não substitui replay
+privado aprovado e não autoriza operação externa; ele impede que uma nova demanda seja adicionada
+ao vocabulário sem declarar seu dono, resultado e evidência V2.
+
 ## Ordem de implementação
 
 1. conhecimento institucional básico concluído;
@@ -235,7 +251,7 @@ banco em idle; cada ação lógica mantém um outbox, um job e uma mensagem can�
 5. jornada, mídia e sinal concluídos;
 6. operação clínica e handoff concluídos;
 7. automações proativas concluídas;
-8. diagnóstico read-only do trace no Inbox e corpus final de paridade;
+8. diagnóstico read-only do trace no Inbox e corpus final de paridade concluídos;
 9. auditoria final e remoção futura dos roots históricos V1.
 
 A ordem prioriza respostas frequentes e prova primeiro o caminho de baixo risco. O pipeline já
