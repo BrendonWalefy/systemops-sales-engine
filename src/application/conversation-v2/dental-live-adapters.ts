@@ -43,6 +43,8 @@ import type {
   DentalJourneyReadPort,
   DentalJourneyWritePort,
   DentalJourneyDeliveryPlan,
+  DentalOperationsReadPort,
+  DentalTodayAppointmentResolution,
   ServiceResolution,
 } from "@/domain-packs/dental/ports";
 import {
@@ -332,6 +334,51 @@ function periodMatches(
   }
 }
 
+function sameLocalDay(
+  timezone: Pick<ClinicTimezone, "toLocalParts">,
+  left: Date,
+  right: Date,
+): boolean {
+  const leftParts = timezone.toLocalParts(left);
+  const rightParts = timezone.toLocalParts(right);
+  return leftParts.year === rightParts.year
+    && leftParts.month === rightParts.month
+    && leftParts.day === rightParts.day;
+}
+
+export function resolveDentalTodayAppointment(input: Readonly<{
+  appointments: readonly Appointment[];
+  clinicId: string;
+  leadId: string;
+  timezone: Pick<ClinicTimezone, "toLocalParts" | "formatForConfirmation">;
+  now: Date;
+}>): DentalTodayAppointmentResolution {
+  if (input.appointments.some((appointment) =>
+    appointment.clinicId !== input.clinicId
+    || appointment.leadId !== input.leadId
+  )) {
+    throw new DentalLiveAdapterError("appointment tenant binding mismatch");
+  }
+  const matches = input.appointments
+    .filter(isActiveAppointment)
+    .filter((appointment) => sameLocalDay(input.timezone, appointment.startsAt, input.now))
+    .sort((left, right) =>
+      left.startsAt.getTime() - right.startsAt.getTime()
+      || left.id.localeCompare(right.id)
+    );
+  if (matches.length === 0) return { kind: "none" };
+  if (matches.length > 1) return { kind: "ambiguous" };
+  const appointment = matches[0]!;
+  return {
+    kind: "exact",
+    appointment: {
+      id: appointment.id,
+      label: input.timezone.formatForConfirmation(appointment.startsAt),
+      evidenceRef: appointmentEvidence(appointment.id),
+    },
+  };
+}
+
 export function createDentalLiveAdapters(
   deps: DentalLiveAdapterDependencies,
 ): {
@@ -345,6 +392,7 @@ export function createDentalLiveAdapters(
   appointmentLifecycleWrite: DentalAppointmentLifecycleWritePort;
   journeyRead: DentalJourneyReadPort;
   journeyWrite: DentalJourneyWritePort;
+  operationsRead: DentalOperationsReadPort;
 } {
   const {
     appointments,
@@ -1138,6 +1186,18 @@ export function createDentalLiveAdapters(
     },
   };
 
+  const operationsRead: DentalOperationsReadPort = {
+    async resolveTodayAppointment() {
+      return resolveDentalTodayAppointment({
+        appointments: await appointments.findAllActiveByLeadId(leadId),
+        clinicId: clinic.id,
+        leadId,
+        timezone,
+        now: turnNow,
+      });
+    },
+  };
+
   function successfulOutcome(
     appointment: Appointment,
     label: string,
@@ -1580,5 +1640,6 @@ export function createDentalLiveAdapters(
     appointmentLifecycleWrite,
     journeyRead: journey.journeyRead,
     journeyWrite: journey.journeyWrite,
+    operationsRead,
   };
 }
