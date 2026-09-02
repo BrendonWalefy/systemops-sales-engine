@@ -4102,6 +4102,112 @@ textarea:focus {
   background: color-mix(in srgb, var(--surface) 76%, transparent);
 }
 
+.conversation-diagnostics {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.conversation-diagnostics-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.conversation-diagnostics-heading .eyebrow {
+  margin: 0;
+}
+
+.conversation-diagnostics-help,
+.conversation-diagnostics-state {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.conversation-diagnostics-button {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 9px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.conversation-diagnostics-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.conversation-diagnostics-turns {
+  display: grid;
+  gap: 7px;
+}
+
+.conversation-diagnostics-turn {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  font-size: 11px;
+}
+
+.conversation-diagnostics-turn > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.conversation-diagnostics-turn > summary time,
+.conversation-diagnostics-timeline time {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.conversation-diagnostics-turn dl {
+  display: grid;
+  grid-template-columns: minmax(72px, auto) 1fr;
+  gap: 4px 8px;
+  margin: 0;
+  padding: 0 8px 8px;
+}
+
+.conversation-diagnostics-turn dt {
+  color: var(--muted);
+}
+
+.conversation-diagnostics-turn dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.conversation-diagnostics-timeline {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 8px 8px 26px;
+  border-top: 1px solid var(--border);
+}
+
+.conversation-diagnostics-timeline li {
+  padding-left: 2px;
+}
+
+.conversation-diagnostics-timeline li span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
 /* ─── Atenção / Notificações ────────────────────────────── */
 
 /* Badge no card do inbox */

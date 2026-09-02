@@ -23,6 +23,7 @@ import { ConversationCategoryControl } from "./ConversationCategoryControl";
 import { avatarInitial } from "../avatar-initial";
 import { measureServerOperation } from "@/infrastructure/observability/performance-logger";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
+import { ConversationDiagnostics } from "./ConversationDiagnostics";
 
 const TZ = "America/Sao_Paulo";
 
@@ -263,6 +264,8 @@ async function prepareConversationPage(
             conversationId={conversationId}
             category={conv.category}
           />
+
+          <ConversationDiagnostics conversationId={conversationId} />
 
           {isSalesConversation && appointment && (appointment.status === "scheduled" || appointment.status === "confirmed") && (
             <div style={{ display: "grid", gap: 8 }}>
