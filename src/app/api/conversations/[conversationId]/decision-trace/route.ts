@@ -5,6 +5,7 @@ import {
   readSession,
 } from "@/application/tenancy/resolve-clinic";
 import { DECISION_TRACE_SCHEMA_VERSION } from "@/core/observability/DecisionTrace";
+import { buildConversationTraceSummary } from "@/application/observability/conversation-trace-summary";
 import { db } from "@/infrastructure/db/client";
 import { conversations } from "@/infrastructure/db/schema";
 import { DrizzleDecisionTraceStore } from "@/infrastructure/repositories/drizzle-decision-trace-store";
@@ -49,6 +50,7 @@ export async function GET(
       sequence,
       ...event,
     })));
+  const summary = buildConversationTraceSummary(events);
   const aiContractRejections = session.role === "owner"
     ? (await new DrizzleAiContractRejectionStore().listByConversation(
         clinicId,
@@ -75,6 +77,7 @@ export async function GET(
     {
       conversationId,
       events,
+      summary,
       ...(aiContractRejections ? { aiContractRejections } : {}),
     },
     { headers: { "Cache-Control": "no-store, max-age=0" } },

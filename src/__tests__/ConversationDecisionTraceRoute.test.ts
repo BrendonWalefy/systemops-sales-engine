@@ -69,6 +69,19 @@ describe("conversation decision trace route", () => {
         sequence: 0,
         stage: "intent.resolved",
       })],
+      summary: {
+        schemaVersion: "conversation-trace-summary.v1",
+        turnCount: 1,
+        turns: [expect.objectContaining({
+          turnId: "turn-1",
+          status: "processing",
+          timeline: [{
+            stage: "intent.resolved",
+            occurredAt: "2026-07-26T12:00:00.000Z",
+            sequence: 0,
+          }],
+        })],
+      },
     });
     expect(mocks.listByConversation).toHaveBeenCalledWith(
       "clinic-1",
@@ -161,5 +174,6 @@ describe("conversation decision trace route", () => {
 
     expect(body).not.toHaveProperty("aiContractRejections");
     expect(mocks.listRejectionsByConversation).not.toHaveBeenCalled();
+    expect(JSON.stringify(body.summary)).not.toContain("must-not-be-visible");
   });
 });

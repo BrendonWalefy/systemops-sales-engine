@@ -76,6 +76,27 @@ DECISION_TRACE_MODE=off              # desativado
 
 O endpoint autenticado e tenant-scoped de uma conversa permite inspecionar os estágios permitidos. O cron `decision-trace-cleanup` aplica retenção.
 
+No Inbox, o controle `Diagnóstico da IA` consulta esse endpoint somente depois de um clique. O
+servidor resume os eventos já lidos, sem nova consulta, e a UI renderiza exclusivamente o contrato
+`conversation-trace-summary.v1`: estado terminal ou pendente, horários, duração, demanda,
+capabilities, Decisions, outcomes, estratégia/códigos fechados e a ordem dos estágios. Eventos
+brutos e evidência rejeitada não são renderizados pelo componente. A guarda de sessão e clínica é
+executada antes da leitura; uma conversa de outro tenant continua indistinguível de uma conversa
+inexistente.
+
+## Corpus sintético de paridade V2
+
+O manifesto versionado `evals/v2-only/capability-parity-corpus.json` é uma prova de cobertura do
+vocabulário fechado, não um replay. Ele liga cada demanda inbound e cada automação proativa ao dono
+V2, outcomes esperados, estágios necessários e testes existentes. A carga falha diante de item
+faltante ou duplicado, vocabulário desconhecido, evidência inexistente, ausência de estágio terminal
+ou PII óbvia.
+
+Essa prova responde “há contrato e teste para toda entrada conhecida?”. O replay fiel responde “o
+caminho real produziu o resultado esperado neste dataset aprovado?”. O primeiro permanece
+sintético, versionado e sem efeitos; o segundo continua exigindo dataset privado sanitizado,
+assinatura, banco isolado e adapters de captura. Nenhum dos dois consulta ou executa V1.
+
 ## Replay fiel
 
 Uma execução fiel atravessa o mesmo caminho de produção:
