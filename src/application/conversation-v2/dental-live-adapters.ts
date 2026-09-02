@@ -25,6 +25,8 @@ import type { Professional } from "@/domain/entities/professional";
 import type { AppointmentRepository } from "@/domain/repositories/appointment-repository";
 import type { ProfessionalRepository } from "@/domain/repositories/professional-repository";
 import type { TreatmentRepository } from "@/domain/repositories/treatment-repository";
+import type { MediaAssetRepository } from "@/domain/repositories/media-asset-repository";
+import type { Message } from "@/domain/entities/conversation";
 import type {
   DentalBusinessInformationFact,
   DentalAppointmentLifecycleReadPort,
@@ -38,19 +40,28 @@ import type {
   DentalSchedulingWritePort,
   DentalService,
   DentalSlot,
+  DentalJourneyReadPort,
+  DentalJourneyWritePort,
+  DentalJourneyDeliveryPlan,
   ServiceResolution,
 } from "@/domain-packs/dental/ports";
 import {
   resolveEffectivePrice,
   type PriceCampaignRow,
 } from "@/application/config/price-campaigns";
+import {
+  createDentalJourneyLiveAdapter,
+  type DentalJourneyLiveAdapterDependencies,
+} from "@/application/conversation-v2/dental-journey-live-adapter";
+import { buildDepositRequestMessage } from "@/core/conversation/DepositTemplates";
+import type { DepositFlowPayload } from "@/core/conversation/ConversationStateMachine";
 
 type LiveState = Pick<
   ConversationStateMachine,
   | "getCurrentState"
   | "offerSlotsForTurn"
   | "invalidateIfCurrent"
->;
+> & Partial<Pick<ConversationStateMachine, "startDepositWaitForTurn">>;
 
 export type DentalLiveAdapterDependencies = {
   treatments: Pick<TreatmentRepository, "listByClinic">;
@@ -67,7 +78,8 @@ export type DentalLiveAdapterDependencies = {
     AppointmentRepository,
     "findByPeriod" | "findByIdForClinicAndLead" | "findAllActiveByLeadId"
   >;
-  reservations: Pick<SlotReservationService, "findActiveByPeriod">;
+  reservations: Pick<SlotReservationService, "findActiveByPeriod">
+    & Partial<Pick<SlotReservationService, "reserve" | "release">>;
   booking: Pick<
     BookingService,
     "book" | "confirmAppointment" | "cancelAppointment" | "reschedule"
@@ -83,6 +95,15 @@ export type DentalLiveAdapterDependencies = {
   effectLifecycle?: Readonly<{
     attempted(): void;
     completed(): void;
+  }>;
+  journey?: Readonly<{
+    mediaAssets: Pick<MediaAssetRepository, "findByIds">;
+    state: DentalJourneyLiveAdapterDependencies["state"];
+    reservations: DentalJourneyLiveAdapterDependencies["reservations"];
+    depositProofReviews: DentalJourneyLiveAdapterDependencies["depositProofReviews"];
+    humanReviews: DentalJourneyLiveAdapterDependencies["humanReviews"];
+    inboundMessage: Pick<Message, "id" | "mediaType" | "mediaUrl">;
+    history: readonly Message[];
   }>;
 };
 
@@ -322,6 +343,8 @@ export function createDentalLiveAdapters(
   schedulingWrite: DentalSchedulingWritePort;
   appointmentLifecycleRead: DentalAppointmentLifecycleReadPort;
   appointmentLifecycleWrite: DentalAppointmentLifecycleWritePort;
+  journeyRead: DentalJourneyReadPort;
+  journeyWrite: DentalJourneyWritePort;
 } {
   const {
     appointments,
@@ -365,6 +388,37 @@ export function createDentalLiveAdapters(
     replacesAppointmentId: string | null;
     exposed: Readonly<{ service: { id: string; name: string; requiresEvaluationFirst: boolean }; slots: readonly DentalSlot[] }>;
   }> | null = null;
+  const journey = deps.journey
+    ? createDentalJourneyLiveAdapter({
+        clinicId: clinic.id,
+        leadId,
+        conversationId,
+        turnId,
+        now: new Date(turnNow.getTime()),
+        depositReservationTtlMinutes: (clinic.depositTtlHours ?? 24) * 60,
+        inboundMessage: deps.journey.inboundMessage,
+        history: deps.journey.history,
+        treatments,
+        mediaAssets: deps.journey.mediaAssets,
+        state: deps.journey.state,
+        reservations: deps.journey.reservations,
+        depositProofReviews: deps.journey.depositProofReviews,
+        humanReviews: deps.journey.humanReviews,
+        effectLifecycle,
+      })
+    : {
+        journeyRead: {
+          resolveStart: async () => ({ kind: "unavailable" as const, reason: "journey_adapter_unavailable" }),
+          resolveCurrentStep: async () => ({ kind: "unavailable" as const, reason: "journey_adapter_unavailable" }),
+          resolveInboundMedia: async () => ({ kind: "unavailable" as const, reason: "journey_adapter_unavailable" }),
+        },
+        journeyWrite: {
+          prepareStep: async () => ({ success: false as const, reason: "journey_adapter_unavailable", evidenceRef: "journey:adapter_unavailable" }),
+          receiveMedia: async () => ({ success: false as const, reason: "journey_adapter_unavailable", evidenceRef: "journey:adapter_unavailable" }),
+          releasePendingDeposit: async () => ({ success: false as const, reason: "journey_adapter_unavailable", evidenceRef: "journey:adapter_unavailable" }),
+          takeDeliveryPlan: () => null,
+        },
+      };
 
   async function listTenantTreatments(): Promise<Treatment[]> {
     return (await treatments.listByClinic(clinic.id)).filter(
@@ -1090,10 +1144,53 @@ export function createDentalLiveAdapters(
   ): DentalSchedulingWriteOutcome {
     return {
       success: true,
+      kind: "appointment",
       appointmentId: appointment.id,
       label,
       evidenceRef: appointmentEvidence(appointment.id),
     };
+  }
+
+  let schedulingDeliveryPlan: DentalJourneyDeliveryPlan | null = null;
+
+  function completeDepositOutcome(payload: DepositFlowPayload): DentalSchedulingWriteOutcome {
+    if (!payload.reservationId) {
+      return {
+        success: false,
+        reason: "deposit_reservation_missing",
+        evidenceRef: `deposit:${turnId}:reservation_missing`,
+      };
+    }
+    const requestText = buildDepositRequestMessage(clinic, payload.slotLabel);
+    schedulingDeliveryPlan = {
+      replyText: requestText,
+      interleavedParts: [{ type: "text", content: requestText }],
+      pipelineAdvance: null,
+      deterministic: true,
+    };
+    return {
+      success: true,
+      kind: "deposit_requested",
+      reservationId: payload.reservationId,
+      label: payload.slotLabel,
+      requestText,
+      evidenceRef: `conversation-state:deposit:${payload.sourceTurnId ?? turnId}`,
+    };
+  }
+
+  async function existingDepositForSlot(id: string): Promise<DentalSchedulingWriteOutcome | null> {
+    const parsed = parseSlotId(id);
+    if (!parsed) return null;
+    const current = await state.getCurrentState(conversationId);
+    if (current?.state !== "awaiting_deposit_proof") return null;
+    const payload = current.payload as DepositFlowPayload | null;
+    if (
+      !payload
+      || payload.sourceOfferStateId !== parsed.stateId
+      || payload.sourceTurnId !== turnId
+      || payload.treatmentId !== parsed.treatmentId
+    ) return null;
+    return completeDepositOutcome(payload);
   }
 
   async function invalidateConsumedStateBestEffort(stateId: string): Promise<void> {
@@ -1172,6 +1269,8 @@ export function createDentalLiveAdapters(
     },
 
     async bookSlot(id) {
+      const retry = await existingDepositForSlot(id);
+      if (retry) return retry;
       const offered = await currentOfferedSlot(id);
       if (!offered) {
         return {
@@ -1202,6 +1301,94 @@ export function createDentalLiveAdapters(
           reason: "slot_taken",
           evidenceRef: `booking:${turnId}:slot_taken`,
         };
+      }
+
+      if (clinic.depositEnabled === true) {
+        const amount = clinic.depositAmountCents;
+        const pixKey = clinic.depositPixKey?.trim();
+        const ttlHours = clinic.depositTtlHours ?? 24;
+        if (
+          !Number.isInteger(amount)
+          || (amount ?? 0) <= 0
+          || !pixKey
+          || !Number.isFinite(ttlHours)
+          || ttlHours <= 0
+          || !state.startDepositWaitForTurn
+          || !reservations.reserve
+          || !reservations.release
+        ) {
+          return {
+            success: false,
+            reason: "deposit_configuration_incomplete",
+            evidenceRef: `deposit:${turnId}:configuration_incomplete`,
+          };
+        }
+        effectLifecycle?.attempted();
+        const held = await reservations.reserve(
+          clinic.id,
+          leadId,
+          startsAt,
+          endsAt,
+          ttlHours * 60,
+        );
+        if (!held) {
+          return {
+            success: false,
+            reason: "slot_taken",
+            evidenceRef: `deposit:${turnId}:slot_taken`,
+          };
+        }
+        const campaign = deps.priceCampaigns
+          ? (await deps.priceCampaigns.listActiveByTreatment(clinic.id, turnNow))
+              .get(offered.treatment.id) ?? null
+          : null;
+        const payload: DepositFlowPayload = {
+          slotStartsAt: startsAt.toISOString(),
+          slotEndsAt: endsAt.toISOString(),
+          slotLabel: offered.slot.label,
+          reservationId: held.id,
+          treatmentId: offered.treatment.id,
+          treatmentName: offered.treatment.name,
+          valueCents: resolveEffectivePrice(offered.treatment, campaign).priceCents,
+          depositAmountCents: amount!,
+          holdExpiresAt: held.expiresAt.toISOString(),
+          sourceOfferStateId: offered.state.id,
+          sourceTurnId: turnId,
+        };
+        try {
+          const transition = await state.startDepositWaitForTurn({
+            conversationId,
+            turnId,
+            expectedCurrentStateId: offered.state.id,
+            payload,
+            ttlMinutes: ttlHours * 60,
+          });
+          const persisted = transition.state?.state === "awaiting_deposit_proof"
+            ? transition.state.payload as DepositFlowPayload | null
+            : null;
+          if (
+            !persisted
+            || persisted.sourceOfferStateId !== offered.state.id
+            || persisted.sourceTurnId !== turnId
+            || persisted.reservationId !== held.id
+          ) {
+            await reservations.release(held.id);
+            return {
+              success: false,
+              reason: "deposit_state_changed",
+              evidenceRef: `deposit:${turnId}:state_changed`,
+            };
+          }
+          effectLifecycle?.completed();
+          return completeDepositOutcome(persisted);
+        } catch {
+          await reservations.release(held.id);
+          return {
+            success: false,
+            reason: "deposit_state_failed",
+            evidenceRef: `deposit:${turnId}:state_failed`,
+          };
+        }
       }
 
       effectLifecycle?.attempted();
@@ -1333,6 +1520,11 @@ export function createDentalLiveAdapters(
       await invalidateConsumedStateBestEffort(pending.stateId);
       return successfulOutcome(result.appointment, pending.label);
     },
+    takeDeliveryPlan() {
+      const plan = schedulingDeliveryPlan;
+      schedulingDeliveryPlan = null;
+      return plan;
+    },
   };
 
   const appointmentLifecycleWrite: DentalAppointmentLifecycleWritePort = {
@@ -1386,5 +1578,7 @@ export function createDentalLiveAdapters(
     schedulingWrite,
     appointmentLifecycleRead,
     appointmentLifecycleWrite,
+    journeyRead: journey.journeyRead,
+    journeyWrite: journey.journeyWrite,
   };
 }

@@ -57,7 +57,7 @@ const nullableNonNegativeInteger = nonNegativeInteger.nullable();
 // abertura depois que `greeting` e `other` entraram no vocabulário.
 export const COMPARISON_REQUESTS = DENTAL_REQUESTS;
 export const COMPARISON_CAPABILITY_IDS = [
-  "dental-knowledge", "dental-playbook-knowledge", "dental-explanation", "dental-commercial", "dental-catalog", "dental-scheduling", "dental-appointment-lifecycle", "dental-escalation", "dental-reception",
+  "dental-knowledge", "dental-playbook-knowledge", "dental-explanation", "dental-commercial", "dental-catalog", "dental-scheduling", "dental-appointment-lifecycle", "dental-journey", "dental-escalation", "dental-reception",
 ] as const;
 const requests = COMPARISON_REQUESTS;
 const capabilityIds = COMPARISON_CAPABILITY_IDS;

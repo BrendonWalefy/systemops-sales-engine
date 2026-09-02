@@ -40,6 +40,12 @@ type ConversationOutboundPayloadBase = {
   mediaParts: OutboundDeliveryPart[];
   leadId: string;
   pipelineAdvance: PipelineAdvance | null;
+  postDeliveryControl?: {
+    kind: "attention" | "handoff";
+    reason:
+      | "v2_deposit_proof_review_required"
+      | "v2_journey_photo_review_required";
+  } | null;
 };
 
 export type ConversationOutboundPayload = ConversationOutboundPayloadBase & Readonly<{
@@ -52,7 +58,9 @@ const conversationPayloadKeys = new Set([
   "agentMessagePersistence", "replyText", "intent",
   "useVoice", "ttsConfig", "interleavedParts", "mediaParts", "leadId",
   "pipelineAdvance",
+  "postDeliveryControl",
 ]);
+const postDeliveryControlKeys = new Set(["kind", "reason"]);
 
 function hasOnlyKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
   return Object.keys(value).every((key) => allowed.has(key));
@@ -109,7 +117,27 @@ export function isConversationOutboundPayload(
     typeof value.useVoice === "boolean" &&
     Array.isArray(value.interleavedParts) &&
     Array.isArray(value.mediaParts) &&
-    typeof value.leadId === "string"
+    typeof value.leadId === "string" &&
+    (
+      value.postDeliveryControl === undefined ||
+      value.postDeliveryControl === null ||
+      (
+        typeof value.postDeliveryControl === "object" &&
+        hasOnlyKeys(
+          value.postDeliveryControl as Record<string, unknown>,
+          postDeliveryControlKeys,
+        ) &&
+        ["attention", "handoff"].includes(String(
+          (value.postDeliveryControl as Record<string, unknown>).kind,
+        )) &&
+        [
+          "v2_deposit_proof_review_required",
+          "v2_journey_photo_review_required",
+        ].includes(String(
+          (value.postDeliveryControl as Record<string, unknown>).reason,
+        ))
+      )
+    )
   );
 }
 

@@ -1,6 +1,7 @@
 // Substitui os marcadores __calendar_slots__: nos corpos de mensagem.
 // O estado da conversa fica em uma tabela dedicada — auditável, recuperável, sem parsing de texto.
 
+import { createHash } from "node:crypto";
 import { db } from "@/infrastructure/db/client";
 import { conversationStates } from "@/infrastructure/db/schema";
 import { and, eq, desc, lte, sql } from "drizzle-orm";
@@ -66,6 +67,8 @@ export type TreatmentPipelinePayload = {
   stepIndex: number;
   qaTurns: number;
   photoReceived: boolean;
+  photoMessageId?: string;
+  photoReceivedAt?: string;
 };
 
 export type AppointmentConfirmationPayload = {
@@ -88,6 +91,9 @@ export type DepositFlowPayload = {
   proofMessageId?: string;
   proofReceivedAt?: string;
   proofReviewCode?: number;
+  /** Exact V2 offer/turn binding used for idempotent retry and audit. */
+  sourceOfferStateId?: string;
+  sourceTurnId?: string;
 };
 
 type StatePayload = SlotsOfferedPayload | ProcedureListPayload | TreatmentPipelinePayload | AppointmentConfirmationPayload | DepositFlowPayload | Record<string, unknown>;
@@ -109,6 +115,60 @@ export type PipelineAdvanceExpectation = {
   treatmentId?: string;
   stepIndex?: number;
 };
+
+export type StartTreatmentPipelineForTurnInput = Readonly<{
+  conversationId: string;
+  turnId: string;
+  treatmentId: string;
+  treatmentName: string;
+  ttlMinutes: number;
+  stepIndex: number;
+  selectedTreatment: Readonly<{ id: string; name: string }> | null;
+  expectedCurrentStateId: string | null;
+}>;
+
+export type ExactStateTransitionResult = Readonly<{
+  applied: boolean;
+  state: ConversationStateRow | null;
+}>;
+
+export type StartDepositWaitForTurnInput = Readonly<{
+  conversationId: string;
+  turnId: string;
+  expectedCurrentStateId: string;
+  payload: DepositFlowPayload;
+  ttlMinutes: number;
+}>;
+
+export type MarkPipelinePhotoReceivedForTurnInput = Readonly<{
+  conversationId: string;
+  turnId: string;
+  expectedCurrentStateId: string;
+  expectedTreatmentId: string;
+  expectedStepIndex: number;
+  sourceMessageId: string;
+  reviewExpiresAt: Date;
+}>;
+
+export type MarkDepositProofReceivedForTurnInput = Readonly<{
+  conversationId: string;
+  turnId: string;
+  expectedCurrentStateId: string;
+  sourceMessageId: string;
+  proofReviewCode: number;
+  reviewExpiresAt: Date;
+}>;
+
+function deterministicStateId(input: string): string {
+  const bytes = Buffer.from(
+    createHash("sha256").update(input).digest("hex").slice(0, 32),
+    "hex",
+  );
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 export function matchesPipelineAdvanceExpectation(
   current: TreatmentPipelinePayload,
@@ -504,6 +564,89 @@ export class ConversationStateMachine {
     });
   }
 
+  /**
+   * Starts one exact journey revision for a claimed V2 turn. The durable turn ID
+   * makes replay idempotent; `supersedes_state_id` arbitrates a known predecessor.
+   * Conversation-turn leasing remains the authority that serializes two distinct
+   * first turns when no predecessor exists.
+   */
+  async startTreatmentPipelineForTurn(
+    input: StartTreatmentPipelineForTurnInput,
+  ): Promise<ExactStateTransitionResult> {
+    const id = deterministicStateId(`treatment-pipeline:${input.turnId}`);
+    const now = runtimeNow();
+    const payload: TreatmentPipelinePayload = {
+      treatmentId: input.treatmentId,
+      treatmentName: input.treatmentName,
+      ...(input.selectedTreatment && input.selectedTreatment.id !== input.treatmentId
+        ? {
+            selectedTreatmentId: input.selectedTreatment.id,
+            selectedTreatmentName: input.selectedTreatment.name,
+          }
+        : {}),
+      stepIndex: input.stepIndex,
+      qaTurns: 0,
+      photoReceived: false,
+    };
+    const inserted = await db.execute<ConversationStateRow>(sql`
+      INSERT INTO ${conversationStates}
+        (id, conversation_id, state, payload, supersedes_state_id, created_at, expires_at)
+      SELECT
+        ${id}::uuid,
+        ${input.conversationId}::uuid,
+        'treatment_pipeline_active',
+        ${JSON.stringify(payload)}::jsonb,
+        ${input.expectedCurrentStateId}::uuid,
+        now(),
+        ${new Date(now.getTime() + input.ttlMinutes * 60_000)}
+      WHERE (
+        ${input.expectedCurrentStateId}::uuid IS NOT NULL
+        AND ${input.expectedCurrentStateId}::uuid = (
+          SELECT ${conversationStates.id}
+          FROM ${conversationStates}
+          WHERE ${conversationStates.conversationId} = ${input.conversationId}::uuid
+          ORDER BY ${conversationStates.createdAt} DESC, ${conversationStates.id} DESC
+          LIMIT 1
+        )
+      ) OR (
+        ${input.expectedCurrentStateId}::uuid IS NULL
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ${conversationStates}
+          WHERE ${conversationStates.conversationId} = ${input.conversationId}::uuid
+            AND (${conversationStates.expiresAt} IS NULL OR ${conversationStates.expiresAt} >= ${now})
+        )
+      )
+      ON CONFLICT DO NOTHING
+      RETURNING
+        id,
+        conversation_id AS "conversationId",
+        state,
+        payload,
+        supersedes_state_id AS "supersedesStateId",
+        created_at AS "createdAt",
+        expires_at AS "expiresAt"
+    `);
+    const row = inserted.rows[0]
+      ?? (await db.select().from(conversationStates).where(eq(conversationStates.id, id)).limit(1))[0]
+      ?? null;
+    if (!row) {
+      return { applied: false, state: await this.getCurrentState(input.conversationId) };
+    }
+    return {
+      applied: inserted.rows.length === 1,
+      state: {
+        id: row.id,
+        conversationId: row.conversationId,
+        state: row.state as ConversationStateType,
+        payload: row.payload as StatePayload | null,
+        supersedesStateId: row.supersedesStateId,
+        createdAt: row.createdAt,
+        expiresAt: row.expiresAt,
+      },
+    };
+  }
+
   // Retorna o estado atual do pipeline, ou null se não houver pipeline ativo.
   async getTreatmentPipelineState(conversationId: string, createdAtOrBefore?: Date): Promise<TreatmentPipelinePayload | null> {
     const state = await this.getCurrentState(conversationId, createdAtOrBefore);
@@ -561,6 +704,53 @@ export class ConversationStateMachine {
       // retomada no dia seguinte ainda saiba que a foto foi recebida.
       expiresAt: reviewExpiresAt ?? state.expiresAt,
     });
+  }
+
+  async markPipelinePhotoReceivedForTurn(
+    input: MarkPipelinePhotoReceivedForTurnInput,
+  ): Promise<ExactStateTransitionResult> {
+    const id = deterministicStateId(`pipeline-photo:${input.turnId}`);
+    const now = runtimeNow();
+    const inserted = await db.execute<ConversationStateRow>(sql`
+      INSERT INTO ${conversationStates}
+        (id, conversation_id, state, payload, supersedes_state_id, created_at, expires_at)
+      SELECT
+        ${id}::uuid,
+        ${input.conversationId}::uuid,
+        'treatment_pipeline_active',
+        ${conversationStates.payload} || jsonb_build_object(
+          'photoReceived', true,
+          'photoMessageId', ${input.sourceMessageId}::text,
+          'photoReceivedAt', ${now.toISOString()}::text
+        ),
+        ${input.expectedCurrentStateId}::uuid,
+        now(),
+        ${input.reviewExpiresAt}
+      FROM ${conversationStates}
+      WHERE ${conversationStates.id} = ${input.expectedCurrentStateId}::uuid
+        AND ${conversationStates.conversationId} = ${input.conversationId}::uuid
+        AND ${conversationStates.state} = 'treatment_pipeline_active'
+        AND ${conversationStates.payload}->>'treatmentId' = ${input.expectedTreatmentId}
+        AND (${conversationStates.payload}->>'stepIndex')::int = ${input.expectedStepIndex}
+        AND COALESCE((${conversationStates.payload}->>'photoReceived')::boolean, false) = false
+        AND ${conversationStates.id} = (
+          SELECT current_state.id
+          FROM ${conversationStates} AS current_state
+          WHERE current_state.conversation_id = ${input.conversationId}::uuid
+          ORDER BY current_state.created_at DESC, current_state.id DESC
+          LIMIT 1
+        )
+      ON CONFLICT DO NOTHING
+      RETURNING
+        id,
+        conversation_id AS "conversationId",
+        state,
+        payload,
+        supersedes_state_id AS "supersedesStateId",
+        created_at AS "createdAt",
+        expires_at AS "expiresAt"
+    `);
+    return this.exactTransitionResult(input.conversationId, id, inserted.rows);
   }
 
   // Encerra o pipeline. O fluxo reativo normal assume a partir daqui.
@@ -628,6 +818,59 @@ export class ConversationStateMachine {
     });
   }
 
+  async startDepositWaitForTurn(
+    input: StartDepositWaitForTurnInput,
+  ): Promise<ExactStateTransitionResult> {
+    const id = deterministicStateId(`deposit-wait:${input.turnId}`);
+    const now = runtimeNow();
+    const inserted = await db.execute<ConversationStateRow>(sql`
+      INSERT INTO ${conversationStates}
+        (id, conversation_id, state, payload, supersedes_state_id, created_at, expires_at)
+      SELECT
+        ${id}::uuid,
+        ${input.conversationId}::uuid,
+        'awaiting_deposit_proof',
+        ${JSON.stringify(input.payload)}::jsonb,
+        ${input.expectedCurrentStateId}::uuid,
+        now(),
+        ${new Date(now.getTime() + input.ttlMinutes * 60_000)}
+      WHERE ${input.expectedCurrentStateId}::uuid = (
+        SELECT ${conversationStates.id}
+        FROM ${conversationStates}
+        WHERE ${conversationStates.conversationId} = ${input.conversationId}::uuid
+        ORDER BY ${conversationStates.createdAt} DESC, ${conversationStates.id} DESC
+        LIMIT 1
+      )
+      ON CONFLICT DO NOTHING
+      RETURNING
+        id,
+        conversation_id AS "conversationId",
+        state,
+        payload,
+        supersedes_state_id AS "supersedesStateId",
+        created_at AS "createdAt",
+        expires_at AS "expiresAt"
+    `);
+    const row = inserted.rows[0]
+      ?? (await db.select().from(conversationStates).where(eq(conversationStates.id, id)).limit(1))[0]
+      ?? null;
+    if (!row) {
+      return { applied: false, state: await this.getCurrentState(input.conversationId) };
+    }
+    return {
+      applied: inserted.rows.length === 1,
+      state: {
+        id: row.id,
+        conversationId: row.conversationId,
+        state: row.state as ConversationStateType,
+        payload: row.payload as StatePayload | null,
+        supersedesStateId: row.supersedesStateId,
+        createdAt: row.createdAt,
+        expiresAt: row.expiresAt,
+      },
+    };
+  }
+
   // Marca que o comprovante chegou (qualquer imagem/PDF neste estado). TTL generoso
   // (7 dias) para dar tempo ao operador validar sem o estado expirar.
   async markDepositProofReceived(conversationId: string, proofMessageId: string, proofReviewCode?: number): Promise<void> {
@@ -645,6 +888,73 @@ export class ConversationStateMachine {
       } satisfies DepositFlowPayload,
       expiresAt: new Date(runtimeNow().getTime() + 7 * 24 * 3600_000),
     });
+  }
+
+  async markDepositProofReceivedForTurn(
+    input: MarkDepositProofReceivedForTurnInput,
+  ): Promise<ExactStateTransitionResult> {
+    const id = deterministicStateId(`deposit-proof:${input.turnId}`);
+    const now = runtimeNow();
+    const inserted = await db.execute<ConversationStateRow>(sql`
+      INSERT INTO ${conversationStates}
+        (id, conversation_id, state, payload, supersedes_state_id, created_at, expires_at)
+      SELECT
+        ${id}::uuid,
+        ${input.conversationId}::uuid,
+        'deposit_proof_received',
+        ${conversationStates.payload} || jsonb_build_object(
+          'proofMessageId', ${input.sourceMessageId}::text,
+          'proofReceivedAt', ${now.toISOString()}::text,
+          'proofReviewCode', ${input.proofReviewCode}::int
+        ),
+        ${input.expectedCurrentStateId}::uuid,
+        now(),
+        ${input.reviewExpiresAt}
+      FROM ${conversationStates}
+      WHERE ${conversationStates.id} = ${input.expectedCurrentStateId}::uuid
+        AND ${conversationStates.conversationId} = ${input.conversationId}::uuid
+        AND ${conversationStates.state} = 'awaiting_deposit_proof'
+        AND ${conversationStates.id} = (
+          SELECT current_state.id
+          FROM ${conversationStates} AS current_state
+          WHERE current_state.conversation_id = ${input.conversationId}::uuid
+          ORDER BY current_state.created_at DESC, current_state.id DESC
+          LIMIT 1
+        )
+      ON CONFLICT DO NOTHING
+      RETURNING
+        id,
+        conversation_id AS "conversationId",
+        state,
+        payload,
+        supersedes_state_id AS "supersedesStateId",
+        created_at AS "createdAt",
+        expires_at AS "expiresAt"
+    `);
+    return this.exactTransitionResult(input.conversationId, id, inserted.rows);
+  }
+
+  private async exactTransitionResult(
+    conversationId: string,
+    id: string,
+    insertedRows: readonly ConversationStateRow[],
+  ): Promise<ExactStateTransitionResult> {
+    const row = insertedRows[0]
+      ?? (await db.select().from(conversationStates).where(eq(conversationStates.id, id)).limit(1))[0]
+      ?? null;
+    if (!row) return { applied: false, state: await this.getCurrentState(conversationId) };
+    return {
+      applied: insertedRows.length === 1,
+      state: {
+        id: row.id,
+        conversationId: row.conversationId,
+        state: row.state as ConversationStateType,
+        payload: row.payload as StatePayload | null,
+        supersedesStateId: row.supersedesStateId,
+        createdAt: row.createdAt,
+        expiresAt: row.expiresAt,
+      },
+    };
   }
 
   // Retorna o estado + payload do fluxo de sinal (aguardando comprovante OU

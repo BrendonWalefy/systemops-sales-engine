@@ -167,6 +167,8 @@ function setup(options: {
   editorial?: EditorialConfig | null;
   priceCampaigns?: ReadonlyMap<string, PriceCampaignRow>;
   professionals?: Professional[];
+  depositStateFailure?: boolean;
+  reservationResult?: SlotReservation | null;
 } = {}) {
   const availableTreatments = options.treatments ?? [treatment()];
   const activeLead = options.leadOverride ?? lead;
@@ -281,6 +283,27 @@ function setup(options: {
       };
       return true;
     }),
+    startDepositWaitForTurn: vi.fn(async (input: {
+      conversationId: string;
+      expectedCurrentStateId: string;
+      payload: Record<string, unknown>;
+      ttlMinutes: number;
+    }) => {
+      if (options.depositStateFailure) throw new Error("deposit state unavailable");
+      if (currentState?.id !== input.expectedCurrentStateId) {
+        return { applied: false, state: currentState };
+      }
+      currentState = {
+        id: "deposit-state-1",
+        conversationId: input.conversationId,
+        state: "awaiting_deposit_proof",
+        payload: input.payload,
+        supersedesStateId: input.expectedCurrentStateId,
+        createdAt: now,
+        expiresAt: new Date(now.getTime() + input.ttlMinutes * 60_000),
+      };
+      return { applied: true, state: currentState };
+    }),
   };
 
   const appointments = {
@@ -337,6 +360,21 @@ function setup(options: {
   };
   const reservations = {
     findActiveByPeriod: vi.fn().mockResolvedValue(options.reservationsInPeriod ?? []),
+    reserve: vi.fn().mockResolvedValue(
+      options.reservationResult === undefined
+        ? {
+            id: "reservation-deposit-1",
+            clinicId: clinic.id,
+            leadId: activeLead.id,
+            startsAt,
+            endsAt,
+            status: "pending",
+            calendarEventId: null,
+            expiresAt: new Date("2026-08-18T12:00:00.000Z"),
+          }
+        : options.reservationResult,
+    ),
+    release: vi.fn().mockResolvedValue(undefined),
   };
   const effectLifecycle = {
     attempted: vi.fn(),
@@ -1166,6 +1204,119 @@ describe("Dental live adapters — persisted offers", () => {
 });
 
 describe("Dental live adapters — BookingService write boundary", () => {
+  it("reserves and persists an exact deposit request instead of booking directly", async () => {
+    const depositClinic: Organization = {
+      ...clinic,
+      depositEnabled: true,
+      depositAmountCents: 20_000,
+      depositPixKey: "pix-key-test",
+      depositPixKeyType: "random",
+      depositRecipientName: "SystemOps Lab",
+      depositTtlHours: 24,
+    };
+    const fixture = setup({ clinicOverride: depositClinic });
+    const offered = await offerOneSlot(fixture);
+    const offerStateId = fixture.getCurrentState()!.id;
+
+    const result = await fixture.adapters.schedulingWrite.bookSlot(offered.slots[0]!.id);
+    const plan = fixture.adapters.schedulingWrite.takeDeliveryPlan?.();
+
+    expect(result).toMatchObject({
+      success: true,
+      kind: "deposit_requested",
+      reservationId: "reservation-deposit-1",
+      label: "Ter 18/08 às 15h",
+      requestText: expect.stringContaining("pix-key-test"),
+    });
+    expect(fixture.booking.book).not.toHaveBeenCalled();
+    expect(fixture.reservations.reserve).toHaveBeenCalledWith(
+      clinic.id,
+      lead.id,
+      startsAt,
+      endsAt,
+      24 * 60,
+    );
+    expect(fixture.state.startDepositWaitForTurn).toHaveBeenCalledWith({
+      conversationId: conversation.id,
+      turnId: "turn-1",
+      expectedCurrentStateId: offerStateId,
+      payload: expect.objectContaining({
+        reservationId: "reservation-deposit-1",
+        treatmentId: "treatment-whitening",
+        valueCents: 90_000,
+        depositAmountCents: 20_000,
+        sourceOfferStateId: offerStateId,
+        sourceTurnId: "turn-1",
+      }),
+      ttlMinutes: 24 * 60,
+    });
+    expect(plan).toMatchObject({
+      replyText: expect.stringContaining("pix-key-test"),
+      interleavedParts: [expect.objectContaining({ type: "text" })],
+      deterministic: true,
+    });
+  });
+
+  it("fails closed without a complete deposit configuration", async () => {
+    const fixture = setup({
+      clinicOverride: {
+        ...clinic,
+        depositEnabled: true,
+        depositAmountCents: 20_000,
+        depositPixKey: null,
+      },
+    });
+    const offered = await offerOneSlot(fixture);
+
+    await expect(fixture.adapters.schedulingWrite.bookSlot(offered.slots[0]!.id))
+      .resolves.toMatchObject({
+        success: false,
+        reason: "deposit_configuration_incomplete",
+      });
+    expect(fixture.reservations.reserve).not.toHaveBeenCalled();
+    expect(fixture.booking.book).not.toHaveBeenCalled();
+  });
+
+  it("releases the exact reservation when the deposit state write fails", async () => {
+    const fixture = setup({
+      clinicOverride: {
+        ...clinic,
+        depositEnabled: true,
+        depositAmountCents: 20_000,
+        depositPixKey: "pix-key-test",
+      },
+      depositStateFailure: true,
+    });
+    const offered = await offerOneSlot(fixture);
+
+    await expect(fixture.adapters.schedulingWrite.bookSlot(offered.slots[0]!.id))
+      .resolves.toMatchObject({ success: false, reason: "deposit_state_failed" });
+    expect(fixture.reservations.release).toHaveBeenCalledWith("reservation-deposit-1");
+    expect(fixture.booking.book).not.toHaveBeenCalled();
+  });
+
+  it("reuses the exact persisted deposit outcome without a second reservation", async () => {
+    const fixture = setup({
+      clinicOverride: {
+        ...clinic,
+        depositEnabled: true,
+        depositAmountCents: 20_000,
+        depositPixKey: "pix-key-test",
+      },
+    });
+    const offered = await offerOneSlot(fixture);
+    const slotId = offered.slots[0]!.id;
+
+    const first = await fixture.adapters.schedulingWrite.bookSlot(slotId);
+    fixture.adapters.schedulingWrite.takeDeliveryPlan?.();
+    const retry = await fixture.adapters.schedulingWrite.bookSlot(slotId);
+
+    expect(first).toEqual(retry);
+    expect(fixture.reservations.reserve).toHaveBeenCalledOnce();
+    expect(fixture.state.startDepositWaitForTurn).toHaveBeenCalledOnce();
+    expect(fixture.adapters.schedulingWrite.takeDeliveryPlan?.()).not.toBeNull();
+  });
+
   it("books only through BookingService after revalidating persisted state, slot, and service", async () => {
     const fixture = setup();
     const offered = await offerOneSlot(fixture);

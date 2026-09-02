@@ -48,6 +48,8 @@ import {
 import { buildDentalResponseConversationBrief } from "@/domain-packs/dental/response-conversation-brief";
 import { dentalEffectDecisionIdentity } from "@/application/conversation-v2/dental-intended-effects";
 import { classifyUnderstandingFailure } from "@/application/conversation-v2/understanding-failure-code";
+import { resolveDentalStructuredMediaUnderstanding } from "@/application/conversation-v2/dental-structured-media-understanding";
+import type { DentalJourneyDeliveryPlan } from "@/domain-packs/dental/ports";
 import {
   V2_SAFE_FAILURE_REPLY_TEXT,
   shouldEnqueueSafeFailureReply,
@@ -98,6 +100,10 @@ type StaticDentalDependencies = Omit<
   resolveTenantScheduling(claimedClinicId: string): Pick<
     DentalLiveAdapterDependencies,
     "calendar" | "booking"
+  >;
+  journeyResources?: Omit<
+    NonNullable<DentalLiveAdapterDependencies["journey"]>,
+    "inboundMessage" | "history"
   >;
 }>;
 
@@ -228,6 +234,28 @@ function failureReason(phase: FailurePhase): V2SafeFailureReason {
   }
 }
 
+export function resolveJourneyOutboundContent(
+  plan: DentalJourneyDeliveryPlan | null,
+  fallback: Readonly<{ text: string; useVoice: boolean }>,
+) {
+  if (!plan) {
+    return Object.freeze({
+      replyText: fallback.text,
+      useVoice: fallback.useVoice,
+      interleavedParts: [],
+      pipelineAdvance: null,
+      postDeliveryControl: null,
+    });
+  }
+  return Object.freeze({
+    replyText: plan.replyText,
+    useVoice: false,
+    interleavedParts: [...plan.interleavedParts],
+    pipelineAdvance: plan.pipelineAdvance,
+    postDeliveryControl: plan.postDeliveryControl ?? null,
+  });
+}
+
 export class V2LiveConversationHandler implements ConversationHandler {
   constructor(private readonly deps: V2LiveConversationHandlerDependencies) {}
 
@@ -329,11 +357,23 @@ export class V2LiveConversationHandler implements ConversationHandler {
           attempted() { effectAttempted = true; },
           completed() { effectCompleted = true; },
         },
+        journey: this.deps.dental.journeyResources
+          ? {
+              ...this.deps.dental.journeyResources,
+              inboundMessage: {
+                id: context.inboundMessage.id,
+                mediaType: context.inboundMessage.mediaType,
+                mediaUrl: context.inboundMessage.mediaUrl,
+              },
+              history: snapshot.history,
+            }
+          : undefined,
       });
       const pack = createDentalPack(adapters);
 
       const understandingStartedAt = performance.now();
       let understandingResolved = false;
+      let understandingModelId: string = modelId;
       phase = "understanding";
       const preparation = await prepareTurnPipeline({
         gateInput: configuration.gateInput,
@@ -342,27 +382,33 @@ export class V2LiveConversationHandler implements ConversationHandler {
         now: new Date(turnNow.getTime()),
         understand: async () => {
           try {
-            understandingCalls += 1;
-            const result = await this.deps.understanding.understand({
-              leadMessage: context.inboundMessage.body,
-              history: historyForUnderstanding(context, snapshot),
-              state,
-              catalog: treatments.map((treatment) => ({
-                id: treatment.id,
-                displayName: treatment.name,
-                aliases: Object.freeze([...treatment.aliases]),
-              })),
-              faqCatalog: Object.freeze(
-                (context.editorial?.faqs ?? []).slice(0, 20).map((faq) => faq.question),
-              ),
-              objectionCatalog: Object.freeze(
-                (context.editorial?.objections ?? []).slice(0, 20).map(({ objection }) => objection),
-              ),
-              professionalCatalog: Object.freeze(
-                professionals.slice(0, 20).map((professional) => professional.name),
-              ),
-            }, {
-              onContractRejection: async (rejection) => {
+            const structured = resolveDentalStructuredMediaUnderstanding({
+              mediaType: context.inboundMessage.mediaType,
+              state: snapshot.currentState,
+            });
+            if (structured) understandingModelId = "deterministic-media.v1";
+            const result = structured ?? await (() => {
+              understandingCalls += 1;
+              return this.deps.understanding.understand({
+                leadMessage: context.inboundMessage.body,
+                history: historyForUnderstanding(context, snapshot),
+                state,
+                catalog: treatments.map((treatment) => ({
+                  id: treatment.id,
+                  displayName: treatment.name,
+                  aliases: Object.freeze([...treatment.aliases]),
+                })),
+                faqCatalog: Object.freeze(
+                  (context.editorial?.faqs ?? []).slice(0, 20).map((faq) => faq.question),
+                ),
+                objectionCatalog: Object.freeze(
+                  (context.editorial?.objections ?? []).slice(0, 20).map(({ objection }) => objection),
+                ),
+                professionalCatalog: Object.freeze(
+                  professionals.slice(0, 20).map((professional) => professional.name),
+                ),
+              }, {
+                onContractRejection: async (rejection) => {
                 const authoritativeTurnId = context.inboundAuthority?.inboundEventId;
                 const capture = authoritativeTurnId
                   ? await captureAiContractRejectionBestEffort(
@@ -390,8 +436,9 @@ export class V2LiveConversationHandler implements ConversationHandler {
                     .join(","),
                   capture,
                 });
-              },
-            });
+                },
+              });
+            })();
             understandingResolved = true;
             responseConversationBrief = buildDentalResponseConversationBrief(result);
             if (typeof result.signals.objection === "string" && result.signals.objection.trim()) {
@@ -452,7 +499,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
             await trace("v2.understanding", {
               status: "completed",
               durationMs: Math.max(0, Math.round(performance.now() - understandingStartedAt)),
-              modelId,
+              modelId: understandingModelId,
               request: result.request,
             });
             return result;
@@ -523,6 +570,16 @@ export class V2LiveConversationHandler implements ConversationHandler {
         });
         return { replied, reason };
       }
+
+      const exactDeterministicDeliveryExpected = preparation.prepared.decisions.some(
+        ({ capabilityId, decision }) => {
+          if (capabilityId === "dental-journey" && decision.kind === "execute") return true;
+          return capabilityId === "dental-scheduling"
+            && decision.kind === "execute"
+            && decision.action.type === "book-slot"
+            && context.clinic.depositEnabled === true;
+        },
+      );
 
       phase = "action";
       const actionStartedAt = performance.now();
@@ -628,7 +685,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
         response: {
           style: configuration.style,
           composer: new DeterministicResponseComposer(),
-          verbalization: this.deps.verbalizer && responseConversationBrief
+          verbalization: this.deps.verbalizer && responseConversationBrief && !exactDeterministicDeliveryExpected
             ? {
                 verbalizer: this.deps.verbalizer,
                 speaker: configuration.speaker,
@@ -674,6 +731,14 @@ export class V2LiveConversationHandler implements ConversationHandler {
         return { replied: false, reason: "response_validation_failed" };
       }
 
+      const deterministicPlan = adapters.journeyWrite.takeDeliveryPlan()
+        ?? adapters.schedulingWrite.takeDeliveryPlan?.()
+        ?? null;
+      const outboundContent = resolveJourneyOutboundContent(deterministicPlan, {
+        text: completed.response.text,
+        useVoice: configuration.useVoice,
+      });
+
       phase = "outbox";
       const outboxStartedAt = performance.now();
       const enqueueResult = await enqueueOutboundMessage({
@@ -690,14 +755,15 @@ export class V2LiveConversationHandler implements ConversationHandler {
           turnId: context.turnId,
           to: context.outboundAddress,
           agentMessageId: deterministicUuid(`conversation-v2-agent:${context.turnId}`),
-          replyText: completed.response.text,
+          replyText: outboundContent.replyText,
           intent: null,
-          useVoice: configuration.useVoice,
+          useVoice: outboundContent.useVoice,
           ttsConfig: configuration.ttsConfig,
-          interleavedParts: [],
+          interleavedParts: outboundContent.interleavedParts,
           mediaParts: [],
           leadId: context.leadId,
-          pipelineAdvance: null,
+          pipelineAdvance: outboundContent.pipelineAdvance,
+          postDeliveryControl: outboundContent.postDeliveryControl,
         },
       }, this.deps.outbound);
       await trace("v2.outbox", {
