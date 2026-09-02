@@ -99,8 +99,18 @@ describe("stop_contact — efeito do opt-out no gate", () => {
     }
   });
 
-  it("não bloqueia reply nem reminder mesmo com opt-out", () => {
-    for (const category of ["reply", "reminder", "operational"] as const) {
+  it("mantém reply reativo e bloqueia reminder/operational proativos com opt-out", () => {
+    const replyDecision = evaluateOutboundSafetyGate({
+      category: "reply",
+      clinic,
+      lead: optedOutLead,
+      sentLastHour: 0,
+      sentToday: 0,
+      now,
+    });
+    expect(replyDecision).toEqual({ action: "allow" });
+
+    for (const category of ["reminder", "operational"] as const) {
       const decision = evaluateOutboundSafetyGate({
         category,
         clinic,
@@ -109,7 +119,7 @@ describe("stop_contact — efeito do opt-out no gate", () => {
         sentToday: 0,
         now,
       });
-      expect(decision).toEqual({ action: "allow" });
+      expect(decision).toEqual({ action: "cancel", reason: "consent_revoked" });
     }
   });
 });
