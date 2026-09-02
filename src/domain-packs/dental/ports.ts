@@ -135,7 +135,12 @@ export type DentalCommercialReadPort = Readonly<{
   ): Promise<DentalRegisteredObjectionResolution>;
 }>;
 
-export type DentalSlot = { id: string; label: string; evidenceRef: string };
+export type DentalSlot = {
+  id: string;
+  label: string;
+  evidenceRef: string;
+  bookingKind?: "book" | "reschedule";
+};
 export type DentalSlotSearchResult = {
   service: { id: string; name: string; requiresEvaluationFirst?: boolean };
   slots: readonly DentalSlot[];
@@ -184,6 +189,7 @@ export type DentalSchedulingWritePort = {
   persistSlotOffer(offer: DentalSlotSearchResult): Promise<DentalSlotSearchResult>;
   bookSlot(slotId: string): Promise<DentalSchedulingWriteOutcome>;
   confirmAppointment(appointmentId: string): Promise<DentalSchedulingWriteOutcome>;
+  rescheduleSlot(slotId: string): Promise<DentalSchedulingWriteOutcome>;
 };
 
 export type DentalAppointmentLifecycleReadPort = Readonly<{

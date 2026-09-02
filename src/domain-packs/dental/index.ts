@@ -143,5 +143,6 @@ export const dentalPack = createDentalPack({
     persistSlotOffer: unavailable,
     bookSlot: unavailable,
     confirmAppointment: unavailable,
+    rescheduleSlot: unavailable,
   },
 });

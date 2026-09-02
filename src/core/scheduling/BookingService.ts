@@ -51,6 +51,20 @@ export type AppointmentCancellationResult =
         | "db_error";
     };
 
+export type AppointmentRescheduleResult =
+  | { success: true; appointment: Appointment }
+  | {
+      success: false;
+      reason:
+        | "invalid_binding"
+        | "appointment_not_found"
+        | "appointment_not_active"
+        | "slot_taken"
+        | "calendar_error"
+        | "db_error"
+        | "compensation_failed";
+    };
+
 export type BookingReservationService = {
   releaseExpired(): Promise<void>;
   reserve(clinicId: string, leadId: string, startsAt: Date, endsAt: Date, ttlMinutes?: number): Promise<SlotReservation | null>;
@@ -433,5 +447,154 @@ export class BookingService {
     }
     await this.reservationService.releaseBySlot(clinic.id, cancelled.startsAt);
     return { success: true, appointment: cancelled };
+  }
+
+  async reschedule(params: {
+    clinic: Organization;
+    lead: Lead;
+    appointmentId: string;
+    startsAt: Date;
+    endsAt: Date;
+    professionalId: string | null;
+  }): Promise<AppointmentRescheduleResult> {
+    const { clinic, lead, appointmentId, startsAt, endsAt, professionalId } = params;
+    if (lead.clinicId !== clinic.id) {
+      return { success: false, reason: "invalid_binding" };
+    }
+    const existing = await this.appointmentRepo.findByIdForClinicAndLead(
+      clinic.id,
+      lead.id,
+      appointmentId,
+    );
+    if (!existing || existing.clinicId !== clinic.id || existing.leadId !== lead.id) {
+      return { success: false, reason: "appointment_not_found" };
+    }
+    if (existing.status !== "scheduled" && existing.status !== "confirmed") {
+      return { success: false, reason: "appointment_not_active" };
+    }
+    if (
+      existing.startsAt.getTime() === startsAt.getTime() &&
+      existing.endsAt.getTime() === endsAt.getTime() &&
+      existing.professionalId === professionalId
+    ) {
+      return { success: true, appointment: existing };
+    }
+
+    const reservation = await this.reservationService.reserve(
+      clinic.id,
+      lead.id,
+      startsAt,
+      endsAt,
+    );
+    if (!reservation) return { success: false, reason: "slot_taken" };
+
+    const releaseTarget = async () => {
+      try {
+        await this.reservationService.release(reservation.id);
+      } catch {
+        // The appointment row remains authoritative for occupied intervals.
+      }
+    };
+    const overlaps = await this.appointmentRepo.findByPeriod(clinic.id, startsAt, endsAt);
+    if (overlaps.some((candidate) =>
+      candidate.id !== existing.id &&
+      (candidate.status === "scheduled" || candidate.status === "confirmed") &&
+      candidate.startsAt < endsAt && candidate.endsAt > startsAt
+    )) {
+      await releaseTarget();
+      return { success: false, reason: "slot_taken" };
+    }
+    try {
+      if (!await this.calendarGateway.isSlotFree({ clinicId: clinic.id, startsAt, endsAt })) {
+        await releaseTarget();
+        return { success: false, reason: "slot_taken" };
+      }
+    } catch (error) {
+      if (isCalendarTenantScopeError(error)) throw error;
+      await releaseTarget();
+      return { success: false, reason: "calendar_error" };
+    }
+
+    let externalUpdated = false;
+    if (existing.calendarEventId) {
+      try {
+        await this.calendarGateway.updateCalendarEvent({
+          calendarEventId: existing.calendarEventId,
+          startsAt,
+          endsAt,
+        });
+        externalUpdated = true;
+      } catch (error) {
+        if (isCalendarTenantScopeError(error)) throw error;
+        await releaseTarget();
+        return { success: false, reason: "calendar_error" };
+      }
+    }
+
+    let moved: Appointment | null = null;
+    try {
+      moved = await this.appointmentRepo.rescheduleActiveForClinicAndLead(
+        clinic.id,
+        lead.id,
+        appointmentId,
+        existing.startsAt,
+        existing.endsAt,
+        startsAt,
+        endsAt,
+        professionalId,
+        new Date(),
+      );
+    } catch {
+      moved = null;
+    }
+    if (!moved) {
+      const reconciled = await this.appointmentRepo.findByIdForClinicAndLead(
+        clinic.id,
+        lead.id,
+        appointmentId,
+      );
+      if (
+        reconciled &&
+        (reconciled.status === "scheduled" || reconciled.status === "confirmed") &&
+        reconciled.startsAt.getTime() === startsAt.getTime() &&
+        reconciled.endsAt.getTime() === endsAt.getTime() &&
+        reconciled.professionalId === professionalId
+      ) {
+        await releaseTarget();
+        return { success: true, appointment: reconciled };
+      }
+      let compensationFailed = false;
+      if (externalUpdated && existing.calendarEventId) {
+        try {
+          await this.calendarGateway.updateCalendarEvent({
+            calendarEventId: existing.calendarEventId,
+            startsAt: existing.startsAt,
+            endsAt: existing.endsAt,
+          });
+        } catch {
+          compensationFailed = true;
+        }
+      }
+      await releaseTarget();
+      return {
+        success: false,
+        reason: compensationFailed ? "compensation_failed" : "db_error",
+      };
+    }
+    if (moved.clinicId !== clinic.id || moved.leadId !== lead.id || moved.id !== appointmentId) {
+      await releaseTarget();
+      return { success: false, reason: "db_error" };
+    }
+    try {
+      await this.reservationService.confirm(reservation.id, moved.calendarEventId);
+    } catch {
+      await releaseTarget();
+    }
+    try {
+      await this.reservationService.releaseBySlot(clinic.id, existing.startsAt);
+    } catch {
+      // The moved appointment is authoritative; stale reservation cleanup is operational.
+    }
+    return { success: true, appointment: moved };
   }
 }

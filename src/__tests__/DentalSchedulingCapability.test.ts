@@ -32,7 +32,7 @@ describe("Dental Scheduling capability", () => {
     const persistSlotOffer = vi.fn(async (offer) => offer);
     const capability = createDentalSchedulingCapability(
       { listSlots, resolveOfferedSlot: vi.fn(), resolvePendingAppointment: vi.fn() },
-      { persistSlotOffer, bookSlot, confirmAppointment: vi.fn() },
+      { persistSlotOffer, bookSlot, confirmAppointment: vi.fn(), rescheduleSlot: vi.fn() },
     );
     const state = { phase: "active", pendingStepId: null, completedStepIds: [] };
     const claim = capability.claim(understanding("book-appointment", { date: "quarta" }), state)!;
@@ -53,7 +53,7 @@ describe("Dental Scheduling capability", () => {
     const bookSlot = vi.fn().mockResolvedValue({ success: true, appointmentId: "appt-1", label: slot.label, evidenceRef: "booking-1" });
     const capability = createDentalSchedulingCapability(
       { listSlots: vi.fn(), resolveOfferedSlot: vi.fn().mockResolvedValue(slot), resolvePendingAppointment: vi.fn() },
-      { persistSlotOffer: vi.fn(async (offer) => offer), bookSlot, confirmAppointment: vi.fn() },
+      { persistSlotOffer: vi.fn(async (offer) => offer), bookSlot, confirmAppointment: vi.fn(), rescheduleSlot: vi.fn() },
     );
     const state = { phase: "awaiting_slot", pendingStepId: "offer-1", completedStepIds: [] };
     const claim = capability.claim(understanding("confirm-slot", { ordinal: 2 }), state)!;
@@ -68,11 +68,47 @@ describe("Dental Scheduling capability", () => {
     })] }));
   });
 
+  it("routes a persisted replacement slot to the reschedule write boundary", async () => {
+    const slot = {
+      id: "replacement-slot-1",
+      label: "sexta às 14h",
+      evidenceRef: "replacement-offer-1",
+      bookingKind: "reschedule" as const,
+    };
+    const rescheduleSlot = vi.fn().mockResolvedValue({
+      success: true,
+      appointmentId: "appointment-1",
+      label: slot.label,
+      evidenceRef: "reschedule:appointment-1",
+    });
+    const capability = createDentalSchedulingCapability(
+      {
+        listSlots: vi.fn(),
+        resolveOfferedSlot: vi.fn().mockResolvedValue(slot),
+        resolvePendingAppointment: vi.fn(),
+      },
+      {
+        persistSlotOffer: vi.fn(async (offer) => offer),
+        bookSlot: vi.fn(),
+        confirmAppointment: vi.fn(),
+        rescheduleSlot,
+      },
+    );
+    const offered = { phase: "awaiting_slot", pendingStepId: "replacement-offer-1", completedStepIds: [] };
+    const claim = capability.claim(understanding("confirm-slot", { ordinal: 1 }), offered)!;
+    const decision = await capability.decide(claim, { state: offered, policy, now: new Date(0) });
+
+    expect(decision).toMatchObject({ kind: "execute", action: { type: "reschedule-slot" } });
+    await expect(capability.execute(decision, { state: offered, policy, now: new Date(0) }))
+      .resolves.toMatchObject({ type: "appointment_rescheduled", semanticClass: "effect_completed" });
+    expect(rescheduleSlot).toHaveBeenCalledWith(slot.id);
+  });
+
   it("sem pending state não lê nem escreve", async () => {
     const resolveOfferedSlot = vi.fn(); const bookSlot = vi.fn();
     const capability = createDentalSchedulingCapability(
       { listSlots: vi.fn(), resolveOfferedSlot, resolvePendingAppointment: vi.fn() },
-      { persistSlotOffer: vi.fn(async (offer) => offer), bookSlot, confirmAppointment: vi.fn() },
+      { persistSlotOffer: vi.fn(async (offer) => offer), bookSlot, confirmAppointment: vi.fn(), rescheduleSlot: vi.fn() },
     );
     const state = { phase: "active", pendingStepId: null, completedStepIds: [] };
     const claim = capability.claim(understanding("confirm-slot", { ordinal: 2 }), state)!;
@@ -86,7 +122,7 @@ describe("Dental Scheduling capability", () => {
   it("write falho não produz fato de agendamento", async () => {
     const capability = createDentalSchedulingCapability(
       { listSlots: vi.fn(), resolveOfferedSlot: vi.fn().mockResolvedValue({ id: "slot-2", label: "quarta às 15h", evidenceRef: "offer-1" }), resolvePendingAppointment: vi.fn() },
-      { persistSlotOffer: vi.fn(async (offer) => offer), bookSlot: vi.fn().mockResolvedValue({ success: false, reason: "slot_taken", evidenceRef: "booking-2" }), confirmAppointment: vi.fn() },
+      { persistSlotOffer: vi.fn(async (offer) => offer), bookSlot: vi.fn().mockResolvedValue({ success: false, reason: "slot_taken", evidenceRef: "booking-2" }), confirmAppointment: vi.fn(), rescheduleSlot: vi.fn() },
     );
     const state = { phase: "awaiting_slot", pendingStepId: "offer-1", completedStepIds: [] };
     const claim = capability.claim(understanding("confirm-slot", { ordinal: 2 }), state)!;
@@ -100,7 +136,7 @@ describe("Dental Scheduling capability", () => {
     const confirmAppointment = vi.fn().mockResolvedValue({ success: true, appointmentId: "appt-1", label: "hoje às 16:00", evidenceRef: "confirmation-1" });
     const capability = createDentalSchedulingCapability(
       { listSlots: vi.fn(), resolveOfferedSlot: vi.fn(), resolvePendingAppointment: vi.fn().mockResolvedValue({ id: "appt-1", label: "hoje às 16:00", evidenceRef: "pending-1" }) },
-      { persistSlotOffer: vi.fn(async (offer) => offer), bookSlot: vi.fn(), confirmAppointment },
+      { persistSlotOffer: vi.fn(async (offer) => offer), bookSlot: vi.fn(), confirmAppointment, rescheduleSlot: vi.fn() },
     );
     const state = { phase: "awaiting_appointment_confirmation", pendingStepId: "confirmation-1", completedStepIds: [] };
     const claim = capability.claim(understanding("confirm-appointment", { time: "16:00" }), state)!;
@@ -116,7 +152,7 @@ describe("Dental Scheduling capability", () => {
     const bookSlot = vi.fn(); const confirmAppointment = vi.fn();
     const capability = createDentalSchedulingCapability(
       { listSlots: vi.fn(), resolveOfferedSlot: vi.fn(), resolvePendingAppointment: vi.fn() },
-      { persistSlotOffer: vi.fn(async (offer) => offer), bookSlot, confirmAppointment },
+      { persistSlotOffer: vi.fn(async (offer) => offer), bookSlot, confirmAppointment, rescheduleSlot: vi.fn() },
     );
     const state = { phase: "active", pendingStepId: null, completedStepIds: [] };
     const result = await capability.execute({

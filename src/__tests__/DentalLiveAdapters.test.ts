@@ -189,6 +189,7 @@ function setup(options: {
       _voiceEnabled?: boolean,
       treatmentId?: string,
       professionalId?: string,
+      replacesAppointmentId?: string,
     ) => {
       const formatted = slots.map((slot, index) => ({
         index: index + 1,
@@ -209,6 +210,7 @@ function setup(options: {
           treatmentId,
           durationMinutes,
           ...(professionalId ? { professionalId } : {}),
+          ...(replacesAppointmentId ? { replacesAppointmentId } : {}),
         },
         supersedesStateId: null,
         createdAt: now,
@@ -227,6 +229,7 @@ function setup(options: {
       _voiceEnabled?: boolean,
       treatmentId?: string,
       professionalId?: string,
+      replacesAppointmentId?: string,
     ) => {
       const formatted = slots.map((slot, index) => ({
         index: index + 1,
@@ -246,6 +249,7 @@ function setup(options: {
           treatmentId,
           durationMinutes,
           ...(professionalId ? { professionalId } : {}),
+          ...(replacesAppointmentId ? { replacesAppointmentId } : {}),
         },
         supersedesStateId: null,
         createdAt: now,
@@ -309,6 +313,7 @@ function setup(options: {
         ? { success: true, appointment: { ...input, status: "cancelled" } }
         : { success: false, reason: "appointment_not_found" };
     }),
+    reschedule: vi.fn().mockResolvedValue({ success: false, reason: "appointment_not_found" }),
   };
   const calendarSlots = options.calendarSlots ?? [{
     id: "calendar-slot-1",
@@ -540,6 +545,52 @@ describe("Dental live adapters — institutional knowledge", () => {
 });
 
 describe("Dental live adapters — appointment lifecycle", () => {
+  it("persists replacement authority and updates the same appointment on selection", async () => {
+    const original = appointment({
+      id: "appointment-original",
+      startsAt: new Date("2026-08-19T18:00:00.000Z"),
+      endsAt: new Date("2026-08-19T19:00:00.000Z"),
+    });
+    const fixture = setup({ activeAppointments: [original], appointmentById: original });
+    fixture.booking.reschedule.mockResolvedValue({
+      success: true,
+      appointment: { ...original, startsAt, endsAt },
+    });
+    const replacement = await fixture.adapters.appointmentLifecycleRead.listReplacementSlots({
+      appointmentId: original.id,
+      date: "amanhã",
+      period: "afternoon",
+      professional: null,
+      minimumLeadTimeHours: 2,
+      now,
+    });
+    const persisted = await fixture.adapters.appointmentLifecycleWrite
+      .persistReplacementOffer(replacement);
+
+    expect(fixture.getCurrentState()?.payload).toEqual(expect.objectContaining({
+      replacesAppointmentId: original.id,
+    }));
+    const resolved = await fixture.adapters.schedulingRead.resolveOfferedSlot({
+      pendingStepId: fixture.getCurrentState()!.id,
+      ordinal: 1,
+      date: null,
+      time: null,
+    });
+    expect(resolved).toEqual(expect.objectContaining({ bookingKind: "reschedule" }));
+
+    await expect(fixture.adapters.schedulingWrite.rescheduleSlot(persisted.slots[0]!.id))
+      .resolves.toMatchObject({ success: true, appointmentId: original.id });
+    expect(fixture.booking.reschedule).toHaveBeenCalledWith({
+      clinic,
+      lead,
+      appointmentId: original.id,
+      startsAt,
+      endsAt,
+      professionalId: null,
+    });
+    expect(fixture.booking.book).not.toHaveBeenCalled();
+  });
+
   it("lists in deterministic start/id order and resolves one exact cancellation", async () => {
     const later = appointment({
       id: "appointment-b",
@@ -1020,6 +1071,7 @@ describe("Dental live adapters — persisted offers", () => {
       15,
       false,
       "treatment-whitening",
+      undefined,
       undefined,
     );
 

@@ -53,6 +53,7 @@ describe("pipeline operacional dental", () => {
         persistSlotOffer: vi.fn(),
         bookSlot,
         confirmAppointment: vi.fn(),
+        rescheduleSlot: vi.fn(),
       },
     });
 
@@ -99,7 +100,7 @@ describe("pipeline operacional dental", () => {
         resolveOfferedSlot: vi.fn(),
         resolvePendingAppointment: vi.fn(),
       },
-      schedulingWrite: { persistSlotOffer: vi.fn(), bookSlot, confirmAppointment: vi.fn() },
+      schedulingWrite: { persistSlotOffer: vi.fn(), bookSlot, confirmAppointment: vi.fn(), rescheduleSlot: vi.fn() },
     });
     const result = await runTurnPipeline({
       gateInput,
@@ -158,6 +159,7 @@ describe("pipeline operacional dental", () => {
         persistSlotOffer,
         bookSlot: vi.fn(),
         confirmAppointment: vi.fn(),
+        rescheduleSlot: vi.fn(),
       },
     });
     const preparation = await prepareTurnPipeline({
@@ -220,6 +222,7 @@ describe("pipeline operacional dental", () => {
         persistSlotOffer,
         bookSlot: vi.fn(),
         confirmAppointment: vi.fn(),
+        rescheduleSlot: vi.fn(),
       },
     });
 

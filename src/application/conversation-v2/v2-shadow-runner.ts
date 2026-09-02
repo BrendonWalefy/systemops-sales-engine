@@ -27,6 +27,7 @@ const shadowWritePort = {
   async persistSlotOffer(): Promise<never> { throw new Error("shadow execution cannot write"); },
   async bookSlot(): Promise<never> { throw new Error("shadow execution cannot write"); },
   async confirmAppointment(): Promise<never> { throw new Error("shadow execution cannot write"); },
+  async rescheduleSlot(): Promise<never> { throw new Error("shadow execution cannot write"); },
 };
 
 export class V2ShadowRunner {

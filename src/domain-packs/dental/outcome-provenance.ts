@@ -15,7 +15,11 @@ export type DentalCapabilityId =
   | "dental-escalation"
   | "dental-reception";
 
-export type DentalExecuteAction = "book_slot" | "confirm_appointment" | "cancel_appointment";
+export type DentalExecuteAction =
+  | "book_slot"
+  | "confirm_appointment"
+  | "reschedule_slot"
+  | "cancel_appointment";
 
 type DentalOutcomeDefinition<Type extends DentalOutcomeType = DentalOutcomeType> =
   Readonly<{
@@ -198,6 +202,17 @@ const provenanceRules = [
       outcome("appointment_confirmed"),
       outcome("appointment_confirmation_failed"),
       outcome("scheduling_failed"),
+    ],
+  },
+  {
+    capabilityId: "dental-scheduling",
+    decisionKind: "execute",
+    decisionActionType: "reschedule-slot",
+    action: "reschedule_slot",
+    outcomes: [
+      outcome("appointment_rescheduled"),
+      outcome("appointment_reschedule_failed"),
+      outcome("appointment_reschedule_compensation_failed"),
     ],
   },
   {

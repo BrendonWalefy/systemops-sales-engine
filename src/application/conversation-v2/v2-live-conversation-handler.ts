@@ -532,11 +532,17 @@ export class V2LiveConversationHandler implements ConversationHandler {
         onActionResults: async (
           actionResults: readonly ActionResult<typeof DENTAL_OUTCOME_SCHEMA>[],
         ) => {
+          if (actionResults.some(
+            ({ type }) => type === "appointment_reschedule_compensation_failed",
+          )) {
+            handoffReason = "v2_reschedule_compensation_requires_human";
+          }
           const completedEffectCount = actionResults.filter(
             ({ semanticClass }) => semanticClass === "effect_completed",
           ).length;
           const persistedOfferCount = actionResults.filter(
-            ({ type }) => type === "slots_found",
+            ({ type }) =>
+              type === "slots_found" || type === "appointment_reschedule_offered",
           ).length;
           effectCompleted ||= completedEffectCount + persistedOfferCount > 0;
           const failedEffectCount = actionResults.filter(

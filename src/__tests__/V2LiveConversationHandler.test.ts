@@ -326,6 +326,7 @@ function makeHarness(options: {
     book: vi.fn().mockResolvedValue({ success: true, appointment }),
     confirmAppointment: vi.fn(),
     cancelAppointment: vi.fn(),
+    reschedule: vi.fn(),
   };
   const currentState = vi.fn().mockResolvedValue(offeredState);
   const createOutboundMessageAndEnqueue = options.outboxFailure

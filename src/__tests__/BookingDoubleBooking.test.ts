@@ -241,6 +241,27 @@ class FakeAppointmentRepository implements AppointmentRepository {
     return this.authoritative;
   }
 
+  async rescheduleActiveForClinicAndLead(
+    clinicId: string,
+    leadId: string,
+    appointmentId: string,
+    expectedStartsAt: Date,
+    expectedEndsAt: Date,
+    startsAt: Date,
+    endsAt: Date,
+    professionalId: string | null,
+    updatedAt: Date,
+  ): Promise<Appointment | null> {
+    const candidate = await this.findByIdForClinicAndLead(clinicId, leadId, appointmentId);
+    if (
+      !candidate ||
+      candidate.startsAt.getTime() !== expectedStartsAt.getTime() ||
+      candidate.endsAt.getTime() !== expectedEndsAt.getTime()
+    ) return null;
+    this.authoritative = { ...candidate, startsAt, endsAt, professionalId, updatedAt };
+    return this.authoritative;
+  }
+
   async findByLeadId(): Promise<Appointment | null> {
     return null;
   }

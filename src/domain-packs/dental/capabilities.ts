@@ -257,6 +257,16 @@ export const DENTAL_OUTCOME_SCHEMA = defineOutcomeSchema({
     subjectRequirement: "optional",
     evidenceRequirement: "optional",
   },
+  appointment_rescheduled: {
+    semanticClass: "effect_completed",
+    subjectRequirement: "required",
+    evidenceRequirement: "write_required",
+  },
+  appointment_reschedule_compensation_failed: {
+    semanticClass: "human_action_required",
+    subjectRequirement: "forbidden",
+    evidenceRequirement: "write_required",
+  },
   scheduling_failed: {
     semanticClass: "effect_failed",
     subjectRequirement: "optional",
@@ -567,7 +577,10 @@ export function createDentalSchedulingCapability(
         return slot
           ? {
               kind: "execute",
-              action: { type: "book-slot", parameters: { slotId: slot.id } },
+              action: {
+                type: slot.bookingKind === "reschedule" ? "reschedule-slot" : "book-slot",
+                parameters: { slotId: slot.id },
+              },
               nextBestStep: null,
             }
           : { kind: "ask", questionId: "slot-not-in-offer" };
@@ -661,6 +674,7 @@ export function createDentalSchedulingCapability(
       }
       if (
         decision.action.type !== "book-slot" &&
+        decision.action.type !== "reschedule-slot" &&
         decision.action.type !== "confirm-appointment"
       ) {
         return {
@@ -673,7 +687,7 @@ export function createDentalSchedulingCapability(
         };
       }
       const parameter =
-        decision.action.type === "book-slot" ? "slotId" : "appointmentId";
+        decision.action.type === "confirm-appointment" ? "appointmentId" : "slotId";
       const id = decision.action.parameters[parameter];
       if (typeof id !== "string") {
         return {
@@ -688,13 +702,30 @@ export function createDentalSchedulingCapability(
       const outcome =
         decision.action.type === "book-slot"
           ? await writePort.bookSlot(id)
-          : await writePort.confirmAppointment(id);
+          : decision.action.type === "reschedule-slot"
+            ? await writePort.rescheduleSlot(id)
+            : await writePort.confirmAppointment(id);
       if (!outcome.success) {
+        if (
+          decision.action.type === "reschedule-slot" &&
+          outcome.reason === "compensation_failed"
+        ) {
+          return {
+            type: "appointment_reschedule_compensation_failed",
+            semanticClass: "human_action_required",
+            origin: { capabilityId: "dental-scheduling" },
+            subject: null,
+            evidence: [{ source: "write", reference: outcome.evidenceRef }],
+            facts: [],
+          };
+        }
         return {
           type:
             decision.action.type === "book-slot"
               ? "appointment_create_failed"
-              : "appointment_confirmation_failed",
+              : decision.action.type === "reschedule-slot"
+                ? "appointment_reschedule_failed"
+                : "appointment_confirmation_failed",
           semanticClass: "effect_failed",
           origin: { capabilityId: "dental-scheduling" },
           subject: null,
@@ -711,7 +742,9 @@ export function createDentalSchedulingCapability(
         type:
           decision.action.type === "book-slot"
             ? "appointment_created"
-            : "appointment_confirmed",
+            : decision.action.type === "reschedule-slot"
+              ? "appointment_rescheduled"
+              : "appointment_confirmed",
         semanticClass: "effect_completed",
         origin: { capabilityId: "dental-scheduling" },
         subject: fact.subject,

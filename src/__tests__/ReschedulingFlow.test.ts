@@ -165,6 +165,7 @@ function makeApptRepo(overlap: Appointment[] = []) {
     async findByIdForClinicAndLead() { return null; },
     async confirmScheduledForClinicAndLead() { return null; },
     async cancelActiveForClinicAndLead() { return null; },
+    async rescheduleActiveForClinicAndLead() { return null; },
     async findByLeadId() { return null; },
     async findActiveByLeadId() { return null; },
     async findAllActiveByLeadId() { return overlap; },

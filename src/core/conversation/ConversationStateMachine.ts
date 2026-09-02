@@ -37,6 +37,7 @@ export type SlotsOfferedPayload = {
   treatmentName?: string;
   durationMinutes?: number;
   professionalId?: string;
+  replacesAppointmentId?: string;
 };
 
 export type ProcedureListItem = {
@@ -258,6 +259,7 @@ export class ConversationStateMachine {
     voiceEnabled?: boolean,
     treatmentId?: string,
     professionalId?: string,
+    replacesAppointmentId?: string,
   ): Promise<FormattedSlot[]> {
     return this.persistSlotOffer(
       undefined,
@@ -270,6 +272,7 @@ export class ConversationStateMachine {
       voiceEnabled,
       treatmentId,
       professionalId,
+      replacesAppointmentId,
     );
   }
 
@@ -286,6 +289,7 @@ export class ConversationStateMachine {
     voiceEnabled?: boolean,
     treatmentId?: string,
     professionalId?: string,
+    replacesAppointmentId?: string,
   ): Promise<FormattedSlot[]> {
     return this.persistSlotOffer(
       stateId,
@@ -298,6 +302,7 @@ export class ConversationStateMachine {
       voiceEnabled,
       treatmentId,
       professionalId,
+      replacesAppointmentId,
     );
   }
 
@@ -312,6 +317,7 @@ export class ConversationStateMachine {
     voiceEnabled?: boolean,
     treatmentId?: string,
     professionalId?: string,
+    replacesAppointmentId?: string,
   ): Promise<FormattedSlot[]> {
     const formatted: FormattedSlot[] = slots.map((s, i) => ({
       index: i + 1,
@@ -329,6 +335,7 @@ export class ConversationStateMachine {
       ...(treatmentName && { treatmentName }),
       ...(durationMinutes && { durationMinutes }),
       ...(professionalId && { professionalId }),
+      ...(replacesAppointmentId && { replacesAppointmentId }),
     };
 
     await db.insert(conversationStates).values({

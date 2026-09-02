@@ -6,10 +6,14 @@ import {
   type DentalExecuteDecisionIdentity,
 } from "@/domain-packs/dental/outcome-provenance";
 
-export type IntendedEffect = Readonly<{ kind: "would_have_executed"; capabilityId: "dental-scheduling"; payloadHash: string }> & (
-  | Readonly<{ action: "book_slot"; payload: Readonly<{ slotRefHash: string }> }>
-  | Readonly<{ action: "confirm_appointment"; payload: Readonly<{ appointmentRefHash: string }> }>
-  | Readonly<{ action: "persist_slot_offer"; payload: Readonly<{ offerRefHash: string }> }>
+export type IntendedEffect = Readonly<{
+  kind: "would_have_executed";
+  capabilityId: "dental-scheduling" | "dental-appointment-lifecycle";
+  payloadHash: string;
+}> & (
+  | Readonly<{ action: "book_slot" | "reschedule_slot"; payload: Readonly<{ slotRefHash: string }> }>
+  | Readonly<{ action: "confirm_appointment" | "cancel_appointment"; payload: Readonly<{ appointmentRefHash: string }> }>
+  | Readonly<{ action: "persist_slot_offer" | "persist_replacement_offer"; payload: Readonly<{ offerRefHash: string }> }>
 );
 
 export type DentalEffectDecisionIdentity =
@@ -18,6 +22,11 @@ export type DentalEffectDecisionIdentity =
       capabilityId: "dental-scheduling";
       decisionKind: "offer";
       action: "persist_slot_offer";
+    }>
+  | Readonly<{
+      capabilityId: "dental-appointment-lifecycle";
+      decisionKind: "offer";
+      action: "persist_replacement_offer";
     }>;
 
 function hmac(hmacKey: string, value: string): string {
@@ -54,6 +63,24 @@ export function recordDentalIntendedEffect(input: {
       ),
     });
   }
+  if (
+    identity.capabilityId === "dental-appointment-lifecycle" &&
+    identity.decisionKind === "offer" &&
+    input.decision.kind === "offer" &&
+    input.decision.nextBestStep?.id === "choose-replacement-slot"
+  ) {
+    const offerRefHash = hmac(
+      input.hmacKey,
+      `dental-shadow:replacement-offer:${input.decision.subject.id}:${input.decision.options.map(({ id }) => id).join(":")}`,
+    );
+    return Object.freeze({
+      kind: "would_have_executed",
+      capabilityId: identity.capabilityId,
+      action: "persist_replacement_offer",
+      payload: Object.freeze({ offerRefHash }),
+      payloadHash: hmac(input.hmacKey, `dental-shadow:persist_replacement_offer:${offerRefHash}`),
+    });
+  }
   if (input.decision.kind !== "execute" || identity.decisionKind !== "execute") {
     return null;
   }
@@ -70,6 +97,18 @@ export function recordDentalIntendedEffect(input: {
       payloadHash: hmac(input.hmacKey, `dental-shadow:book_slot:${slotRefHash}`),
     });
   }
+  if (identity.action === "reschedule_slot" && action.type === "reschedule-slot") {
+    const slotId = action.parameters.slotId;
+    if (typeof slotId !== "string") return null;
+    const slotRefHash = hmac(input.hmacKey, `dental-shadow:slot:${slotId}`);
+    return Object.freeze({
+      kind: "would_have_executed",
+      capabilityId: identity.capabilityId,
+      action: "reschedule_slot",
+      payload: Object.freeze({ slotRefHash }),
+      payloadHash: hmac(input.hmacKey, `dental-shadow:reschedule_slot:${slotRefHash}`),
+    });
+  }
   if (identity.action === "confirm_appointment" && action.type === "confirm-appointment") {
     const appointmentId = action.parameters.appointmentId;
     if (typeof appointmentId !== "string") return null;
@@ -82,6 +121,18 @@ export function recordDentalIntendedEffect(input: {
       payloadHash: hmac(input.hmacKey, `dental-shadow:confirm_appointment:${appointmentRefHash}`),
     });
   }
+  if (identity.action === "cancel_appointment" && action.type === "cancel-appointment") {
+    const appointmentId = action.parameters.appointmentId;
+    if (typeof appointmentId !== "string") return null;
+    const appointmentRefHash = hmac(input.hmacKey, `dental-shadow:appointment:${appointmentId}`);
+    return Object.freeze({
+      kind: "would_have_executed",
+      capabilityId: identity.capabilityId,
+      action: "cancel_appointment",
+      payload: Object.freeze({ appointmentRefHash }),
+      payloadHash: hmac(input.hmacKey, `dental-shadow:cancel_appointment:${appointmentRefHash}`),
+    });
+  }
   return null;
 }
 
@@ -92,6 +143,18 @@ export function dentalEffectDecisionIdentity(input: {
   const identity = dentalDecisionProvenanceIdentity(input);
   if (!identity) return null;
   if (identity.decisionKind === "execute") return identity;
+  if (
+    identity.capabilityId === "dental-appointment-lifecycle" &&
+    identity.decisionKind === "offer" &&
+    input.decision.kind === "offer" &&
+    input.decision.nextBestStep?.id === "choose-replacement-slot"
+  ) {
+    return Object.freeze({
+      capabilityId: identity.capabilityId,
+      decisionKind: identity.decisionKind,
+      action: "persist_replacement_offer" as const,
+    });
+  }
   return identity.capabilityId === "dental-scheduling" &&
       identity.decisionKind === "offer"
     ? Object.freeze({
@@ -116,6 +179,14 @@ export function isDentalEffectDecisionIdentity(
     candidate.capabilityId === "dental-scheduling" &&
     candidate.decisionKind === "offer" &&
     candidate.action === "persist_slot_offer"
+  ) {
+    return Reflect.ownKeys(candidate).length === 3 &&
+      Reflect.ownKeys(candidate).every((key) => typeof key === "string");
+  }
+  if (
+    candidate.capabilityId === "dental-appointment-lifecycle" &&
+    candidate.decisionKind === "offer" &&
+    candidate.action === "persist_replacement_offer"
   ) {
     return Reflect.ownKeys(candidate).length === 3 &&
       Reflect.ownKeys(candidate).every((key) => typeof key === "string");
