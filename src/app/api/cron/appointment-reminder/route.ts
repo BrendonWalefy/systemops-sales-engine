@@ -26,7 +26,7 @@ import {
   normalizeManualWhatsAppPhone,
   resolveWhatsAppChannelAddress,
 } from "@/core/whatsapp/WhatsAppContactIdentity";
-import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
+import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { resolveClinicVoiceConfig } from "@/lib/tts-send";
 import { extractFirstName } from "@/core/intelligence/lead-display-name";
@@ -92,8 +92,9 @@ function deterministicUuid(input: string): string {
 async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   const clinic = await db.query.organizations.findFirst({ where: eq(organizations.id, clinicId) });
   if (!clinic) return null;
-  if (!shouldSendAutomatedClinicOutbound(clinic)) {
-    console.log(`[AppointmentReminder] outbound automatizado pausado para clinic=${clinicId}`);
+  const automation = await requireLiveV2ProactiveAutomation(clinicId);
+  if (!automation.allowed) {
+    console.log(`[AppointmentReminder] outbound automatizado pausado para clinic=${clinicId} reason=${automation.reason}`);
     return { clinicId, sent: 0, failed: 0, total: 0 };
   }
 

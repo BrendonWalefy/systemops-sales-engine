@@ -4,7 +4,7 @@ import { createHash } from "crypto";
 import { db } from "@/infrastructure/db/client";
 import { appointments, mediaAssets, organizations } from "@/infrastructure/db/schema";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
-import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
+import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
 import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
@@ -75,7 +75,8 @@ async function processClinic(clinicId: string): Promise<ClinicResult> {
 
   const rules = clinic?.rules ?? [];
   if (!clinic || rules.length === 0) return { enqueued: 0, skipped: 0 };
-  if (!shouldSendAutomatedClinicOutbound(clinic)) {
+  const automation = await requireLiveV2ProactiveAutomation(clinicId);
+  if (!automation.allowed) {
     return { enqueued: 0, skipped: 0 };
   }
 

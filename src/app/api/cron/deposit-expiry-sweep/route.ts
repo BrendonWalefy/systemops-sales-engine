@@ -14,6 +14,7 @@ import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizz
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { DEFAULT_TTS_CONFIG } from "@/domain/entities/tts-config";
+import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .where(eq(conversations.id, row.conversationId))
       .limit(1);
     if (!conv) continue;
+    const automation = await requireLiveV2ProactiveAutomation(conv.clinicId);
+    if (!automation.allowed) {
+      released++;
+      continue;
+    }
     const [lead] = await db
       .select({ phone: leads.phone, whatsappLid: leads.whatsappLid })
       .from(leads)

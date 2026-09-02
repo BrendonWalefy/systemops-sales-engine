@@ -6,7 +6,7 @@ import { db } from "@/infrastructure/db/client";
 import { organizations, conversations, messages, treatments } from "@/infrastructure/db/schema";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
-import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
+import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
 import { isReengagementPaused } from "@/application/channel-safety/reengagement-policy";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
 import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
@@ -238,8 +238,9 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
   const clinic = await db.query.organizations.findFirst({ where: eq(organizations.id, clinicId) });
   if (!clinic) return { clinicId, sent: 0, skipped: 0, failed: 0 };
 
-  if (!shouldSendAutomatedClinicOutbound(clinic)) {
-    console.log(`[RecoveryCampaign] outbound pausado para clinic=${clinicId}`);
+  const automation = await requireLiveV2ProactiveAutomation(clinicId);
+  if (!automation.allowed) {
+    console.log(`[RecoveryCampaign] outbound pausado para clinic=${clinicId} reason=${automation.reason}`);
     return { clinicId, sent: 0, skipped: 0, failed: 0 };
   }
   if (isReengagementPaused(clinic)) {

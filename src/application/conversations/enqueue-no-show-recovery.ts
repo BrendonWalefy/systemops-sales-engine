@@ -25,6 +25,7 @@ import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactId
 import { createHash } from "crypto";
 import { toTimeCode } from "./appointment-completion-review";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
+import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
 
 // Mesma entrada → mesmo id, para o pré-registro da mensagem casar com o dedupe
 // da outbox se o doutor tocar duas vezes.
@@ -71,6 +72,10 @@ export async function enqueueNoShowRecovery(params: {
     .where(eq(organizations.id, params.clinicId))
     .limit(1);
   if (!clinic) return { enqueued: false, reason: "clinic_not_found" };
+  const automation = await requireLiveV2ProactiveAutomation(params.clinicId);
+  if (!automation.allowed) {
+    return { enqueued: false, reason: `automation_v2_${automation.reason}` };
+  }
 
   const timezone = new ClinicTimezone(clinic.timezone);
   const { startOfToday, startOfTomorrow } = getStaffReminderWindows(timezone, now);

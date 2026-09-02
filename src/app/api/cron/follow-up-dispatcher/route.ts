@@ -27,7 +27,7 @@ import {
   selectOneFollowUpPerLead,
   shouldSuppressFollowUpForOperatorActivity,
 } from "@/application/use-cases/leads/follow-up-dispatch-policy";
-import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
+import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
 import { isReengagementPaused } from "@/application/channel-safety/reengagement-policy";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { resolveClinicVoiceConfig } from "@/lib/tts-send";
@@ -338,8 +338,9 @@ async function processOneFollowUp(
 async function processClinic(clinicId: string): Promise<ClinicResult | null> {
   const clinic = await db.query.organizations.findFirst({ where: eq(organizations.id, clinicId) });
   if (!clinic) return null;
-  if (!shouldSendAutomatedClinicOutbound(clinic)) {
-    console.log(`[FollowUpDispatcher] outbound automatizado pausado para clinic=${clinicId}`);
+  const automation = await requireLiveV2ProactiveAutomation(clinicId);
+  if (!automation.allowed) {
+    console.log(`[FollowUpDispatcher] outbound automatizado pausado para clinic=${clinicId} reason=${automation.reason}`);
     return { clinicId, dispatched: 0, failed: 0, total: 0 };
   }
   if (isReengagementPaused(clinic)) {

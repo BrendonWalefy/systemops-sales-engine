@@ -39,7 +39,7 @@ import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-mess
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
-import { shouldSendAutomatedClinicOutbound } from "@/application/automation/clinic-automation-policy";
+import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
 import { isReengagementPaused } from "@/application/channel-safety/reengagement-policy";
 import { randomUUID } from "crypto";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
@@ -128,8 +128,9 @@ export async function dispatchCampaign(input: {
   if (!clinic) return { ...base, rehearsal, blockedReason: "clínica não encontrada" };
 
   // Freio 4: kill switches já existentes da clínica.
-  if (!shouldSendAutomatedClinicOutbound(clinic)) {
-    return { ...base, rehearsal, blockedReason: "automação da clínica pausada" };
+  const automation = await requireLiveV2ProactiveAutomation(input.clinicId);
+  if (!automation.allowed) {
+    return { ...base, rehearsal, blockedReason: `automacao_v2_${automation.reason}` };
   }
   if (isReengagementPaused(clinic)) {
     return { ...base, rehearsal, blockedReason: "reengajamento pausado" };
