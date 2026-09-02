@@ -209,6 +209,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult | null> {
       await enqueueOutboundMessage(outbound, {
         outboundMessageStore: new DrizzleOutboundMessageStore(),
         jobQueue: new DrizzleJobQueue(),
+        decisionTraceSink: traceSink,
       });
 
       // reminderSentAt no enqueue impede reenvio (findDueReminders filtra).

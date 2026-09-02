@@ -15,6 +15,7 @@ import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue
 import { DEFAULT_TTS_CONFIG } from "@/domain/entities/tts-config";
 import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
 import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
+import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const now = new Date();
   const reservationService = new SlotReservationService();
   const stateMachine = new ConversationStateMachine();
+  const traceSink = createRuntimeDecisionTraceSink();
 
   // Holds de sinal cujo TTL expirou (state awaiting_deposit_proof + expires_at < agora).
   const expiredRows = await db
@@ -116,7 +118,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
           ttsConfig: DEFAULT_TTS_CONFIG,
         }),
       },
-      { outboundMessageStore: new DrizzleOutboundMessageStore(), jobQueue: new DrizzleJobQueue() },
+      {
+        outboundMessageStore: new DrizzleOutboundMessageStore(),
+        jobQueue: new DrizzleJobQueue(),
+        decisionTraceSink: traceSink,
+      },
     );
     released++;
   }

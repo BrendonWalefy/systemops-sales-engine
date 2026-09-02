@@ -26,6 +26,7 @@ import { createHash } from "crypto";
 import { toTimeCode } from "./appointment-completion-review";
 import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
 import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
+import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 
 // Mesma entrada → mesmo id, para o pré-registro da mensagem casar com o dedupe
 // da outbox se o doutor tocar duas vezes.
@@ -189,7 +190,11 @@ export async function enqueueNoShowRecovery(params: {
         intent: "reengagement",
       }),
     },
-    { outboundMessageStore: new DrizzleOutboundMessageStore(), jobQueue: new DrizzleJobQueue() },
+    {
+      outboundMessageStore: new DrizzleOutboundMessageStore(),
+      jobQueue: new DrizzleJobQueue(),
+      decisionTraceSink: createRuntimeDecisionTraceSink(),
+    },
   );
 
   return { enqueued: true };

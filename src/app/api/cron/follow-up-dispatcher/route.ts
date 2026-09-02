@@ -287,7 +287,8 @@ async function processOneFollowUp(
     },
     planInput: buildFollowUpPlanInput({ maxCharacters: FOLLOW_UP_MAX_CHARACTERS }),
   });
-  await recordAutomationResponseTrace(createRuntimeDecisionTraceSink(), {
+  const traceSink = createRuntimeDecisionTraceSink();
+  await recordAutomationResponseTrace(traceSink, {
     turnId: proactiveTurnId(`followup:${followUp.id}`),
     clinicId: clinic.id,
     conversationId: conv.id,
@@ -309,6 +310,7 @@ async function processOneFollowUp(
   await enqueueOutboundMessage(outbound, {
     outboundMessageStore: new DrizzleOutboundMessageStore(),
     jobQueue: new DrizzleJobQueue(),
+    decisionTraceSink: traceSink,
   });
 
   // Cancel stale video follow-ups for this same lead that were deferred.

@@ -18,6 +18,7 @@ import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue
 import { validateManualRecoveryRecipient } from "@/application/conversations/manual-recovery-policy";
 import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
 import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
+import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 
 export async function composeRecoveryMessageAction(
   convId: string,
@@ -171,6 +172,7 @@ export async function sendRecoveryMessageAction(
   }, {
     outboundMessageStore: new DrizzleOutboundMessageStore(),
     jobQueue: new DrizzleJobQueue(),
+    decisionTraceSink: createRuntimeDecisionTraceSink(),
   });
 
   revalidatePath("/app/inbox");

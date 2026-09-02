@@ -19,6 +19,7 @@ import {
 } from "@/domain/entities/post-appointment-rule";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
 import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
+import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +84,7 @@ async function processClinic(clinicId: string): Promise<ClinicResult> {
 
   const leadRepository = new DrizzleLeadRepository();
   const conversationRepository = new DrizzleConversationRepository();
+  const traceSink = createRuntimeDecisionTraceSink();
   const now = new Date();
 
   let enqueued = 0;
@@ -150,7 +152,11 @@ async function processClinic(clinicId: string): Promise<ClinicResult> {
               mediaParts,
             }),
           },
-          { outboundMessageStore: new DrizzleOutboundMessageStore(), jobQueue: new DrizzleJobQueue() },
+          {
+            outboundMessageStore: new DrizzleOutboundMessageStore(),
+            jobQueue: new DrizzleJobQueue(),
+            decisionTraceSink: traceSink,
+          },
         );
 
         if (messageWasNew) {

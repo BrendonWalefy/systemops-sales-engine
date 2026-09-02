@@ -43,6 +43,7 @@ import { isReengagementPaused } from "@/application/channel-safety/reengagement-
 import { randomUUID } from "crypto";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
+import { createRuntimeDecisionTraceSink } from "@/infrastructure/observability/runtime-decision-trace";
 
 /**
  * Teto de mensagens por ensaio. O número de teste receberia a campanha inteira
@@ -135,6 +136,7 @@ export async function dispatchCampaign(input: {
   if (isReengagementPaused(clinic)) {
     return { ...base, rehearsal, blockedReason: "reengajamento pausado" };
   }
+  const traceSink = createRuntimeDecisionTraceSink();
 
   // Destino do ensaio: precisa de lead E conversa, porque é a conversa dele que
   // vai receber (ver cabeçalho deste arquivo).
@@ -267,7 +269,7 @@ export async function dispatchCampaign(input: {
             intent: "reengagement",
           }),
         },
-        { outboundMessageStore: store, jobQueue: queue },
+        { outboundMessageStore: store, jobQueue: queue, decisionTraceSink: traceSink },
       );
 
       // No ensaio o alvo NÃO muda de estado — ver cabeçalho deste arquivo.

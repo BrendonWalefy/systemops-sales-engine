@@ -375,6 +375,7 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
       await enqueueOutboundMessage(outbound, {
         outboundMessageStore: new DrizzleOutboundMessageStore(),
         jobQueue: new DrizzleJobQueue(),
+        decisionTraceSink: traceSink,
       });
 
       if (lead.ai_paused) {

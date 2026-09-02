@@ -152,6 +152,13 @@ export const RESPONSE_DECISION_TRACE_METADATA_KEYS = {
     "messageWasNew",
     "jobWasNew",
   ],
+  "outbound.enqueued": [
+    "outboundMessageId",
+    "messageWasNew",
+    "jobWasNew",
+    "category",
+    "authorizationKind",
+  ],
 } as const satisfies Partial<Record<DecisionTraceStage, readonly string[]>>;
 
 const RESPONSE_DECISION_TRACE_METADATA_KEY_SETS = Object.fromEntries(
