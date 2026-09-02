@@ -30,6 +30,11 @@ export type AiContractRejectionIssueCode =
   | "objection_question_required"
   | "objection_question_forbidden"
   | "professional_forbidden"
+  | "service_forbidden_for_request"
+  | "date_forbidden_for_request"
+  | "period_forbidden_for_request"
+  | "time_forbidden_for_request"
+  | "ordinal_forbidden_for_request"
   | VerbalizationViolationCode;
 
 export type AiContractRejectionIssue = Readonly<{

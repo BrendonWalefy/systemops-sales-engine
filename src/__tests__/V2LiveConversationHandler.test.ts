@@ -1182,7 +1182,7 @@ describe("V2LiveConversationHandler", () => {
       turnId: inboundEventId,
       stage: "understanding_structural",
       modelId: "gpt-4o-mini",
-      promptVersion: "dental-understanding.v6",
+      promptVersion: "dental-understanding.v7",
       contractVersion: "understanding.v1",
       attempt: 1,
       rawOutput: privateOutput,

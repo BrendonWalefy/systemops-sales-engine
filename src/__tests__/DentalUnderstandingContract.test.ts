@@ -46,6 +46,10 @@ describe("contrato de Understanding dental", () => {
     ["list-appointments", entities(null)],
     ["cancel-appointment", entities(null)],
     ["reschedule-appointment", entities(null)],
+    ["clinical-urgency", entities(null)],
+    ["existing-treatment-problem", entities("Lente")],
+    ["patient-arrival", entities(null)],
+    ["patient-delay", { ...entities(null), date: "hoje", time: "10 minutos" }],
   ])("aceita %s no recorte F", (request, requestEntities) => {
     expect(parseDentalUnderstanding({ ...base, request, entities: requestEntities }).request).toBe(request);
   });
@@ -222,6 +226,41 @@ describe("contrato de Understanding dental", () => {
     expect(() => parseDentalUnderstanding({
       ...valid,
       request: "other",
+    })).toThrow();
+  });
+
+  it("mantém entidades operacionais fechadas", () => {
+    const operational = {
+      ...base,
+      request: "patient-delay",
+      entities: { ...entities(null), date: "hoje", time: "10 minutos" },
+    } as const;
+    expect(parseDentalUnderstanding(operational).request).toBe("patient-delay");
+
+    for (const forbidden of [
+      { service: "Clareamento" },
+      { period: "tarde" },
+      { professional: "Dra. Marina" },
+      { quantity: 2 },
+      { serviceCandidates: ["A", "B"] },
+      { objectionQuestion: "Está caro" },
+      { ordinal: 1 },
+    ]) {
+      expect(() => parseDentalUnderstanding({
+        ...operational,
+        entities: { ...operational.entities, ...forbidden },
+      })).toThrow();
+    }
+
+    expect(parseDentalUnderstanding({
+      ...base,
+      request: "existing-treatment-problem",
+      entities: entities("Lente"),
+    }).entities.service).toBe("Lente");
+    expect(() => parseDentalUnderstanding({
+      ...base,
+      request: "clinical-urgency",
+      entities: entities("Implante"),
     })).toThrow();
   });
 });
