@@ -183,6 +183,7 @@ function harness(
     state,
     reservations,
     leadId: "lead-1",
+    depositReservationTtlMinutes: 24 * 60,
     depositProofReviews: {
       nextAvailableCode: vi.fn().mockResolvedValue(7),
     },
@@ -302,7 +303,7 @@ describe("dental journey live adapter", () => {
   });
 
   it("records an exact deposit proof, extends its hold and requests Inbox attention", async () => {
-    const { adapter, state } = harness("clinic-1", "deposit");
+    const { adapter, state, reservations } = harness("clinic-1", "deposit");
     const resolution = await adapter.journeyRead.resolveInboundMedia();
     expect(resolution).toMatchObject({ kind: "ready", mediaKind: "deposit_proof" });
     if (resolution.kind !== "ready") throw new Error("expected proof resolution");
@@ -318,6 +319,8 @@ describe("dental journey live adapter", () => {
         proofReviewCode: 7,
       }),
     );
+    expect(reservations.extend).toHaveBeenCalledOnce();
+    expect(reservations.extend).toHaveBeenCalledWith("reservation-1", 24 * 60);
     expect(adapter.journeyWrite.takeDeliveryPlan()).toMatchObject({
       replyText: expect.stringMatching(/recebemos seu comprovante/i),
       postDeliveryControl: {

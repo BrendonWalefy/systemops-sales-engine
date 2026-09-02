@@ -395,6 +395,7 @@ export function createDentalLiveAdapters(
         conversationId,
         turnId,
         now: new Date(turnNow.getTime()),
+        depositReservationTtlMinutes: (clinic.depositTtlHours ?? 24) * 60,
         inboundMessage: deps.journey.inboundMessage,
         history: deps.journey.history,
         treatments,

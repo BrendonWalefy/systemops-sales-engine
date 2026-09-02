@@ -38,6 +38,7 @@ export type DentalJourneyLiveAdapterDependencies = Readonly<{
   conversationId: string;
   turnId: string;
   now: Date;
+  depositReservationTtlMinutes: number;
   inboundMessage: Pick<Message, "id" | "mediaType" | "mediaUrl">;
   history: readonly Message[];
   treatments: Pick<TreatmentRepository, "listByClinic">;
@@ -361,6 +362,12 @@ export function createDentalJourneyLiveAdapter(
         current.state === "awaiting_deposit_proof"
         && (mediaType === "image" || mediaType === "document")
       ) {
+        if (
+          !Number.isInteger(deps.depositReservationTtlMinutes)
+          || deps.depositReservationTtlMinutes <= 0
+        ) {
+          return { kind: "unavailable", reason: "deposit_configuration_incomplete" };
+        }
         const payload = current.payload as DepositFlowPayload | null;
         if (!payload?.reservationId) {
           return { kind: "unavailable", reason: "deposit_reservation_missing" };
@@ -519,7 +526,7 @@ export function createDentalJourneyLiveAdapter(
         }
         await deps.reservations.extend(
           candidate.payload.reservationId!,
-          7 * 24 * 60,
+          deps.depositReservationTtlMinutes,
         );
         const replyText = buildDepositProofReceivedMessage();
         deliveryPlan = {
