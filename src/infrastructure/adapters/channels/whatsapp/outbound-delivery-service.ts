@@ -31,6 +31,11 @@ export type OutboundPart =
 export type OutboundMediaPart = Extract<OutboundPart, { type: "media" }>;
 
 export type TextSendResult = { msgId: string | null; deliveryFormat: "audio" | "text" };
+export type OutboundDeliveryReport = Readonly<{
+  mediaAttempted: number;
+  mediaSent: number;
+  mediaFailed: number;
+}>;
 
 type Deps = {
   sendMedia: typeof sendMediaMessage;
@@ -89,7 +94,7 @@ export class OutboundDeliveryService {
       isFirst: boolean;
     }) => Promise<void>;
     onProviderBoundaryEntered?: () => void;
-  }): Promise<void> {
+  }): Promise<OutboundDeliveryReport> {
     const {
       to,
       parts,
@@ -103,6 +108,9 @@ export class OutboundDeliveryService {
     let lastSentAt = 0;
     let firstTextSent = false;
     let firstPartSent = false;
+    let mediaAttempted = 0;
+    let mediaSent = 0;
+    let mediaFailed = 0;
 
     for (const part of parts) {
       const gap = this.deps.now() - lastSentAt;
@@ -123,6 +131,7 @@ export class OutboundDeliveryService {
       }
 
       let mediaProviderBoundaryEntered = false;
+      mediaAttempted += 1;
       const markMediaProviderBoundaryEntered = () => {
         mediaProviderBoundaryEntered = true;
         onProviderBoundaryEntered?.();
@@ -140,16 +149,19 @@ export class OutboundDeliveryService {
         lastSentAt = this.deps.now();
         log.info("mídia enviada", { mediaId: part.mediaId, title: part.title, msgId });
         await onMediaSent({ part, msgId, isFirst: !firstPartSent });
+        mediaSent += 1;
         firstPartSent = true;
         await this.waitForDelivery(msgId, config, log, part.mediaId);
       } catch (err) {
         if (mediaProviderBoundaryEntered) throw err;
+        mediaFailed += 1;
         log.error("falha ao enviar mídia — entrega continua", err, {
           mediaId: part.mediaId,
           title: part.title,
         });
       }
     }
+    return Object.freeze({ mediaAttempted, mediaSent, mediaFailed });
   }
 
   // Poll no message-status até a mensagem sair da fila da Z-API.

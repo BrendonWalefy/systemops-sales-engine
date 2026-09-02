@@ -34,6 +34,7 @@ describe("claims mínimos do pack dental", () => {
       "dental-catalog",
       "dental-scheduling",
       "dental-appointment-lifecycle",
+      "dental-journey",
       "dental-escalation",
       "dental-reception",
     ]);
@@ -46,7 +47,7 @@ describe("claims mínimos do pack dental", () => {
             completedStepIds: [],
           })?.capabilityId ?? null,
       ),
-    ).toEqual([null, null, null, "dental-commercial", null, null, null, null, null]);
+    ).toEqual([null, null, null, "dental-commercial", null, null, null, null, null, null]);
     const scheduling = dentalPack.capabilities.find(({ id }) => id === "dental-scheduling")!;
     const claim = scheduling.claim(understanding("book-appointment"), {
       phase: "active",

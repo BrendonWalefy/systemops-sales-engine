@@ -182,7 +182,21 @@ export type DentalSchedulingReadPort = {
 };
 
 export type DentalSchedulingWriteOutcome =
-  | { success: true; appointmentId: string; label: string; evidenceRef: string }
+  | {
+      success: true;
+      kind: "appointment";
+      appointmentId: string;
+      label: string;
+      evidenceRef: string;
+    }
+  | {
+      success: true;
+      kind: "deposit_requested";
+      reservationId: string;
+      label: string;
+      requestText: string;
+      evidenceRef: string;
+    }
   | { success: false; reason: string; evidenceRef: string };
 
 export type DentalSchedulingWritePort = {
@@ -190,6 +204,7 @@ export type DentalSchedulingWritePort = {
   bookSlot(slotId: string): Promise<DentalSchedulingWriteOutcome>;
   confirmAppointment(appointmentId: string): Promise<DentalSchedulingWriteOutcome>;
   rescheduleSlot(slotId: string): Promise<DentalSchedulingWriteOutcome>;
+  takeDeliveryPlan?(): DentalJourneyDeliveryPlan | null;
 };
 
 export type DentalAppointmentLifecycleReadPort = Readonly<{
@@ -212,4 +227,85 @@ export type DentalAppointmentLifecycleWritePort = Readonly<{
     offer: DentalReplacementSlotSearchResult,
   ): Promise<DentalReplacementSlotSearchResult>;
   cancelAppointment(appointmentId: string): Promise<DentalSchedulingWriteOutcome>;
+}>;
+
+export type DentalJourneyDeliveryPart =
+  | Readonly<{ type: "text"; content: string }>
+  | Readonly<{
+      type: "media";
+      mediaId: string;
+      url: string;
+      mediaType: "image" | "video";
+      title: string;
+      caption?: string;
+    }>;
+
+export type DentalJourneyAdvance =
+  | Readonly<{
+      action: "advance";
+      nextStepIndex: number;
+      expectedTreatmentId: string;
+      expectedStepIndex: number;
+    }>
+  | Readonly<{
+      action: "exit";
+      expectedTreatmentId: string;
+      expectedStepIndex: number;
+    }>;
+
+export type DentalJourneyDeliveryPlan = Readonly<{
+  replyText: string;
+  interleavedParts: readonly DentalJourneyDeliveryPart[];
+  pipelineAdvance: DentalJourneyAdvance | null;
+  deterministic: boolean;
+  postDeliveryControl?: Readonly<{
+    kind: "attention" | "handoff";
+    reason:
+      | "v2_deposit_proof_review_required"
+      | "v2_journey_photo_review_required";
+  }>;
+}>;
+
+export type DentalJourneyResolution =
+  | Readonly<{
+      kind: "ready";
+      resolutionId: string;
+      subjectId: string;
+      subjectLabel: string;
+      evidenceRef: string;
+    }>
+  | Readonly<{ kind: "unavailable"; reason: string }>;
+
+export type DentalJourneyMediaResolution =
+  | Readonly<{
+      kind: "ready";
+      mediaKind: "journey_media" | "deposit_proof";
+      resolutionId: string;
+      subjectId: string;
+      subjectLabel: string;
+      evidenceRef: string;
+    }>
+  | Readonly<{ kind: "unavailable"; reason: string }>;
+
+export type DentalJourneyWriteOutcome =
+  | Readonly<{
+      success: true;
+      kind: "journey_step_ready" | "journey_media_received" | "deposit_proof_received" | "deposit_change_released";
+      subjectId: string;
+      subjectLabel: string;
+      evidenceRef: string;
+    }>
+  | Readonly<{ success: false; reason: string; evidenceRef: string }>;
+
+export type DentalJourneyReadPort = Readonly<{
+  resolveStart(serviceQuery: string): Promise<DentalJourneyResolution>;
+  resolveCurrentStep(): Promise<DentalJourneyResolution>;
+  resolveInboundMedia(): Promise<DentalJourneyMediaResolution>;
+}>;
+
+export type DentalJourneyWritePort = Readonly<{
+  prepareStep(resolutionId: string): Promise<DentalJourneyWriteOutcome>;
+  receiveMedia(resolutionId: string): Promise<DentalJourneyWriteOutcome>;
+  releasePendingDeposit(): Promise<DentalJourneyWriteOutcome>;
+  takeDeliveryPlan(): DentalJourneyDeliveryPlan | null;
 }>;

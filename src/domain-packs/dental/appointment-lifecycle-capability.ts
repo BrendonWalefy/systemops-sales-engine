@@ -308,7 +308,7 @@ export function createDentalAppointmentLifecycleCapability(
           throw new Error("cancel appointment requires appointment id");
         }
         const outcome = await writePort.cancelAppointment(appointmentId);
-        if (!outcome.success) {
+      if (!outcome.success || outcome.kind !== "appointment") {
           return {
             type: "appointment_cancel_failed",
             semanticClass: "effect_failed",

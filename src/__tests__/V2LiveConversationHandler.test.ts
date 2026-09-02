@@ -115,6 +115,9 @@ function makeHarness(options: {
   businessInformationTopic?: "address" | "parking" | "social";
   editorialFaq?: boolean;
   playbookKnowledgeTurn?: "differentials" | "faq";
+  structuredMediaTurn?: "deposit" | "journey";
+  journeyStartTurn?: boolean;
+  depositBookingTurn?: boolean;
 } = {}) {
   const entities = (overrides: Record<string, unknown> = {}) => ({
     service: null,
@@ -145,7 +148,7 @@ function makeHarness(options: {
     ...overrides,
   });
   const releaseLease = vi.fn().mockResolvedValue(undefined);
-  const turnClinic = options.businessInformationTurn
+  const informationalClinic = options.businessInformationTurn
     ? {
         ...clinic,
         address: options.businessInformationMissing ? null : "Avenida Aurora, 321",
@@ -157,6 +160,27 @@ function makeHarness(options: {
           : [{ label: "Instagram", url: "https://instagram.com/systemops" }],
       }
     : clinic;
+  const turnClinic = options.depositBookingTurn
+    ? {
+        ...informationalClinic,
+        depositEnabled: true,
+        depositAmountCents: 20_000,
+        depositPixKey: "pix-key-test",
+        depositPixKeyType: "random" as const,
+        depositRecipientName: "SystemOps Lab",
+        depositTtlHours: 24,
+      }
+    : informationalClinic;
+  const turnInbound: Message = options.structuredMediaTurn
+    ? {
+        ...inbound,
+        body: options.structuredMediaTurn === "deposit"
+          ? "[documento recebido]"
+          : "[imagem recebida]",
+        mediaUrl: "https://media.invalid/opaque",
+        mediaType: options.structuredMediaTurn === "deposit" ? "document" : "image",
+      }
+    : inbound;
   const context: LiveTurnContext = Object.freeze({
     turnId,
     clinicId: clinic.id,
@@ -166,7 +190,7 @@ function makeHarness(options: {
     clinic: turnClinic,
     lead,
     conversation,
-    inboundMessage: inbound,
+    inboundMessage: turnInbound,
     outboundAddress: lead.phone!,
     editorial: options.editorialFaq || options.playbookKnowledgeTurn
       ? ({
@@ -209,8 +233,44 @@ function makeHarness(options: {
     expiresAt: new Date("2026-08-17T13:00:00.000Z"),
   };
   const snapshot: LiveTurnSnapshot = Object.freeze({
-    history: Object.freeze([inbound]),
-    currentState: options.bookingTurn ? offeredState : null,
+    history: Object.freeze([turnInbound]),
+    currentState: options.structuredMediaTurn === "deposit"
+      ? {
+          id: "state-deposit-1",
+          conversationId: conversation.id,
+          state: "awaiting_deposit_proof",
+          payload: {
+            slotStartsAt: "2026-08-18T18:00:00.000Z",
+            slotEndsAt: "2026-08-18T19:00:00.000Z",
+            slotLabel: "amanhã às 15h",
+            reservationId: "reservation-1",
+            treatmentId: treatment.id,
+            treatmentName: treatment.name,
+            valueCents: 80_000,
+            depositAmountCents: 20_000,
+            holdExpiresAt: "2026-08-18T12:00:00.000Z",
+          },
+          supersedesStateId: null,
+          createdAt: now,
+          expiresAt: new Date("2026-08-18T12:00:00.000Z"),
+        }
+      : options.structuredMediaTurn === "journey"
+        ? {
+            id: "state-journey-1",
+            conversationId: conversation.id,
+            state: "treatment_pipeline_active",
+            payload: {
+              treatmentId: treatment.id,
+              treatmentName: treatment.name,
+              stepIndex: 1,
+              qaTurns: 0,
+              photoReceived: false,
+            },
+            supersedesStateId: null,
+            createdAt: now,
+            expiresAt: new Date("2026-08-18T12:00:00.000Z"),
+          }
+        : options.bookingTurn ? offeredState : null,
     lastResetBoundary: null,
   });
   const begin = vi.fn().mockResolvedValue(
@@ -250,6 +310,15 @@ function makeHarness(options: {
         request: "book-appointment" as const,
         dialogueMove: "new_topic" as const,
         entities: entities({ service: "clareamento", date: "amanhã", period: "afternoon" }),
+        signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
+      };
+    }
+    if (options.journeyStartTurn) {
+      return {
+        version: UNDERSTANDING_VERSION,
+        request: "start-treatment-journey" as const,
+        dialogueMove: "new_topic" as const,
+        entities: entities({ service: "Clareamento" }),
         signals: signals(), safety: turnSafety, confidence: 1, ambiguity: null,
       };
     }
@@ -328,7 +397,8 @@ function makeHarness(options: {
     cancelAppointment: vi.fn(),
     reschedule: vi.fn(),
   };
-  const currentState = vi.fn().mockResolvedValue(offeredState);
+  let liveCurrentState: LiveTurnSnapshot["currentState"] = offeredState;
+  const currentState = vi.fn(async () => liveCurrentState);
   const createOutboundMessageAndEnqueue = options.outboxFailure
     ? vi.fn().mockRejectedValue(new Error("outbox unavailable"))
     : vi.fn().mockResolvedValue({
@@ -382,13 +452,92 @@ function makeHarness(options: {
       ? { status: "persistence_failed" as const }
       : { status: "stored" as const, evidenceRef: "opaque-evidence-ref" },
   );
+  const journeyTreatment: Treatment = options.journeyStartTurn || options.structuredMediaTurn === "journey"
+    ? {
+        ...treatment,
+        pipelineSteps: [{
+          type: "content",
+          label: "Como funciona",
+          blocks: [
+            { kind: "text", content: "Primeiro texto." },
+            { kind: "media", mediaId: "media-1", caption: "Veja o exemplo." },
+            { kind: "text", content: "Depois do vídeo." },
+          ],
+        }, {
+          type: "photo",
+          label: "Sua foto",
+          message: "Envie uma foto.",
+          required: true,
+        }],
+        pipelineSourceTreatmentId: null,
+        pipelineEntryBehavior: "immediate",
+      }
+    : treatment;
   const listTreatments = options.decisionFailure
     ? vi.fn().mockRejectedValue(new Error("catalog unavailable"))
     : vi.fn().mockResolvedValue([
         options.crossTenantTreatment
-          ? { ...treatment, clinicId: "clinic-other" }
-          : treatment,
+          ? { ...journeyTreatment, clinicId: "clinic-other" }
+          : journeyTreatment,
       ]);
+  let journeyCurrentState: LiveTurnSnapshot["currentState"] = snapshot.currentState;
+  const startTreatmentPipelineForTurn = vi.fn(async (stateInput: {
+    conversationId: string;
+    treatmentId: string;
+    treatmentName: string;
+    stepIndex: number;
+  }) => {
+    journeyCurrentState = {
+      id: "state-journey-new",
+      conversationId: stateInput.conversationId,
+      state: "treatment_pipeline_active",
+      payload: {
+        treatmentId: stateInput.treatmentId,
+        treatmentName: stateInput.treatmentName,
+        stepIndex: stateInput.stepIndex,
+        qaTurns: 0,
+        photoReceived: false,
+      },
+      supersedesStateId: null,
+      createdAt: now,
+      expiresAt: new Date("2026-08-17T16:00:00.000Z"),
+    };
+    return { applied: true, state: journeyCurrentState };
+  });
+  const markPipelinePhotoReceivedForTurn = vi.fn(async (stateInput: {
+    sourceMessageId: string;
+  }) => {
+    journeyCurrentState = {
+      ...journeyCurrentState!,
+      id: "state-journey-photo-received",
+      payload: {
+        ...(journeyCurrentState!.payload as Record<string, unknown>),
+        photoReceived: true,
+        photoMessageId: stateInput.sourceMessageId,
+        photoReceivedAt: now.toISOString(),
+      },
+      supersedesStateId: journeyCurrentState!.id,
+    };
+    return { applied: true, state: journeyCurrentState };
+  });
+  const markDepositProofReceivedForTurn = vi.fn(async (stateInput: {
+    sourceMessageId: string;
+    proofReviewCode: number;
+  }) => {
+    journeyCurrentState = {
+      ...journeyCurrentState!,
+      id: "state-deposit-proof-received",
+      state: "deposit_proof_received",
+      payload: {
+        ...(journeyCurrentState!.payload as Record<string, unknown>),
+        proofMessageId: stateInput.sourceMessageId,
+        proofReceivedAt: now.toISOString(),
+        proofReviewCode: stateInput.proofReviewCode,
+      },
+      supersedesStateId: journeyCurrentState!.id,
+    };
+    return { applied: true, state: journeyCurrentState };
+  });
   const handler = new V2LiveConversationHandler({
     lifecycle,
     understanding: understandingBoundary,
@@ -427,13 +576,101 @@ function makeHarness(options: {
         invalidateIfCurrent: options.cleanupFailure
           ? vi.fn().mockRejectedValue(new Error("cleanup unavailable"))
           : vi.fn().mockResolvedValue(true),
+        ...(options.depositBookingTurn
+          ? {
+              startDepositWaitForTurn: vi.fn(async (stateInput: {
+                expectedCurrentStateId: string;
+                payload: Record<string, unknown>;
+              }) => {
+                liveCurrentState = {
+                  id: "deposit-state-1",
+                  conversationId: conversation.id,
+                  state: "awaiting_deposit_proof",
+                  payload: stateInput.payload,
+                  supersedesStateId: stateInput.expectedCurrentStateId,
+                  createdAt: now,
+                  expiresAt: new Date("2026-08-18T12:00:00.000Z"),
+                };
+                return { applied: true, state: liveCurrentState };
+              }),
+            }
+          : {}),
       },
       appointments: {
         findByPeriod: vi.fn().mockResolvedValue([]),
         findByIdForClinicAndLead: vi.fn(),
         findAllActiveByLeadId: vi.fn().mockResolvedValue([]),
       },
-      reservations: { findActiveByPeriod: vi.fn().mockResolvedValue([]) },
+      reservations: {
+        findActiveByPeriod: vi.fn().mockResolvedValue([]),
+        ...(options.depositBookingTurn
+          ? {
+              reserve: vi.fn().mockResolvedValue({
+                id: "reservation-1",
+                clinicId: clinic.id,
+                leadId: lead.id,
+                startsAt: new Date("2026-08-18T18:00:00.000Z"),
+                endsAt: new Date("2026-08-18T19:00:00.000Z"),
+                status: "pending",
+                calendarEventId: null,
+                expiresAt: new Date("2026-08-18T12:00:00.000Z"),
+              }),
+              release: vi.fn(),
+            }
+          : {}),
+      },
+      ...(options.journeyStartTurn || options.structuredMediaTurn
+        ? {
+            journeyResources: {
+              mediaAssets: {
+                findByIds: vi.fn().mockResolvedValue([{
+                  id: "media-1",
+                  clinicId: clinic.id,
+                  treatmentId: treatment.id,
+                  title: "Vídeo",
+                  url: "https://media.invalid/video.mp4",
+                  type: "video",
+                }]),
+              },
+              state: {
+                getCurrentState: vi.fn(async () => journeyCurrentState),
+                startTreatmentPipelineForTurn,
+                markPipelinePhotoReceivedForTurn,
+                getDepositState: vi.fn().mockResolvedValue(null),
+                markDepositProofReceivedForTurn,
+                invalidateIfCurrent: vi.fn().mockResolvedValue(true),
+              },
+              reservations: {
+                release: vi.fn(),
+                extend: vi.fn(),
+                findById: vi.fn().mockResolvedValue({
+                  id: "reservation-1",
+                  clinicId: clinic.id,
+                  leadId: lead.id,
+                  startsAt: new Date("2026-08-18T18:00:00.000Z"),
+                  endsAt: new Date("2026-08-18T19:00:00.000Z"),
+                  status: "pending",
+                  calendarEventId: null,
+                  expiresAt: new Date("2026-08-18T12:00:00.000Z"),
+                }),
+              },
+              depositProofReviews: { nextAvailableCode: vi.fn().mockResolvedValue(1) },
+              humanReviews: {
+                findPendingByConversation: vi.fn().mockResolvedValue(null),
+                createPending: vi.fn().mockResolvedValue({
+                  id: "review-1",
+                  clinicId: clinic.id,
+                  conversationId: conversation.id,
+                  leadId: lead.id,
+                  treatmentId: treatment.id,
+                  targetTreatmentId: treatment.id,
+                  reviewCode: 1,
+                  expiresAt: new Date("2026-08-18T12:00:00.000Z"),
+                }),
+              },
+            },
+          }
+        : {}),
     },
     resolveTurnConfiguration: vi.fn().mockImplementation((resolutionInput) => ({
       gateInput: {
@@ -497,10 +734,129 @@ function makeHarness(options: {
     verbalizerCreate,
     rejectionCapture,
     listTreatments,
+    startTreatmentPipelineForTurn,
+    markPipelinePhotoReceivedForTurn,
+    markDepositProofReceivedForTurn,
   };
 }
 
 describe("V2LiveConversationHandler", () => {
+  it("enqueues one exact deposit request without booking or verbalization", async () => {
+    const harness = makeHarness({
+      bookingTurn: true,
+      depositBookingTurn: true,
+      verbalizedText: "Texto do modelo que não pode tocar dados Pix.",
+    });
+
+    await expect(harness.handler.handle(handleInput("Quero o primeiro horário")))
+      .resolves.toEqual({ replied: true });
+
+    expect(harness.booking.book).not.toHaveBeenCalled();
+    expect(harness.verbalizerCreate).not.toHaveBeenCalled();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          replyText: expect.stringContaining("pix-key-test"),
+          useVoice: false,
+          interleavedParts: [expect.objectContaining({
+            type: "text",
+            content: expect.stringContaining("pix-key-test"),
+          })],
+          pipelineAdvance: null,
+        }),
+      }),
+      { turnId },
+    );
+  });
+
+  it("enqueues one exact configured journey plan without verbalization", async () => {
+    const harness = makeHarness({
+      journeyStartTurn: true,
+      verbalizedText: "Texto do modelo que não pode substituir conteúdo cadastrado.",
+    });
+
+    await expect(harness.handler.handle(handleInput("Como funciona o clareamento?")))
+      .resolves.toEqual({ replied: true });
+
+    expect(harness.understandingCreate).toHaveBeenCalledOnce();
+    expect(harness.verbalizerCreate).not.toHaveBeenCalled();
+    expect(harness.startTreatmentPipelineForTurn).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dedupeKey: `conversation-reply:${turnId}`,
+        payload: expect.objectContaining({
+          replyText: "Primeiro texto.\n\nDepois do vídeo.",
+          useVoice: false,
+          interleavedParts: [
+            { type: "text", content: "Primeiro texto." },
+            {
+              type: "media",
+              mediaId: "media-1",
+              url: "https://media.invalid/video.mp4",
+              mediaType: "video",
+              title: "Vídeo",
+              caption: "Veja o exemplo.",
+            },
+            { type: "text", content: "Depois do vídeo." },
+          ],
+          pipelineAdvance: {
+            action: "advance",
+            nextStepIndex: 1,
+            expectedTreatmentId: treatment.id,
+            expectedStepIndex: 0,
+          },
+        }),
+      }),
+      { turnId },
+    );
+  });
+
+  it("does not call the model to classify trusted journey media metadata", async () => {
+    const harness = makeHarness({ structuredMediaTurn: "deposit" });
+
+    await expect(harness.handler.handle(handleInput("[documento recebido]")))
+      .resolves.toEqual({ replied: true });
+
+    expect(harness.understandingCreate).not.toHaveBeenCalled();
+    expect(harness.verbalizerCreate).not.toHaveBeenCalled();
+    expect(harness.markDepositProofReceivedForTurn).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          postDeliveryControl: {
+            kind: "attention",
+            reason: "v2_deposit_proof_review_required",
+          },
+        }),
+      }),
+      { turnId },
+    );
+  });
+
+  it("routes an expected journey photo to one durable human-review handoff without a model call", async () => {
+    const harness = makeHarness({ structuredMediaTurn: "journey" });
+
+    await expect(harness.handler.handle(handleInput("[imagem recebida]")))
+      .resolves.toEqual({ replied: true });
+
+    expect(harness.understandingCreate).not.toHaveBeenCalled();
+    expect(harness.verbalizerCreate).not.toHaveBeenCalled();
+    expect(harness.markPipelinePhotoReceivedForTurn).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          postDeliveryControl: {
+            kind: "handoff",
+            reason: "v2_journey_photo_review_required",
+          },
+        }),
+      }),
+      { turnId },
+    );
+  });
+
   it.each([
     ["differentials", "Atendimento individualizado"],
     ["faq", "Não."],
@@ -826,7 +1182,7 @@ describe("V2LiveConversationHandler", () => {
       turnId: inboundEventId,
       stage: "understanding_structural",
       modelId: "gpt-4o-mini",
-      promptVersion: "dental-understanding.v5",
+      promptVersion: "dental-understanding.v6",
       contractVersion: "understanding.v1",
       attempt: 1,
       rawOutput: privateOutput,

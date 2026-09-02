@@ -138,7 +138,7 @@ describe("Bug C — ID mismatch: mídia com URL válida é entregue; ID ausente 
       { type: "media", mediaId: "vid-ok", url: "https://blob/vid.mp4", mediaType: "video", title: "Vídeo" },
     ];
 
-    await svc.deliver({
+    const report = await svc.deliver({
       to: "+5511999",
       parts,
       config: zapiConfig,
@@ -150,6 +150,7 @@ describe("Bug C — ID mismatch: mídia com URL válida é entregue; ID ausente 
 
     expect(sentMedia).toHaveLength(1);
     expect(sentMedia[0]).toBe("https://blob/vid.mp4");
+    expect(report).toEqual({ mediaAttempted: 1, mediaSent: 1, mediaFailed: 0 });
   });
 
   it("entrega continua com texto mesmo quando sendMedia lança erro (graceful degradation)", async () => {
@@ -170,7 +171,7 @@ describe("Bug C — ID mismatch: mídia com URL válida é entregue; ID ausente 
       { type: "text", content: "Texto depois do vídeo" },
     ];
 
-    await svc.deliver({
+    const report = await svc.deliver({
       to: "+5511999",
       parts,
       config: zapiConfig,
@@ -185,6 +186,7 @@ describe("Bug C — ID mismatch: mídia com URL válida é entregue; ID ausente 
 
     // Texto deve ter chegado mesmo com a falha da mídia
     expect(textsSent).toContain("Texto depois do vídeo");
+    expect(report).toEqual({ mediaAttempted: 1, mediaSent: 0, mediaFailed: 1 });
   });
 });
 

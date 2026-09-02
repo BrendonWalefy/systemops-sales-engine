@@ -29,6 +29,7 @@ import {
   OutboundDeliveryService,
   type OutboundPart,
   type OutboundMediaPart,
+  type OutboundDeliveryReport,
 } from "@/infrastructure/adapters/channels/whatsapp/outbound-delivery-service";
 import { DrizzleAppointmentRepository } from "@/infrastructure/repositories/drizzle-appointment-repository";
 import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
@@ -109,6 +110,25 @@ function isReservedReplayDestination(value: string): boolean {
 
 export const SHADOW_DELIVERY_SUPPRESSED = "__shadow_delivery_suppressed__";
 
+export function canCommitPipelineAdvance(
+  reports: readonly OutboundDeliveryReport[],
+): boolean {
+  return reports.every(({ mediaFailed }) => mediaFailed === 0);
+}
+
+export function resolvePostDeliveryConversationControl(
+  payload: OutboundPayload,
+): Readonly<{
+  pauseAutomation: boolean;
+  reason: string;
+}> | null {
+  if (!isConversationOutboundPayload(payload) || !payload.postDeliveryControl) return null;
+  return Object.freeze({
+    pauseAutomation: payload.postDeliveryControl.kind === "handoff",
+    reason: payload.postDeliveryControl.reason,
+  });
+}
+
 export type AutomationDispatchLifecycle = {
   markDelivered(outbound: OutboundMessageForAutomationLifecycle, deliveredAt: Date): Promise<void>;
   markCancelled(outbound: OutboundMessageForAutomationLifecycle, reason: string, cancelledAt: Date): Promise<void>;
@@ -118,6 +138,7 @@ type OutboundMessageForAutomationLifecycle = {
   category: string;
   dedupeKey: string | null;
   clinicId: string;
+  conversationId: string;
   payload: OutboundPayload;
 };
 
@@ -244,6 +265,7 @@ export class SendMessageJobHandler {
       category: outbound.category,
       dedupeKey: outbound.dedupeKey,
       clinicId: outbound.clinicId,
+      conversationId: outbound.conversationId,
       payload: outbound.payload,
     };
     let senderOwnedConversationMessage: Message | null = null;
@@ -610,6 +632,7 @@ export class SendMessageJobHandler {
       category: outbound.category,
       dedupeKey: outbound.dedupeKey,
       clinicId: outbound.clinicId,
+      conversationId: outbound.conversationId,
       payload: outbound.payload,
     };
     if (outbound.status === "sent") {
@@ -630,6 +653,29 @@ export class SendMessageJobHandler {
 
 const drizzleAutomationDispatchLifecycle: AutomationDispatchLifecycle = {
   async markDelivered(outbound, deliveredAt) {
+    const conversationControl = resolvePostDeliveryConversationControl(outbound.payload);
+    if (conversationControl && isConversationOutboundPayload(outbound.payload)) {
+      const updated = await db
+        .update(conversations)
+        .set({
+          ...(conversationControl.pauseAutomation
+            ? { aiPaused: true, takeoverExpiresAt: null }
+            : {}),
+          needsAttention: true,
+          attentionReason: conversationControl.reason,
+          updatedAt: deliveredAt,
+        })
+        .where(and(
+          eq(conversations.id, outbound.conversationId),
+          eq(conversations.clinicId, outbound.clinicId),
+          eq(conversations.leadId, outbound.payload.leadId),
+        ))
+        .returning({ id: conversations.id });
+      if (updated.length !== 1) {
+        throw new Error("post-delivery conversation control binding mismatch");
+      }
+      bumpInboxVersion(outbound.clinicId);
+    }
     if (!isAutomationOutboundPayload(outbound.payload)) return;
 
     if (outbound.category === "follow_up") {
@@ -967,6 +1013,7 @@ async function deliverConversationOutbound(input: {
     conversationId: input.conversationId,
   });
   let firstProviderMessageId: string | null = null;
+  const deliveryReports: OutboundDeliveryReport[] = [];
 
   const persistMedia = async ({
     part,
@@ -1015,7 +1062,7 @@ async function deliverConversationOutbound(input: {
   };
 
   if (input.payload.interleavedParts.length > 0) {
-    await delivery.deliver({
+    deliveryReports.push(await delivery.deliver({
       to: input.payload.to,
       parts: input.payload.interleavedParts as OutboundPart[],
       config,
@@ -1060,7 +1107,7 @@ async function deliverConversationOutbound(input: {
       },
       onMediaSent: persistMedia,
       onProviderBoundaryEntered,
-    });
+    }));
   } else {
     const result = await boundary.sendVoiceOrText(
       input.payload.to,
@@ -1083,7 +1130,7 @@ async function deliverConversationOutbound(input: {
   }
 
   if (input.payload.mediaParts.length > 0) {
-    await delivery.deliver({
+    deliveryReports.push(await delivery.deliver({
       to: input.payload.to,
       parts: input.payload.mediaParts as OutboundPart[],
       config,
@@ -1092,10 +1139,11 @@ async function deliverConversationOutbound(input: {
       onTextSent: async () => {},
       onMediaSent: persistMedia,
       onProviderBoundaryEntered,
-    });
+    }));
   }
 
-  if (input.payload.pipelineAdvance) {
+  const completeJourneyDelivery = canCommitPipelineAdvance(deliveryReports);
+  if (input.payload.pipelineAdvance && completeJourneyDelivery) {
     const stateMachine = new ConversationStateMachine();
     if (input.payload.pipelineAdvance.action === "advance") {
       await stateMachine.advancePipelineStep(
