@@ -1,0 +1,320 @@
+{
+  "version": "v2-capability-parity.v1",
+  "scenarios": [
+    {
+      "id": "inbound-greeting",
+      "kind": "inbound",
+      "example": "Olá, gostaria de informações.",
+      "request": "greeting",
+      "capabilityId": "dental-reception",
+      "expectedOutcomes": ["reception_answered"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalReceptionCoverage.test.ts"]
+    },
+    {
+      "id": "inbound-other",
+      "kind": "inbound",
+      "example": "Obrigado, entendi.",
+      "request": "other",
+      "capabilityId": "dental-reception",
+      "expectedOutcomes": ["reception_acknowledged"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalReceptionCoverage.test.ts"]
+    },
+    {
+      "id": "inbound-business-information",
+      "kind": "inbound",
+      "example": "Qual é o endereço da clínica?",
+      "request": "business-information",
+      "capabilityId": "dental-knowledge",
+      "expectedOutcomes": ["business_information_answered"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalKnowledgeCapability.test.ts"]
+    },
+    {
+      "id": "inbound-business-differentials",
+      "kind": "inbound",
+      "example": "Quais são os diferenciais da clínica?",
+      "request": "business-differentials",
+      "capabilityId": "dental-playbook-knowledge",
+      "expectedOutcomes": ["playbook_knowledge_answered"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalPlaybookKnowledgeCapability.test.ts"]
+    },
+    {
+      "id": "inbound-explain-service",
+      "kind": "inbound",
+      "example": "Como funciona o clareamento dental?",
+      "request": "explain-service",
+      "capabilityId": "dental-explanation",
+      "expectedOutcomes": ["service_explained"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalExplanationCapability.test.ts"]
+    },
+    {
+      "id": "inbound-compare-services",
+      "kind": "inbound",
+      "example": "Qual é a diferença entre alinhadores e aparelho fixo?",
+      "request": "compare-services",
+      "capabilityId": "dental-explanation",
+      "expectedOutcomes": ["services_compared"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalExplanationCapability.test.ts"]
+    },
+    {
+      "id": "inbound-frequently-asked-question",
+      "kind": "inbound",
+      "example": "O procedimento costuma precisar de manutenção?",
+      "request": "frequently-asked-question",
+      "capabilityId": "dental-playbook-knowledge",
+      "expectedOutcomes": ["playbook_knowledge_answered"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalPlaybookKnowledgeCapability.test.ts"]
+    },
+    {
+      "id": "inbound-price-of-service",
+      "kind": "inbound",
+      "example": "Qual é o valor da avaliação?",
+      "request": "price-of-service",
+      "capabilityId": "dental-commercial",
+      "expectedOutcomes": ["commercial_answered"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalCommercialCapability.test.ts"]
+    },
+    {
+      "id": "inbound-payment-options",
+      "kind": "inbound",
+      "example": "Quais formas de pagamento são aceitas?",
+      "request": "payment-options",
+      "capabilityId": "dental-commercial",
+      "expectedOutcomes": ["commercial_answered"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalCommercialCapability.test.ts"]
+    },
+    {
+      "id": "inbound-registered-objection",
+      "kind": "inbound",
+      "example": "Achei o tratamento acima do que planejei investir.",
+      "request": "registered-objection",
+      "capabilityId": "dental-commercial",
+      "expectedOutcomes": ["commercial_answered"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalCommercialCapability.test.ts"]
+    },
+    {
+      "id": "inbound-service-availability",
+      "kind": "inbound",
+      "example": "A clínica oferece implante dentário?",
+      "request": "service-availability",
+      "capabilityId": "dental-catalog",
+      "expectedOutcomes": ["catalog_answered"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalCatalogCapability.test.ts"]
+    },
+    {
+      "id": "inbound-list-appointments",
+      "kind": "inbound",
+      "example": "Quais consultas eu tenho agendadas?",
+      "request": "list-appointments",
+      "capabilityId": "dental-appointment-lifecycle",
+      "expectedOutcomes": ["appointments_listed"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalAppointmentLifecycleCapability.test.ts"]
+    },
+    {
+      "id": "inbound-book-appointment",
+      "kind": "inbound",
+      "example": "Quero agendar uma avaliação pela manhã.",
+      "request": "book-appointment",
+      "capabilityId": "dental-scheduling",
+      "expectedOutcomes": ["slots_found"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalSchedulingCapability.test.ts"]
+    },
+    {
+      "id": "inbound-confirm-slot",
+      "kind": "inbound",
+      "example": "Pode reservar a primeira opção oferecida.",
+      "request": "confirm-slot",
+      "capabilityId": "dental-scheduling",
+      "expectedOutcomes": ["appointment_created"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalSchedulingCapability.test.ts"]
+    },
+    {
+      "id": "inbound-confirm-appointment",
+      "kind": "inbound",
+      "example": "Confirmo a consulta que está aguardando confirmação.",
+      "request": "confirm-appointment",
+      "capabilityId": "dental-scheduling",
+      "expectedOutcomes": ["appointment_confirmed"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalSchedulingCapability.test.ts"]
+    },
+    {
+      "id": "inbound-cancel-appointment",
+      "kind": "inbound",
+      "example": "Preciso cancelar minha próxima consulta.",
+      "request": "cancel-appointment",
+      "capabilityId": "dental-appointment-lifecycle",
+      "expectedOutcomes": ["appointment_cancelled"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalAppointmentLifecycleCapability.test.ts"]
+    },
+    {
+      "id": "inbound-reschedule-appointment",
+      "kind": "inbound",
+      "example": "Quero remarcar minha próxima consulta para outro dia.",
+      "request": "reschedule-appointment",
+      "capabilityId": "dental-appointment-lifecycle",
+      "expectedOutcomes": ["appointment_reschedule_offered"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalAppointmentLifecycleCapability.test.ts"]
+    },
+    {
+      "id": "inbound-start-treatment-journey",
+      "kind": "inbound",
+      "example": "Quero iniciar o atendimento para alinhadores.",
+      "request": "start-treatment-journey",
+      "capabilityId": "dental-journey",
+      "expectedOutcomes": ["journey_step_ready"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalJourneyCapability.test.ts"]
+    },
+    {
+      "id": "inbound-continue-treatment-journey",
+      "kind": "inbound",
+      "example": "Quero continuar para a próxima etapa do atendimento.",
+      "request": "continue-treatment-journey",
+      "capabilityId": "dental-journey",
+      "expectedOutcomes": ["journey_step_ready"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalJourneyCapability.test.ts"]
+    },
+    {
+      "id": "inbound-submit-journey-media",
+      "kind": "inbound",
+      "example": "Enviei a foto solicitada para avaliação da equipe.",
+      "request": "submit-journey-media",
+      "capabilityId": "dental-journey",
+      "expectedOutcomes": ["journey_media_received"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalJourneyCapability.test.ts"]
+    },
+    {
+      "id": "inbound-submit-deposit-proof",
+      "kind": "inbound",
+      "example": "Enviei o comprovante do sinal solicitado.",
+      "request": "submit-deposit-proof",
+      "capabilityId": "dental-journey",
+      "expectedOutcomes": ["deposit_proof_received"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalJourneyCapability.test.ts"]
+    },
+    {
+      "id": "inbound-change-pending-deposit",
+      "kind": "inbound",
+      "example": "Quero trocar o horário que está reservado com sinal pendente.",
+      "request": "change-pending-deposit",
+      "capabilityId": "dental-journey",
+      "expectedOutcomes": ["deposit_change_released"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalJourneyCapability.test.ts"]
+    },
+    {
+      "id": "inbound-clinical-urgency",
+      "kind": "inbound",
+      "example": "Estou com uma urgência odontológica e preciso de orientação da equipe.",
+      "request": "clinical-urgency",
+      "capabilityId": "dental-operations",
+      "expectedOutcomes": ["clinical_operation_handoff"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalOperationsCapability.test.ts", "src/__tests__/V2ClinicalOperationsLiveHandler.test.ts"]
+    },
+    {
+      "id": "inbound-existing-treatment-problem",
+      "kind": "inbound",
+      "example": "Estou com um problema relacionado a um tratamento em andamento.",
+      "request": "existing-treatment-problem",
+      "capabilityId": "dental-operations",
+      "expectedOutcomes": ["clinical_operation_handoff"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalOperationsCapability.test.ts", "src/__tests__/V2ClinicalOperationsLiveHandler.test.ts"]
+    },
+    {
+      "id": "inbound-patient-arrival",
+      "kind": "inbound",
+      "example": "Já cheguei para a consulta de hoje.",
+      "request": "patient-arrival",
+      "capabilityId": "dental-operations",
+      "expectedOutcomes": ["patient_presence_handoff"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalOperationsCapability.test.ts", "src/__tests__/V2ClinicalOperationsLiveHandler.test.ts"]
+    },
+    {
+      "id": "inbound-patient-delay",
+      "kind": "inbound",
+      "example": "Vou me atrasar para a consulta de hoje.",
+      "request": "patient-delay",
+      "capabilityId": "dental-operations",
+      "expectedOutcomes": ["patient_presence_handoff"],
+      "requiredTraceStages": ["v2.understanding", "v2.decision", "v2.action_result", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/DentalOperationsCapability.test.ts", "src/__tests__/V2ClinicalOperationsLiveHandler.test.ts"]
+    },
+    {
+      "id": "proactive-follow-up",
+      "kind": "proactive",
+      "example": "Retomada autorizada de uma conversa sem resposta.",
+      "authorizationKind": "follow_up",
+      "category": "follow_up",
+      "capabilityId": "v2-proactive-automation",
+      "expectedOutcomes": [],
+      "requiredTraceStages": ["outbound.enqueued", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/FollowUpOutbox.test.ts", "src/__tests__/V2ProactiveProducerPolicy.test.ts"]
+    },
+    {
+      "id": "proactive-reminder",
+      "kind": "proactive",
+      "example": "Lembrete autorizado de uma consulta existente.",
+      "authorizationKind": "reminder",
+      "category": "reminder",
+      "capabilityId": "v2-proactive-automation",
+      "expectedOutcomes": [],
+      "requiredTraceStages": ["outbound.enqueued", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/ReminderOutbox.test.ts", "src/__tests__/V2ProactiveProducerPolicy.test.ts"]
+    },
+    {
+      "id": "proactive-campaign",
+      "kind": "proactive",
+      "example": "Mensagem de campanha previamente aprovada pela operação.",
+      "authorizationKind": "campaign",
+      "category": "campaign",
+      "capabilityId": "v2-proactive-automation",
+      "expectedOutcomes": [],
+      "requiredTraceStages": ["outbound.enqueued", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/AutomationOutboundPayload.test.ts", "src/__tests__/V2ProactiveProducerPolicy.test.ts"]
+    },
+    {
+      "id": "proactive-recovery",
+      "kind": "proactive",
+      "example": "Recuperação autorizada de uma oportunidade elegível.",
+      "authorizationKind": "recovery",
+      "category": "recovery",
+      "capabilityId": "v2-proactive-automation",
+      "expectedOutcomes": [],
+      "requiredTraceStages": ["outbound.enqueued", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/RecoveryOutbox.test.ts", "src/__tests__/V2ProactiveProducerPolicy.test.ts"]
+    },
+    {
+      "id": "proactive-operational",
+      "kind": "proactive",
+      "example": "Aviso operacional autorizado pela equipe responsável.",
+      "authorizationKind": "operational",
+      "category": "operational",
+      "capabilityId": "v2-proactive-automation",
+      "expectedOutcomes": [],
+      "requiredTraceStages": ["outbound.enqueued", "delivery.sent"],
+      "evidenceTests": ["src/__tests__/InternalWhatsAppOperationalMessage.test.ts", "src/__tests__/V2ProactiveProducerPolicy.test.ts"]
+    }
+  ]
+}
