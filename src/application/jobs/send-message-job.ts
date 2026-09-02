@@ -4,6 +4,7 @@ import {
   evaluateOutboundSafetyGate,
   getOutboundCapWindows,
   isOutboundSafetyGatedCategory,
+  isProactiveOutboundCategory,
 } from "@/application/channel-safety/outbound-safety-gate";
 import type { OutboundMessage, OutboundMessageStore } from "@/application/ports/outbound-message-store";
 import type {
@@ -394,7 +395,10 @@ export class SendMessageJobHandler {
       }
     }
 
-    if (isOutboundSafetyGatedCategory(outbound.category)) {
+    if (
+      isAutomationOutboundPayload(outbound.payload)
+      && isProactiveOutboundCategory(outbound.category)
+    ) {
       if (!isAutomationOutboundPayload(outbound.payload)) {
         await this.deps.outboundMessageStore.markOutboundCancelled(
           outbound.id,
@@ -440,17 +444,20 @@ export class SendMessageJobHandler {
         return "ignored";
       }
 
+      const requiresCaps = isOutboundSafetyGatedCategory(outbound.category);
       const windows = getOutboundCapWindows({ clinic: context.clinic, now });
-      const [sentLastHour, sentToday] = await Promise.all([
-        this.deps.outboundMessageStore.countSentSince({
-          clinicId: outbound.clinicId,
-          since: windows.hourlySince,
-        }),
-        this.deps.outboundMessageStore.countSentSince({
-          clinicId: outbound.clinicId,
-          since: windows.dailySince,
-        }),
-      ]);
+      const [sentLastHour, sentToday] = requiresCaps
+        ? await Promise.all([
+            this.deps.outboundMessageStore.countSentSince({
+              clinicId: outbound.clinicId,
+              since: windows.hourlySince,
+            }),
+            this.deps.outboundMessageStore.countSentSince({
+              clinicId: outbound.clinicId,
+              since: windows.dailySince,
+            }),
+          ])
+        : [0, 0];
       const gate = evaluateOutboundSafetyGate({
         category: outbound.category,
         clinic: context.clinic,

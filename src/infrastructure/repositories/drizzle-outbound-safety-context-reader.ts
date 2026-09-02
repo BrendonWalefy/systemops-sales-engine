@@ -20,6 +20,8 @@ export class DrizzleOutboundSafetyContextReader implements OutboundSafetyContext
         businessHours: organizations.businessHours,
         outboundHourlyCap: organizations.outboundHourlyCap,
         outboundDailyCap: organizations.outboundDailyCap,
+        channelSafetyMode: organizations.channelSafetyMode,
+        channelPairedAt: organizations.channelPairedAt,
       })
       .from(organizations)
       .where(eq(organizations.id, input.clinicId))

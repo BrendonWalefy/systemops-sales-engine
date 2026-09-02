@@ -47,9 +47,20 @@ const GATED_CATEGORIES = new Set<OutboundMessageCategory>([
   "recovery",
   "campaign",
 ]);
+const PROACTIVE_CATEGORIES = new Set<OutboundMessageCategory>([
+  "follow_up",
+  "recovery",
+  "campaign",
+  "reminder",
+  "operational",
+]);
 
 export function isOutboundSafetyGatedCategory(category: OutboundMessageCategory): boolean {
   return GATED_CATEGORIES.has(category);
+}
+
+export function isProactiveOutboundCategory(category: OutboundMessageCategory): boolean {
+  return PROACTIVE_CATEGORIES.has(category);
 }
 
 /**
@@ -101,8 +112,7 @@ export function evaluateOutboundSafetyGate(
   const mode = input.clinic.channelSafetyMode ?? "normal";
 
   if (mode === "frozen") {
-    // Frozen bloqueia todas as automações e lembretes proativos (gated + reminder)
-    if (isOutboundSafetyGatedCategory(input.category) || input.category === "reminder") {
+    if (isProactiveOutboundCategory(input.category)) {
       return { action: "cancel", reason: "channel_frozen" };
     }
   } else if (mode === "cooling") {
@@ -112,17 +122,17 @@ export function evaluateOutboundSafetyGate(
     }
   }
 
-  // Se não for categoria controlada (reply, operational, ou reminder ativo), libera direto sem checar caps ou quiet hours
+  // Opt-out explícito sempre vence a natureza transacional da automação.
+  if (isProactiveOutboundCategory(input.category) && input.lead?.contactConsentRevokedAt) {
+    return { action: "cancel", reason: "consent_revoked" };
+  }
+
+  // Lembrete e operacional continuam isentos apenas de caps e quiet hours.
   if (!isOutboundSafetyGatedCategory(input.category)) {
     return { action: "allow" };
   }
 
-  // 2. Consentimento
-  if (input.lead?.contactConsentRevokedAt) {
-    return { action: "cancel", reason: "consent_revoked" };
-  }
-
-  // 3. Pacing / Caps (calcula warmup se ativado)
+  // 2. Pacing / Caps (calcula warmup se ativado)
   const { hourlyCap, dailyCap } = resolveEffectiveCaps(input.clinic, now);
 
   if (input.sentLastHour >= hourlyCap) {

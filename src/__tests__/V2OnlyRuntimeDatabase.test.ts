@@ -517,6 +517,41 @@ describe("V2-only global runtime control — PostgreSQL adapter", () => {
     }
   });
 
+  it.each([
+    ["authority_below_v2", async (fixture: Awaited<ReturnType<typeof seedProactiveAuthority>>) => database.execute(sql`
+      update conversation_authority set version = 1 where organization_id = ${fixture.clinicId}::uuid
+    `)],
+    ["global_kill_switch", async () => database.execute(sql`
+      update conversation_runtime_control set live_outbound_enabled = false where key = 'global'
+    `)],
+    ["auto_reply_disabled", async (fixture: Awaited<ReturnType<typeof seedProactiveAuthority>>) => database.execute(sql`
+      update organizations set auto_reply_enabled = false where id = ${fixture.clinicId}::uuid
+    `)],
+    ["consent_revoked", async (fixture: Awaited<ReturnType<typeof seedProactiveAuthority>>) => database.execute(sql`
+      update leads set contact_consent_revoked_at = now(), contact_consent_source = 'operator'
+      where id = ${fixture.leadId}::uuid
+    `)],
+    ["safety_blocked", async (fixture: Awaited<ReturnType<typeof seedProactiveAuthority>>) => database.execute(sql`
+      update organizations set channel_safety_mode = 'frozen' where id = ${fixture.clinicId}::uuid
+    `)],
+    ["human_takeover", async (fixture: Awaited<ReturnType<typeof seedProactiveAuthority>>) => database.execute(sql`
+      update conversations set ai_paused = true where id = ${fixture.conversationId}::uuid
+    `)],
+  ] as const)("revalidates proactive %s immediately before delivery", async (reason, mutate) => {
+    const fixture = await seedProactiveAuthority();
+    try {
+      const store = await loadOutboundMessageStore();
+      const created = await store.createOutboundMessageAndEnqueue(
+        proactiveOutboundInput(fixture, "reminder"),
+      );
+      await mutate(fixture);
+      await expect(store.authorizeOutboundMessageForSend(created.outboundMessageId))
+        .resolves.toEqual({ authorized: false, reason });
+    } finally {
+      await cleanupProactiveFixture(fixture.clinicId);
+    }
+  });
+
   it("fails closed with version zero when the singleton row is absent", async () => {
     const store = await loadRuntimeControlStore();
     await resetControl();
