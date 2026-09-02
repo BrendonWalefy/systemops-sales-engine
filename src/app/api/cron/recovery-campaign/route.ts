@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { createHash } from "crypto";
 import { db } from "@/infrastructure/db/client";
-import { organizations, conversations, messages, treatments } from "@/infrastructure/db/schema";
+import { organizations, conversations, treatments } from "@/infrastructure/db/schema";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { listAllClinicIds } from "@/application/tenancy/resolve-clinic";
 import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
@@ -27,6 +27,7 @@ import {
   buildRecoveryPlanInput,
 } from "@/app/api/cron/recovery-campaign/recovery-response";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
+import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -201,15 +202,16 @@ export function buildRecoveryOutboxInput(input: {
       category: "recovery" as const,
       authorization: { kind: "recovery" as const },
       dedupeKey,
-      payload: {
-        version: 1 as const,
-        kind: "automation" as const,
+      payload: buildProactiveOutboundPayload({
+        authorizationKind: "recovery",
+        turnId: proactiveTurnId(dedupeKey),
         to: input.to,
         text: input.text,
         leadId: input.leadId,
         conversationId: input.conversationId,
         agentMessageId,
-      },
+        intent: "reengagement",
+      }),
     },
   };
 }
@@ -353,7 +355,7 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
 
       const message = planned.response.text;
       await recordAutomationResponseTrace(traceSink, {
-        turnId: `recovery:${lead.lead_id}:${now.toISOString().slice(0, 10)}`,
+        turnId: proactiveTurnId(`recovery:${lead.lead_id}:${now.toISOString().slice(0, 10)}`),
         clinicId,
         conversationId: lead.conv_id,
         planned,
@@ -361,7 +363,7 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
 
       // Reengajamento passa pela outbox → Safety Gate (opt-out, caps, quiet
       // hours) antes de chegar ao provider.
-      const { agentMessageId, outbound } = buildRecoveryOutboxInput({
+      const { outbound } = buildRecoveryOutboxInput({
         clinicId,
         conversationId: lead.conv_id,
         leadId: lead.lead_id,
@@ -369,17 +371,6 @@ async function processClinic(clinicId: string, openai: OpenAI): Promise<ClinicRe
         text: message,
         now,
       });
-
-      await db.insert(messages).values({
-        id: agentMessageId,
-        conversationId: lead.conv_id,
-        author: "agent",
-        body: message,
-        sentAt: now,
-        externalId: null,
-        intent: "reengagement" as const,
-        deliveryFormat: null,
-      }).onConflictDoNothing();
 
       await enqueueOutboundMessage(outbound, {
         outboundMessageStore: new DrizzleOutboundMessageStore(),

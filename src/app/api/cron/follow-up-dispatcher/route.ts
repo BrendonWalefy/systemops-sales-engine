@@ -35,6 +35,7 @@ import { bumpInboxVersion } from "@/application/read-versions/clinic-read-versio
 import type { TtsConfig } from "@/domain/entities/tts-config";
 import type { FollowUp } from "@/domain/entities/follow-up";
 import { extractFirstName } from "@/core/intelligence/lead-display-name";
+import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
 
 export const dynamic = "force-dynamic";
 
@@ -90,9 +91,10 @@ export function buildFollowUpOutboxInput(input: {
   ttsConfig: TtsConfig;
 }) {
   const agentMessageId = deterministicUuid(`automation-message:followup:${input.followUpId}`);
+  const dedupeKey = `followup:${input.followUpId}`;
   return {
     agentMessageId,
-    dedupeKey: `followup:${input.followUpId}`,
+    dedupeKey,
     outbound: {
       clinicId: input.clinicId,
       conversationId: input.conversationId,
@@ -100,18 +102,19 @@ export function buildFollowUpOutboxInput(input: {
       deliveryKind: input.useVoice ? "audio" as const : "text" as const,
       category: "follow_up" as const,
       authorization: { kind: "follow_up" as const },
-      dedupeKey: `followup:${input.followUpId}`,
-      payload: {
-        version: 1 as const,
-        kind: "automation" as const,
+      dedupeKey,
+      payload: buildProactiveOutboundPayload({
+        authorizationKind: "follow_up",
+        turnId: proactiveTurnId(dedupeKey),
         to: input.to,
         text: input.text,
         leadId: input.leadId,
         conversationId: input.conversationId,
         agentMessageId,
+        intent: "reengagement",
         useVoice: input.useVoice,
         ttsConfig: input.ttsConfig,
-      },
+      }),
     },
   };
 }
@@ -285,14 +288,14 @@ async function processOneFollowUp(
     planInput: buildFollowUpPlanInput({ maxCharacters: FOLLOW_UP_MAX_CHARACTERS }),
   });
   await recordAutomationResponseTrace(createRuntimeDecisionTraceSink(), {
-    turnId: `follow-up:${followUp.id}`,
+    turnId: proactiveTurnId(`followup:${followUp.id}`),
     clinicId: clinic.id,
     conversationId: conv.id,
     planned,
   });
   const composed = planned.response;
 
-  const { agentMessageId, outbound } = buildFollowUpOutboxInput({
+  const { outbound } = buildFollowUpOutboxInput({
     clinicId: clinic.id,
     conversationId: conv.id,
     followUpId: followUp.id,
@@ -302,20 +305,6 @@ async function processOneFollowUp(
     useVoice: deps.voiceEnabled,
     ttsConfig: deps.ttsConfig,
   });
-
-  await db
-    .insert(messages)
-    .values({
-      id: agentMessageId,
-      conversationId: conv.id,
-      author: "agent",
-      body: composed.text,
-      sentAt: now,
-      externalId: null,
-      intent: "reengagement" as const,
-      deliveryFormat: null,
-    })
-    .onConflictDoNothing();
 
   await enqueueOutboundMessage(outbound, {
     outboundMessageStore: new DrizzleOutboundMessageStore(),

@@ -13,7 +13,7 @@
 
 import { and, eq, gte, inArray, lt } from "drizzle-orm";
 import { db } from "@/infrastructure/db/client";
-import { appointments, conversations, leads, messages, organizations } from "@/infrastructure/db/schema";
+import { appointments, conversations, leads, organizations } from "@/infrastructure/db/schema";
 import { ClinicTimezone } from "@/core/scheduling/ClinicTimezone";
 import { getStaffReminderWindows } from "@/core/scheduling/appointment-reminder-staff";
 import { resolveCalendarGateway } from "@/infrastructure/adapters/calendar/resolve-calendar-gateway";
@@ -24,8 +24,8 @@ import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue
 import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactIdentity";
 import { createHash } from "crypto";
 import { toTimeCode } from "./appointment-completion-review";
-import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
 import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
+import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
 
 // Mesma entrada → mesmo id, para o pré-registro da mensagem casar com o dedupe
 // da outbox se o doutor tocar duas vezes.
@@ -169,18 +169,6 @@ export async function enqueueNoShowRecovery(params: {
   const dedupeKey = `no-show-recovery:${alvo.id}:${dayBucket}`;
   const agentMessageId = deterministicUuid(`automation-message:${dedupeKey}`);
 
-  await db.insert(messages).values({
-    id: agentMessageId,
-    conversationId: conversation.id,
-    author: "agent",
-    body: text,
-    sentAt: now,
-    externalId: null,
-    intent: "reengagement",
-    deliveryFormat: null,
-  }).onConflictDoNothing();
-  bumpInboxVersion(clinic.id);
-
   await enqueueOutboundMessage(
     {
       clinicId: clinic.id,
@@ -190,15 +178,16 @@ export async function enqueueNoShowRecovery(params: {
       category: "recovery",
       authorization: { kind: "recovery" },
       dedupeKey,
-      payload: {
-        version: 1,
-        kind: "automation",
+      payload: buildProactiveOutboundPayload({
+        authorizationKind: "recovery",
+        turnId: proactiveTurnId(dedupeKey),
         to,
         text,
         leadId: lead.id,
         conversationId: conversation.id,
         agentMessageId,
-      },
+        intent: "reengagement",
+      }),
     },
     { outboundMessageStore: new DrizzleOutboundMessageStore(), jobQueue: new DrizzleJobQueue() },
   );

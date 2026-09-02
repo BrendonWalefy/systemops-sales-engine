@@ -12,9 +12,9 @@ import { resolveWhatsAppChannelAddress } from "@/core/whatsapp/WhatsAppContactId
 import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-message";
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
-import { DrizzleConversationRepository } from "@/infrastructure/repositories/drizzle-conversation-repository";
 import { DEFAULT_TTS_CONFIG } from "@/domain/entities/tts-config";
 import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
+import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +28,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const now = new Date();
   const reservationService = new SlotReservationService();
   const stateMachine = new ConversationStateMachine();
-  const conversationRepo = new DrizzleConversationRepository();
 
   // Holds de sinal cujo TTL expirou (state awaiting_deposit_proof + expires_at < agora).
   const expiredRows = await db
@@ -94,16 +93,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     const text = buildDepositExpiredMessage();
     const agentMessageId = randomUUID();
-    await conversationRepo.appendMessage({
-      id: agentMessageId,
-      conversationId: row.conversationId,
-      author: "agent",
-      body: text,
-      sentAt: now,
-      externalId: null,
-      intent: "reminder",
-      deliveryFormat: null,
-    });
+    const dedupeKey = `deposit-expired:${row.id}`;
     await enqueueOutboundMessage(
       {
         clinicId: conv.clinicId,
@@ -112,18 +102,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         deliveryKind: "text" as const,
         category: "reminder" as const,
         authorization: { kind: "reminder" as const },
-        dedupeKey: `deposit-expired:${row.id}`,
-        payload: {
-          version: 1 as const,
-          kind: "automation" as const,
+        dedupeKey,
+        payload: buildProactiveOutboundPayload({
+          authorizationKind: "reminder",
+          turnId: proactiveTurnId(dedupeKey),
           to: channelAddress,
           text,
           leadId: conv.leadId,
           conversationId: row.conversationId,
           agentMessageId,
+          intent: "reminder",
           useVoice: false,
           ttsConfig: DEFAULT_TTS_CONFIG,
-        },
+        }),
       },
       { outboundMessageStore: new DrizzleOutboundMessageStore(), jobQueue: new DrizzleJobQueue() },
     );

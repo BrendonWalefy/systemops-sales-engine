@@ -87,6 +87,7 @@ export type AutomationOutboundPayload = {
   leadId: string;
   conversationId: string;
   agentMessageId: string;
+  intent?: string | null;
   useVoice?: boolean;
   ttsConfig?: TtsConfig;
   // Anexos pré-resolvidos (url/tipo já materializados no enqueue). Enviados

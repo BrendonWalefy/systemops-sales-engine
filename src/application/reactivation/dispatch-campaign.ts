@@ -30,7 +30,6 @@ import { db } from "@/infrastructure/db/client";
 import {
   conversations,
   leads,
-  messages,
   organizations,
   reactivationCampaigns,
   reactivationCampaignTargets,
@@ -43,6 +42,7 @@ import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/cr
 import { isReengagementPaused } from "@/application/channel-safety/reengagement-policy";
 import { randomUUID } from "crypto";
 import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
+import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
 
 /**
  * Teto de mensagens por ensaio. O número de teste receberia a campanha inteira
@@ -247,20 +247,6 @@ export async function dispatchCampaign(input: {
 
       const agentMessageId = randomUUID();
 
-      await db
-        .insert(messages)
-        .values({
-          id: agentMessageId,
-          conversationId: destination.conversationId,
-          author: "agent",
-          body: text,
-          sentAt: now,
-          externalId: null,
-          intent: "reengagement" as const,
-          deliveryFormat: null,
-        })
-        .onConflictDoNothing();
-
       const { outboundMessageId } = await enqueueOutboundMessage(
         {
           clinicId: input.clinicId,
@@ -270,15 +256,16 @@ export async function dispatchCampaign(input: {
           category: "campaign",
           authorization: { kind: "campaign" },
           dedupeKey,
-          payload: {
-            version: 1 as const,
-            kind: "automation" as const,
+          payload: buildProactiveOutboundPayload({
+            authorizationKind: "campaign",
+            turnId: proactiveTurnId(dedupeKey),
             to: destination.address,
             text,
             leadId: destination.leadId,
             conversationId: destination.conversationId,
             agentMessageId,
-          },
+            intent: "reengagement",
+          }),
         },
         { outboundMessageStore: store, jobQueue: queue },
       );

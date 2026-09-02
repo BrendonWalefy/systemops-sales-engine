@@ -4,7 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 import { db } from "@/infrastructure/db/client";
-import { organizations, conversations, leads, messages } from "@/infrastructure/db/schema";
+import { organizations, conversations, leads } from "@/infrastructure/db/schema";
 import { resolveActiveEditorialConfig } from "@/application/config/editorial-config";
 import { requireSessionClinicId } from "@/application/tenancy/resolve-clinic";
 import { inferReceptionistNameFromGreeting } from "@/core/intelligence/receptionist-name";
@@ -16,7 +16,8 @@ import { enqueueOutboundMessage } from "@/application/jobs/enqueue-outbound-mess
 import { DrizzleOutboundMessageStore } from "@/infrastructure/repositories/drizzle-outbound-message-store";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { validateManualRecoveryRecipient } from "@/application/conversations/manual-recovery-policy";
-import { bumpInboxVersion } from "@/application/read-versions/clinic-read-version";
+import { requireLiveV2ProactiveAutomation } from "@/infrastructure/automation/create-v2-automation-policy";
+import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
 
 export async function composeRecoveryMessageAction(
   convId: string,
@@ -121,6 +122,10 @@ export async function sendRecoveryMessageAction(
 
   const clinic = await db.query.organizations.findFirst({ where: eq(organizations.id, clinicId) });
   if (!clinic) return { ok: false, error: "Clínica não encontrada" };
+  const automation = await requireLiveV2ProactiveAutomation(clinicId);
+  if (!automation.allowed) {
+    return { ok: false, error: `Automação V2 indisponível (${automation.reason})` };
+  }
 
   const conv = await db.query.conversations.findFirst({
     where: and(eq(conversations.id, convId), eq(conversations.clinicId, clinicId)),
@@ -143,31 +148,7 @@ export async function sendRecoveryMessageAction(
   });
   if (!channelAddress) return { ok: false, error: "Sem endereço WhatsApp válido" };
 
-  const now = new Date();
-  const [inserted] = await db
-    .insert(messages)
-    .values({
-      id: operationId,
-      conversationId: convId,
-      author: "agent",
-      body: message,
-      sentAt: now,
-      externalId: null,
-      intent: "reengagement" as const,
-      deliveryFormat: null,
-    })
-    .onConflictDoNothing({ target: messages.id })
-    .returning({ id: messages.id });
-  if (!inserted) {
-    const existing = await db.query.messages.findFirst({
-      where: and(eq(messages.id, operationId), eq(messages.conversationId, convId)),
-    });
-    if (!existing || existing.body !== message) {
-      return { ok: false, error: "Identificador de envio já utilizado" };
-    }
-  }
-  bumpInboxVersion(clinicId);
-
+  const dedupeKey = `manual-recovery:${operationId}`;
   await enqueueOutboundMessage({
     clinicId,
     conversationId: convId,
@@ -175,17 +156,18 @@ export async function sendRecoveryMessageAction(
     deliveryKind: "text",
     category: "recovery",
     authorization: { kind: "recovery" },
-    dedupeKey: `manual-recovery:${operationId}`,
-    payload: {
-      version: 1,
-      kind: "automation",
+    dedupeKey,
+    payload: buildProactiveOutboundPayload({
+      authorizationKind: "recovery",
+      turnId: proactiveTurnId(dedupeKey),
       to: channelAddress,
       text: message,
       leadId: lead.id,
       conversationId: convId,
       agentMessageId: operationId,
+      intent: "reengagement",
       useVoice: false,
-    },
+    }),
   }, {
     outboundMessageStore: new DrizzleOutboundMessageStore(),
     jobQueue: new DrizzleJobQueue(),

@@ -18,6 +18,7 @@ import {
   type PostAppointmentRule,
 } from "@/domain/entities/post-appointment-rule";
 import { requireCronAuthorization } from "@/app/api/cron/_auth";
+import { buildProactiveOutboundPayload, proactiveTurnId } from "@/application/automation/proactive-outbound";
 
 export const dynamic = "force-dynamic";
 
@@ -136,36 +137,23 @@ async function processClinic(clinicId: string): Promise<ClinicResult> {
             category: rule.category,
             authorization: { kind: rule.category },
             dedupeKey,
-            payload: {
-              version: 1,
-              kind: "automation",
+            payload: buildProactiveOutboundPayload({
+              authorizationKind: rule.category,
+              turnId: proactiveTurnId(dedupeKey),
               to,
               text,
               leadId: lead.id,
               conversationId: conversation.id,
               agentMessageId,
+              intent: null,
               useVoice: false,
               mediaParts,
-            },
+            }),
           },
           { outboundMessageStore: new DrizzleOutboundMessageStore(), jobQueue: new DrizzleJobQueue() },
         );
 
-        // Só pré-registra no inbox se ESTE run criou a outbox (idempotência): em
-        // reescaneios da janela de catch-up, messageWasNew=false e nada se repete.
         if (messageWasNew) {
-          await conversationRepository.appendMessage({
-            id: agentMessageId,
-            conversationId: conversation.id,
-            author: "agent",
-            body: text,
-            mediaUrl: null,
-            mediaType: null,
-            sentAt: now,
-            externalId: null,
-            intent: null,
-            deliveryFormat: null,
-          });
           enqueued++;
           console.log(`[PostAppointmentFollowup] clinic=${clinicId} rule=${rule.id} appt=${appt.id} enfileirado`);
         } else {
