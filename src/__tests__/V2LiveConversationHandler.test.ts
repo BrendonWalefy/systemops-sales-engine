@@ -115,6 +115,7 @@ function makeHarness(options: {
   businessInformationTopic?: "address" | "parking" | "social";
   editorialFaq?: boolean;
   playbookKnowledgeTurn?: "differentials" | "faq";
+  structuredMediaTurn?: "deposit" | "journey";
 } = {}) {
   const entities = (overrides: Record<string, unknown> = {}) => ({
     service: null,
@@ -157,6 +158,16 @@ function makeHarness(options: {
           : [{ label: "Instagram", url: "https://instagram.com/systemops" }],
       }
     : clinic;
+  const turnInbound: Message = options.structuredMediaTurn
+    ? {
+        ...inbound,
+        body: options.structuredMediaTurn === "deposit"
+          ? "[documento recebido]"
+          : "[imagem recebida]",
+        mediaUrl: "https://media.invalid/opaque",
+        mediaType: options.structuredMediaTurn === "deposit" ? "document" : "image",
+      }
+    : inbound;
   const context: LiveTurnContext = Object.freeze({
     turnId,
     clinicId: clinic.id,
@@ -166,7 +177,7 @@ function makeHarness(options: {
     clinic: turnClinic,
     lead,
     conversation,
-    inboundMessage: inbound,
+    inboundMessage: turnInbound,
     outboundAddress: lead.phone!,
     editorial: options.editorialFaq || options.playbookKnowledgeTurn
       ? ({
@@ -209,8 +220,34 @@ function makeHarness(options: {
     expiresAt: new Date("2026-08-17T13:00:00.000Z"),
   };
   const snapshot: LiveTurnSnapshot = Object.freeze({
-    history: Object.freeze([inbound]),
-    currentState: options.bookingTurn ? offeredState : null,
+    history: Object.freeze([turnInbound]),
+    currentState: options.structuredMediaTurn === "deposit"
+      ? {
+          id: "state-deposit-1",
+          conversationId: conversation.id,
+          state: "awaiting_deposit_proof",
+          payload: null,
+          supersedesStateId: null,
+          createdAt: now,
+          expiresAt: new Date("2026-08-18T12:00:00.000Z"),
+        }
+      : options.structuredMediaTurn === "journey"
+        ? {
+            id: "state-journey-1",
+            conversationId: conversation.id,
+            state: "treatment_pipeline_active",
+            payload: {
+              treatmentId: treatment.id,
+              treatmentName: treatment.name,
+              stepIndex: 0,
+              qaTurns: 0,
+              photoReceived: false,
+            },
+            supersedesStateId: null,
+            createdAt: now,
+            expiresAt: new Date("2026-08-18T12:00:00.000Z"),
+          }
+        : options.bookingTurn ? offeredState : null,
     lastResetBoundary: null,
   });
   const begin = vi.fn().mockResolvedValue(
@@ -501,6 +538,14 @@ function makeHarness(options: {
 }
 
 describe("V2LiveConversationHandler", () => {
+  it("does not call the model to classify trusted journey media metadata", async () => {
+    const harness = makeHarness({ structuredMediaTurn: "deposit" });
+
+    await harness.handler.handle(handleInput("[documento recebido]"));
+
+    expect(harness.understandingCreate).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["differentials", "Atendimento individualizado"],
     ["faq", "Não."],

@@ -48,6 +48,7 @@ import {
 import { buildDentalResponseConversationBrief } from "@/domain-packs/dental/response-conversation-brief";
 import { dentalEffectDecisionIdentity } from "@/application/conversation-v2/dental-intended-effects";
 import { classifyUnderstandingFailure } from "@/application/conversation-v2/understanding-failure-code";
+import { resolveDentalStructuredMediaUnderstanding } from "@/application/conversation-v2/dental-structured-media-understanding";
 import {
   V2_SAFE_FAILURE_REPLY_TEXT,
   shouldEnqueueSafeFailureReply,
@@ -334,6 +335,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
 
       const understandingStartedAt = performance.now();
       let understandingResolved = false;
+      let understandingModelId: string = modelId;
       phase = "understanding";
       const preparation = await prepareTurnPipeline({
         gateInput: configuration.gateInput,
@@ -342,27 +344,33 @@ export class V2LiveConversationHandler implements ConversationHandler {
         now: new Date(turnNow.getTime()),
         understand: async () => {
           try {
-            understandingCalls += 1;
-            const result = await this.deps.understanding.understand({
-              leadMessage: context.inboundMessage.body,
-              history: historyForUnderstanding(context, snapshot),
-              state,
-              catalog: treatments.map((treatment) => ({
-                id: treatment.id,
-                displayName: treatment.name,
-                aliases: Object.freeze([...treatment.aliases]),
-              })),
-              faqCatalog: Object.freeze(
-                (context.editorial?.faqs ?? []).slice(0, 20).map((faq) => faq.question),
-              ),
-              objectionCatalog: Object.freeze(
-                (context.editorial?.objections ?? []).slice(0, 20).map(({ objection }) => objection),
-              ),
-              professionalCatalog: Object.freeze(
-                professionals.slice(0, 20).map((professional) => professional.name),
-              ),
-            }, {
-              onContractRejection: async (rejection) => {
+            const structured = resolveDentalStructuredMediaUnderstanding({
+              mediaType: context.inboundMessage.mediaType,
+              state: snapshot.currentState,
+            });
+            if (structured) understandingModelId = "deterministic-media.v1";
+            const result = structured ?? await (() => {
+              understandingCalls += 1;
+              return this.deps.understanding.understand({
+                leadMessage: context.inboundMessage.body,
+                history: historyForUnderstanding(context, snapshot),
+                state,
+                catalog: treatments.map((treatment) => ({
+                  id: treatment.id,
+                  displayName: treatment.name,
+                  aliases: Object.freeze([...treatment.aliases]),
+                })),
+                faqCatalog: Object.freeze(
+                  (context.editorial?.faqs ?? []).slice(0, 20).map((faq) => faq.question),
+                ),
+                objectionCatalog: Object.freeze(
+                  (context.editorial?.objections ?? []).slice(0, 20).map(({ objection }) => objection),
+                ),
+                professionalCatalog: Object.freeze(
+                  professionals.slice(0, 20).map((professional) => professional.name),
+                ),
+              }, {
+                onContractRejection: async (rejection) => {
                 const authoritativeTurnId = context.inboundAuthority?.inboundEventId;
                 const capture = authoritativeTurnId
                   ? await captureAiContractRejectionBestEffort(
@@ -390,8 +398,9 @@ export class V2LiveConversationHandler implements ConversationHandler {
                     .join(","),
                   capture,
                 });
-              },
-            });
+                },
+              });
+            })();
             understandingResolved = true;
             responseConversationBrief = buildDentalResponseConversationBrief(result);
             if (typeof result.signals.objection === "string" && result.signals.objection.trim()) {
@@ -452,7 +461,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
             await trace("v2.understanding", {
               status: "completed",
               durationMs: Math.max(0, Math.round(performance.now() - understandingStartedAt)),
-              modelId,
+              modelId: understandingModelId,
               request: result.request,
             });
             return result;
