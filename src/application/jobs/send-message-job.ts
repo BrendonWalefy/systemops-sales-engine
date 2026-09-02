@@ -116,6 +116,19 @@ export function canCommitPipelineAdvance(
   return reports.every(({ mediaFailed }) => mediaFailed === 0);
 }
 
+export function resolvePostDeliveryConversationControl(
+  payload: OutboundPayload,
+): Readonly<{
+  pauseAutomation: boolean;
+  reason: string;
+}> | null {
+  if (!isConversationOutboundPayload(payload) || !payload.postDeliveryControl) return null;
+  return Object.freeze({
+    pauseAutomation: payload.postDeliveryControl.kind === "handoff",
+    reason: payload.postDeliveryControl.reason,
+  });
+}
+
 export type AutomationDispatchLifecycle = {
   markDelivered(outbound: OutboundMessageForAutomationLifecycle, deliveredAt: Date): Promise<void>;
   markCancelled(outbound: OutboundMessageForAutomationLifecycle, reason: string, cancelledAt: Date): Promise<void>;
@@ -125,6 +138,7 @@ type OutboundMessageForAutomationLifecycle = {
   category: string;
   dedupeKey: string | null;
   clinicId: string;
+  conversationId: string;
   payload: OutboundPayload;
 };
 
@@ -251,6 +265,7 @@ export class SendMessageJobHandler {
       category: outbound.category,
       dedupeKey: outbound.dedupeKey,
       clinicId: outbound.clinicId,
+      conversationId: outbound.conversationId,
       payload: outbound.payload,
     };
     let senderOwnedConversationMessage: Message | null = null;
@@ -617,6 +632,7 @@ export class SendMessageJobHandler {
       category: outbound.category,
       dedupeKey: outbound.dedupeKey,
       clinicId: outbound.clinicId,
+      conversationId: outbound.conversationId,
       payload: outbound.payload,
     };
     if (outbound.status === "sent") {
@@ -637,6 +653,29 @@ export class SendMessageJobHandler {
 
 const drizzleAutomationDispatchLifecycle: AutomationDispatchLifecycle = {
   async markDelivered(outbound, deliveredAt) {
+    const conversationControl = resolvePostDeliveryConversationControl(outbound.payload);
+    if (conversationControl && isConversationOutboundPayload(outbound.payload)) {
+      const updated = await db
+        .update(conversations)
+        .set({
+          ...(conversationControl.pauseAutomation
+            ? { aiPaused: true, takeoverExpiresAt: null }
+            : {}),
+          needsAttention: true,
+          attentionReason: conversationControl.reason,
+          updatedAt: deliveredAt,
+        })
+        .where(and(
+          eq(conversations.id, outbound.conversationId),
+          eq(conversations.clinicId, outbound.clinicId),
+          eq(conversations.leadId, outbound.payload.leadId),
+        ))
+        .returning({ id: conversations.id });
+      if (updated.length !== 1) {
+        throw new Error("post-delivery conversation control binding mismatch");
+      }
+      bumpInboxVersion(outbound.clinicId);
+    }
     if (!isAutomationOutboundPayload(outbound.payload)) return;
 
     if (outbound.category === "follow_up") {

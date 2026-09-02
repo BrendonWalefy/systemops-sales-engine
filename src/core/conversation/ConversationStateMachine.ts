@@ -67,6 +67,8 @@ export type TreatmentPipelinePayload = {
   stepIndex: number;
   qaTurns: number;
   photoReceived: boolean;
+  photoMessageId?: string;
+  photoReceivedAt?: string;
 };
 
 export type AppointmentConfirmationPayload = {
@@ -136,6 +138,25 @@ export type StartDepositWaitForTurnInput = Readonly<{
   expectedCurrentStateId: string;
   payload: DepositFlowPayload;
   ttlMinutes: number;
+}>;
+
+export type MarkPipelinePhotoReceivedForTurnInput = Readonly<{
+  conversationId: string;
+  turnId: string;
+  expectedCurrentStateId: string;
+  expectedTreatmentId: string;
+  expectedStepIndex: number;
+  sourceMessageId: string;
+  reviewExpiresAt: Date;
+}>;
+
+export type MarkDepositProofReceivedForTurnInput = Readonly<{
+  conversationId: string;
+  turnId: string;
+  expectedCurrentStateId: string;
+  sourceMessageId: string;
+  proofReviewCode: number;
+  reviewExpiresAt: Date;
 }>;
 
 function deterministicStateId(input: string): string {
@@ -685,6 +706,53 @@ export class ConversationStateMachine {
     });
   }
 
+  async markPipelinePhotoReceivedForTurn(
+    input: MarkPipelinePhotoReceivedForTurnInput,
+  ): Promise<ExactStateTransitionResult> {
+    const id = deterministicStateId(`pipeline-photo:${input.turnId}`);
+    const now = runtimeNow();
+    const inserted = await db.execute<ConversationStateRow>(sql`
+      INSERT INTO ${conversationStates}
+        (id, conversation_id, state, payload, supersedes_state_id, created_at, expires_at)
+      SELECT
+        ${id}::uuid,
+        ${input.conversationId}::uuid,
+        'treatment_pipeline_active',
+        ${conversationStates.payload} || jsonb_build_object(
+          'photoReceived', true,
+          'photoMessageId', ${input.sourceMessageId}::text,
+          'photoReceivedAt', ${now.toISOString()}::text
+        ),
+        ${input.expectedCurrentStateId}::uuid,
+        now(),
+        ${input.reviewExpiresAt}
+      FROM ${conversationStates}
+      WHERE ${conversationStates.id} = ${input.expectedCurrentStateId}::uuid
+        AND ${conversationStates.conversationId} = ${input.conversationId}::uuid
+        AND ${conversationStates.state} = 'treatment_pipeline_active'
+        AND ${conversationStates.payload}->>'treatmentId' = ${input.expectedTreatmentId}
+        AND (${conversationStates.payload}->>'stepIndex')::int = ${input.expectedStepIndex}
+        AND COALESCE((${conversationStates.payload}->>'photoReceived')::boolean, false) = false
+        AND ${conversationStates.id} = (
+          SELECT current_state.id
+          FROM ${conversationStates} AS current_state
+          WHERE current_state.conversation_id = ${input.conversationId}::uuid
+          ORDER BY current_state.created_at DESC, current_state.id DESC
+          LIMIT 1
+        )
+      ON CONFLICT DO NOTHING
+      RETURNING
+        id,
+        conversation_id AS "conversationId",
+        state,
+        payload,
+        supersedes_state_id AS "supersedesStateId",
+        created_at AS "createdAt",
+        expires_at AS "expiresAt"
+    `);
+    return this.exactTransitionResult(input.conversationId, id, inserted.rows);
+  }
+
   // Encerra o pipeline. O fluxo reativo normal assume a partir daqui.
   async exitTreatmentPipeline(
     conversationId: string,
@@ -820,6 +888,73 @@ export class ConversationStateMachine {
       } satisfies DepositFlowPayload,
       expiresAt: new Date(runtimeNow().getTime() + 7 * 24 * 3600_000),
     });
+  }
+
+  async markDepositProofReceivedForTurn(
+    input: MarkDepositProofReceivedForTurnInput,
+  ): Promise<ExactStateTransitionResult> {
+    const id = deterministicStateId(`deposit-proof:${input.turnId}`);
+    const now = runtimeNow();
+    const inserted = await db.execute<ConversationStateRow>(sql`
+      INSERT INTO ${conversationStates}
+        (id, conversation_id, state, payload, supersedes_state_id, created_at, expires_at)
+      SELECT
+        ${id}::uuid,
+        ${input.conversationId}::uuid,
+        'deposit_proof_received',
+        ${conversationStates.payload} || jsonb_build_object(
+          'proofMessageId', ${input.sourceMessageId}::text,
+          'proofReceivedAt', ${now.toISOString()}::text,
+          'proofReviewCode', ${input.proofReviewCode}::int
+        ),
+        ${input.expectedCurrentStateId}::uuid,
+        now(),
+        ${input.reviewExpiresAt}
+      FROM ${conversationStates}
+      WHERE ${conversationStates.id} = ${input.expectedCurrentStateId}::uuid
+        AND ${conversationStates.conversationId} = ${input.conversationId}::uuid
+        AND ${conversationStates.state} = 'awaiting_deposit_proof'
+        AND ${conversationStates.id} = (
+          SELECT current_state.id
+          FROM ${conversationStates} AS current_state
+          WHERE current_state.conversation_id = ${input.conversationId}::uuid
+          ORDER BY current_state.created_at DESC, current_state.id DESC
+          LIMIT 1
+        )
+      ON CONFLICT DO NOTHING
+      RETURNING
+        id,
+        conversation_id AS "conversationId",
+        state,
+        payload,
+        supersedes_state_id AS "supersedesStateId",
+        created_at AS "createdAt",
+        expires_at AS "expiresAt"
+    `);
+    return this.exactTransitionResult(input.conversationId, id, inserted.rows);
+  }
+
+  private async exactTransitionResult(
+    conversationId: string,
+    id: string,
+    insertedRows: readonly ConversationStateRow[],
+  ): Promise<ExactStateTransitionResult> {
+    const row = insertedRows[0]
+      ?? (await db.select().from(conversationStates).where(eq(conversationStates.id, id)).limit(1))[0]
+      ?? null;
+    if (!row) return { applied: false, state: await this.getCurrentState(conversationId) };
+    return {
+      applied: insertedRows.length === 1,
+      state: {
+        id: row.id,
+        conversationId: row.conversationId,
+        state: row.state as ConversationStateType,
+        payload: row.payload as StatePayload | null,
+        supersedesStateId: row.supersedesStateId,
+        createdAt: row.createdAt,
+        expiresAt: row.expiresAt,
+      },
+    };
   }
 
   // Retorna o estado + payload do fluxo de sinal (aguardando comprovante OU

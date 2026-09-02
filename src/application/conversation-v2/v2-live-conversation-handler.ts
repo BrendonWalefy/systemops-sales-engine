@@ -244,6 +244,7 @@ export function resolveJourneyOutboundContent(
       useVoice: fallback.useVoice,
       interleavedParts: [],
       pipelineAdvance: null,
+      postDeliveryControl: null,
     });
   }
   return Object.freeze({
@@ -251,6 +252,7 @@ export function resolveJourneyOutboundContent(
     useVoice: false,
     interleavedParts: [...plan.interleavedParts],
     pipelineAdvance: plan.pipelineAdvance,
+    postDeliveryControl: plan.postDeliveryControl ?? null,
   });
 }
 
@@ -361,6 +363,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
               inboundMessage: {
                 id: context.inboundMessage.id,
                 mediaType: context.inboundMessage.mediaType,
+                mediaUrl: context.inboundMessage.mediaUrl,
               },
               history: snapshot.history,
             }
@@ -760,6 +763,7 @@ export class V2LiveConversationHandler implements ConversationHandler {
           mediaParts: [],
           leadId: context.leadId,
           pipelineAdvance: outboundContent.pipelineAdvance,
+          postDeliveryControl: outboundContent.postDeliveryControl,
         },
       }, this.deps.outbound);
       await trace("v2.outbox", {

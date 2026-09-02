@@ -258,6 +258,12 @@ export type DentalJourneyDeliveryPlan = Readonly<{
   interleavedParts: readonly DentalJourneyDeliveryPart[];
   pipelineAdvance: DentalJourneyAdvance | null;
   deterministic: boolean;
+  postDeliveryControl?: Readonly<{
+    kind: "attention" | "handoff";
+    reason:
+      | "v2_deposit_proof_review_required"
+      | "v2_journey_photo_review_required";
+  }>;
 }>;
 
 export type DentalJourneyResolution =

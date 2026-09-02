@@ -183,4 +183,98 @@ describe("V2 journey state — PostgreSQL exact transitions", () => {
     expect(retry).toMatchObject({ applied: false, state: { id: first.state!.id } });
     expect(competing).toMatchObject({ applied: false, state: { id: first.state!.id } });
   });
+
+  it("consumes an exact photo state once and retains the canonical message binding", async () => {
+    const treatmentId = randomUUID();
+    const [active] = await db.insert(conversationStates).values({
+      conversationId,
+      state: "treatment_pipeline_active",
+      payload: {
+        treatmentId,
+        treatmentName: "Jornada",
+        stepIndex: 1,
+        qaTurns: 0,
+        photoReceived: false,
+      },
+      expiresAt: new Date("2099-09-03T00:00:00.000Z"),
+    }).returning({ id: conversationStates.id });
+    const machine = new ConversationStateMachine();
+    const turnId = randomUUID();
+    const sourceMessageId = randomUUID();
+    const input = {
+      conversationId,
+      turnId,
+      expectedCurrentStateId: active.id,
+      expectedTreatmentId: treatmentId,
+      expectedStepIndex: 1,
+      sourceMessageId,
+      reviewExpiresAt: new Date("2099-09-04T00:00:00.000Z"),
+    };
+
+    const first = await machine.markPipelinePhotoReceivedForTurn(input);
+    const retry = await machine.markPipelinePhotoReceivedForTurn(input);
+
+    expect(first).toMatchObject({
+      applied: true,
+      state: {
+        state: "treatment_pipeline_active",
+        supersedesStateId: active.id,
+        payload: { treatmentId, stepIndex: 1, photoReceived: true, photoMessageId: sourceMessageId },
+      },
+    });
+    expect(retry).toMatchObject({ applied: false, state: { id: first.state!.id } });
+  });
+
+  it("consumes an exact deposit proof once and rejects a competing turn", async () => {
+    const reservationId = randomUUID();
+    const [waiting] = await db.insert(conversationStates).values({
+      conversationId,
+      state: "awaiting_deposit_proof",
+      payload: {
+        slotStartsAt: "2026-09-03T12:00:00.000Z",
+        slotEndsAt: "2026-09-03T13:00:00.000Z",
+        slotLabel: "quinta às 09h",
+        reservationId,
+        treatmentId: null,
+        valueCents: null,
+        depositAmountCents: 20_000,
+        holdExpiresAt: "2026-09-03T00:00:00.000Z",
+      },
+      expiresAt: new Date("2099-09-03T00:00:00.000Z"),
+    }).returning({ id: conversationStates.id });
+    const machine = new ConversationStateMachine();
+    const turnId = randomUUID();
+    const sourceMessageId = randomUUID();
+    const input = {
+      conversationId,
+      turnId,
+      expectedCurrentStateId: waiting.id,
+      sourceMessageId,
+      proofReviewCode: 7,
+      reviewExpiresAt: new Date("2099-09-10T00:00:00.000Z"),
+    };
+
+    const first = await machine.markDepositProofReceivedForTurn(input);
+    const retry = await machine.markDepositProofReceivedForTurn(input);
+    const competing = await machine.markDepositProofReceivedForTurn({
+      ...input,
+      turnId: randomUUID(),
+      sourceMessageId: randomUUID(),
+    });
+
+    expect(first).toMatchObject({
+      applied: true,
+      state: {
+        state: "deposit_proof_received",
+        supersedesStateId: waiting.id,
+        payload: {
+          reservationId,
+          proofMessageId: sourceMessageId,
+          proofReviewCode: 7,
+        },
+      },
+    });
+    expect(retry).toMatchObject({ applied: false, state: { id: first.state!.id } });
+    expect(competing).toMatchObject({ applied: false, state: { id: first.state!.id } });
+  });
 });

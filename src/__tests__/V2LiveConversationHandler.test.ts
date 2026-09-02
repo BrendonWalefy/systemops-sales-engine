@@ -239,7 +239,17 @@ function makeHarness(options: {
           id: "state-deposit-1",
           conversationId: conversation.id,
           state: "awaiting_deposit_proof",
-          payload: null,
+          payload: {
+            slotStartsAt: "2026-08-18T18:00:00.000Z",
+            slotEndsAt: "2026-08-18T19:00:00.000Z",
+            slotLabel: "amanhã às 15h",
+            reservationId: "reservation-1",
+            treatmentId: treatment.id,
+            treatmentName: treatment.name,
+            valueCents: 80_000,
+            depositAmountCents: 20_000,
+            holdExpiresAt: "2026-08-18T12:00:00.000Z",
+          },
           supersedesStateId: null,
           createdAt: now,
           expiresAt: new Date("2026-08-18T12:00:00.000Z"),
@@ -252,7 +262,7 @@ function makeHarness(options: {
             payload: {
               treatmentId: treatment.id,
               treatmentName: treatment.name,
-              stepIndex: 0,
+              stepIndex: 1,
               qaTurns: 0,
               photoReceived: false,
             },
@@ -442,7 +452,7 @@ function makeHarness(options: {
       ? { status: "persistence_failed" as const }
       : { status: "stored" as const, evidenceRef: "opaque-evidence-ref" },
   );
-  const journeyTreatment: Treatment = options.journeyStartTurn
+  const journeyTreatment: Treatment = options.journeyStartTurn || options.structuredMediaTurn === "journey"
     ? {
         ...treatment,
         pipelineSteps: [{
@@ -470,7 +480,7 @@ function makeHarness(options: {
           ? { ...journeyTreatment, clinicId: "clinic-other" }
           : journeyTreatment,
       ]);
-  let journeyCurrentState: LiveTurnSnapshot["currentState"] = null;
+  let journeyCurrentState: LiveTurnSnapshot["currentState"] = snapshot.currentState;
   const startTreatmentPipelineForTurn = vi.fn(async (stateInput: {
     conversationId: string;
     treatmentId: string;
@@ -491,6 +501,40 @@ function makeHarness(options: {
       supersedesStateId: null,
       createdAt: now,
       expiresAt: new Date("2026-08-17T16:00:00.000Z"),
+    };
+    return { applied: true, state: journeyCurrentState };
+  });
+  const markPipelinePhotoReceivedForTurn = vi.fn(async (stateInput: {
+    sourceMessageId: string;
+  }) => {
+    journeyCurrentState = {
+      ...journeyCurrentState!,
+      id: "state-journey-photo-received",
+      payload: {
+        ...(journeyCurrentState!.payload as Record<string, unknown>),
+        photoReceived: true,
+        photoMessageId: stateInput.sourceMessageId,
+        photoReceivedAt: now.toISOString(),
+      },
+      supersedesStateId: journeyCurrentState!.id,
+    };
+    return { applied: true, state: journeyCurrentState };
+  });
+  const markDepositProofReceivedForTurn = vi.fn(async (stateInput: {
+    sourceMessageId: string;
+    proofReviewCode: number;
+  }) => {
+    journeyCurrentState = {
+      ...journeyCurrentState!,
+      id: "state-deposit-proof-received",
+      state: "deposit_proof_received",
+      payload: {
+        ...(journeyCurrentState!.payload as Record<string, unknown>),
+        proofMessageId: stateInput.sourceMessageId,
+        proofReceivedAt: now.toISOString(),
+        proofReviewCode: stateInput.proofReviewCode,
+      },
+      supersedesStateId: journeyCurrentState!.id,
     };
     return { applied: true, state: journeyCurrentState };
   });
@@ -575,7 +619,7 @@ function makeHarness(options: {
             }
           : {}),
       },
-      ...(options.journeyStartTurn
+      ...(options.journeyStartTurn || options.structuredMediaTurn
         ? {
             journeyResources: {
               mediaAssets: {
@@ -591,14 +635,38 @@ function makeHarness(options: {
               state: {
                 getCurrentState: vi.fn(async () => journeyCurrentState),
                 startTreatmentPipelineForTurn,
-                markPipelinePhotoReceived: vi.fn(),
+                markPipelinePhotoReceivedForTurn,
                 getDepositState: vi.fn().mockResolvedValue(null),
-                markDepositProofReceived: vi.fn(),
-                invalidate: vi.fn(),
+                markDepositProofReceivedForTurn,
+                invalidateIfCurrent: vi.fn().mockResolvedValue(true),
               },
               reservations: {
                 release: vi.fn(),
                 extend: vi.fn(),
+                findById: vi.fn().mockResolvedValue({
+                  id: "reservation-1",
+                  clinicId: clinic.id,
+                  leadId: lead.id,
+                  startsAt: new Date("2026-08-18T18:00:00.000Z"),
+                  endsAt: new Date("2026-08-18T19:00:00.000Z"),
+                  status: "pending",
+                  calendarEventId: null,
+                  expiresAt: new Date("2026-08-18T12:00:00.000Z"),
+                }),
+              },
+              depositProofReviews: { nextAvailableCode: vi.fn().mockResolvedValue(1) },
+              humanReviews: {
+                findPendingByConversation: vi.fn().mockResolvedValue(null),
+                createPending: vi.fn().mockResolvedValue({
+                  id: "review-1",
+                  clinicId: clinic.id,
+                  conversationId: conversation.id,
+                  leadId: lead.id,
+                  treatmentId: treatment.id,
+                  targetTreatmentId: treatment.id,
+                  reviewCode: 1,
+                  expiresAt: new Date("2026-08-18T12:00:00.000Z"),
+                }),
               },
             },
           }
@@ -667,6 +735,8 @@ function makeHarness(options: {
     rejectionCapture,
     listTreatments,
     startTreatmentPipelineForTurn,
+    markPipelinePhotoReceivedForTurn,
+    markDepositProofReceivedForTurn,
   };
 }
 
@@ -746,9 +816,45 @@ describe("V2LiveConversationHandler", () => {
   it("does not call the model to classify trusted journey media metadata", async () => {
     const harness = makeHarness({ structuredMediaTurn: "deposit" });
 
-    await harness.handler.handle(handleInput("[documento recebido]"));
+    await expect(harness.handler.handle(handleInput("[documento recebido]")))
+      .resolves.toEqual({ replied: true });
 
     expect(harness.understandingCreate).not.toHaveBeenCalled();
+    expect(harness.verbalizerCreate).not.toHaveBeenCalled();
+    expect(harness.markDepositProofReceivedForTurn).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          postDeliveryControl: {
+            kind: "attention",
+            reason: "v2_deposit_proof_review_required",
+          },
+        }),
+      }),
+      { turnId },
+    );
+  });
+
+  it("routes an expected journey photo to one durable human-review handoff without a model call", async () => {
+    const harness = makeHarness({ structuredMediaTurn: "journey" });
+
+    await expect(harness.handler.handle(handleInput("[imagem recebida]")))
+      .resolves.toEqual({ replied: true });
+
+    expect(harness.understandingCreate).not.toHaveBeenCalled();
+    expect(harness.verbalizerCreate).not.toHaveBeenCalled();
+    expect(harness.markPipelinePhotoReceivedForTurn).toHaveBeenCalledOnce();
+    expect(harness.createOutboundMessageAndEnqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          postDeliveryControl: {
+            kind: "handoff",
+            reason: "v2_journey_photo_review_required",
+          },
+        }),
+      }),
+      { turnId },
+    );
   });
 
   it.each([

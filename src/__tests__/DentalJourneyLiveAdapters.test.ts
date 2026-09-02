@@ -41,8 +41,47 @@ const treatment: Treatment = {
   updatedAt: now,
 };
 
-function harness(mediaClinicId = "clinic-1") {
-  let current: ConversationStateRow | null = null;
+function harness(
+  mediaClinicId = "clinic-1",
+  flow: "start" | "photo" | "deposit" | "proof_received" = "start",
+) {
+  let current: ConversationStateRow | null = flow === "photo"
+    ? {
+        id: "state-photo-1",
+        conversationId: "conversation-1",
+        state: "treatment_pipeline_active",
+        payload: {
+          treatmentId: treatment.id,
+          treatmentName: treatment.name,
+          stepIndex: 1,
+          qaTurns: 0,
+          photoReceived: false,
+        },
+        supersedesStateId: null,
+        createdAt: now,
+        expiresAt: new Date("2026-09-02T16:00:00.000Z"),
+      }
+    : flow === "deposit" || flow === "proof_received"
+      ? {
+          id: "state-deposit-1",
+          conversationId: "conversation-1",
+          state: flow === "deposit" ? "awaiting_deposit_proof" : "deposit_proof_received",
+          payload: {
+            slotStartsAt: "2026-09-03T12:00:00.000Z",
+            slotEndsAt: "2026-09-03T13:00:00.000Z",
+            slotLabel: "quinta às 09h",
+            reservationId: "reservation-1",
+            treatmentId: treatment.id,
+            treatmentName: treatment.name,
+            valueCents: 100_000,
+            depositAmountCents: 20_000,
+            holdExpiresAt: "2026-09-03T00:00:00.000Z",
+          },
+          supersedesStateId: null,
+          createdAt: now,
+          expiresAt: new Date("2026-09-03T00:00:00.000Z"),
+        }
+      : null;
   const state = {
     getCurrentState: vi.fn(async () => current),
     startTreatmentPipelineForTurn: vi.fn(async (input: {
@@ -68,10 +107,54 @@ function harness(mediaClinicId = "clinic-1") {
       };
       return { applied: true, state: current };
     }),
-    markPipelinePhotoReceived: vi.fn(),
+    markPipelinePhotoReceivedForTurn: vi.fn(async (input: { sourceMessageId: string }) => {
+      current = {
+        ...current!,
+        id: "state-photo-received",
+        payload: {
+          ...(current!.payload as Record<string, unknown>),
+          photoReceived: true,
+          photoMessageId: input.sourceMessageId,
+          photoReceivedAt: now.toISOString(),
+        },
+        supersedesStateId: current!.id,
+      };
+      return { applied: true, state: current };
+    }),
     getDepositState: vi.fn().mockResolvedValue(null),
-    markDepositProofReceived: vi.fn(),
-    invalidate: vi.fn(),
+    markDepositProofReceivedForTurn: vi.fn(async (input: {
+      sourceMessageId: string;
+      proofReviewCode: number;
+    }) => {
+      current = {
+        ...current!,
+        id: "state-proof-received",
+        state: "deposit_proof_received",
+        payload: {
+          ...(current!.payload as Record<string, unknown>),
+          proofMessageId: input.sourceMessageId,
+          proofReviewCode: input.proofReviewCode,
+          proofReceivedAt: now.toISOString(),
+        },
+        supersedesStateId: current!.id,
+      };
+      return { applied: true, state: current };
+    }),
+    invalidateIfCurrent: vi.fn().mockResolvedValue(true),
+  };
+  const reservations = {
+    release: vi.fn(),
+    extend: vi.fn(),
+    findById: vi.fn().mockResolvedValue({
+      id: "reservation-1",
+      clinicId: "clinic-1",
+      leadId: "lead-1",
+      startsAt: new Date("2026-09-03T12:00:00.000Z"),
+      endsAt: new Date("2026-09-03T13:00:00.000Z"),
+      status: "pending",
+      calendarEventId: null,
+      expiresAt: new Date("2026-09-03T00:00:00.000Z"),
+    }),
   };
   const adapter = createDentalJourneyLiveAdapter({
     clinicId: "clinic-1",
@@ -80,7 +163,8 @@ function harness(mediaClinicId = "clinic-1") {
     now,
     inboundMessage: {
       id: "message-1",
-      mediaType: null,
+      mediaType: flow === "photo" ? "image" : flow === "deposit" ? "document" : null,
+      mediaUrl: flow === "start" ? null : "https://media.invalid/inbound",
     },
     history: [],
     treatments: {
@@ -97,12 +181,26 @@ function harness(mediaClinicId = "clinic-1") {
       }]),
     },
     state,
-    reservations: {
-      release: vi.fn(),
-      extend: vi.fn(),
+    reservations,
+    leadId: "lead-1",
+    depositProofReviews: {
+      nextAvailableCode: vi.fn().mockResolvedValue(7),
+    },
+    humanReviews: {
+      findPendingByConversation: vi.fn().mockResolvedValue(null),
+      createPending: vi.fn().mockResolvedValue({
+        id: "review-1",
+        clinicId: "clinic-1",
+        conversationId: "conversation-1",
+        leadId: "lead-1",
+        treatmentId: treatment.id,
+        targetTreatmentId: treatment.id,
+        reviewCode: 9,
+        expiresAt: new Date("2026-09-03T12:00:00.000Z"),
+      }),
     },
   } as never);
-  return { adapter, state };
+  return { adapter, state, reservations };
 }
 
 describe("dental journey live adapter", () => {
@@ -174,5 +272,87 @@ describe("dental journey live adapter", () => {
 
     expect(adapter.journeyWrite.takeDeliveryPlan()).not.toBeNull();
     expect(adapter.journeyWrite.takeDeliveryPlan()).toBeNull();
+  });
+
+  it("binds a journey photo to the exact state and creates one human review", async () => {
+    const { adapter, state } = harness("clinic-1", "photo");
+    const resolution = await adapter.journeyRead.resolveInboundMedia();
+    expect(resolution).toMatchObject({ kind: "ready", mediaKind: "journey_media" });
+    if (resolution.kind !== "ready") throw new Error("expected photo resolution");
+
+    await expect(adapter.journeyWrite.receiveMedia(resolution.resolutionId))
+      .resolves.toMatchObject({ success: true, kind: "journey_media_received" });
+    expect(state.markPipelinePhotoReceivedForTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conversation-1",
+        turnId: "turn-1",
+        expectedCurrentStateId: "state-photo-1",
+        expectedTreatmentId: treatment.id,
+        expectedStepIndex: 1,
+        sourceMessageId: "message-1",
+      }),
+    );
+    expect(adapter.journeyWrite.takeDeliveryPlan()).toMatchObject({
+      deterministic: true,
+      postDeliveryControl: {
+        kind: "handoff",
+        reason: "v2_journey_photo_review_required",
+      },
+    });
+  });
+
+  it("records an exact deposit proof, extends its hold and requests Inbox attention", async () => {
+    const { adapter, state } = harness("clinic-1", "deposit");
+    const resolution = await adapter.journeyRead.resolveInboundMedia();
+    expect(resolution).toMatchObject({ kind: "ready", mediaKind: "deposit_proof" });
+    if (resolution.kind !== "ready") throw new Error("expected proof resolution");
+
+    await expect(adapter.journeyWrite.receiveMedia(resolution.resolutionId))
+      .resolves.toMatchObject({ success: true, kind: "deposit_proof_received" });
+    expect(state.markDepositProofReceivedForTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "conversation-1",
+        turnId: "turn-1",
+        expectedCurrentStateId: "state-deposit-1",
+        sourceMessageId: "message-1",
+        proofReviewCode: 7,
+      }),
+    );
+    expect(adapter.journeyWrite.takeDeliveryPlan()).toMatchObject({
+      replyText: expect.stringMatching(/recebemos seu comprovante/i),
+      postDeliveryControl: {
+        kind: "attention",
+        reason: "v2_deposit_proof_review_required",
+      },
+    });
+  });
+
+  it("releases only the exact pending deposit reservation before returning to scheduling", async () => {
+    const { adapter, reservations, state } = harness("clinic-1", "deposit");
+
+    await expect(adapter.journeyWrite.releasePendingDeposit()).resolves.toEqual({
+      success: true,
+      kind: "deposit_change_released",
+      subjectId: "reservation-1",
+      subjectLabel: "quinta às 09h",
+      evidenceRef: "reservation:reservation-1:released",
+    });
+    expect(reservations.release).toHaveBeenCalledOnce();
+    expect(reservations.release).toHaveBeenCalledWith("reservation-1");
+    expect(state.invalidateIfCurrent).toHaveBeenCalledWith(
+      "conversation-1",
+      "state-deposit-1",
+    );
+  });
+
+  it("never releases a reservation after its proof entered human review", async () => {
+    const { adapter, reservations, state } = harness("clinic-1", "proof_received");
+
+    await expect(adapter.journeyWrite.releasePendingDeposit()).resolves.toMatchObject({
+      success: false,
+      reason: "deposit_change_requires_human",
+    });
+    expect(reservations.release).not.toHaveBeenCalled();
+    expect(state.invalidateIfCurrent).not.toHaveBeenCalled();
   });
 });

@@ -100,7 +100,9 @@ export type DentalLiveAdapterDependencies = {
     mediaAssets: Pick<MediaAssetRepository, "findByIds">;
     state: DentalJourneyLiveAdapterDependencies["state"];
     reservations: DentalJourneyLiveAdapterDependencies["reservations"];
-    inboundMessage: Pick<Message, "id" | "mediaType">;
+    depositProofReviews: DentalJourneyLiveAdapterDependencies["depositProofReviews"];
+    humanReviews: DentalJourneyLiveAdapterDependencies["humanReviews"];
+    inboundMessage: Pick<Message, "id" | "mediaType" | "mediaUrl">;
     history: readonly Message[];
   }>;
 };
@@ -389,6 +391,7 @@ export function createDentalLiveAdapters(
   const journey = deps.journey
     ? createDentalJourneyLiveAdapter({
         clinicId: clinic.id,
+        leadId,
         conversationId,
         turnId,
         now: new Date(turnNow.getTime()),
@@ -398,6 +401,8 @@ export function createDentalLiveAdapters(
         mediaAssets: deps.journey.mediaAssets,
         state: deps.journey.state,
         reservations: deps.journey.reservations,
+        depositProofReviews: deps.journey.depositProofReviews,
+        humanReviews: deps.journey.humanReviews,
         effectLifecycle,
       })
     : {

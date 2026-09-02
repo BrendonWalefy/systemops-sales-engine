@@ -39,6 +39,7 @@ import { DrizzleConversationRepository } from "@/infrastructure/repositories/dri
 import { DrizzleConversationRuntimeControlStore } from "@/infrastructure/repositories/drizzle-conversation-runtime-control-store";
 import { DrizzleConversationTurnLeaseStore } from "@/infrastructure/repositories/drizzle-conversation-turn-lease-store";
 import { DrizzleFollowUpRepository } from "@/infrastructure/repositories/drizzle-follow-up-repository";
+import { DrizzleHumanReviewRequestRepository } from "@/infrastructure/repositories/drizzle-human-review-request-repository";
 import { DrizzleJobQueue } from "@/infrastructure/repositories/drizzle-job-queue";
 import { DrizzleLeadRepository } from "@/infrastructure/repositories/drizzle-lead-repository";
 import { DrizzleLiveConversationContextReader } from "@/infrastructure/repositories/drizzle-live-conversation-context-reader";
@@ -53,6 +54,7 @@ import { DrizzleV2ConversationHandoffStore } from "@/infrastructure/repositories
 import { requireV2ConversationHandoff } from "@/application/conversation-v2/v2-conversation-handoff";
 import { resolveClinicVoiceConfig } from "@/lib/tts-send";
 import { getActivePriceCampaignsByTreatment } from "@/application/config/price-campaigns";
+import { nextAvailableDepositProofReviewCode } from "@/application/conversations/deposit-proof-review";
 
 type RuntimeEnvironment = AiEvidenceRuntimeEnvironment;
 
@@ -232,6 +234,10 @@ function createLiveHandler(input: {
         mediaAssets: new DrizzleMediaAssetRepository(),
         state,
         reservations,
+        depositProofReviews: {
+          nextAvailableCode: nextAvailableDepositProofReviewCode,
+        },
+        humanReviews: new DrizzleHumanReviewRequestRepository(),
       },
       resolveTenantScheduling,
     },
